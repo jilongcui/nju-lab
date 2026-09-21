@@ -117,14 +117,21 @@ export class SubmissionsService {
       throw new NotFoundException('任务不存在');
     }
 
-    // submitted → verifying → verified
+    // submitted → verifying → verified；复验执行失败 → failed（允许重新提交/复验）
     submission.status = SubmissionStatus.VERIFYING;
     await this.submissionRepo.save(submission);
 
-    const result = await this.evaluationRunner.run(
-      submission,
-      assignment.project,
-    );
+    let result;
+    try {
+      result = await this.evaluationRunner.run(
+        submission,
+        assignment.project,
+      );
+    } catch (e) {
+      submission.status = SubmissionStatus.FAILED;
+      await this.submissionRepo.save(submission);
+      throw e;
+    }
     const evaluation = await this.evaluationRepo.save(
       this.evaluationRepo.create({
         submissionId: submission.id,

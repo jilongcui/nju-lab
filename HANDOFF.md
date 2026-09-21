@@ -107,7 +107,7 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 - `server/src/submissions/docker-evaluation-runner.ts`：file 引用 → uploads 真实路径 → `docker run --rm --memory 1g --cpus 1` 只读挂载 → LLM judge（{pass, score, rationale} 落库）→ 写 Evaluation；`EVALUATION_RUNNER=mock|docker` 环境切换（默认 mock，当前 .env 为 docker）
 - 端到端实测：student1 提交真实 skill.zip → teacher verify → 107.6s / 22.7k tokens → Evaluation 写入真实数据（successRate=1、judge rationale、integrityCheck 自报哈希逐条对照、dossier 正确识别能力边界未填）
 - 成本量级：1 case ≈ 23k tokens / ~108s；3 cases ≈ 68k / ~5min
-- **已知遗留**：① 容器未断网（决策：白名单代理留生产化）② ~~evalConfig.model 未逐项目映射~~ 已解决（2026-09-21）：runner 把 `evalConfig.model`/`reasoningEffort` 以 `VERIFY_MODEL`/`VERIFY_REASONING_EFFORT` 传入容器，驱动复制 profile 后按白名单校验改写（防 YAML 注入）；v4-pro 实测通过（44.1s/22.1k tokens，result.model 确为 v4-pro）③ judge 请求不能传 temperature:0（kimi 拒绝）④ exact 模式实现未 e2e ⑤ 学生 scripts 任意代码——生产前必须落实网络隔离
+- **已知遗留**：① ~~容器未断网~~ 已解决（2026-09-21）：SNI 白名单代理——`nju-verify-egress` internal 网络（无外网路由）+ 双宿主 nginx stream 代理（ssl_preread，白名单 api.deepseek.com / api.moonshot.cn），runner 每次复验前幂等确保；非白名单 DNS 黑洞、直连 IP 无路由均已负向实测；边界：按域名不按路径，学生代码可用自己的 key 调 DeepSeek（README 已标注）② judge 请求不能传 temperature:0（kimi 拒绝）③ exact 模式实现未 e2e ④ verify() 失败状态语义已修（runner 抛错 → submission 置 FAILED，可重新提交/复验）
 - **模型事实源（2026-09-21 官方 API 实测）**：可用模型 `deepseek-flash` / `deepseek-v4-pro`；`reasoning_effort` 合法值 `none|minimal|low|medium|high|xhigh|max`。DeepSeek key 已存 `server/.env`（DEEPSEEK_API_KEY，管理员侧）；容器路由已切官方（Moonshot 回退方法见 profile patch 注释）；`agent/request` 钉 reasoningEffort 会被 dsh-llm-deepseek 拒绝（UNSUPPORTED_REASONING_EFFORT），effort 只能 profile config 层生效
 - deepseek-flash e2e 实测：verify 34.9s / 24.4k tokens，judge rationale 与 integrityCheck 全部真实
 

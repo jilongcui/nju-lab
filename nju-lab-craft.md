@@ -379,7 +379,7 @@ GET    /api/me/evaluations/:id          查看自己的复验结果与反馈
 
 ### 已知遗留（按优先级）
 
-1. ~~复验为 Mock~~ 已解决（2026-09-21）：`DockerEvaluationRunner` 上线——一次性容器（dsh headless + approval=never + 资源限额）跑 baseline/treatment + LLM judge，`EVALUATION_RUNNER=mock|docker` 可切换；deepseek-flash 实测 34.9s/24.4k tokens。`evalConfig.model`/`reasoningEffort` 逐项目映射进容器已实现（VERIFY_MODEL 环境变量 + 驱动改写 profile，v4-pro 实测通过）。遗留：容器未断网（白名单代理留生产化）
+1. ~~复验为 Mock~~ 已解决（2026-09-21）：`DockerEvaluationRunner` 上线——一次性容器（dsh headless + approval=never + 资源限额 + SNI 白名单网络隔离）跑 baseline/treatment + LLM judge，`EVALUATION_RUNNER=mock|docker` 可切换。`evalConfig.model`/`reasoningEffort` 逐项目映射已实现。网络隔离：`nju-verify-egress` internal 网络 + nginx stream ssl_preread 白名单代理（api.deepseek.com / api.moonshot.cn），负向实测通过
 2. ~~提交物/模板/数据集只存字符串引用~~ 已解决（2026-09-21）：files 模块落地本地磁盘存储（`server/uploads/`），`POST /api/files` 上传（服务端算 sha256）、`GET /api/files/:id` 下载；项目改挂 `skillTemplateFileId`/`testDatasetFileId`；claim 下发真实下载地址；submit 支持 fileId 模式（归属与哈希服务端校验）。遗留：文件下载仅 UUID 能力凭证 + 登录，无细粒度鉴权；对象存储未接
 3. 项目 PATCH（整体替换）与课程 PATCH（部分更新）语义不一致，待统一
 4. TypeORM `synchronize: true` 开发模式，生产前需 migrations；后端以 start:dev 运行，需常驻化

@@ -105,7 +105,7 @@ npm run build && npm start  # 编译后以 node dist/main.js 运行
   - `docker` → `DockerEvaluationRunner`（`src/submissions/docker-evaluation-runner.ts`）：真实复验。解析 `skillZipRef` 的 `file:<id>` 与项目数据集文件 → 起一次性容器（输入只读挂载、`--memory 1g --cpus 1`、超时强杀，`MOONSHOT_API_KEY` 由服务端环境透传）→ 容器内跑 dsh headless（`nju-lab-verify` profile：approval=never + workspace-write 沙箱）baseline/treatment 两轮 → LLM judge 逐 case 评分（`{pass, score, rationale}`，rationale 进结果供教师批改页；`evalConfig.judgeMode: 'exact'` 可切回逐字节比对）→ 映射 EvaluationRunResult（successRate=treatment 通过率、tokenCost=两轮+ judge 实测 token 总和、integrityCheck=自报 fileHashes vs 容器实测哈希对照 + capsule 哈希校验、autoScoreSuggestion 沿用 Mock 权重公式但全部输入为实测值）。
   - 镜像构建：`cd verify-image && docker build -t nju-lab-verify:0.1.5-rc.2 .`（node:22-slim + 锁定 `@deepseek-ai/dsh@0.1.5-rc.2` + zstd/unzip/python3 + 驱动 `run-eval.mjs` + `nju-lab-verify` profile，约 512MB）。
   - 可选 env：`VERIFY_IMAGE` / `VERIFY_TIMEOUT_MS`（默认 600000，evalConfig.timeoutSeconds 优先）/ `VERIFY_MAX_CASES`（默认 0=全部，成本控制用）/ `VERIFY_JUDGE_MODE`（默认 llm）/ `VERIFY_DOCKER_MEMORY` / `VERIFY_DOCKER_CPUS`。
-  - 遗留（生产化）：**网络白名单代理**——当前容器走默认 bridge 网络，模型 API 出站与学生 Skill 出站未隔离；`evalConfig.model` 暂被驱动忽略，实际模型由镜像 profile + `VERIFY_MODEL` 钉死（OpenAI 兼容路由）。
+  - 出栈隔离（已实现）：复验容器挂 `--internal` 网络 `nju-verify-egress`（无外网路由：非白名单域名 DNS 黑洞 + 直连 IP 无路由），白名单域名（`api.deepseek.com`、`api.moonshot.cn`）经 `--add-host` 钉到双宿主 SNI 代理容器 `nju-verify-egress-proxy`（nginx stream + ssl_preread，配置 `verify-image/egress-proxy/nginx.conf`）；网络与代理由 runner 每次复验前幂等确保，代理不可用则 fail-closed 报错。架构与运维详见 `verify-image/README.md`。
 - **unlockRule**：默认规则 = 完成该实验所属章节之前的全部已发布章节；也支持 `{ type: 'none' }`（无前置）与 `{ type: 'chapters', chapterIds }`（指定章节）。不满足时 claim 返回 403。
 - **提交状态机**：`submitted → verifying → verified/failed → graded`；仅复验失败（failed）后允许重新提交。
 - **复用第八节评分体系**：rubric 为 JSON 维度权重（默认：规范完整度 15 / 边界质量 25 / 实测有效性 40 / 证据完整性 10 / 工程效率 10），模拟评分建议以实测有效性为主导。
@@ -113,6 +113,6 @@ npm run build && npm start  # 编译后以 node dist/main.js 运行
 ## 遗留说明（后续阶段）
 
 - 文件已落地本地磁盘存储（`server/uploads/`，files 模块）；对象存储（S3/OSS）与文件细粒度鉴权留待生产化
-- 复验已接一次性容器（docker 模式）；网络白名单代理未做（容器网络未隔离）；提交后不会自动触发复验（需教师手动 POST verify）
+- 复验已接一次性容器（docker 模式）+ SNI 出栈白名单隔离（见 `verify-image/README.md`）；剩余边界：白名单按域名不按路径（学生代码可用自己的 key 调同一域名，MITM 级加固留待更后期）；提交后不会自动触发复验（需教师手动 POST verify）
 - 无 CSV 成绩导出、参考技能库（SkillLibrary）、掉队预警
 - 无单元测试；无 migrations（依赖 synchronize）
