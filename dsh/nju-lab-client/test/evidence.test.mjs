@@ -53,8 +53,10 @@ function makeHarness({ withPersistence = true } = {}) {
     connection: { fetch: { register: () => async () => {} } },
     settings: { installSection: () => {} },
   }
-  ctx.inject = (_deps, callback) => {
-    callback(ctx)
+  // 照 cordis 语义：只在该服务存在时执行回调（这个 harness 没有 systemPrompt /
+  // skills，所以引导注册被跳过；withPersistence: false 时证据采集器也走不到）。
+  ctx.inject = (deps, callback) => {
+    if (deps.every((dep) => ctx[dep] !== undefined)) callback(ctx)
     return () => {}
   }
   if (withPersistence) {

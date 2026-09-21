@@ -8,6 +8,7 @@ import { PlatformApi } from './api.ts'
 import { createActions } from './actions.ts'
 import { Config, type EvalConfig } from './config.ts'
 import { collectEvidence } from './evidence.ts'
+import { registerGuidance } from './guidance.ts'
 import { registerConditionLock } from './lock.ts'
 import { registerPanelRoutes } from './panel.ts'
 import { registerToolRestriction } from './restrict.ts'
@@ -85,6 +86,10 @@ export function apply(ctx: Context, config: Config): void {
 
   registerConditionLock(ctx, () => evalConfig)
   registerTools(ctx, actions)
+
+  // 模型引导（HANDOFF 第 5 步）：常驻的 system prompt 段 + 可按需加载的 skill。
+  // 两者都走 ctx.inject 软依赖，缺 systemPrompt / skills 时静默跳过。
+  registerGuidance(ctx)
 
   // 面板路由挂在 Connection 的 /api 通道上；headless（无 web server）没有这个服务。
   ctx.inject(['connection'], (scoped) => {

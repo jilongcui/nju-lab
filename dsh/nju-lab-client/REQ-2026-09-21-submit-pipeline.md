@@ -123,4 +123,4 @@ resolveSkillRoot(dir):
 
 - ~~证据包 `.dshc` 真实化（接 dsh-session-persistence，审计事件自动提取）~~ **已完成（2026-09-21）**：实现见 `src/host/evidence.ts`，L2 用例 `test/dsh-e2e.test.mjs`「submit 把本会话的审计证据导出进 .dshc」在真 DSH 下通过（实测 17 个会话事件 → `permission/preset`、`approval/policy` 两条审计事件，无降级）。
 - 真实容器复验（EvaluationRunner）——服务端需求，与插件无关。
-- profile 内 skill / system prompt 引导——HANDOFF 第 5 步。
+- ~~profile 内 skill / system prompt 引导~~ **已完成（2026-09-21）**：见 `src/host/guidance.ts`（常驻 system prompt 段 + `ctx.skills.register()` 注册的 `nju-lab-experiment` skill），L2 用例 `test/dsh-e2e.test.mjs`「引导与 skill 到达模型」在真 DSH 下通过。

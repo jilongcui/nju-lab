@@ -81,8 +81,10 @@ function makeHarness() {
     },
     settings: { installSection: () => {} },
   }
-  ctx.inject = (_deps, cb) => {
-    cb(ctx)
+  // 照 cordis 语义：只在该服务存在时执行回调（这里没有 systemPrompt / skills，
+  // 所以引导注册被跳过 —— 与 headless 下缺 connection 是同一类情形）。
+  ctx.inject = (deps, cb) => {
+    if (deps.every((dep) => ctx[dep] !== undefined)) cb(ctx)
     return () => {}
   }
   return {

@@ -16,7 +16,7 @@ import { SubmissionsService } from './submissions.service';
 export class SubmissionsController {
   constructor(private readonly submissionsService: SubmissionsService) {}
 
-  /** 教师触发复验（当前为模拟复验，真实容器复验后续接入） */
+  /** 教师触发复验（EVALUATION_RUNNER 环境变量选择 Mock 或真实容器复验） */
   @Post(':id/verify')
   @Roles(UserRole.TEACHER)
   verify(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {

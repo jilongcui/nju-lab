@@ -2,7 +2,7 @@
 
 NJU-Lab 的**定制 DSH 客户端插件**（host 半 + client 半）。
 
-- **host 半**（Node，`src/host/`）：平台 API 客户端（含上传/下载）、`agent/request` 评估条件锁定、三个平台工具、ClaimPanel 的 HTTP 路由、证据采集（`.dshc` 证据包：会话审计事件导出 + 脱敏 + 完整性哈希）。
+- **host 半**（Node，`src/host/`）：平台 API 客户端（含上传/下载）、`agent/request` 评估条件锁定、三个平台工具、ClaimPanel 的 HTTP 路由、证据采集（`.dshc` 证据包：会话审计事件导出 + 脱敏 + 完整性哈希）、模型引导（system prompt 段 + `nju-lab-experiment` skill）。
 - **client 半**（浏览器，`src/client/`）：右侧栏的任务面板（列表 / 领取 / 提交 / 显示钉定条件）。
 
 ## 结构
@@ -22,6 +22,7 @@ nju-lab-client/
     lock.ts           # agent/request 条件锁定（model + reasoningEffort）
     zip.ts            # 最小 ZIP 编解码（纯 JS，不调系统 zip/unzip）
     evidence.ts       # `.dshc` 证据包：从 sessionPersistence 导出会话 → 筛 approval/*、permission/* → 脱敏 → sha256 完整性
+    guidance.ts       # 模型引导：常驻 system prompt 段 + runtime 注册的 `nju-lab-experiment` skill
   src/client/         # 浏览器面
     index.tsx         # 两阶段注册右侧栏 tab（type + body + title）
     ClaimPanel.tsx    # 任务面板：同源 fetch 取数，token 不进浏览器
@@ -37,7 +38,7 @@ npm run typecheck  # host 与 client 两半都干净
 
 ## 测试
 
-L2 需要一个 `dsh` 可执行文件（仓库不内置）。它按 `DSH_BIN` → `PATH` 的顺序查找，找不到会 **skip**（TAP 里是 `ok … # SKIP`，**不是**通过）。所以 L2 的结论必须带 `DSH_BIN` 跑；不带的话 44 条里那 4 条 L2 静默 skip，`npm test` 仍显示全绿。
+L2 需要一个 `dsh` 可执行文件（仓库不内置）。它按 `DSH_BIN` → `PATH` 的顺序查找，找不到会 **skip**（TAP 里是 `ok … # SKIP`，**不是**通过）。所以 L2 的结论必须带 `DSH_BIN` 跑；不带的话 52 条里那 5 条 L2 静默 skip，`npm test` 仍显示全绿。
 
 ```sh
 npm test                                 # L1 + L2
@@ -51,6 +52,9 @@ DSH_BIN=/path/to/dsh npm run test:e2e    # 只跑 L2
 npm i -g @deepseek-ai/dsh@0.1.5-rc.2
 ```
 
+如果本机装过仓库里的 PoC（`dsh/verify-poc`，同一个锁定版本），那份也能直接用：
+`DSH_BIN=$PWD/../verify-poc/node_modules/.bin/dsh npm test`。
+
 - `test/mock-platform.mjs` — 平台替身：任务/领取/上传/下载/提交 5 个端点，强制 `Authorization: Bearer`。**契约以 `REQ-2026-09-21-submit-pipeline.md` §0 为准**（不要照 client 类型反推，那正是之前固化漂移的原因）。`claim` / `submit` 返回 **201**，与真实 NestJS 的裸 `@Post` 一致
 - `test/fake-llm.mjs` — 假 OpenAI 兼容端点（SSE），让 L2 无需模型 key
 - `test/host-tools.test.mjs` — L1：契约形状断言 + `list_assignments` / `claim` / `submit` + token 提示
@@ -58,11 +62,12 @@ npm i -g @deepseek-ai/dsh@0.1.5-rc.2
 - `test/skill-root.test.mjs` — L1：`resolveSkillRoot` 三态（§1.0）+ 纯 JS 打包（§1.4.2）
 - `test/restrict.test.mjs` — L1：`evalConfig.tools` 能力名 → DSH 工具名的映射与 `restrict()` 生效路径
 - `test/evidence.test.mjs` — L1：`.dshc` 只留 `approval/*`、`permission/*`、按 `cwd` 归属会话、超长字段截断、`integrity` 口径、无持久化时的降级
-- `test/dsh-e2e.test.mjs` — L2（4 条）：真跑 `dsh --profile headless`，断言工具进入模型工具面、`restrict` 收窄生效、claim 之后同一会话即受约束、`.dshc` 采到本会话的审计事件
+- `test/guidance.test.mjs` — L1：引导段的注册面（段名前缀、排序位、文字要点）与 skill 的合法性（kebab-case 名、描述 ≤ 目录渲染上限、`source` 必须是字符串）；以及缺 `systemPrompt` / `skills` 时的软依赖行为与卸载撤销
+- `test/dsh-e2e.test.mjs` — L2（5 条）：真跑 `dsh --profile headless`，断言工具进入模型工具面、`restrict` 收窄生效、claim 之后同一会话即受约束、`.dshc` 采到本会话的审计事件、引导与 skill **真的到达模型**（system prompt 段 + skill 目录 + `skill` 工具加载正文）
 
 ## 学生如何使用
 
-学生并不直接“调用”这个插件：学生启动的是 DSH，插件随 profile 挂进去，为 DSH 增加一个右侧栏面板和三个平台工具。
+学生并不直接“调用”这个插件：学生启动的是 DSH，插件随 profile 挂进去，为 DSH 增加一个右侧栏面板、三个平台工具，以及一段常驻引导 + 一个 `nju-lab-experiment` skill（所以模型知道什么时候该领任务、什么时候可以交）。
 
 ```sh
 # 一次性安装（详见 ../profiles/nju-lab-student/README.md）
@@ -116,6 +121,23 @@ dsh --profile nju-lab-student --no-open
 - `tools` 需要 `ctx.tools.restrict({ allow })`，**waterfall 管不了工具集**（实现见 `src/host/restrict.ts`）
 - `timeoutSeconds` DSH 侧没有对应能力，仅作展示
 
+### 4. 模型引导（`src/host/guidance.ts`）
+
+光有工具还不够 —— 模型得知道"什么时候该去平台上领任务、什么时候算改好了可以交"。两处引导：
+
+- **常驻 system prompt 段**（`nju-lab:workflow`，order 1800，落在 DSH 内置工具说明段之后、persona suffix 之前）：一段短文字，点出三个工具的适用时机、Skill 根约定，并指向下面的 skill。它进**每一次**请求，所以刻意写短。
+- **`nju-lab-experiment` skill**：详细操作手册（三步流程、工作区布局、常见报错、不要做的事）。用 `ctx.skills.register()` 做 **runtime 注册**，而不是往磁盘上放 `SKILL.md` —— 文件系统的 skill 发现根是 `<projectRoot>/.dsh/skills`、`$DSH_HOME/skills` 这类运行时才知道的位置（项目根还要按 `.git` 上溯），而学生的项目目录在 profile 之外；注册进注册表则随插件分发。
+
+`dsh-tool-skill` 会在首次请求前把目录（名字 + 描述）发给模型，模型用 `skill` 工具按需加载全文；学生也可以直接输入 `/nju-lab-experiment` 调用。
+
+两者都走 `ctx.inject` 软依赖：缺 `systemPrompt` 或 `skills` 时静默跳过，插件照常加载。
+
+**为什么不用磁盘上的 `SKILL.md`（即"profile 内放文件"）**：DSH 的 skill 来源优先级是
+`project-dsh 100 · project-agents 200 · runtime 250 · custom 300 · user-dsh 400 · user-agents 500 · bundled 600`（越小越优先，见 `dsh-skill/lib/index.js` 的 `RUNTIME_RANK` / `BUNDLED_SKILL_RANK`）。官方在 `dsh-skill` 的 README 里把
+`ctx.skills.register()` 明确列为"**嵌入式 skill**"（插件自带数据）的用法，而 `dsh-skill-filesystem` 面向的是"skill 存在磁盘上"的场景。文件形态要额外满足：profile 目录不是默认发现根，得配 `customSkillDirs` / `bundledSkillDir`，且后者经 `resolve()` 按进程 cwd 解析（相对路径会走偏，只能绝对路径或 `!!js` 表达式）；而 profile 是拷到 `$DSH_HOME/profiles/<name>` 的副本，`dsh plugin install` 不管理散文件。runtime 注册零配置、优先级更高（250 > 400/600，只低于学生项目里的 `<projectRoot>/.dsh/skills`），且手册与插件同版本发布，不会出现"旧手册 + 新插件"。
+
+实测结论（真 `dsh --profile headless`）：`bundledSkillDir` 这条路**可用**（配 `bundledSkillDir: !!js process.env.X` 后探针 skill 确实进了模型目录；注意 `!!js` 表达式不能以引号字面量开头，YAML 会解析失败）。我们没选它，只是因为上面那些代价；若将来手册改由教师频繁编辑、希望改完即生效（filesystem provider 有 watcher，无需 `npm run build` + 重装 profile），再切换即可 —— 切换时要同时删掉这里的 runtime 注册，避免两份手册漂移。
+
 ## 当前实现状态
 
 | 能力 | 状态 |
@@ -127,9 +149,10 @@ dsh --profile nju-lab-student --no-open
 | `nju_lab_submit` | ✅ 打包/哈希/上传/提交；真实平台联调后库里是 `skillZipRef=file:<id>` |
 | Skill 根探测（REQ §1.0） | ✅ `resolveSkillRoot`：`<dir>/SKILL.md` → 唯一子目录含 `SKILL.md` → 报错。claim 与 submit 两处同语义；传 `skill/` 或 Skill 根本身都能提交 |
 | 打包 / 解压 | ✅ 纯 JS（`src/host/zip.ts`：写 store、读 store + deflate），不依赖学生机器上的 `zip`/`unzip` |
-| ClaimPanel | ✅ 列表 / 领取 / 提交 / 显示钉定条件；host 路由已在真 `dsh web` 上验证（`GET /api/nju-lab.assignments` → 200） |
+| ClaimPanel | ✅ 列表 / 领取 / 提交 / 显示钉定条件；host 路由已在真 `dsh web` 上验证（`GET /api/nju-lab.assignments` → 200）。交互与状态对齐 host 半：未解锁/无 token/未领取时按钮禁用并给出原因（`title` 提示），已领取后领取按钮变「已领取」、提交按钮才可用；动作结果渲染成可关闭的成功/失败横幅，并摊开落盘目录、每个下载物（名称/大小/路径）、Skill 根、解压失败警告、submission id、两个 sha256 前缀与本地 ZIP 路径；截止时间过期标红 |
 | 登录与 token | ✅ 插件侧两个来源：DSH **设置页**的 `nju-lab` 节（`ctx.settings.installSection`，即时生效）+ `NJU_LAB_TOKEN` 环境变量作默认；缺失/被拒给可读提示。平台侧 `POST /api/me/tokens` + `revoke`（D-Lite+，`tokenVersion` 整体吊销）已实测可用 |
-| 测试 | ✅ 44 条（40 L1 + 4 L2），带 `DSH_BIN` 真跑 `dsh` 时 **44 pass / 0 fail / 0 skip**；不带则 4 条 L2 静默 skip。真模型也验证过会自己调用工具 |
+| 测试 | ✅ 52 条（47 L1 + 5 L2），带 `DSH_BIN` 真跑 `dsh` 时 **52 pass / 0 fail / 0 skip**；不带则 5 条 L2 静默 skip。真模型也验证过会自己调用工具 |
+| 模型引导 | ✅ `src/host/guidance.ts`：常驻 system prompt 段（`nju-lab:workflow`，order 1800）+ 通过 `ctx.skills.register()` 注册的 `nju-lab-experiment` skill（目录 + 按需加载 + `/nju-lab-experiment`）。L2 实测（真 headless DSH）：引导文字出现在请求的 system 消息里，skill 目录列出该名字，模型调 `skill` 后拿回 `<skill_content name="nju-lab-experiment">` 正文 |
 | `evalConfig.tools` 白名单 | ✅ 能力名 → DSH 工具名映射（`shell`→`bash`、`fs`→`read/write/edit/glob/grep`），在 `agent/created` 用 `agent.ctx.tools.restrict({ allow })` 生效，并在 claim 之后对**已存在**的 agent 补一刀。未知能力名忽略并显式警告 |
 | 证据包 `.dshc` | ✅ 真实实现：`collectEvidence()` 经 `ctx.sessionPersistence` 取**本工作目录下各会话**（按 `header.cwd` 归属，跨多次 DSH 启动）→ 按 `approval/`、`permission/` 前缀筛审计事件 → 递归脱敏（字符串 200 / 数组 50 / 深度 6）→ `buildCapsule()` 产出 `nju-lab.capsule/v1`（`sessions` + `auditEvents` + sha256 `integrity`，`note` 不入哈希）落盘 `evidence.dshc` → 上传并以 `capsuleFileId` 提交，`auditEvents` 一并交给平台。采集失败只记 `note`，**不阻断提交**。L2 实测（真 headless DSH）：17 个会话事件 → 2 条审计事件（`permission/preset`、`approval/policy`），无降级 |
 

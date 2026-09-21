@@ -150,10 +150,15 @@ function scanSkillMd(root) {
       return m?.[1] ?? '';
     };
     const boundary = section('能力边界');
-    const pitfalls = section('踩坑记录');
+    // 踩坑记录可能是独立二级标题，也可能是「实测档案」等小节的列表项（平台模板即后者）
+    let pitfallsText = section('踩坑记录');
+    if (!pitfallsText.trim()) {
+      const m = /踩坑记录[^\n]*\n((?:[ \t]+(?:[-*]|\d+\.)[^\n]*\n?)+)/.exec(md);
+      pitfallsText = m?.[1] ?? '';
+    }
     return {
       boundariesDocumented: boundary.trim() !== '' && !boundary.includes('TODO'),
-      pitfallsRecorded: pitfalls.split('\n').filter((l) => /^\s*(?:[-*]|\d+\.)\s*\S/.test(l) && !l.includes('TODO')).length,
+      pitfallsRecorded: pitfallsText.split('\n').filter((l) => /^\s*(?:[-*]|\d+\.)\s*\S/.test(l) && !l.includes('TODO')).length,
     };
   } catch {
     return { boundariesDocumented: false, pitfallsRecorded: 0 };

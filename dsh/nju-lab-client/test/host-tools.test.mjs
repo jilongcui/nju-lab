@@ -47,9 +47,10 @@ function makeHarness() {
       },
     },
   }
-  // 插件用 ctx.inject 声明面板路由的可选依赖；这里直接执行（依赖视为已满足）。
-  ctx.inject = (_deps, callback) => {
-    callback(ctx)
+  // 插件用 ctx.inject 声明可选依赖；照 cordis 语义：只在该服务存在时执行回调
+  // （所以这个 harness 没有 systemPrompt / skills 时，引导注册会被跳过）。
+  ctx.inject = (deps, callback) => {
+    if (deps.every((dep) => ctx[dep] !== undefined)) callback(ctx)
     return () => {}
   }
   return {

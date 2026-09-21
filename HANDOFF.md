@@ -5,7 +5,7 @@
 
 ## 0. 一句话现状
 
-NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）的 **Web 平台已上线可用**，**平台文件上传/下载已落地**（files 模块），**真实容器复验已上线**（`DockerEvaluationRunner`：一次性容器 + baseline/treatment + LLM judge，deepseek-flash 实测通过，可切回 Mock），**DSH 客户端插件骨架已搭好**；距离真正端到端（学生本地 DSH 完成实验全流程）还差插件侧收尾 + 联调，缺口清单与实施顺序见第 4 节。
+NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已验收通过（2026-09-21，见 `docs/ACCEPTANCE-2026-09-21.md`）**：学生本地 DSH（插件）登录 → 看任务 → 领取（真实下载 + sha256 校验 + 解压 + 条件钉死）→ 开发 Skill → 自测 3/3 → 提交（真实 ZIP + `.dshc` 证据包 + 审计事件）→ 服务端真实容器复验（deepseek-flash，baseline/treatment + LLM judge）→ 教师批改 → 学生看反馈，全程一次跑通、零代码修复，总成本 ≈59k tokens / ≈100s。**剩余缺口集中在生产化**（容器网络隔离、evalConfig.model 逐项目映射、评分口径、常驻化/migrations 等，见第 4、5 节）。
 
 ## 1. 仓库布局
 
@@ -13,6 +13,7 @@ NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）的 **Web 平台
 /home/ubuntu/nju-lab/
 ├── nju-lab-craft.md          # 系统设计总文档（含实现现状 §13）
 ├── HANDOFF.md                # 本文件
+├── docs/ACCEPTANCE-2026-09-21.md  # 端到端验收记录
 ├── server/                   # NestJS + TypeORM + MySQL 后端（端口 3100）
 ├── web/                      # Vite + React 18 + AntD v5 前端
 └── dsh/                      # DSH 本地侧构件
@@ -60,6 +61,8 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 8. **TypeORM `synchronize: true`**（开发模式），改实体即改表；生产前需 migrations。
 9. **DSH 侧**：`agent/request` 是 waterfall，只能钉 provider/model/reasoningEffort/maxTokens；**钉工具集要用 `ctx.tools.restrict()`**；client 半由 client-modules 服务按 `package.json` 的 `dsh.client` 自动扫描挂载；slot 组件拿不到 ctx。
 10. **复验安全姿态**（verify profile）：一次性容器 + 断网 + `approval=never` + 资源限额。容器是唯一信任边界（DSH 沙箱不挡网络与进程）。
+11. **给模型的引导**（system prompt 段、skill）由**插件注册**即可随 profile 生效：`ctx.systemPrompt.section()` + `ctx.skills.register()`（见 `nju-lab-client/src/host/guidance.ts`），不必改 profile 文件。磁盘 `SKILL.md` 路线要额外配 `customSkillDirs` / `bundledSkillDir`，**profile 目录不是默认 skill 发现根**，且 `bundledSkillDir` 按进程 cwd 解析。skill 来源优先级（越小越优先）：project 100/200 · runtime 250 · custom 300 · user 400/500 · bundled 600。
+12. **L2 测试要带 `DSH_BIN`**：`npm test` 在 PATH 上找不到 `dsh` 时，L2 用例是 **skip**（TAP `ok … # SKIP`）而不是失败，看起来全绿但什么都没验。另外 L2 启动 `dsh` 必须给临时 `cwd`，否则插件的默认 `workspaceDir`（`process.cwd()`）会把 `nju-lab/` 落盘目录写进仓库。
 
 ## 4. 距端到端的缺口清单（按建议实施顺序）
 
@@ -75,16 +78,16 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 - 踩坑：文件流必须经 `StreamableFile` 返回，`TransformInterceptor` 对 `StreamableFile` 原样放行（直接 `stream.pipe(res)` 会被统一响应包装覆盖）
 - 示例材料（真实 ZIP）已上传并绑定两个示例项目；源文件收在 `server/fixtures/`（模板 `csv-cleaner/` + 数据集 3 case，已验证自洽，改版方法见其 README）
 
-### 第 2 步：插件 token 获取 + 提交工具（平台侧 token 已完成，插件侧实现中）
+### 第 2 步：插件 token 获取 + 提交工具 —— ✅ 已完成（2026-09-21）
 
-**完整需求与契约见 `dsh/nju-lab-client/REQ-2026-09-21-submit-pipeline.md`**（claim 新响应结构、files API、submit fileId 模式、端到端验收标准；含联调测试环境说明——示例项目已绑定真实模板/数据集，student1 任务已重置为 pending）。要点：
+**完整需求与契约见 `dsh/nju-lab-client/REQ-2026-09-21-submit-pipeline.md`**（claim 新响应结构、files API、submit fileId 模式、端到端验收标准）。要点：
 
-- token（平台侧 ✅ 2026-09-21，D-lite+ 方案）：`POST /api/me/tokens` 签发 365 天 token（payload 带 `ver`）；`POST /api/me/tokens/revoke` 吊销（`User.tokenVersion`+1，全部 token 含 Web 登录态失效，JWT validate 逐请求比对）；Web 右上角头像菜单「API Token」弹窗可生成/复制/吊销。插件侧只剩 settings 配置项（serverUrl+token）
-- `nju_lab_submit` 工具：打包学生 Skill 目录为 ZIP、逐文件 sha256（fileHashes）、分别 POST /api/files 上传、以 fileId 模式提交
-- ClaimPanel 从占位变真实面板（拉任务列表、领取/提交按钮）
-- claim 工具需真实下载模板/数据集并校验 sha256；`evalConfig.tools` 用 `ctx.tools.restrict()` 钉白名单
+- token（平台侧 ✅，D-lite+ 方案）：`POST /api/me/tokens` 签发 365 天 token（payload 带 `ver`）；`POST /api/me/tokens/revoke` 吊销（`User.tokenVersion`+1，全部 token 含 Web 登录态失效，JWT validate 逐请求比对）；Web 右上角头像菜单「API Token」弹窗可生成/复制/吊销。**插件侧已完成**：DSH 设置页的 `nju-lab` 节（`ctx.settings.installSection`，改动即时生效）+ `NJU_LAB_TOKEN` 双来源；缺失/被拒给可读指引，不裸 401
+- `nju_lab_submit` 工具 ✅：自检（经 `resolveSkillRoot` 探测真正的 Skill 根）→ 逐文件 sha256（`fileHashes`）→ 纯 JS 打包 ZIP → 生成 `.dshc` → 分别 POST /api/files 上传 → 以 fileId 模式提交；真实平台联调后库里是 `skillZipRef=file:<id>`
+- ClaimPanel ✅：从占位变真实面板（拉任务列表、领取/提交按钮、钉定条件展示），并做过交互与错误提示打磨
+- claim 工具 ✅：真实下载模板/数据集 + sha256 校验 + 纯 JS 解压 + Skill 根探测；`evalConfig.tools` 经 `ctx.tools.restrict()` 钉白名单（claim 后对**已存在**的 agent 补一刀，保证同一会话内立即受限）
 
-### 第 3 步：复验实证 + 真实执行器（平台侧最重）
+### 第 3 步：复验实证 + 真实执行器 —— ✅ 已完成（2026-09-21）
 
 **实证已完成（2026-09-21，dsh/verify-poc/）**，核心结论：
 
@@ -106,20 +109,24 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 - **模型事实源（2026-09-21 官方 API 实测）**：可用模型 `deepseek-flash` / `deepseek-v4-pro`；`reasoning_effort` 合法值 `none|minimal|low|medium|high|xhigh|max`。DeepSeek key 已存 `server/.env`（DEEPSEEK_API_KEY，管理员侧）；容器路由已切官方（Moonshot 回退方法见 profile patch 注释）；`agent/request` 钉 reasoningEffort 会被 dsh-llm-deepseek 拒绝（UNSUPPORTED_REASONING_EFFORT），effort 只能 profile config 层生效
 - deepseek-flash e2e 实测：verify 34.9s / 24.4k tokens，judge rationale 与 integrityCheck 全部真实
 
-### 第 4 步：证据包与审计真实化
+### 第 4 步：证据包与审计真实化 —— ✅ 已完成（2026-09-21）
 
-- `evidence.ts` 的 `buildCapsule()` 从 sha256 骨架变为真实实现：接 dsh-session-persistence 导出会话事件 → 清单 + 脱敏 + sha256 → .dshc
-- 审计事件（approval/asked、decided、permission/preset）从会话事件自动提取，替代学生手填 JSON
-- 工具集钉死：`ctx.tools.restrict()` 实现 evalConfig.tools 白名单
+- `evidence.ts` 的 `buildCapsule()` 已是真实实现：经 `ctx.sessionPersistence` 取**本工作目录下各会话**（按 `header.cwd` 归属，跨多次 DSH 启动）→ 按 `approval/`、`permission/` 前缀筛审计事件 → 递归脱敏（字符串 200 / 数组 50 / 深度 6）→ 产出 `nju-lab.capsule/v1`（`sessions` + `auditEvents` + sha256 `integrity`，`note` 不入哈希）落盘 `evidence.dshc`
+- 审计事件（`approval/*`、`permission/*`）从会话事件**自动提取**，随提交一并交给平台，替代学生手填 JSON
+- 上传与提交：`evidence.dshc` 与 `skill.zip` 分别 `POST /api/files`，再以 fileId 模式提交（`capsuleFileId` + `auditEvents` + `fileHashes`）
+- 工具集钉死：`ctx.tools.restrict()` 实现 evalConfig.tools 白名单（claim 后对已存在的 agent 补一刀）
+- 实测（真 `dsh --profile headless` + fake LLM，L2）：17 个会话事件 → `permission/preset`、`approval/policy` 两条审计事件，无降级；`test/dsh-e2e.test.mjs` 的 `.dshc` 用例通过
+- 客户端侧实现见 `dsh/nju-lab-client/src/host/evidence.ts`；平台侧消费（`capsuleSha256` 对照 + `auditEventsReceived` 计数）在 `server/src/submissions/`
 
-### 第 5 步：体验打磨
+### 第 5 步：体验打磨 —— ✅ 已完成（2026-09-21）
 
-- profile 内加 skill / system prompt，引导模型在合适时机调用 nju_lab_* 工具
-- ClaimPanel 完整交互、错误提示
+- ~~profile 内加 skill / system prompt~~ 实现为**插件注册、随 profile 生效**（`dsh/nju-lab-client/src/host/guidance.ts`）：常驻 system prompt 段（`nju-lab:workflow`，order 1800）+ 通过 `ctx.skills.register()` 注册的 `nju-lab-experiment` skill（模型目录 + 按需加载全文 + 学生可 `/nju-lab-experiment` 调用）。选它而非磁盘 `SKILL.md` 的理由与实测见 `dsh/nju-lab-client/README.md` §4（skill 来源优先级 project 100/200 · **runtime 250** · custom 300 · user 400/500 · bundled 600，越小越优先）
+- ClaimPanel：列表 / 领取 / 提交 / 钉定条件展示，并做过交互与错误提示打磨（未解锁 / 无 token / 未领取时按钮禁用并给出原因；已领取后领取按钮变「已领取」、提交才可用；动作结果渲染成可关闭的成功/失败横幅，摊开落盘目录、下载物名称/大小/路径、Skill 根、submission id、两个 sha256 前缀）
+- 验证：L2「引导与 skill 到达模型」在真 `dsh --profile headless` 下通过 —— 引导文字出现在请求的 `system` 消息里，skill 出现在模型目录里，`skill` 工具返回 `<skill_content name="nju-lab-experiment">` 正文
 
 ### 工作量估计
 
-插件侧 3-5 天 + 平台侧 2-3 天（第 1 步已完成）+ 联调 1-2 天 ≈ **一人 1-1.5 周**。最大不确定点是第 3 步的 dsh-teach 实证，建议平台侧优先做。
+第 1-5 步均已完成（2026-09-21）：插件侧由 `nju-lab-client` 承担（52 条测试，`DSH_BIN=… npm test` 在真 DSH 下全绿），平台侧第 1、3 步已上线。**剩余工作集中在平台侧**：容器网络隔离（生产前必须）、`evalConfig.model` 逐项目映射进容器、评分口径（`pass` vs `passStrict`）、`exact` 模式 e2e，以及端到端联调。
 
 ## 5. 后续阶段（端到端之后，见 craft 文档 §10）
 
