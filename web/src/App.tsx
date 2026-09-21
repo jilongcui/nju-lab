@@ -5,6 +5,7 @@ import type { Role } from './types';
 import AppLayout from './layouts/AppLayout';
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
+import CasCallback from './pages/auth/CasCallback';
 import TeacherDashboard from './pages/teacher/Dashboard';
 import CourseList from './pages/teacher/CourseList';
 import CourseDetail from './pages/teacher/CourseDetail';
@@ -17,6 +18,7 @@ import StudentCourseDetail from './pages/student/CourseDetail';
 import ChapterRead from './pages/student/ChapterRead';
 import ExperimentDetail from './pages/student/ExperimentDetail';
 import MySubmissions from './pages/student/MySubmissions';
+import ClientDownload from './pages/student/ClientDownload';
 
 function homeOf(role?: Role) {
   return role === 'teacher' || role === 'admin'
@@ -54,6 +56,7 @@ const student = (node: ReactNode) => <RequireRole role="student">{node}</Require
 
 const router = createBrowserRouter([
   { path: '/login', element: <Login /> },
+  { path: '/login/cas', element: <CasCallback /> },
   { path: '/register', element: <Register /> },
   {
     path: '/',
@@ -76,6 +79,7 @@ const router = createBrowserRouter([
       { path: 'student/chapters/:chapterId', element: student(<ChapterRead />) },
       { path: 'student/projects/:projectId', element: student(<ExperimentDetail />) },
       { path: 'student/submissions', element: student(<MySubmissions />) },
+      { path: 'student/client', element: student(<ClientDownload />) },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

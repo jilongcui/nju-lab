@@ -44,6 +44,8 @@ npm run build && npm start  # 编译后以 node dist/main.js 运行
 |---|---|---|---|
 | POST | /api/auth/register | 注册（username/password/nickname/role） | 公开 |
 | POST | /api/auth/login | 登录，返回 `{ user, accessToken }` | 公开 |
+| GET | /api/auth/cas/login | 302 到南大统一认证（CAS；service = /api/auth/cas/callback） | 公开 |
+| GET | /api/auth/cas/callback | CAS 回调：校验 ticket → 学号/工号自动注册为学生 → 302 带 token 回前端 | 公开 |
 | GET | /api/me | 当前用户 | 登录 |
 | POST | /api/me/tokens | 生成长期 API token（365 天，payload 带 `ver`；供本地 DSH 插件） | 登录 |
 | POST | /api/me/tokens/revoke | 吊销：tokenVersion+1，本人全部 token（含 Web 登录态）失效 | 登录 |
@@ -101,7 +103,7 @@ npm run build && npm start  # 编译后以 node dist/main.js 运行
 
 ## 关键设计
 
-- **AuthProvider 抽象**（`src/auth/providers/auth-provider.interface.ts`）：认证逻辑集中在 Provider 中，当前实现 `LocalAuthProvider`（bcryptjs）。后期接学校统一认证时新增 Provider 并在 `AuthModule` 替换 `AUTH_PROVIDER` 绑定即可。
+- **AuthProvider 抽象**（`src/auth/providers/auth-provider.interface.ts`）：认证逻辑集中在 Provider 中，当前实现 `LocalAuthProvider`（bcryptjs）。南大统一认证走 **CAS 3.0 浏览器重定向流**（`src/auth/cas.client.ts`，与密码 Provider 并行、双轨共存）：ticket 校验 → 学号/工号自动注册为学生；`CAS_BASE_URL` 未配置时返回"未启用"。后期若换 OAuth2/OIDC 或 LDAP，同样新增平行流程或 Provider 即可。
 - **EvaluationRunner 抽象**（`src/submissions/evaluation-runner.ts`）：两种实现，环境变量 `EVALUATION_RUNNER` 切换（`SubmissionsModule` 的 useFactory，默认 `mock`）：
   - `mock` → `MockEvaluationRunner`：基于提交哈希生成确定性的模拟复验数据，用于无 Docker/无模型 key 的开发环境。
   - `docker` → `DockerEvaluationRunner`（`src/submissions/docker-evaluation-runner.ts`）：真实复验。解析 `skillZipRef` 的 `file:<id>` 与项目数据集文件 → 起一次性容器（输入只读挂载、`--memory 1g --cpus 1`、超时强杀，`MOONSHOT_API_KEY` 由服务端环境透传）→ 容器内跑 dsh headless（`nju-lab-verify` profile：approval=never + workspace-write 沙箱）baseline/treatment 两轮 → LLM judge 逐 case 评分（`{pass, score, rationale}`，rationale 进结果供教师批改页；`evalConfig.judgeMode: 'exact'` 可切回逐字节比对）→ 映射 EvaluationRunResult（successRate=treatment 通过率、tokenCost=两轮+ judge 实测 token 总和、integrityCheck=自报 fileHashes vs 容器实测哈希对照 + capsule 哈希校验、autoScoreSuggestion 沿用 Mock 权重公式但全部输入为实测值）。

@@ -133,9 +133,10 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 ## 5. 后续阶段（端到端之后，见 craft 文档 §10）
 
 - ~~修改密码接口~~ ✅（2026-09-21：`POST /api/me/password`，成功后 tokenVersion+1 全端失效；Web 头像菜单弹窗）、~~数据库 migrations~~ ✅（见第 3.8 条）、~~后端常驻化~~ ✅（systemd，见第 2 节）、~~CSV 成绩导出~~ ✅（`GET /api/projects/:id/grades.csv`，项目详情页"导出成绩 CSV"按钮）
-- 学生端 profile 一键安装脚本/安装手册、机房镜像
+- ~~学校统一认证~~ ✅（2026-09-21，CAS 3.0 双轨）：`GET /api/auth/cas/login` → 南大 authserver → `/api/auth/cas/callback` 校验 ticket → 按学号/工号自动注册为学生（教师由管理员提权）；本地账号保留。配置 `CAS_BASE_URL`/`PUBLIC_BASE_URL`（已指向 authserver.nju.edu.cn，模拟 CAS 全流程实测通过；真实账号未实测）
+- ~~学生端安装包/手册~~ ✅（2026-09-21）：`dsh/kit/build-kit.sh` 打包（profile + 插件产物 + install.sh + 手册）→ 静态托管 `https://lab.xiaohe.biz/kit/nju-lab-student-kit.zip`（nginx `location /kit/` 独立目录）；Web 学生菜单「客户端下载」页。插件更新后需重跑 build-kit + 部署
+- 机房预装镜像
 - nju-lab-client 提交前自检（skillforge 规范检查）
-- 学校统一认证（新 AuthProvider）
 - SkillLibrary 参考技能库、章节自测题、成绩汇总
 
 ## 6. 协作方式备忘

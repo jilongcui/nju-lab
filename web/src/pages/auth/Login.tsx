@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Button, Card, Form, Input, Typography, theme } from 'antd';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Alert, Button, Card, Form, Input, Typography, theme } from 'antd';
 import { ExperimentOutlined, LockOutlined, UserOutlined } from '@ant-design/icons';
 import { login } from '../../api';
 import { useAuthStore } from '../../stores/auth';
@@ -13,6 +13,8 @@ export default function Login() {
   const location = useLocation();
   const setAuth = useAuthStore((s) => s.setAuth);
   const { token } = theme.useToken();
+  const [params] = useSearchParams();
+  const casError = params.get('error');
 
   const onFinish = async (values: { username: string; password: string }) => {
     setLoading(true);
@@ -47,6 +49,14 @@ export default function Login() {
           <Text type="secondary">课程 + 实验一体化教学平台</Text>
         </div>
         <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
+          {casError && (
+            <Alert
+              type="error"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={casError === 'cas-no-ticket' ? '统一认证回调缺少 ticket' : '统一认证校验失败，请重试或改用账号密码登录'}
+            />
+          )}
           <Form.Item name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}>
             <Input prefix={<UserOutlined />} placeholder="用户名" autoComplete="username" />
           </Form.Item>
@@ -55,6 +65,15 @@ export default function Login() {
           </Form.Item>
           <Button type="primary" htmlType="submit" block loading={loading}>
             登录
+          </Button>
+          <Button
+            block
+            style={{ marginTop: 12 }}
+            onClick={() => {
+              window.location.href = '/api/auth/cas/login';
+            }}
+          >
+            南京大学统一认证登录
           </Button>
           <div style={{ textAlign: 'center', marginTop: 16 }}>
             <Text type="secondary">

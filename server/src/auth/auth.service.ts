@@ -1,8 +1,9 @@
 import { Inject, Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
+import { randomUUID } from 'crypto';
 import { Repository } from 'typeorm';
-import { User } from '../users/user.entity';
+import { User, UserRole } from '../users/user.entity';
 import { ChangePasswordDto, LoginDto, RegisterDto } from './dto/auth.dto';
 import { JwtPayload } from './jwt.strategy';
 import {
@@ -84,5 +85,25 @@ export class AuthService {
     await this.authProvider.setPassword(user.id, dto.newPassword);
     await this.userRepo.increment({ id: user.id }, 'tokenVersion', 1);
     return { changed: true };
+  }
+
+  /**
+   * CAS 统一认证登录（双轨并行）：按学号/工号找用户，不存在则自动注册为学生
+   * （随机密码，本地密码登录不可用；教师角色由管理员后台调整）。
+   * 注意：用户名即绑定键——若同名本地账号已存在则直接并入（占位风险由管理员管控）。
+   */
+  async loginWithCas(casUser: { username: string; displayName?: string }) {
+    let user = await this.userRepo.findOne({
+      where: { username: casUser.username },
+    });
+    if (!user) {
+      user = await this.authProvider.register({
+        username: casUser.username,
+        nickname: casUser.displayName || casUser.username,
+        password: `${randomUUID()}${randomUUID()}`,
+        role: UserRole.STUDENT,
+      });
+    }
+    return { user: this.sanitize(user), ...this.issueToken(user) };
   }
 }
