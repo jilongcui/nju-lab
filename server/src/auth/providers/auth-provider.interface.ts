@@ -22,6 +22,9 @@ export interface AuthProvider {
 
   /** 注册新用户（统一认证体系下可能不支持，由对应 Provider 决定是否实现） */
   register(input: RegisterInput): Promise<User>;
+
+  /** 修改密码（本地账号体系实现；统一认证体系下不实现，平台返回不支持） */
+  setPassword?(userId: string, newPassword: string): Promise<void>;
 }
 
 export const AUTH_PROVIDER = Symbol('AUTH_PROVIDER');

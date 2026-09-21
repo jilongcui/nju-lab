@@ -46,6 +46,20 @@ export const downloadStoredFile = async (info: StoredFileInfo) => {
   URL.revokeObjectURL(url);
 };
 
+/** 导出项目成绩 CSV（经 axios 带 JWT，触发浏览器保存） */
+export const downloadGradesCsv = async (projectId: string, projectTitle: string) => {
+  const blob = await client.get<unknown, Blob>(`/projects/${projectId}/grades.csv`, {
+    responseType: 'blob',
+    timeout: 60000,
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${projectTitle}-成绩.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
 // ---------- 认证 ----------
 export interface LoginPayload {
   username: string;
@@ -72,6 +86,9 @@ export const issueApiToken = () =>
 /** 吊销本人全部 token（含当前 Web 登录态） */
 export const revokeApiTokens = () =>
   client.post<unknown, { revoked: boolean }>('/me/tokens/revoke');
+/** 修改密码（成功后全部 token 失效，需重新登录） */
+export const changePassword = (data: { oldPassword: string; newPassword: string }) =>
+  client.post<unknown, { changed: boolean }>('/me/password', data);
 
 // ---------- 课程（教师侧） ----------
 export const listCourses = () => client.get<unknown, Course[]>('/courses');

@@ -24,8 +24,11 @@ import { UsersModule } from './users/users.module';
       database: process.env.DB_DATABASE || 'nju_lab',
       charset: 'utf8mb4',
       autoLoadEntities: true,
-      // 开发阶段使用 synchronize；生产环境应改为 migrations
-      synchronize: true,
+      // 生产模式：schema 由 migrations 管理（src/migrations/）。
+      // 改实体后：npm run migration:generate -- src/migrations/<Name> 生成迁移
+      synchronize: false,
+      migrationsRun: true,
+      migrations: [__dirname + '/migrations/*{.ts,.js}'],
     }),
     AuthModule,
     UsersModule,

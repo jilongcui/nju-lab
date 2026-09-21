@@ -47,6 +47,7 @@ npm run build && npm start  # 编译后以 node dist/main.js 运行
 | GET | /api/me | 当前用户 | 登录 |
 | POST | /api/me/tokens | 生成长期 API token（365 天，payload 带 `ver`；供本地 DSH 插件） | 登录 |
 | POST | /api/me/tokens/revoke | 吊销：tokenVersion+1，本人全部 token（含 Web 登录态）失效 | 登录 |
+| POST | /api/me/password | 修改密码（校验旧密码；成功后 tokenVersion+1 全端失效） | 登录 |
 
 ### 课程（教师侧）
 
@@ -73,6 +74,7 @@ npm run build && npm start  # 编译后以 node dist/main.js 运行
 | PATCH | /api/projects/:id | 更新项目 |
 | POST | /api/projects/:id/publish | 发布并为本课程全部学生生成 Assignment |
 | GET | /api/projects/:id/submissions | 该项目全部提交（按学生列出） |
+| GET | /api/projects/:id/grades.csv | 导出成绩 CSV（BOM + RFC4180 转义） |
 | GET | /api/projects/:id/dashboard | 班级视图（提交进度、成功率分布、token 成本分布） |
 | POST | /api/submissions/:id/verify | 触发复验（当前为模拟 EvaluationRunner） |
 | GET | /api/submissions/:id/evaluation | 复验结果（教师或提交者本人） |
@@ -114,5 +116,5 @@ npm run build && npm start  # 编译后以 node dist/main.js 运行
 
 - 文件已落地本地磁盘存储（`server/uploads/`，files 模块）；对象存储（S3/OSS）与文件细粒度鉴权留待生产化
 - 复验已接一次性容器（docker 模式）+ SNI 出栈白名单隔离（见 `verify-image/README.md`）；剩余边界：白名单按域名不按路径（学生代码可用自己的 key 调同一域名，MITM 级加固留待更后期）；提交后不会自动触发复验（需教师手动 POST verify）
-- 无 CSV 成绩导出、参考技能库（SkillLibrary）、掉队预警
-- 无单元测试；无 migrations（依赖 synchronize）
+- 无参考技能库（SkillLibrary）、掉队预警、成绩汇总（CSV 成绩导出已有：`GET /api/projects/:id/grades.csv`）
+- 无单元测试

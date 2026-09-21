@@ -8,7 +8,10 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "start:dev": "ts-node -T src/main.ts",
-    "seed": "ts-node -T src/seed.ts"
+    "seed": "ts-node -T src/seed.ts",
+    "typeorm": "ts-node -T ./node_modules/typeorm/cli.js -d src/data-source.ts",
+    "migration:run": "npm run typeorm migration:run",
+    "migration:show": "npm run typeorm migration:show"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

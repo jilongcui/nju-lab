@@ -5,7 +5,7 @@
 
 ## 0. 一句话现状
 
-NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已验收通过（2026-09-21，见 `docs/ACCEPTANCE-2026-09-21.md`）**：学生本地 DSH（插件）登录 → 看任务 → 领取（真实下载 + sha256 校验 + 解压 + 条件钉死）→ 开发 Skill → 自测 3/3 → 提交（真实 ZIP + `.dshc` 证据包 + 审计事件）→ 服务端真实容器复验（deepseek-flash，baseline/treatment + LLM judge）→ 教师批改 → 学生看反馈，全程一次跑通、零代码修复，总成本 ≈59k tokens / ≈100s。**剩余缺口集中在生产化**（容器网络隔离、evalConfig.model 逐项目映射、评分口径、常驻化/migrations 等，见第 4、5 节）。
+NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已验收通过（2026-09-21，见 `docs/ACCEPTANCE-2026-09-21.md`）**：学生本地 DSH（插件）登录 → 看任务 → 领取（真实下载 + sha256 校验 + 解压 + 条件钉死）→ 开发 Skill → 自测 3/3 → 提交（真实 ZIP + `.dshc` 证据包 + 审计事件）→ 服务端真实容器复验（deepseek-flash，baseline/treatment + LLM judge）→ 教师批改 → 学生看反馈，全程一次跑通、零代码修复，总成本 ≈59k tokens / ≈100s。生产化关键项也已落地：容器 SNI 白名单网络隔离、evalConfig.model 逐项目映射、修改密码、migrations、systemd 常驻、CSV 成绩导出。**剩余为后续阶段功能**（第 5 节）。
 
 ## 1. 仓库布局
 
@@ -34,7 +34,7 @@ NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已�
 | nginx 配置 | `/etc/nginx/sites-enabled/lab.conf`（改后 `sudo nginx -t && sudo service nginx reload`） |
 | 数据库 | Docker 容器 `nju-lab-mysql`（MySQL 8.0，127.0.0.1:3306，库 `nju_lab`，用户 `nju_lab`，密码 `nju_lab_dev`，utf8mb4） |
 | 账号 | `admin/admin123`（管理员，全权限）、`teacher/teacher123`、`student1/student123`（另有 student2/student3） |
-| 后端启动 | `cd server && npm run start:dev`（当前以后台任务运行；生产常驻化未做） |
+| 后端启动 | **生产常驻：`systemctl start nju-lab`**（unit `/etc/systemd/system/nju-lab.service`，`node dist/main.js`，Restart=always，MemoryMax=800M；改代码后 `npm run build && sudo systemctl restart nju-lab`）；开发调试用 `npm run start:dev` |
 | 前端部署 | `cd web && npm run build && sudo rm -rf /var/www/nju-lab/dist && sudo cp -r dist /var/www/nju-lab/ && sudo chown -R www-data:www-data /var/www/nju-lab` |
 | 端口注意 | 本机 3000/5173 被其他项目占用，所以后端用 3100；服务器内存紧张（~1.4G 可用）、磁盘紧张（~10G） |
 | DSH 版本 | 锁定 `@deepseek-ai/dsh@0.1.5-rc.2`（rc 阶段官方明示破坏性变更，学期内不升级） |
@@ -58,7 +58,7 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 5. **角色**：`admin`（RolesGuard 放行一切 + 各服务归属校验豁免）、`teacher`、`student`。公开注册只允许 teacher/student。
 6. **复验抽象**：`server/src/submissions/evaluation-runner.ts` 的 `EvaluationRunner` 接口，两种实现：`MockEvaluationRunner`（确定性假数据，无 Docker/key 的开发环境用）与 `DockerEvaluationRunner`（真实容器复验），`EVALUATION_RUNNER=mock|docker` 环境变量切换（默认 mock，当前 .env 为 docker）。
 7. **部署纪律**：禁止把 Vite dev server 挂 nginx 当生产（HMR WebSocket 必挂）；前端产物放 `/var/www/nju-lab/dist`（不能放 `/home/ubuntu`，750 权限）；`sites-enabled/` 下所有文件都会被 nginx 加载，备份文件必须移出。
-8. **TypeORM `synchronize: true`**（开发模式），改实体即改表；生产前需 migrations。
+8. **TypeORM migrations**：`synchronize: false` + `migrationsRun: true`（启动自动执行）；初始迁移 `src/migrations/1790002605000-InitialSchema.ts`（已在既有库手工登记、在空库实测建表后 schema:log 零 diff）。改实体后：`npm run typeorm migration:generate -- src/migrations/<Name>` 生成迁移并核对 SQL，新环境启动即自动建表。
 9. **DSH 侧**：`agent/request` 是 waterfall，只能钉 provider/model/reasoningEffort/maxTokens；**钉工具集要用 `ctx.tools.restrict()`**；client 半由 client-modules 服务按 `package.json` 的 `dsh.client` 自动扫描挂载；slot 组件拿不到 ctx。
 10. **复验安全姿态**（verify profile）：一次性容器 + 断网 + `approval=never` + 资源限额。容器是唯一信任边界（DSH 沙箱不挡网络与进程）。
 11. **给模型的引导**（system prompt 段、skill）由**插件注册**即可随 profile 生效：`ctx.systemPrompt.section()` + `ctx.skills.register()`（见 `nju-lab-client/src/host/guidance.ts`），不必改 profile 文件。磁盘 `SKILL.md` 路线要额外配 `customSkillDirs` / `bundledSkillDir`，**profile 目录不是默认 skill 发现根**，且 `bundledSkillDir` 按进程 cwd 解析。skill 来源优先级（越小越优先）：project 100/200 · runtime 250 · custom 300 · user 400/500 · bundled 600。
@@ -128,14 +128,15 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 
 ### 工作量估计
 
-第 1-5 步均已完成（2026-09-21）：插件侧由 `nju-lab-client` 承担（61 条测试 = 55 L1 + 6 L2，`DSH_BIN=… npm test` 在真 DSH 下全绿），平台侧第 1、3 步已上线。**剩余工作集中在平台侧**：容器网络隔离（生产前必须）、`evalConfig.model` 逐项目映射进容器、评分口径（`pass` vs `passStrict`）、`exact` 模式 e2e，以及端到端联调。
+第 1-5 步均已完成（2026-09-21）：插件侧由 `nju-lab-client` 承担（61 条测试 = 55 L1 + 6 L2，`DSH_BIN=… npm test` 在真 DSH 下全绿），平台侧第 1、3 步已上线，端到端验收通过（`docs/ACCEPTANCE-2026-09-21.md`）。生产化补齐：容器 SNI 白名单网络隔离（负向实测）、`evalConfig.model` 逐项目映射（v4-pro 实测）、verify 失败置 FAILED。剩余小项：评分口径（`pass` vs `passStrict`，当前 LLM judge 已覆盖主路径）、`exact` 模式 e2e。
 
 ## 5. 后续阶段（端到端之后，见 craft 文档 §10）
 
+- ~~修改密码接口~~ ✅（2026-09-21：`POST /api/me/password`，成功后 tokenVersion+1 全端失效；Web 头像菜单弹窗）、~~数据库 migrations~~ ✅（见第 3.8 条）、~~后端常驻化~~ ✅（systemd，见第 2 节）、~~CSV 成绩导出~~ ✅（`GET /api/projects/:id/grades.csv`，项目详情页"导出成绩 CSV"按钮）
 - 学生端 profile 一键安装脚本/安装手册、机房镜像
 - nju-lab-client 提交前自检（skillforge 规范检查）
-- 学校统一认证（新 AuthProvider）、修改密码接口、数据库 migrations、后端常驻化（pm2/systemd）
-- SkillLibrary 参考技能库、CSV 成绩导出、章节自测题、成绩汇总
+- 学校统一认证（新 AuthProvider）
+- SkillLibrary 参考技能库、章节自测题、成绩汇总
 
 ## 6. 协作方式备忘
 

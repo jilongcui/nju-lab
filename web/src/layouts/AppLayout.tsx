@@ -5,6 +5,7 @@ import {
   Breadcrumb,
   Button,
   Dropdown,
+  Form,
   Input,
   Layout,
   Menu,
@@ -24,11 +25,12 @@ import {
   ExperimentOutlined,
   FileDoneOutlined,
   KeyOutlined,
+  LockOutlined,
   LogoutOutlined,
   MoonOutlined,
   SunOutlined,
 } from '@ant-design/icons';
-import { issueApiToken, revokeApiTokens } from '../api';
+import { changePassword, issueApiToken, revokeApiTokens } from '../api';
 import { useAuthStore } from '../stores/auth';
 import { PRESET_COLORS, useThemeStore } from '../stores/theme';
 import AuxiliaryPanel from './AuxiliaryPanel';
@@ -99,6 +101,9 @@ export default function AppLayout() {
   const [tokenModalOpen, setTokenModalOpen] = useState(false);
   const [apiToken, setApiToken] = useState<string | null>(null);
   const [tokenBusy, setTokenBusy] = useState(false);
+  const [pwdModalOpen, setPwdModalOpen] = useState(false);
+  const [pwdBusy, setPwdBusy] = useState(false);
+  const [pwdForm] = Form.useForm();
 
   // 管理员使用教师菜单
   const role = user?.role === 'admin' ? 'teacher' : (user?.role ?? 'student');
@@ -144,6 +149,19 @@ export default function AppLayout() {
       navigate('/login');
     } finally {
       setTokenBusy(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    const values = await pwdForm.validateFields();
+    setPwdBusy(true);
+    try {
+      await changePassword({ oldPassword: values.oldPassword, newPassword: values.newPassword });
+      message.success('密码已修改，请用新密码重新登录（本地 DSH 插件的 token 也需重新生成）');
+      logout();
+      navigate('/login');
+    } finally {
+      setPwdBusy(false);
     }
   };
 
@@ -246,6 +264,15 @@ export default function AppLayout() {
                       setTokenModalOpen(true);
                     },
                   },
+                  {
+                    key: 'change-password',
+                    icon: <LockOutlined />,
+                    label: '修改密码',
+                    onClick: () => {
+                      pwdForm.resetFields();
+                      setPwdModalOpen(true);
+                    },
+                  },
                   { key: 'logout', icon: <LogoutOutlined />, label: '退出登录', onClick: handleLogout },
                 ],
               }}
@@ -307,6 +334,50 @@ export default function AppLayout() {
             {apiToken ? '再生成一个' : '生成 token'}
           </Button>
         </div>
+      </Modal>
+
+      <Modal
+        title="修改密码"
+        open={pwdModalOpen}
+        onOk={handleChangePassword}
+        onCancel={() => setPwdModalOpen(false)}
+        confirmLoading={pwdBusy}
+        destroyOnClose
+      >
+        <Paragraph type="secondary">
+          修改成功后，你名下所有 token（Web 登录态与本地 DSH 插件）都会失效，需重新登录并重新生成插件 token。
+        </Paragraph>
+        <Form form={pwdForm} layout="vertical">
+          <Form.Item name="oldPassword" label="旧密码" rules={[{ required: true, message: '请输入旧密码' }]}>
+            <Input.Password autoComplete="current-password" />
+          </Form.Item>
+          <Form.Item
+            name="newPassword"
+            label="新密码"
+            rules={[
+              { required: true, message: '请输入新密码' },
+              { min: 6, max: 64, message: '6-64 个字符' },
+            ]}
+          >
+            <Input.Password autoComplete="new-password" />
+          </Form.Item>
+          <Form.Item
+            name="confirmPassword"
+            label="确认新密码"
+            dependencies={['newPassword']}
+            rules={[
+              { required: true, message: '请再次输入新密码' },
+              ({ getFieldValue }) => ({
+                validator: (_, value) =>
+                  !value || getFieldValue('newPassword') === value
+                    ? Promise.resolve()
+                    : Promise.reject(new Error('两次输入的密码不一致')),
+              }),
+            ]}
+          >
+            <Input.Password autoComplete="new-password" />
+          </Form.Item>
+        </Form>
       </Modal>
     </Layout>
   );

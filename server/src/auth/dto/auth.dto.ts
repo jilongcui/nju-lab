@@ -37,3 +37,15 @@ export class LoginDto {
   @IsNotEmpty()
   password: string;
 }
+
+export class ChangePasswordDto {
+  @IsString()
+  @IsNotEmpty()
+  oldPassword: string;
+
+  /** 与注册规则一致（6-64 位；bcrypt 上限 72 字节） */
+  @IsString()
+  @MinLength(6)
+  @MaxLength(64)
+  newPassword: string;
+}

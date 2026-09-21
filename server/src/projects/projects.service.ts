@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  StreamableFile,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -231,6 +232,47 @@ export class ProjectsService {
       assignmentStatus: assignment.status,
       submission: byAssignment.get(assignment.id) ?? null,
     }));
+  }
+
+  /** GET /api/projects/:id/grades.csv —— 成绩导出（BOM + RFC4180 转义，Excel 友好） */
+  async exportGradesCsv(teacher: User, projectId: string) {
+    const rows = await this.listProjectSubmissions(teacher, projectId);
+    const header = [
+      '学号', '姓名', '任务状态', '提交时间', '提交状态',
+      '复验成功率', 'Token成本', '建议分', '教师评分', '教师评语',
+    ];
+    const escape = (v: unknown) => {
+      const s = v == null ? '' : String(v);
+      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [header.map(escape).join(',')];
+    for (const row of rows) {
+      const sub = row.submission;
+      const evaluation = sub?.evaluation;
+      lines.push(
+        [
+          row.student.username,
+          row.student.nickname,
+          row.assignmentStatus,
+          sub?.submittedAt
+            ? new Date(sub.submittedAt).toISOString().slice(0, 16).replace('T', ' ')
+            : '',
+          sub?.status ?? '',
+          evaluation ? evaluation.successRate : '',
+          evaluation ? evaluation.tokenCost : '',
+          evaluation?.autoScoreSuggestion ?? '',
+          evaluation?.teacherScore ?? '',
+          evaluation?.teacherComment ?? '',
+        ]
+          .map(escape)
+          .join(','),
+      );
+    }
+    // BOM 让 Excel 按 UTF-8 打开
+    return new StreamableFile(Buffer.from('﻿' + lines.join('\r\n'), 'utf8'), {
+      type: 'text/csv; charset=utf-8',
+      disposition: `attachment; filename="grades-${projectId}.csv"`,
+    });
   }
 
   // ---------- 学生侧 ----------

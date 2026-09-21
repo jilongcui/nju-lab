@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule, JwtSignOptions } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { UsersModule } from '../users/users.module';
-import { AuthController, MeTokensController } from './auth.controller';
+import { AuthController, MePasswordController, MeTokensController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { AUTH_PROVIDER } from './providers/auth-provider.interface';
@@ -20,7 +20,7 @@ import { LocalAuthProvider } from './providers/local-auth.provider';
       },
     }),
   ],
-  controllers: [AuthController, MeTokensController],
+  controllers: [AuthController, MeTokensController, MePasswordController],
   providers: [
     AuthService,
     JwtStrategy,

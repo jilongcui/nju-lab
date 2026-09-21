@@ -43,7 +43,10 @@ async function seed() {
       Submission,
       Evaluation,
     ],
-    synchronize: true,
+    synchronize: false,
+    // 新环境先跑 migrations 建表再 seed（与 app.module 一致）
+    migrationsRun: true,
+    migrations: [__dirname + '/migrations/*{.ts,.js}'],
   });
   await dataSource.initialize();
 

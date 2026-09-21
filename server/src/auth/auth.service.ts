@@ -1,9 +1,9 @@
-import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from '../users/user.entity';
-import { LoginDto, RegisterDto } from './dto/auth.dto';
+import { ChangePasswordDto, LoginDto, RegisterDto } from './dto/auth.dto';
 import { JwtPayload } from './jwt.strategy';
 import {
   AUTH_PROVIDER,
@@ -67,5 +67,22 @@ export class AuthService {
   async revokeAllTokens(user: User) {
     await this.userRepo.increment({ id: user.id }, 'tokenVersion', 1);
     return { revoked: true };
+  }
+
+  /** POST /api/me/password —— 修改密码；成功后 tokenVersion + 1（全部端重新登录/重配 token） */
+  async changePassword(user: User, dto: ChangePasswordDto) {
+    const ok = await this.authProvider.validateCredentials(
+      user.username,
+      dto.oldPassword,
+    );
+    if (!ok) {
+      throw new UnauthorizedException('旧密码错误');
+    }
+    if (!this.authProvider.setPassword) {
+      throw new BadRequestException('当前认证方式不支持在平台修改密码');
+    }
+    await this.authProvider.setPassword(user.id, dto.newPassword);
+    await this.userRepo.increment({ id: user.id }, 'tokenVersion', 1);
+    return { changed: true };
   }
 }

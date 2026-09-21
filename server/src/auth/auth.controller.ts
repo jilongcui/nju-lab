@@ -3,7 +3,7 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { User } from '../users/user.entity';
 import { AuthService } from './auth.service';
-import { LoginDto, RegisterDto } from './dto/auth.dto';
+import { ChangePasswordDto, LoginDto, RegisterDto } from './dto/auth.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -37,5 +37,16 @@ export class MeTokensController {
   @Post('revoke')
   revoke(@CurrentUser() user: User) {
     return this.authService.revokeAllTokens(user);
+  }
+}
+
+@Controller('me')
+export class MePasswordController {
+  constructor(private readonly authService: AuthService) {}
+
+  /** 修改密码（校验旧密码；成功后本人全部 token 失效，需重新登录/重配插件 token） */
+  @Post('password')
+  changePassword(@CurrentUser() user: User, @Body() dto: ChangePasswordDto) {
+    return this.authService.changePassword(user, dto);
   }
 }

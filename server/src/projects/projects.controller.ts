@@ -63,6 +63,13 @@ export class ProjectsController {
   submissions(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.projectsService.listProjectSubmissions(user, id);
   }
+
+  /** 导出该项目成绩 CSV（教师） */
+  @Get(':id/grades.csv')
+  @Roles(UserRole.TEACHER)
+  gradesCsv(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.projectsService.exportGradesCsv(user, id);
+  }
 }
 
 @Controller('assignments')

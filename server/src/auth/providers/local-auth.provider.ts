@@ -48,4 +48,10 @@ export class LocalAuthProvider implements AuthProvider {
     });
     return this.userRepo.save(user);
   }
+
+  async setPassword(userId: string, newPassword: string): Promise<void> {
+    await this.userRepo.update(userId, {
+      passwordHash: await bcrypt.hash(newPassword, 10),
+    });
+  }
 }

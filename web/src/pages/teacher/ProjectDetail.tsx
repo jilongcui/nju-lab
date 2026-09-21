@@ -20,10 +20,11 @@ import {
   Typography,
   Upload,
 } from 'antd';
-import { DeleteOutlined, EditOutlined, MinusCircleOutlined, PlusOutlined, SendOutlined, UploadOutlined } from '@ant-design/icons';
+import { DeleteOutlined, DownloadOutlined, EditOutlined, MinusCircleOutlined, PlusOutlined, SendOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
   deleteProject,
+  downloadGradesCsv,
   downloadStoredFile,
   getProject,
   getProjectDashboard,
@@ -317,7 +318,17 @@ export default function ProjectDetail() {
         <MarkdownView content={project.faq ?? undefined} />
       </Card>
 
-      <Card title="学生任务与提交">
+      <Card
+        title="学生任务与提交"
+        extra={
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={() => void downloadGradesCsv(project.id, project.title)}
+          >
+            导出成绩 CSV
+          </Button>
+        }
+      >
         <Table<ProjectSubmissionRow>
           rowKey="assignmentId"
           dataSource={rows}
