@@ -1,0 +1,60 @@
+# NJU-Lab 复验 profile 的 tweak 层：无人值守、确定性。
+#
+# 与内置 headless 的唯一区别：审批强制 never（确定性拒绝所有提权）。
+# 注意：不要用内置 sdk-minimal——它钉死 danger-full-access 且不挂审批服务。
+# 网络关闭 + 资源限额由一次性容器负责（DSH 沙箱不挡网络）。
+
+- id: sandbox-policy
+  config:
+    mode: workspace-write
+
+- id: approval
+  config:
+    policy: never
+
+# 实测修正（2026-09-21）：workspace-write 沙箱 + approval=never 的组合不匹配
+# 任何内置预设（workspace-write→ask、danger-full-access→never），
+# dsh-permission-presets 启动即报 "composed sandbox and approval defaults match
+# no preset"。必须显式声明一个预设并钉为 defaultPreset。
+# 注意：patch 的 config 是整段替换而非深合并，presets 表要全量重写。
+- id: permission
+  config:
+    defaultPreset: verify
+    presets:
+      read-only:
+        sandbox: read-only
+        approval: ask
+      workspace-write:
+        sandbox: workspace-write
+        approval: ask
+      danger-full-access:
+        sandbox: danger-full-access
+        approval: never
+      verify:
+        sandbox: workspace-write
+        approval: never
+        name: verify
+        description: 复验预设：工作区内可写，所有提权确定性拒绝。
+
+# 复验模型路由（实测 2026-09-21）：
+# dsh-llm-deepseek 的 deepseek-official 路由是 OpenAI 兼容 chat-completions，
+# apiKeyEnv + baseURL 可指任意兼容端点。默认走 DeepSeek 官方（baseURL 默认
+# https://api.deepseek.com，DEEPSEEK_BASE_URL 环境变量可覆盖）。
+# DeepSeek 官方实测事实：可用模型 deepseek-flash / deepseek-v4-pro；
+# reasoning_effort 合法值 none|minimal|low|medium|high|xhigh|max。
+# 回退 Moonshot 时：apiKeyEnv 改 MOONSHOT_API_KEY、
+# baseURL: https://api.moonshot.cn/v1、model 改 kimi-k2.6。
+- id: llm-deepseek
+  config:
+    apiKeyEnv: DEEPSEEK_API_KEY
+    reasoningEffort: low   # 压低 reasoning 省 token；合法值见上
+    maxTokens: 8192
+
+- id: agent-default-model
+  config:
+    provider: deepseek-official
+    model: deepseek-flash
+
+# headless 一次性运行不需要 LLM 起会话标题，关掉省一次额外请求。
+- id: session-title-llm
+  disabled: true

@@ -1,0 +1,21 @@
+# NJU-Lab 学生端 profile 的 tweak 层（应用在每个 bundle 层之后）。
+#
+# 行 id 与字段名均已用真实 dsh 校准：
+#   $ dsh --profile web --dump-default-config
+#
+# 约束：workspace-write（最小权限）+ 交互式 ask。学生端永不出现 danger-full-access。
+
+# 文件沙箱默认模式
+- id: sandbox-policy
+  config:
+    mode: workspace-write
+
+# 审批策略：学生交互场景走 ask
+- id: approval
+  config:
+    policy: ask
+
+# 权限预设默认值
+- id: permission
+  config:
+    defaultPreset: workspace-write

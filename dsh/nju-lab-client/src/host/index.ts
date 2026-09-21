@@ -1,0 +1,97 @@
+import type { Context } from '@deepseek-ai/cordis'
+// 触发 cordis 的 Context 增强（`ctx.settings`），声明在 dsh-settings。
+import type {} from '@deepseek-ai/dsh-settings'
+import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
+import { resolve } from 'node:path'
+
+import { PlatformApi } from './api.ts'
+import { createActions } from './actions.ts'
+import { Config, type EvalConfig } from './config.ts'
+import { collectEvidence } from './evidence.ts'
+import { registerConditionLock } from './lock.ts'
+import { registerPanelRoutes } from './panel.ts'
+import { registerToolRestriction } from './restrict.ts'
+import { registerTools } from './tools.ts'
+
+export const name = 'nju-lab-client'
+/**
+ * 只硬依赖 `tools`（注册平台工具）。
+ *
+ * **不能**把 `connection` / `settings` 写进 inject：headless profile 两者都没有，
+ * 硬依赖会让插件在 headless 下整个不加载（cordis 的 `cannot get property … without
+ * inject` 是访问即抛错，不能靠运行时探测绕过）。这类"有就增强"的服务一律用
+ * `ctx.inject([...], cb)`。
+ */
+export const inject = ['tools']
+export { Config }
+
+/** settings 命名空间（lowercase hyphenated identifier）。 */
+const SETTINGS_NS = 'nju-lab'
+
+/**
+ * host 半入口：平台 API + 评估条件锁定 + 平台工具（+ 有 web server 时的面板路由）。
+ *
+ * 配置有两个来源，settings 层的用户值优先于 `cordis.patch.yml` 的 composition 层：
+ *  1. composition：profile 的 patch（我们现在从 `NJU_LAB_SERVER_URL` / `NJU_LAB_TOKEN` 取）
+ *  2. 用户设置：DSH 设置页里填的 `nju-lab` 节（`ctx.settings.installSection`）
+ *
+ * client 半（UI）在 src/client/index.tsx，由 client-modules 服务按
+ * package.json 的 dsh.client 声明单独扫描挂载。
+ */
+export function apply(ctx: Context, config: Config): void {
+  let evalConfig: EvalConfig | undefined = config.evalConfig
+
+  /** 解析后的权威配置：settings 服务在场时由它接管，否则就是 composition 的 config。 */
+  let readConfig: () => Config = () => config
+
+  ctx.inject(['settings'], (settingsCtx) => {
+    // 把本插件的 Config schema 暴露成设置页可填的一节。用户层的值会覆盖 base；
+    // 未填时回落到 composition 层（即 patch 里的环境变量默认值）。
+    // owner 传外层 ctx（不是 settingsCtx）：它的 Unload 决定这一节的 fallback 何时停止。
+    settingsCtx.settings.installSection(ctx, SETTINGS_NS, Config, config, {
+      setSource: (source) => {
+        readConfig = source
+      },
+      // 读值走 `readConfig()`，每次都取最新，所以这里无需额外动作。
+      onChange: () => {},
+    })
+  })
+
+  // 先装限制器：claim 之后要把它作用到已存在的 agent（`applyToLiveAgents`）。
+  const restriction = registerToolRestriction(ctx, () => evalConfig)
+
+  /** 会话持久化服务：用来导出 `.dshc` 的过程证据（headless 下可能不存在）。 */
+  let persistence: SessionPersistence | undefined
+  ctx.inject(['sessionPersistence'], (scoped) => {
+    persistence = scoped.sessionPersistence
+  })
+
+  const api = new PlatformApi(() => readConfig())
+  const actions = createActions(api, {
+    workspaceDir: config.workspaceDir,
+    initialEvalConfig: config.evalConfig,
+    onEvalConfig: (next) => {
+      evalConfig = next
+      // claim 拿到了平台下发的条件 → 对当前会话的 agent 立刻收窄工具面。
+      // 否则学生得先开新会话才受约束，而 REQ §2.2 要的是 claim **之后**的请求就受限。
+      restriction.applyToLiveAgents()
+    },
+    // 证据包：导出本项目工作目录下各会话的审计事件。失败不阻断提交（见 actions.ts）。
+    collectEvidence: async () => {
+      if (!persistence) throw new Error('sessionPersistence 服务不可用')
+      return collectEvidence(persistence, resolve(config.workspaceDir ?? process.cwd()))
+    },
+  })
+
+  registerConditionLock(ctx, () => evalConfig)
+  registerTools(ctx, actions)
+
+  // 面板路由挂在 Connection 的 /api 通道上；headless（无 web server）没有这个服务。
+  ctx.inject(['connection'], (scoped) => {
+    registerPanelRoutes(scoped, actions, {
+      tokenConfigured: () => Boolean(readConfig().token),
+    })
+  })
+
+  console.log(`[nju-lab-client] host half loaded (serverUrl=${config.serverUrl})`)
+}

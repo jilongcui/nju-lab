@@ -1,0 +1,10 @@
+# 本地调试 overlay：把 nju-lab-client 的 host 半（TS 源）装进 web profile。
+# 用法（把 <ABS> 换成 nju-lab-client 的绝对路径）：
+#   dsh --profile web --patch ./dev/overlay.yml --no-open
+#
+# 注意：插件名必须写成绝对路径；`name` 指向 host 半入口。
+- insert:
+    - id: nju-lab-client
+      name: 'nju-lab-client/src/host/index.ts'
+      config:
+        serverUrl: 'http://127.0.0.1:3000/api'

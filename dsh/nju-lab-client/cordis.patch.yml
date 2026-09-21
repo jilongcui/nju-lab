@@ -1,0 +1,12 @@
+# nju-lab-client bundle 的 patch 层：从空条目列表插入本插件的 host 半。
+# client 半不需要单独插行——dsh 的 client-modules 服务会自动扫描 Loader 条目里
+# 声明了 `dsh.client` 的包并组合进窗口 __DSH_BOOT__。
+- insert:
+    - id: nju-lab-client
+      name: 'nju-lab-client'
+      config:
+        # 以下是 composition 层的默认值。DSH 设置页里的 `nju-lab` 节可以覆盖它们 ——
+        # 学生在设置页填了就不必设这些环境变量（改动即时生效，无需重启）。
+        serverUrl: !!js process.env.NJU_LAB_SERVER_URL ?? 'https://lab.example.edu/api'
+        # 平台 token（长期 token）。未设置时插件工具会给出可读的配置指引，而不是裸 401。
+        token: !!js process.env.NJU_LAB_TOKEN

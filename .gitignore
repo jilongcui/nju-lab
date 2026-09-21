@@ -1,0 +1,19 @@
+# 依赖与构建产物
+node_modules/
+dist/
+dsh/nju-lab-client/lib/
+
+# 密钥与环境（绝不提交）
+.env
+*.local
+
+# 运行时产物
+server/uploads/
+dsh/verify-poc/runs/
+dsh/nju-lab-client/nju-lab/
+.reasonix/
+*.log
+
+# 编辑器
+*.swp
+.DS_Store

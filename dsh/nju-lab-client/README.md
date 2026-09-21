@@ -1,0 +1,209 @@
+# nju-lab-client
+
+NJU-Lab 的**定制 DSH 客户端插件**（host 半 + client 半）。
+
+- **host 半**（Node，`src/host/`）：平台 API 客户端（含上传/下载）、`agent/request` 评估条件锁定、三个平台工具、ClaimPanel 的 HTTP 路由、证据采集（`.dshc` 证据包：会话审计事件导出 + 脱敏 + 完整性哈希）。
+- **client 半**（浏览器，`src/client/`）：右侧栏的任务面板（列表 / 领取 / 提交 / 显示钉定条件）。
+
+## 结构
+
+```
+nju-lab-client/
+  package.json        # 声明 dsh.bundle（host）+ dsh.client（client 半）+ exports
+  cordis.patch.yml    # bundle patch：从空条目插入 host 半（serverUrl / token 取自环境变量）
+  tsdown.config.ts    # host / client 分别打包（client 半 external 掉 react）
+  src/host/           # Node 面
+    index.ts          # export name / inject / apply(ctx, config)
+    config.ts         # schemastery Config —— 同时就是设置页渲染的 schema
+    api.ts            # 平台 API 客户端（契约对齐 server/src，含 uploadFile / downloadFile）
+    actions.ts        # 业务核心：list / claim / submit（工具与面板路由共用这一份）
+    tools.ts          # 对话式工具（渲染层：把 actions 的结果变成文本）
+    panel.ts          # ClaimPanel 的 host 路由（挂在 Connection 的 /api 通道上）
+    lock.ts           # agent/request 条件锁定（model + reasoningEffort）
+    zip.ts            # 最小 ZIP 编解码（纯 JS，不调系统 zip/unzip）
+    evidence.ts       # `.dshc` 证据包：从 sessionPersistence 导出会话 → 筛 approval/*、permission/* → 脱敏 → sha256 完整性
+  src/client/         # 浏览器面
+    index.tsx         # 两阶段注册右侧栏 tab（type + body + title）
+    ClaimPanel.tsx    # 任务面板：同源 fetch 取数，token 不进浏览器
+```
+
+## 构建
+
+```sh
+npm install
+npm run build      # → lib/host/index.js, lib/client/index.js
+npm run typecheck  # host 与 client 两半都干净
+```
+
+## 测试
+
+L2 需要一个 `dsh` 可执行文件（仓库不内置）。它按 `DSH_BIN` → `PATH` 的顺序查找，找不到会 **skip**（TAP 里是 `ok … # SKIP`，**不是**通过）。所以 L2 的结论必须带 `DSH_BIN` 跑；不带的话 44 条里那 4 条 L2 静默 skip，`npm test` 仍显示全绿。
+
+```sh
+npm test                                 # L1 + L2
+DSH_BIN=/path/to/dsh npm test            # 追加真 DSH 端到端
+DSH_BIN=/path/to/dsh npm run test:e2e    # 只跑 L2
+```
+
+没有 dsh 时先装一个，装完就在 PATH 上，之后的 `npm test` 会自动带上 L2：
+
+```sh
+npm i -g @deepseek-ai/dsh@0.1.5-rc.2
+```
+
+- `test/mock-platform.mjs` — 平台替身：任务/领取/上传/下载/提交 5 个端点，强制 `Authorization: Bearer`。**契约以 `REQ-2026-09-21-submit-pipeline.md` §0 为准**（不要照 client 类型反推，那正是之前固化漂移的原因）。`claim` / `submit` 返回 **201**，与真实 NestJS 的裸 `@Post` 一致
+- `test/fake-llm.mjs` — 假 OpenAI 兼容端点（SSE），让 L2 无需模型 key
+- `test/host-tools.test.mjs` — L1：契约形状断言 + `list_assignments` / `claim` / `submit` + token 提示
+- `test/host-panel.test.mjs` — L1：面板三条 host 路由（快照 / 领取 / 提交 / 错误路径）
+- `test/skill-root.test.mjs` — L1：`resolveSkillRoot` 三态（§1.0）+ 纯 JS 打包（§1.4.2）
+- `test/restrict.test.mjs` — L1：`evalConfig.tools` 能力名 → DSH 工具名的映射与 `restrict()` 生效路径
+- `test/evidence.test.mjs` — L1：`.dshc` 只留 `approval/*`、`permission/*`、按 `cwd` 归属会话、超长字段截断、`integrity` 口径、无持久化时的降级
+- `test/dsh-e2e.test.mjs` — L2（4 条）：真跑 `dsh --profile headless`，断言工具进入模型工具面、`restrict` 收窄生效、claim 之后同一会话即受约束、`.dshc` 采到本会话的审计事件
+
+## 学生如何使用
+
+学生并不直接“调用”这个插件：学生启动的是 DSH，插件随 profile 挂进去，为 DSH 增加一个右侧栏面板和三个平台工具。
+
+```sh
+# 一次性安装（详见 ../profiles/nju-lab-student/README.md）
+dsh plugin --profile nju-lab-student install
+
+# 每次使用
+export NJU_LAB_SERVER_URL='https://lab.xiaohe.biz/api'
+export NJU_LAB_TOKEN='<平台个人页生成的长期 token>'
+dsh --profile nju-lab-student --no-open
+# → 浏览器打开 http://127.0.0.1:3080/?token=...
+```
+
+`token` 有两个来源，**设置页优先**：
+
+1. **DSH 设置页**（推荐）：设置 → 插件 → `nju-lab`，填 `serverUrl` 与 `token`
+   —— 那正是本插件的 `Config` schema，由 `ctx.settings.installSection` 暴露。改动**即时生效**，不必重启 DSH。
+2. **环境变量**（上面的写法）：composition 层的默认值，适合脚本化 / 机房批量部署。
+
+**未配置或已失效时，工具返回可读的修复指引，而不是裸 401。**
+
+之后有两个入口，分别对应插件的两半：
+
+### 1. 对话式工具调用（host 半）
+
+学生说人话，由模型决定调用哪个工具。当前注册的工具：
+
+| 工具 | 行为 | 平台 API |
+| --- | --- | --- |
+| `nju_lab_list_assignments` | 列出任务：解锁状态、章节、截止时间、最新提交 | `GET /me/assignments` |
+| `nju_lab_claim` | 领取：**真实下载**模板与数据集到 `<workspace>/nju-lab/<id>/`、逐个校验 sha256、纯 JS 解压模板，并**探测真正的 Skill 根**（模板带顶层目录时是 `skill/csv-cleaner`）+ 钉死评估条件 | `POST /assignments/:id/claim`、`GET /files/:id` |
+| `nju_lab_submit` | 提交前自检 → 逐文件 sha256 → 打包 ZIP → 生成 `.dshc` → 上传两者 → 以 fileId 模式提交 | `POST /files`、`POST /assignments/:id/submit` |
+
+### 2. 右侧栏面板（client 半）
+
+面板**不直接调平台**：host 半把数据与动作暴露成同源路由，面板用 `fetch` 调用。
+
+| 路由 | 语义 |
+| --- | --- |
+| `GET /api/nju-lab.assignments` | 首屏快照：任务列表 + 当前钉定条件 + 落盘目录 + `tokenConfigured` |
+| `POST /api/nju-lab.claim` | `{ assignmentId }` → 领取结果（落盘点、解压目录、evalConfig） |
+| `POST /api/nju-lab.submit` | `{ assignmentId, skillDir?, note? }` → 提交结果 |
+
+这样做的两个好处：**平台 token 永不进浏览器**；路由挂在 Connection 的 `/api` 共享通道上，自动继承它的 Host/Origin 围栏与浏览器认证，不用自己写鉴权。
+
+### 3. 评估条件锁定
+
+`nju_lab_claim` 成功后把 `evalConfig` 存入闭包。平台下发的真实字段是
+`model / reasoningEffort / tools / timeoutSeconds`，其中：
+
+- `model`、`reasoningEffort` 由 `agent/request` waterfall 在每次请求前覆盖
+- `tools` 需要 `ctx.tools.restrict({ allow })`，**waterfall 管不了工具集**（实现见 `src/host/restrict.ts`）
+- `timeoutSeconds` DSH 侧没有对应能力，仅作展示
+
+## 当前实现状态
+
+| 能力 | 状态 |
+| --- | --- |
+| 构建 / host 半加载 | ✅ 已验证：`npm run build` 产出 `lib/`，`dsh --profile nju-lab-student` 启动出现 `[nju-lab-client] host half loaded` |
+| client 半挂载 | ✅ 两阶段注册（tab type + body + title），写法对照官方 `dsh-client-ui-sidebar-files` |
+| `nju_lab_list_assignments` | ✅ 已实现 |
+| `nju_lab_claim` | ✅ 真实下载 + sha256 校验 + 解压；真实平台联调通过 |
+| `nju_lab_submit` | ✅ 打包/哈希/上传/提交；真实平台联调后库里是 `skillZipRef=file:<id>` |
+| Skill 根探测（REQ §1.0） | ✅ `resolveSkillRoot`：`<dir>/SKILL.md` → 唯一子目录含 `SKILL.md` → 报错。claim 与 submit 两处同语义；传 `skill/` 或 Skill 根本身都能提交 |
+| 打包 / 解压 | ✅ 纯 JS（`src/host/zip.ts`：写 store、读 store + deflate），不依赖学生机器上的 `zip`/`unzip` |
+| ClaimPanel | ✅ 列表 / 领取 / 提交 / 显示钉定条件；host 路由已在真 `dsh web` 上验证（`GET /api/nju-lab.assignments` → 200） |
+| 登录与 token | ✅ 插件侧两个来源：DSH **设置页**的 `nju-lab` 节（`ctx.settings.installSection`，即时生效）+ `NJU_LAB_TOKEN` 环境变量作默认；缺失/被拒给可读提示。平台侧 `POST /api/me/tokens` + `revoke`（D-Lite+，`tokenVersion` 整体吊销）已实测可用 |
+| 测试 | ✅ 44 条（40 L1 + 4 L2），带 `DSH_BIN` 真跑 `dsh` 时 **44 pass / 0 fail / 0 skip**；不带则 4 条 L2 静默 skip。真模型也验证过会自己调用工具 |
+| `evalConfig.tools` 白名单 | ✅ 能力名 → DSH 工具名映射（`shell`→`bash`、`fs`→`read/write/edit/glob/grep`），在 `agent/created` 用 `agent.ctx.tools.restrict({ allow })` 生效，并在 claim 之后对**已存在**的 agent 补一刀。未知能力名忽略并显式警告 |
+| 证据包 `.dshc` | ✅ 真实实现：`collectEvidence()` 经 `ctx.sessionPersistence` 取**本工作目录下各会话**（按 `header.cwd` 归属，跨多次 DSH 启动）→ 按 `approval/`、`permission/` 前缀筛审计事件 → 递归脱敏（字符串 200 / 数组 50 / 深度 6）→ `buildCapsule()` 产出 `nju-lab.capsule/v1`（`sessions` + `auditEvents` + sha256 `integrity`，`note` 不入哈希）落盘 `evidence.dshc` → 上传并以 `capsuleFileId` 提交，`auditEvents` 一并交给平台。采集失败只记 `note`，**不阻断提交**。L2 实测（真 headless DSH）：17 个会话事件 → 2 条审计事件（`permission/preset`、`approval/policy`），无降级 |
+
+## 踩坑记录：evalConfig 曾让 claim 之后的 DSH 完全不可用（已修）
+
+平台示例数据原本是：
+
+```json
+{"model": "deepseek-chat", "tools": ["shell"], "timeoutSeconds": 600, "reasoningEffort": "medium"}
+```
+
+但 `deepseek-official` 声明的模型是 `deepseek-flash` / `deepseek-v4-flash` / `deepseek-v4-pro` /
+`deepseek-v4-flash-vision-exp`（**没有 `deepseek-chat`**），且该 provider **整体不支持 reasoning
+effort**（`dsh-llm-deepseek` 的 `reasoningEffort()` 直接抛 `UNSUPPORTED_REASONING_EFFORT`；
+deployment 的 `thinking: 'disabled'` 也会拒掉非 `off` 的值）。
+
+`lock.ts` 会把这两个字段钉进每个请求，于是 **claim 之后每个模型请求都失败**：
+
+```
+dsh: UNSUPPORTED_REASONING_EFFORT: provider "deepseek-official" model "deepseek-chat"
+     does not support reasoning effort "medium"
+```
+
+**已修（只改平台数据，插件不动）**：
+
+- `server/src/seed.ts`：示例 evalConfig 改为 `{ model: 'deepseek-flash', tools: [...], timeoutSeconds: 600 }`
+- `web/src/pages/teacher/ProjectDetail.tsx`：评估模型 placeholder 改为 `deepseek-flash`，并给
+  「推理档位」补了留空提示（DeepSeek provider 不支持）
+- 数据库现有行已 `UPDATE` 成同一组合（`claim` 实测返回 `{"model":"deepseek-flash","tools":["shell"],"timeoutSeconds":600}`）
+- 真 DSH + 真平台 + fake 模型实测：claim 之后的请求**不再失败**
+
+**注意**：`reasoningEffort` 的钉制能力仍在（`lock.ts` 没改，测试仍覆盖它）—— 只是当前 provider
+不支持，所以平台不下发。将来接上支持推理档位的 provider 可以再打开。
+
+**留给未来的选项**：插件目前**不做**能力校验，教师填错就会炸。若要防这一手，可在钉之前用
+`ctx.llm.resolveModelInfo(provider, model)`（返回 `efforts: LlmReasoningEffortInfo[]`）过滤掉不支持的
+字段 —— 代价是一套异步查询 + 缓存。
+
+## 关键事实（均已核对官方源）
+
+**评估条件**
+
+- `agent/request` 是 **waterfall**，`await next()` 得到本要用的 call 配置，返回替换值即改写；它只替换 **provider / model / reasoningEffort / maxTokens**，**不能钉工具集**（工具用 `ctx.tools.restrict()`）。
+- `ctx.tools.restrict({ allow })` 的语义是"**只保留** allow 里的"。它过滤的是该 scope **继承来的层**（全局 + 祖先层），**只有 agent 自己那层豁免** —— 插件工具注册在插件根，所以**照样会被收窄**，必须显式列进 `allow`（它们属于 inherited，在 `restrictableNames` 里，能合法列出）。
+- `restrict()` 只在 **scoped context** 上可用（插件根 ctx 会抛 `requires a scoped context`）。`agent/created` 事件的 `this` 是 `Scoped<Agent>` —— 它**故意不暴露属性**（只作 scope carrier，官方注释："Event payloads carry the real subject"），真正的 agent 要从 **`payload.agent`** 取，然后 `agent.ctx.tools.restrict(...)`。
+- 平台发的 `tools` 是**抽象能力名**（`shell` / `fs`），不是 DSH 工具名，翻译放在插件的 `CAPABILITY_TOOLS`。这份映射必须与服务端复验容器一致。
+- `ctx.tools.restrict()` 有两条硬约束：**只能在 scoped context（`agent.ctx`）上调用**（插件根 ctx 会抛错），且名字必须是**真实存在的全局工具名**。
+- `reasoningEffort` 的类型是 `ReasoningEffortId` —— provider adapter 定义的 opaque branded string（官方注释：no validation is performed），所以平台下发 `medium` 是合法的，不要硬编码白名单。
+
+**插件骨架**
+
+- client 半由 DSH 的 client-modules 服务按 `package.json` 的 `dsh.client` **自动扫描挂载**，需导出到 `exports["./client"]`。
+- slot 组件拿不到 `ctx`；要给它数据/回调，用 `ctx.slots.register({ ..., inject: () => ({...}) }, Component)`（`inject` 建在能访问 `ctx` 的闭包里）。
+- **`sidebar.right.pane.tab` 是按 key 的 keyed slot**，必须两阶段注册：先 `ctx.sidebarRightTabs.register({ id, kind, title })` 声明 tab 类型，再用它的 `id` 当 `key` 注册 body 与 `sidebar.right.pane.tab.title`。只写单阶段 `register({ name })` 什么也不会渲染。
+- client 半的 `react` / `react/jsx-runtime` 由 DSH 的模块 loader 在运行时提供，**必须在打包时外部化** —— 打包进来会出现第二份 React，hooks 直接崩。
+- client 侧的类型增强（`ctx.slots`、`ctx.sidebarRightTabs`）声明在包的 **`./client` 子路径**，`import type {} from '<pkg>/client'` 才会生效。
+- **服务访问需要 inject**：`ctx.foo` 在未注入时直接抛 `cannot get property "foo" without inject`，所以"运行时探测某服务在不在"是行不通的。要可选依赖，用 `ctx.inject(['foo'], (scoped) => { ... })`（服务不出现就不执行）。`connection`/`settings` 只在 `dsh web` 下存在，headless 没有 —— 硬写进 `inject` 数组会让插件在 headless 下**整个加载失败**。
+
+**配置与设置页**
+
+- 把 `Config` 暴露成设置页可填项，用 `ctx.settings.installSection(owner, ns, schema, config, hooks)`：`ns` 必须是 **lowercase-hyphenated** 标识符（官方用 `llm-deepseek`，我们用 `nju-lab`），`schema` 就是 schemastery 的 `Config`，`entry` 是 composition 层的值。
+- `hooks.setSource` 收到的是**取值 thunk**（`() => T`）而不是值本身 —— 保存它、每次读时调用，用户改设置就即时生效。所以 `PlatformApi` 接受 `Config | (() => Config)`。
+- settings 的用户层存在 `$DSH_HOME/settings.yaml`，层级是 `schema 默认值 → composition base → 用户文档`。
+- 敏感值（token）DSH 另有 `ctx.credentials` 服务（settings 只存**环境变量名**这类引用，真值由 provider 保管）。我们目前把 token 直接放在 settings 里，没走 credentials。
+
+**ZIP 与 Skill 目录**
+
+- 模板 ZIP 与学生提交的 ZIP 都**允许包一层顶层目录**（`csv-cleaner/SKILL.md`）。任何消费方都必须先经 `resolveSkillRoot`（REQ-2026-09-21 §1.0），不能假定 `<dir>/SKILL.md` 存在 —— 服务端复验容器也要用同一语义。
+- 打包 / 解压走 `src/host/zip.ts`（无外部依赖）：**写**用 store 模式（输出对相同输入逐字节确定，sha256 可复现），**读**支持 store + deflate。
+- **真实平台的模板是 deflate 压缩的**（只有小文件才可能落成 store），所以"读"只实现 store 会在真实模板上炸 —— 这个 bug 本地小样本测不出来，必须对真平台跑一次。
+- 切 ZIP 条目数据要按**压缩后**大小（central directory 的 offset 20），不是 uncompressed size（offset 24）：两者只在 store 时相同。
+- 读 ZIP 走 central directory，而不是顺序扫 local header —— 带 data descriptor（flag bit 3）的 ZIP 在 local header 里读不到长度。
+
+**面板路由**
+
+- host 侧用 `ctx.connection.fetch.register({ path: '/api/<name>', methods, requestBody: 'buffered', fetch: (req: Request) => Promise<Response> })`；`path` 是 `/api` 之下的绝对路径。
+- 部署与调试：profile 的插件是从 **pnpm 装的副本**读的 —— 改了插件源码必须重新 `dsh plugin --profile <name> install`；非 TTY 环境下要 `CI=true`（否则 pnpm 以 `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 中止）。
