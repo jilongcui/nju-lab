@@ -171,7 +171,19 @@ function ensureProfile(opts) {
   const src = opts.profileSrc
     ?? [join(HERE, 'profile', PROFILE), join(HERE, '..', 'profiles', PROFILE)].find(existsSync);
   if (!src) fail('nju-lab-verify profile source not found');
-  cpSync(src, join(opts.dshHome, 'profiles', PROFILE), { recursive: true });
+  const dest = join(opts.dshHome, 'profiles', PROFILE);
+  cpSync(src, dest, { recursive: true });
+  // 逐项目模型映射：平台经 VERIFY_MODEL / VERIFY_REASONING_EFFORT 下发
+  // project.evalConfig（"学生自测条件 = 平台复验条件"），此处改写拷贝后的
+  // patch（镜像内的模板保持不变）。值做白名单校验，防 YAML 注入。
+  const patchFile = join(dest, 'cordis.patch.yml');
+  let yml = readFileSync(patchFile, 'utf8');
+  const safe = (v) => (/^[a-z0-9][a-z0-9._-]*$/i.test(v) ? v : null);
+  const model = safe(process.env.VERIFY_MODEL || '');
+  const effort = safe(process.env.VERIFY_REASONING_EFFORT || '');
+  if (model) yml = yml.replace(/^(\s*)model: .+$/m, `$1model: ${model}`);
+  if (effort) yml = yml.replace(/^(\s*)reasoningEffort: .+$/m, `$1reasoningEffort: ${effort}`);
+  if (model || effort) writeFileSync(patchFile, yml);
 }
 
 function normalizeCsv(text) {

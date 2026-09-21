@@ -63,6 +63,7 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 10. **复验安全姿态**（verify profile）：一次性容器 + 断网 + `approval=never` + 资源限额。容器是唯一信任边界（DSH 沙箱不挡网络与进程）。
 11. **给模型的引导**（system prompt 段、skill）由**插件注册**即可随 profile 生效：`ctx.systemPrompt.section()` + `ctx.skills.register()`（见 `nju-lab-client/src/host/guidance.ts`），不必改 profile 文件。磁盘 `SKILL.md` 路线要额外配 `customSkillDirs` / `bundledSkillDir`，**profile 目录不是默认 skill 发现根**，且 `bundledSkillDir` 按进程 cwd 解析。skill 来源优先级（越小越优先）：project 100/200 · runtime 250 · custom 300 · user 400/500 · bundled 600。
 12. **L2 测试要带 `DSH_BIN`**：`npm test` 在 PATH 上找不到 `dsh` 时，L2 用例是 **skip**（TAP `ok … # SKIP`）而不是失败，看起来全绿但什么都没验。另外 L2 启动 `dsh` 必须给临时 `cwd`，否则插件的默认 `workspaceDir`（`process.cwd()`）会把 `nju-lab/` 落盘目录写进仓库。
+13. **评估条件必须跨进程持久化**：`evalConfig` 不能只存插件闭包 —— DSH 每次启动都是新进程（headless 每条任务一个），重启后工具面会重新放开，等于"学生自测条件 ≠ 平台复验条件"。插件做法（`nju-lab-client/src/host/eval-state.ts`）：claim 时写 `<workspace>/nju-lab/pinned-eval-config.json`，`apply()` 启动时读回并**优先于配置里的默认值**；平台本次未下发条件时**清掉旧值**，避免上一个实验的限制被继承。文件损坏/形状不对只警告并忽略（不能因为状态文件起不来）。
 
 ## 4. 距端到端的缺口清单（按建议实施顺序）
 
@@ -86,6 +87,7 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 - `nju_lab_submit` 工具 ✅：自检（经 `resolveSkillRoot` 探测真正的 Skill 根）→ 逐文件 sha256（`fileHashes`）→ 纯 JS 打包 ZIP → 生成 `.dshc` → 分别 POST /api/files 上传 → 以 fileId 模式提交；真实平台联调后库里是 `skillZipRef=file:<id>`
 - ClaimPanel ✅：从占位变真实面板（拉任务列表、领取/提交按钮、钉定条件展示），并做过交互与错误提示打磨
 - claim 工具 ✅：真实下载模板/数据集 + sha256 校验 + 纯 JS 解压 + Skill 根探测；`evalConfig.tools` 经 `ctx.tools.restrict()` 钉白名单（claim 后对**已存在**的 agent 补一刀，保证同一会话内立即受限）
+- **评估条件跨进程持久化 ✅**（2026-09-21 补）：`evalConfig` 不再只存闭包 —— claim 时写 `<workspace>/nju-lab/pinned-eval-config.json`，`apply()` 启动时读回并优先于配置默认值；平台本次未下发条件时清掉旧值。否则学生重启 DSH（headless 每条任务一个进程）后工具面会重新放开，等于"自测条件 ≠ 复验条件"。见 `src/host/eval-state.ts`；L2 用**两趟独立进程**验证第二趟一启动就被收窄
 
 ### 第 3 步：复验实证 + 真实执行器 —— ✅ 已完成（2026-09-21）
 
@@ -105,7 +107,7 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 - `server/src/submissions/docker-evaluation-runner.ts`：file 引用 → uploads 真实路径 → `docker run --rm --memory 1g --cpus 1` 只读挂载 → LLM judge（{pass, score, rationale} 落库）→ 写 Evaluation；`EVALUATION_RUNNER=mock|docker` 环境切换（默认 mock，当前 .env 为 docker）
 - 端到端实测：student1 提交真实 skill.zip → teacher verify → 107.6s / 22.7k tokens → Evaluation 写入真实数据（successRate=1、judge rationale、integrityCheck 自报哈希逐条对照、dossier 正确识别能力边界未填）
 - 成本量级：1 case ≈ 23k tokens / ~108s；3 cases ≈ 68k / ~5min
-- **已知遗留**：① 容器未断网（决策：白名单代理留生产化）② evalConfig.model 暂未逐项目映射进容器（实际模型由镜像 profile 钉死 deepseek-flash/low；逐项目映射留生产化）③ judge 请求不能传 temperature:0（kimi 拒绝）④ exact 模式实现未 e2e ⑤ 学生 scripts 任意代码——生产前必须落实网络隔离
+- **已知遗留**：① 容器未断网（决策：白名单代理留生产化）② ~~evalConfig.model 未逐项目映射~~ 已解决（2026-09-21）：runner 把 `evalConfig.model`/`reasoningEffort` 以 `VERIFY_MODEL`/`VERIFY_REASONING_EFFORT` 传入容器，驱动复制 profile 后按白名单校验改写（防 YAML 注入）；v4-pro 实测通过（44.1s/22.1k tokens，result.model 确为 v4-pro）③ judge 请求不能传 temperature:0（kimi 拒绝）④ exact 模式实现未 e2e ⑤ 学生 scripts 任意代码——生产前必须落实网络隔离
 - **模型事实源（2026-09-21 官方 API 实测）**：可用模型 `deepseek-flash` / `deepseek-v4-pro`；`reasoning_effort` 合法值 `none|minimal|low|medium|high|xhigh|max`。DeepSeek key 已存 `server/.env`（DEEPSEEK_API_KEY，管理员侧）；容器路由已切官方（Moonshot 回退方法见 profile patch 注释）；`agent/request` 钉 reasoningEffort 会被 dsh-llm-deepseek 拒绝（UNSUPPORTED_REASONING_EFFORT），effort 只能 profile config 层生效
 - deepseek-flash e2e 实测：verify 34.9s / 24.4k tokens，judge rationale 与 integrityCheck 全部真实
 
@@ -126,7 +128,7 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 
 ### 工作量估计
 
-第 1-5 步均已完成（2026-09-21）：插件侧由 `nju-lab-client` 承担（52 条测试，`DSH_BIN=… npm test` 在真 DSH 下全绿），平台侧第 1、3 步已上线。**剩余工作集中在平台侧**：容器网络隔离（生产前必须）、`evalConfig.model` 逐项目映射进容器、评分口径（`pass` vs `passStrict`）、`exact` 模式 e2e，以及端到端联调。
+第 1-5 步均已完成（2026-09-21）：插件侧由 `nju-lab-client` 承担（61 条测试 = 55 L1 + 6 L2，`DSH_BIN=… npm test` 在真 DSH 下全绿），平台侧第 1、3 步已上线。**剩余工作集中在平台侧**：容器网络隔离（生产前必须）、`evalConfig.model` 逐项目映射进容器、评分口径（`pass` vs `passStrict`）、`exact` 模式 e2e，以及端到端联调。
 
 ## 5. 后续阶段（端到端之后，见 craft 文档 §10）
 

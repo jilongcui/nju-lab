@@ -7,6 +7,7 @@ import { resolve } from 'node:path'
 import { PlatformApi } from './api.ts'
 import { createActions } from './actions.ts'
 import { Config, type EvalConfig } from './config.ts'
+import { loadPinnedEvalConfig } from './eval-state.ts'
 import { collectEvidence } from './evidence.ts'
 import { registerGuidance } from './guidance.ts'
 import { registerConditionLock } from './lock.ts'
@@ -40,7 +41,19 @@ const SETTINGS_NS = 'nju-lab'
  * package.json 的 dsh.client 声明单独扫描挂载。
  */
 export function apply(ctx: Context, config: Config): void {
-  let evalConfig: EvalConfig | undefined = config.evalConfig
+  // 启动时先看工作区里有没有上次 claim 钉下的条件（跨进程恢复，见 `eval-state.ts`）。
+  // 它**优先于**配置里的默认值 —— 与"claim 覆盖默认"的既有语义一致：平台针对本学生
+  // 下发的条件比静态默认更权威；否则学生一重启就退回默认，跨进程持久化就没意义了。
+  const workspaceRoot = resolve(config.workspaceDir ?? process.cwd())
+  const pinned = loadPinnedEvalConfig(workspaceRoot)
+  let evalConfig: EvalConfig | undefined = pinned?.evalConfig ?? config.evalConfig
+  if (pinned) {
+    console.log(
+      `[nju-lab-client] 恢复上次 claim 的评估条件（任务 ${pinned.assignmentId}${
+        pinned.claimedAt ? `，claim 于 ${pinned.claimedAt}` : ''
+      }）`,
+    )
+  }
 
   /** 解析后的权威配置：settings 服务在场时由它接管，否则就是 composition 的 config。 */
   let readConfig: () => Config = () => config
@@ -70,7 +83,8 @@ export function apply(ctx: Context, config: Config): void {
   const api = new PlatformApi(() => readConfig())
   const actions = createActions(api, {
     workspaceDir: config.workspaceDir,
-    initialEvalConfig: config.evalConfig,
+    initialEvalConfig: evalConfig,
+    initialPinnedFrom: pinned?.assignmentId,
     onEvalConfig: (next) => {
       evalConfig = next
       // claim 拿到了平台下发的条件 → 对当前会话的 agent 立刻收窄工具面。
@@ -80,7 +94,7 @@ export function apply(ctx: Context, config: Config): void {
     // 证据包：导出本项目工作目录下各会话的审计事件。失败不阻断提交（见 actions.ts）。
     collectEvidence: async () => {
       if (!persistence) throw new Error('sessionPersistence 服务不可用')
-      return collectEvidence(persistence, resolve(config.workspaceDir ?? process.cwd()))
+      return collectEvidence(persistence, workspaceRoot)
     },
   })
 

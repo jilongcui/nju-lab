@@ -421,3 +421,78 @@ test(
     }
   },
 )
+
+test(
+  'L2: 重启 DSH 后评估条件仍被钉定（跨进程持久化）',
+  { timeout: 240_000, skip: dsh.skip ?? false },
+  async () => {
+    const platform = await startMockPlatform()
+    // 两趟**独立进程**，同一个工作区：第一趟 claim 把条件落盘，第二趟一启动就该带着它。
+    const workspaceDir = await mkdtemp(join(tmpdir(), 'nju-e2e-pinned-'))
+    const home = await mkdtemp(join(tmpdir(), 'nju-e2e-pinned-home-'))
+    const claimLlm = await startFakeLlm({
+      toolName: 'nju_lab_claim',
+      toolArguments: JSON.stringify({ assignmentId: 'a-unlocked' }),
+      finalText: 'ok',
+    })
+    const observeLlm = await startFakeLlm({ finalText: '好的' })
+
+    /** 每个进程一份 overlay（只差假模型端点）。 */
+    const overlayFor = async (llm, name) => {
+      const path = join(home, name)
+      await writeFile(
+        path,
+        [
+          '- insert:',
+          '    - id: nju-lab-client',
+          `      name: '${PLUGIN_ENTRY}'`,
+          '      config:',
+          `        serverUrl: '${platform.url}'`,
+          `        token: '${platform.token}'`,
+          '- id: llm-deepseek',
+          '  config:',
+          `    baseURL: '${llm.url}'`,
+          "    apiKeyEnv: 'NJU_TEST_API_KEY'",
+          '',
+        ].join('\n'),
+      )
+      return path
+    }
+    const launch = (overlay, prompt) =>
+      run(dsh.cmd, ['--profile', 'headless', '--patch', overlay, prompt], {
+        timeout: 150_000,
+        maxBuffer: 16 * 1024 * 1024,
+        cwd: workspaceDir,
+        env: { ...process.env, DSH_HOME: home, NJU_TEST_API_KEY: 'test' },
+      })
+
+    try {
+      // 第一趟：claim（进程结束后，条件只存在于磁盘上）
+      await launch(await overlayFor(claimLlm, 'claim.yml'), '领取实验任务')
+      const pinnedFile = join(workspaceDir, 'nju-lab', 'pinned-eval-config.json')
+      assert.ok(existsSync(pinnedFile), 'claim 之后应把评估条件落盘')
+
+      // 第二趟：全新进程，直接观察模型拿到的工具面
+      await launch(await overlayFor(observeLlm, 'observe.yml'), '继续做实验')
+
+      const first = observeLlm.calls.find(
+        (call) => Array.isArray(call.body?.tools) && call.body.tools.length > 0,
+      )
+      assert.ok(first, '第二趟应有带工具表的模型请求')
+      const names = first.body.tools.map((tool) => tool.function?.name ?? tool.name)
+      assert.ok(
+        names.includes('bash'),
+        `恢复条件后 bash 应可用（平台 tools=["shell"]），实际：${names.join(', ')}`,
+      )
+      assert.ok(names.includes('nju_lab_submit'), '插件自己的工具必须一起放行')
+      assert.ok(
+        !names.includes('web_fetch'),
+        `平台未允许的工具应被收窄掉 —— 没有它就证明不了条件真的跨进程恢复了。实际：${names.join(', ')}`,
+      )
+    } finally {
+      await claimLlm.close()
+      await observeLlm.close()
+      await platform.close()
+    }
+  },
+)

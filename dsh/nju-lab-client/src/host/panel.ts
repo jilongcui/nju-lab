@@ -32,6 +32,8 @@ export interface PanelSnapshot {
   workspaceDir: string
   /** 未配置 token 时面板应显示配置指引，而不是一个空列表 */
   tokenConfigured: boolean
+  /** 当前钉定条件来自哪个任务；重启后从工作区恢复的也会带上（见 eval-state.ts）。 */
+  pinnedFrom?: string
 }
 
 function json(body: unknown, status = 200): Response {
@@ -78,6 +80,7 @@ export function registerPanelRoutes(
           evalConfig: actions.currentEvalConfig() ?? null,
           workspaceDir: actions.workspaceRoot,
           tokenConfigured: options.tokenConfigured(),
+          pinnedFrom: actions.currentPinnedFrom(),
         }),
       ),
   })

@@ -324,7 +324,7 @@ GET    /api/me/evaluations/:id          查看自己的复验结果与反馈
 ### 第二阶段：教学功能增强 —— 🔶 部分完成
 
 已完成：学生管理（名单/添加/移出）、课程/章节/项目删除、待批改工作台、提交状态内嵌、章节发布/下线
-已完成（DSH 侧，2026-09-21）：`nju-lab-client` 定制客户端插件全链路 —— 右侧栏任务面板（领取 / 提交 / 钉定条件展示 + 错误提示）、`agent/request` 条件锁定 + `ctx.tools.restrict()` 工具面收窄、真实模板与数据集下载校验（含 Skill 根探测）、提交（ZIP + `.dshc` 证据包 + 审计事件）、模型引导（system prompt 段 + `nju-lab-experiment` skill）；真实容器复验（`DockerEvaluationRunner`）
+已完成（DSH 侧，2026-09-21）：`nju-lab-client` 定制客户端插件全链路 —— 右侧栏任务面板（领取 / 提交 / 钉定条件展示 + 错误提示）、`agent/request` 条件锁定 + `ctx.tools.restrict()` 工具面收窄、**评估条件跨进程持久化**（claim 写盘 + 启动恢复，重启或分次 headless 运行都不丢钉定）、真实模板与数据集下载校验（含 Skill 根探测）、提交（ZIP + `.dshc` 证据包 + 审计事件）、模型引导（system prompt 段 + `nju-lab-experiment` skill）；真实容器复验（`DockerEvaluationRunner`）
 未完成：审计事件展示深化、CSV 导出
 
 ### 第三阶段：平台化与扩展（未开始）
@@ -371,7 +371,7 @@ GET    /api/me/evaluations/:id          查看自己的复验结果与反馈
 | 数据库 | Docker 容器 `nju-lab-mysql`（MySQL 8.0，127.0.0.1:3306，库 `nju_lab`） |
 | 种子账号 | `admin/admin123`（管理员）、`teacher/teacher123`（教师）、`student1/student123`（学生） |
 | 启动 | 后端 `cd server && npm run start:dev`；前端改动需 `npm run build` 并替换 `/var/www/nju-lab/dist` |
-| DSH 客户端插件（agent 侧） | `dsh/nju-lab-client/`（host + client 双半）：安装步骤与当前实现状态见 `dsh/nju-lab-client/README.md`，入口约定见 `dsh/README.md`；测试 `DSH_BIN=/path/to/dsh npm test`（52 条 = 47 L1 + 5 L2） |
+| DSH 客户端插件（agent 侧） | `dsh/nju-lab-client/`（host + client 双半）：安装步骤与当前实现状态见 `dsh/nju-lab-client/README.md`，入口约定见 `dsh/README.md`；测试 `DSH_BIN=/path/to/dsh npm test`（61 条 = 55 L1 + 6 L2） |
 
 ### 并行开发遗留问题的教训（已修复，供后续参考）
 
@@ -379,7 +379,7 @@ GET    /api/me/evaluations/:id          查看自己的复验结果与反馈
 
 ### 已知遗留（按优先级）
 
-1. ~~复验为 Mock~~ 已解决（2026-09-21）：`DockerEvaluationRunner` 上线——一次性容器（dsh headless + approval=never + 资源限额）跑 baseline/treatment + LLM judge，`EVALUATION_RUNNER=mock|docker` 可切换；deepseek-flash 实测 34.9s/24.4k tokens。遗留：容器未断网（白名单代理留生产化）、evalConfig.model 未逐项目映射进容器
+1. ~~复验为 Mock~~ 已解决（2026-09-21）：`DockerEvaluationRunner` 上线——一次性容器（dsh headless + approval=never + 资源限额）跑 baseline/treatment + LLM judge，`EVALUATION_RUNNER=mock|docker` 可切换；deepseek-flash 实测 34.9s/24.4k tokens。`evalConfig.model`/`reasoningEffort` 逐项目映射进容器已实现（VERIFY_MODEL 环境变量 + 驱动改写 profile，v4-pro 实测通过）。遗留：容器未断网（白名单代理留生产化）
 2. ~~提交物/模板/数据集只存字符串引用~~ 已解决（2026-09-21）：files 模块落地本地磁盘存储（`server/uploads/`），`POST /api/files` 上传（服务端算 sha256）、`GET /api/files/:id` 下载；项目改挂 `skillTemplateFileId`/`testDatasetFileId`；claim 下发真实下载地址；submit 支持 fileId 模式（归属与哈希服务端校验）。遗留：文件下载仅 UUID 能力凭证 + 登录，无细粒度鉴权；对象存储未接
 3. 项目 PATCH（整体替换）与课程 PATCH（部分更新）语义不一致，待统一
 4. TypeORM `synchronize: true` 开发模式，生产前需 migrations；后端以 start:dev 运行，需常驻化

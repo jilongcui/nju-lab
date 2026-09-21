@@ -57,6 +57,8 @@ interface SnapshotDto {
   evalConfig: EvalConfigDto | null
   workspaceDir: string
   tokenConfigured: boolean
+  /** 当前钉定条件来自哪个任务（重启后从工作区恢复的也会带上）。 */
+  pinnedFrom?: string
 }
 
 interface ArtifactDto {
@@ -378,7 +380,12 @@ export function ClaimPanel() {
           paddingTop: 8,
         }}
       >
-        <div style={{ ...dim, marginBottom: 2 }}>评估条件（领取后由平台钉定）</div>
+        <div style={{ ...dim, marginBottom: 2 }}>
+          评估条件
+          {snapshot?.pinnedFrom
+            ? `（来自任务 ${snapshot.pinnedFrom}，DSH 重启后仍生效）`
+            : '（领取后由平台钉定）'}
+        </div>
         {evalConfig ? (
           <div style={mono}>
             model={evalConfig.model ?? '(默认)'} · effort={evalConfig.reasoningEffort ?? '(默认)'}

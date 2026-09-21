@@ -117,6 +117,8 @@ export class DockerEvaluationRunner implements EvaluationRunner {
       timeoutMs,
       maxCases,
       judgeMode,
+      model: project.evalConfig?.model,
+      reasoningEffort: project.evalConfig?.reasoningEffort,
     });
 
     try {
@@ -137,6 +139,8 @@ export class DockerEvaluationRunner implements EvaluationRunner {
     timeoutMs: number;
     maxCases: number;
     judgeMode: string;
+    model?: string;
+    reasoningEffort?: string;
   }): Promise<{ code: number | null; timedOut: boolean; stdout: string; stderr: string; durationMs: number }> {
     const args = [
       'run', '--rm', '--name', opts.containerName,
@@ -146,6 +150,15 @@ export class DockerEvaluationRunner implements EvaluationRunner {
       '-e', 'DEEPSEEK_API_KEY',
       '-e', 'MOONSHOT_API_KEY',
       '-e', 'DSH_TELEMETRY_DISABLED=1',
+    ];
+    // 逐项目模型映射：容器内驱动据此改写 profile（缺省用镜像 profile 钉死的值）
+    if (opts.model) {
+      args.push('-e', `VERIFY_MODEL=${opts.model}`);
+    }
+    if (opts.reasoningEffort) {
+      args.push('-e', `VERIFY_REASONING_EFFORT=${opts.reasoningEffort}`);
+    }
+    args.push(
       // 提交物与数据集只读挂载；结果写到独立输出目录
       '-v', `${opts.skillPath}:/inputs/skill.zip:ro`,
       '-v', `${opts.datasetPath}:/inputs/dataset.zip:ro`,
@@ -156,7 +169,7 @@ export class DockerEvaluationRunner implements EvaluationRunner {
       '--out', '/outputs/result.json',
       '--judge-mode', opts.judgeMode,
       '--timeout-ms', String(Math.min(300_000, opts.timeoutMs)),
-    ];
+    );
     if (opts.maxCases > 0) {
       args.push('--max-cases', String(opts.maxCases));
     }

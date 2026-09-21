@@ -23,7 +23,7 @@ export interface Config {
   serverUrl: string
   /** 个人 token（仅本地调试用；正式版从 credentials 服务取）。 */
   token?: string
-  /** 默认评估条件；claim 下发的 evalConfig 会覆盖它。 */
+  /** 默认评估条件；claim 下发的值优先，重启后也会从工作区恢复上次 claim 的条件。 */
   evalConfig?: EvalConfig
   /** 领取物落盘与打包产物的根目录（默认进程工作目录）。 */
   workspaceDir?: string
@@ -38,7 +38,9 @@ export const Config: Schema<Config> = Schema.object({
   ),
   evalConfig: Schema
     .any()
-    .description('默认评估条件；claim 时会被平台下发的值覆盖，一般不用改'),
+    .description(
+      '默认评估条件：claim 下发的值优先；重启后会从工作区恢复上次 claim 的条件，一般不用改',
+    ),
   workspaceDir: Schema.string().description(
     '领取物落盘与打包产物的根目录（默认进程工作目录）',
   ),

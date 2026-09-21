@@ -22,6 +22,7 @@ nju-lab-client/
     lock.ts           # agent/request 条件锁定（model + reasoningEffort）
     zip.ts            # 最小 ZIP 编解码（纯 JS，不调系统 zip/unzip）
     evidence.ts       # `.dshc` 证据包：从 sessionPersistence 导出会话 → 筛 approval/*、permission/* → 脱敏 → sha256 完整性
+    eval-state.ts     # 评估条件跨进程持久化：claim 时写盘、启动时恢复（只存闭包的话重启就丢）
     guidance.ts       # 模型引导：常驻 system prompt 段 + runtime 注册的 `nju-lab-experiment` skill
   src/client/         # 浏览器面
     index.tsx         # 两阶段注册右侧栏 tab（type + body + title）
@@ -38,7 +39,7 @@ npm run typecheck  # host 与 client 两半都干净
 
 ## 测试
 
-L2 需要一个 `dsh` 可执行文件（仓库不内置）。它按 `DSH_BIN` → `PATH` 的顺序查找，找不到会 **skip**（TAP 里是 `ok … # SKIP`，**不是**通过）。所以 L2 的结论必须带 `DSH_BIN` 跑；不带的话 52 条里那 5 条 L2 静默 skip，`npm test` 仍显示全绿。
+L2 需要一个 `dsh` 可执行文件（仓库不内置）。它按 `DSH_BIN` → `PATH` 的顺序查找，找不到会 **skip**（TAP 里是 `ok … # SKIP`，**不是**通过）。所以 L2 的结论必须带 `DSH_BIN` 跑；不带的话 61 条里那 6 条 L2 静默 skip，`npm test` 仍显示全绿。
 
 ```sh
 npm test                                 # L1 + L2
@@ -62,8 +63,9 @@ npm i -g @deepseek-ai/dsh@0.1.5-rc.2
 - `test/skill-root.test.mjs` — L1：`resolveSkillRoot` 三态（§1.0）+ 纯 JS 打包（§1.4.2）
 - `test/restrict.test.mjs` — L1：`evalConfig.tools` 能力名 → DSH 工具名的映射与 `restrict()` 生效路径
 - `test/evidence.test.mjs` — L1：`.dshc` 只留 `approval/*`、`permission/*`、按 `cwd` 归属会话、超长字段截断、`integrity` 口径、无持久化时的降级
+- `test/eval-state.test.mjs` — L1：评估条件的落盘 / 恢复 / 清理 / 损坏与形状不对时的容错；用"同一工作区第二次 `apply()`"模拟重启，断言条件回到新 agent 的工具面（`restrict` 收到 allow），并验证优先级（平台条件 > 配置默认）与回落
 - `test/guidance.test.mjs` — L1：引导段的注册面（段名前缀、排序位、文字要点）与 skill 的合法性（kebab-case 名、描述 ≤ 目录渲染上限、`source` 必须是字符串）；以及缺 `systemPrompt` / `skills` 时的软依赖行为与卸载撤销
-- `test/dsh-e2e.test.mjs` — L2（5 条）：真跑 `dsh --profile headless`，断言工具进入模型工具面、`restrict` 收窄生效、claim 之后同一会话即受约束、`.dshc` 采到本会话的审计事件、引导与 skill **真的到达模型**（system prompt 段 + skill 目录 + `skill` 工具加载正文）
+- `test/dsh-e2e.test.mjs` — L2（6 条）：真跑 `dsh --profile headless`，断言工具进入模型工具面、`restrict` 收窄生效、claim 之后同一会话即受约束、`.dshc` 采到本会话的审计事件、引导与 skill **真的到达模型**（system prompt 段 + skill 目录 + `skill` 工具加载正文）、**重启进程后条件仍被钉定**
 
 ## 学生如何使用
 
@@ -121,6 +123,18 @@ dsh --profile nju-lab-student --no-open
 - `tools` 需要 `ctx.tools.restrict({ allow })`，**waterfall 管不了工具集**（实现见 `src/host/restrict.ts`）
 - `timeoutSeconds` DSH 侧没有对应能力，仅作展示
 
+**跨进程持久化（`src/host/eval-state.ts`）**：闭包只活一个进程，而 DSH 每次启动都是新进程（headless 更是每条任务一个进程）。学生 claim 完关掉 DSH 再打开，条件就丢了 —— 工具面重新放开，等于"自测条件 ≠ 复验条件"。所以 claim 成功后把条件写进工作区：
+
+```
+<workspace>/nju-lab/pinned-eval-config.json
+{ "assignmentId": "...", "evalConfig": { ... }, "claimedAt": "..." }
+```
+
+- **启动时恢复**，且优先于配置里的 `evalConfig` 默认值（平台针对本学生下发的比静态默认更权威，否则一重启就退回默认，持久化就没意义了）；`agent/created` 时会话内的工具面随之收窄，面板也会显示条件来自哪个任务；
+- **平台本次没下发条件时清掉旧值**，避免上一个实验的限制被"继承"过来（那是无故收窄，可能让学生做不下去）；
+- 文件缺失静默跳过，损坏/形状不对只警告并忽略 —— 插件必须能在任何残留状态下正常启动；
+- 载体选工作区文件而不是 DSH 的 `ctx.storage`（storage-json 落在 `$DSH_HOME/storages/<域>`，语义上是设备级存储）：条件本来就绑定"这个工作区里的这次实验"，与领取物同处、学生可见可删，也与 `.dshc` 按会话 `header.cwd` 归属项目的口径一致。
+
 ### 4. 模型引导（`src/host/guidance.ts`）
 
 光有工具还不够 —— 模型得知道"什么时候该去平台上领任务、什么时候算改好了可以交"。两处引导：
@@ -151,7 +165,8 @@ dsh --profile nju-lab-student --no-open
 | 打包 / 解压 | ✅ 纯 JS（`src/host/zip.ts`：写 store、读 store + deflate），不依赖学生机器上的 `zip`/`unzip` |
 | ClaimPanel | ✅ 列表 / 领取 / 提交 / 显示钉定条件；host 路由已在真 `dsh web` 上验证（`GET /api/nju-lab.assignments` → 200）。交互与状态对齐 host 半：未解锁/无 token/未领取时按钮禁用并给出原因（`title` 提示），已领取后领取按钮变「已领取」、提交按钮才可用；动作结果渲染成可关闭的成功/失败横幅，并摊开落盘目录、每个下载物（名称/大小/路径）、Skill 根、解压失败警告、submission id、两个 sha256 前缀与本地 ZIP 路径；截止时间过期标红 |
 | 登录与 token | ✅ 插件侧两个来源：DSH **设置页**的 `nju-lab` 节（`ctx.settings.installSection`，即时生效）+ `NJU_LAB_TOKEN` 环境变量作默认；缺失/被拒给可读提示。平台侧 `POST /api/me/tokens` + `revoke`（D-Lite+，`tokenVersion` 整体吊销）已实测可用 |
-| 测试 | ✅ 52 条（47 L1 + 5 L2），带 `DSH_BIN` 真跑 `dsh` 时 **52 pass / 0 fail / 0 skip**；不带则 5 条 L2 静默 skip。真模型也验证过会自己调用工具 |
+| 评估条件跨进程持久化 | ✅ `src/host/eval-state.ts`：claim 后写 `<workspace>/nju-lab/pinned-eval-config.json`，启动时恢复（优先于配置里的默认值），平台本次未下发条件时清掉旧值；文件损坏/形状不对只警告并忽略。L2 实测：两趟**独立** `dsh` 进程，第二趟一启动工具面就已被收窄（含 `bash`、不含 `web_fetch`） |
+| 测试 | ✅ 61 条（55 L1 + 6 L2），带 `DSH_BIN` 真跑 `dsh` 时 **61 pass / 0 fail / 0 skip**；不带则 6 条 L2 静默 skip。真模型也验证过会自己调用工具 |
 | 模型引导 | ✅ `src/host/guidance.ts`：常驻 system prompt 段（`nju-lab:workflow`，order 1800）+ 通过 `ctx.skills.register()` 注册的 `nju-lab-experiment` skill（目录 + 按需加载 + `/nju-lab-experiment`）。L2 实测（真 headless DSH）：引导文字出现在请求的 system 消息里，skill 目录列出该名字，模型调 `skill` 后拿回 `<skill_content name="nju-lab-experiment">` 正文 |
 | `evalConfig.tools` 白名单 | ✅ 能力名 → DSH 工具名映射（`shell`→`bash`、`fs`→`read/write/edit/glob/grep`），在 `agent/created` 用 `agent.ctx.tools.restrict({ allow })` 生效，并在 claim 之后对**已存在**的 agent 补一刀。未知能力名忽略并显式警告 |
 | 证据包 `.dshc` | ✅ 真实实现：`collectEvidence()` 经 `ctx.sessionPersistence` 取**本工作目录下各会话**（按 `header.cwd` 归属，跨多次 DSH 启动）→ 按 `approval/`、`permission/` 前缀筛审计事件 → 递归脱敏（字符串 200 / 数组 50 / 深度 6）→ `buildCapsule()` 产出 `nju-lab.capsule/v1`（`sessions` + `auditEvents` + sha256 `integrity`，`note` 不入哈希）落盘 `evidence.dshc` → 上传并以 `capsuleFileId` 提交，`auditEvents` 一并交给平台。采集失败只记 `note`，**不阻断提交**。L2 实测（真 headless DSH）：17 个会话事件 → 2 条审计事件（`permission/preset`、`approval/policy`），无降级 |

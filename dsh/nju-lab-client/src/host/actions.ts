@@ -12,6 +12,7 @@ import { constants } from 'node:fs'
 
 import { fileSha256, type Assignment, type PlatformApi, type StoredFileInfo } from './api.ts'
 import type { EvalConfig } from './config.ts'
+import { clearPinnedEvalConfig, savePinnedEvalConfig } from './eval-state.ts'
 import { buildCapsule, type AuditEvent, type EvidenceSession } from './evidence.ts'
 import { buildZip, extractZip } from './zip.ts'
 
@@ -102,6 +103,11 @@ export interface NjuLabActions {
   assignmentDir(assignmentId: string): string
   /** 当前钉定的评估条件（claim 后写入；供面板显示锁定状态）。 */
   currentEvalConfig(): EvalConfig | undefined
+  /**
+   * 当前钉定条件来自哪个任务（claim 时记录，并在重启后从工作区恢复）。
+   * 用于面板提示"这条条件是哪次 claim 带来的"。
+   */
+  currentPinnedFrom(): string | undefined
   listAssignments(): Promise<Assignment[]>
   claimAssignment(assignmentId: string): Promise<ClaimOutcome>
   /**
@@ -133,8 +139,10 @@ async function collectFiles(root: string): Promise<Array<{ rel: string; abs: str
 export interface CreateActionsOptions {
   /** 落盘根目录；默认进程工作目录。 */
   workspaceDir?: string
-  /** 初始评估条件（来自插件配置）；claim 后会被平台下发值覆盖。 */
+  /** 初始评估条件（来自插件配置，或启动时从工作区恢复的钉定值）；claim 后会被平台下发值覆盖。 */
   initialEvalConfig?: EvalConfig
+  /** 初始钉定来源任务（启动时从工作区恢复的）；claim 时会被覆盖。 */
+  initialPinnedFrom?: string
   /** claim 拿到 evalConfig 后回调，用于钉死后续模型请求的条件。 */
   onEvalConfig?: (next: EvalConfig | undefined) => void
   /**
@@ -156,11 +164,14 @@ export function createActions(
     join(workspaceRoot, 'nju-lab', assignmentId)
 
   let evalConfig: EvalConfig | undefined = options.initialEvalConfig
+  /** 这份条件来自哪个任务：claim 时写入；启动时可能由 index.ts 从工作区恢复。 */
+  let pinnedFrom: string | undefined = options.initialPinnedFrom
 
   return {
     workspaceRoot,
     assignmentDir,
     currentEvalConfig: () => evalConfig,
+    currentPinnedFrom: () => pinnedFrom,
 
     listAssignments: () => api.myAssignments(),
 
@@ -168,6 +179,24 @@ export function createActions(
       const result = await api.claim(assignmentId)
       evalConfig = result.evalConfig ?? undefined
       options.onEvalConfig?.(evalConfig)
+
+      // 跨进程持久化（见 `eval-state.ts` 顶部注释）：DSH 每次启动都是新进程，条件不落盘
+      // 的话，学生关掉再打开就丢了 —— 工具面会重新放开，等于"自测条件 ≠ 复验条件"。
+      if (result.evalConfig) {
+        try {
+          savePinnedEvalConfig(workspaceRoot, assignmentId, result.evalConfig)
+        } catch (error) {
+          // 不阻断领取：本次会话内的钉定仍然生效，只是重启后不再恢复。
+          console.warn(
+            `[nju-lab-client] 评估条件落盘失败（重启后将无法恢复钉定）：${(error as Error).message}`,
+          )
+        }
+        pinnedFrom = assignmentId
+      } else {
+        // 平台这次没下发条件 → 清掉旧的，别把上个实验的限制"继承"到这次。
+        clearPinnedEvalConfig(workspaceRoot)
+        pinnedFrom = undefined
+      }
 
       const dir = assignmentDir(assignmentId)
       await mkdir(dir, { recursive: true })

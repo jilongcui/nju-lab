@@ -97,6 +97,7 @@ resolveSkillRoot(dir):
 - claim 成功后：把模板 ZIP 与数据集**真实下载**到工作区（建议 `nju-lab/<assignmentId>/` 下），校验 sha256，模板 ZIP 解压为 Skill 目录骨架。
 - evalConfig 映射：server 字段为 `model/reasoningEffort/tools/timeoutSeconds`。**模型与 effort 的权威事实（2026-09-21 对官方 API 实测）**：可用模型 `deepseek-flash` / `deepseek-v4-pro`；`reasoning_effort` 合法值 `none|minimal|low|medium|high|xhigh|max`。⚠️ DSH 层面注意：`agent/request` waterfall 钉 `reasoningEffort` 会被 dsh-llm-deepseek 拒绝（UNSUPPORTED_REASONING_EFFORT）——effort 只能通过 profile config 层生效（复验容器就是这么做的），插件不要钉它；插件 `EvalConfig` 类型里的 `'off'|'low'|'high'|'max'` 枚举与事实不符，需修正。`agent/request` 只能钉 provider/model/reasoningEffort/maxTokens；**`tools` 白名单要用 `ctx.tools.restrict()` 实现**；`timeoutSeconds` 无法钉，记录到面板展示即可。
 - 回复文案改成真实路径（不再打印 templateUrl/datasetUrl）。
+- **补记（2026-09-21）**：claim 下发的 `evalConfig` 必须**跨进程持久化** —— DSH 每次启动都是新进程（headless 每条任务一个进程），只存闭包会丢条件、工具面会在重启后重新放开，等于"学生自测条件 ≠ 复验条件"。实现：claim 时写 `<workspace>/nju-lab/pinned-eval-config.json`，`apply()` 启动时读回（**优先于配置里的默认值**），平台本次未下发条件时清掉旧值。见 `src/host/eval-state.ts`；测试 `test/eval-state.test.mjs` + L2「重启 DSH 后评估条件仍被钉定」（两趟独立进程）。
 
 ### 1.4 新增 `nju_lab_submit` 工具
 
