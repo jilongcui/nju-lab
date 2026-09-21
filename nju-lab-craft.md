@@ -67,7 +67,7 @@ NJU-Lab 是一个 **"课程 + 实验"一体化的 Skill 工程实验平台**—�
 
 ## 四、核心实体与数据模型（已实现，MySQL）
 
-平台服务持久化以下实体（MySQL 8.0，TypeORM；开发期 `synchronize: true`，生产前需切换 migrations）：
+平台服务持久化以下实体（MySQL 8.0，TypeORM；schema 由 migrations 管理，`synchronize: false` + `migrationsRun: true`）：
 
 ```
 User            用户
@@ -169,7 +169,7 @@ nginx（443 ssl，80→443 301）
 - 前端产物不放 `/home/ubuntu`（750 权限 www-data 不可读），统一放 `/var/www/nju-lab/dist`
 - nginx `sites-enabled/` 下所有文件（包括 `.bak`）都会被加载，备份必须移出该目录
 - 前端重新部署：`npm run build` → 替换 `/var/www/nju-lab/dist` → `chown -R www-data:www-data`
-- 后端以开发方式运行（`npm run start:dev`），生产化（pm2/systemd 常驻）待做
+- 后端已 systemd 常驻（`/etc/systemd/system/nju-lab.service`，`node dist/main.js`，Restart=always）
 
 ## 六、平台服务（自研后端）实现
 
@@ -325,14 +325,14 @@ GET    /api/me/evaluations/:id          查看自己的复验结果与反馈
 
 已完成：学生管理（名单/添加/移出）、课程/章节/项目删除、待批改工作台、提交状态内嵌、章节发布/下线
 已完成（DSH 侧，2026-09-21）：`nju-lab-client` 定制客户端插件全链路 —— 右侧栏任务面板（领取 / 提交 / 钉定条件展示 + 错误提示）、`agent/request` 条件锁定 + `ctx.tools.restrict()` 工具面收窄、**评估条件跨进程持久化**（claim 写盘 + 启动恢复，重启或分次 headless 运行都不丢钉定）、真实模板与数据集下载校验（含 Skill 根探测）、提交（ZIP + `.dshc` 证据包 + 审计事件）、模型引导（system prompt 段 + `nju-lab-experiment` skill）；真实容器复验（`DockerEvaluationRunner`）
-未完成：审计事件展示深化、CSV 导出
+未完成：审计事件展示深化；~~CSV 导出~~（2026-09-21 已有：项目级成绩 CSV）
 
 ### 第三阶段：平台化与扩展（未开始）
 
 - DSH 接入：第〇阶段实证 + 真实容器复验（headless + 断网 + approval=never）+ 学生端 profile 配置脚本
 - 对象存储（S3/OSS；当前 files 模块为本地磁盘存储，生产化时替换）
 - 学科工具包、自动评分辅助、参考技能库（SkillLibrary）
-- 学校统一认证（新增 AuthProvider）、成绩系统对接、数据库 migrations、后端常驻化（pm2/systemd）
+- 学校统一认证（新增 AuthProvider）、成绩系统对接；~~数据库 migrations、后端常驻化~~（2026-09-21 已完成）
 
 ## 十一、风险与对策
 
@@ -348,7 +348,7 @@ GET    /api/me/evaluations/:id          查看自己的复验结果与反馈
 | 教师技术门槛高 | 推广困难 | 培训材料 + 批改指南；批改页以客观数据为主 |
 | LLM 调用成本 | 预算 | DeepSeek 模型成本约为 Claude 系 1/10~1/30；每生 token 配额；班级成本监控 |
 | DSH Web 相关的已知漏洞（#381/#451 等） | 学生本地安全 | DSH Web 只绑 loopback（默认即如此）；提醒学生不要用未知补丁绕过 |
-| 弱口令账号 | 平台安全 | 种子账号仅用于开发；上线前强制改密（修改密码功能待加） |
+| 弱口令账号 | 平台安全 | 种子账号仅用于开发；上线前用修改密码功能（已实现）逐个更换 |
 
 ## 十二、总结
 
@@ -370,7 +370,7 @@ GET    /api/me/evaluations/:id          查看自己的复验结果与反馈
 | 线上入口 | https://lab.xiaohe.biz（nginx → 静态 `/var/www/nju-lab/dist` + `/api/` → `127.0.0.1:3100`） |
 | 数据库 | Docker 容器 `nju-lab-mysql`（MySQL 8.0，127.0.0.1:3306，库 `nju_lab`） |
 | 种子账号 | `admin/admin123`（管理员）、`teacher/teacher123`（教师）、`student1/student123`（学生） |
-| 启动 | 后端 `cd server && npm run start:dev`；前端改动需 `npm run build` 并替换 `/var/www/nju-lab/dist` |
+| 启动 | 后端生产常驻：`systemctl start nju-lab`（unit `/etc/systemd/system/nju-lab.service`，`node dist/main.js`，Restart=always；发布 = `npm run build && sudo systemctl restart nju-lab`）；开发调试 `npm run start:dev`。前端改动需 `npm run build` 并替换 `/var/www/nju-lab/dist` |
 | DSH 客户端插件（agent 侧） | `dsh/nju-lab-client/`（host + client 双半）：安装步骤与当前实现状态见 `dsh/nju-lab-client/README.md`，入口约定见 `dsh/README.md`；测试 `DSH_BIN=/path/to/dsh npm test`（61 条 = 55 L1 + 6 L2） |
 
 ### 并行开发遗留问题的教训（已修复，供后续参考）
@@ -382,6 +382,6 @@ GET    /api/me/evaluations/:id          查看自己的复验结果与反馈
 1. ~~复验为 Mock~~ 已解决（2026-09-21）：`DockerEvaluationRunner` 上线——一次性容器（dsh headless + approval=never + 资源限额 + SNI 白名单网络隔离）跑 baseline/treatment + LLM judge，`EVALUATION_RUNNER=mock|docker` 可切换。`evalConfig.model`/`reasoningEffort` 逐项目映射已实现。网络隔离：`nju-verify-egress` internal 网络 + nginx stream ssl_preread 白名单代理（api.deepseek.com / api.moonshot.cn），负向实测通过
 2. ~~提交物/模板/数据集只存字符串引用~~ 已解决（2026-09-21）：files 模块落地本地磁盘存储（`server/uploads/`），`POST /api/files` 上传（服务端算 sha256）、`GET /api/files/:id` 下载；项目改挂 `skillTemplateFileId`/`testDatasetFileId`；claim 下发真实下载地址；submit 支持 fileId 模式（归属与哈希服务端校验）。遗留：文件下载仅 UUID 能力凭证 + 登录，无细粒度鉴权；对象存储未接
 3. 项目 PATCH（整体替换）与课程 PATCH（部分更新）语义不一致，待统一
-4. TypeORM `synchronize: true` 开发模式，生产前需 migrations；后端以 start:dev 运行，需常驻化
-5. 无单元测试；无修改密码接口；种子账号为弱口令
-6. SkillLibrary、CSV 导出、章节自测题、成绩汇总未实现（第三阶段范围）
+4. ~~TypeORM synchronize + 常驻化~~ 已解决（2026-09-21）：migrations 上线（`synchronize: false` + `migrationsRun: true`，初始迁移 `server/src/migrations/1790002605000-InitialSchema.ts`，空库实测零 diff）；后端 systemd 常驻（`/etc/systemd/system/nju-lab.service`）
+5. ~~无修改密码接口~~ 已解决（2026-09-21：`POST /api/me/password`，改后 tokenVersion+1 全端失效；Web 弹窗）。仍遗留：无单元测试；种子账号为弱口令（可用修改密码功能逐个更换）
+6. SkillLibrary、章节自测题、成绩汇总未实现（第三阶段范围）；~~CSV 导出~~ 已有（`GET /api/projects/:id/grades.csv`）

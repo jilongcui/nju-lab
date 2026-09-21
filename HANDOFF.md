@@ -140,5 +140,5 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 
 ## 6. 协作方式备忘
 
-- 前后端联调纪律见第 3.3 条；改后端后需重启后台任务（或让主对话重启）；改前端后需重新 build + 部署 /var/www
-- 每完成一块，同步更新 `nju-lab-craft.md` §13（实现现状）与本 HANDOFF
+- 前后端联调纪律见第 3.3 条；改后端后 `cd server && npm run build && sudo systemctl restart nju-lab`（或开发期 `start:dev` 重启）；改前端后需重新 build + 部署 /var/www
+- 每完成一块，同步更新 `nju-lab-craft.md` §13（实现现状）与本 HANDOFF；代码提交进 git（main 分支）
