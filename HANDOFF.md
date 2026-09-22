@@ -39,6 +39,24 @@ NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已�
 | 端口注意 | 本机 3000/5173 被其他项目占用，所以后端用 3100；服务器内存紧张（~1.4G 可用）、磁盘紧张（~10G） |
 | DSH 版本 | 锁定 `@deepseek-ai/dsh@0.1.5-rc.2`（rc 阶段官方明示破坏性变更，学期内不升级） |
 
+### 2.1 第二部署点：njuserver（`http://medai.nju.edu.cn/lab`，2026-09-22）
+
+与本机**并存**运行，数据是 2026-09-22 时点的全量拷贝，之后两边独立演化。
+
+| 项 | 值 |
+|---|---|
+| 机器 | `ssh njuserver`（124.221.233.118:6001，ubuntu，sudo 有密码） |
+| 入口 | `http://medai.nju.edu.cn/lab/`（**HTTP，无 443**；公网流量经校园网关到本机 :80，网关只认 Host） |
+| nginx | `/etc/nginx/sites-enabled/cms.conf` 的 medai server 块内新增 3 个 location：`/lab/api/`→`127.0.0.1:3100/api/`（去前缀，read_timeout 660s）、`/lab/`→`root /var/www`（SPA + `/lab/kit/` 安装包，try_files 回退 `/lab/index.html`）、`= /lab`→301。改动前备份在 `~/cms.conf.bak-20260922` |
+| 代码/数据 | `~/nju-lab/server`（含 uploads、.env 已改为本机 DB 密码与 `PUBLIC_BASE_URL=http://medai.nju.edu.cn/lab`）；Node v24.14.0 在 `~/opt/node24`（用户态，系统 Node 是 22） |
+| 静态产物 | `/var/www/lab/`（`index.html`+`assets`+`kit/`），www-data 所有；**前端须用 `VITE_BASE=/lab/ npm run build` 构建**，部署 `cp -r dist/. /var/www/lab/` |
+| 数据库 | 系统 MySQL 8.0（127.0.0.1:3306），库/用户 `nju_lab`（随机密码在 server/.env） |
+| 服务 | `systemctl` 单元 `nju-lab.service`（`~/nju-lab/nju-lab.service` 有副本）。**不要加 PrivateTmp/ProtectSystem**——runner 靠 `/tmp` 给容器 bind-mount，PrivateTmp 会导致挂载为空、复验全挂（2026-09-22 踩过） |
+| Docker | ubuntu 在 docker 组；docker.io 直连不通，走 `swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/<img>` 拉取后 tag 回原名（`nginx:alpine` 已就位）；**`nju-lab-verify:0.1.5-rc.2` 是生产的 `docker save/load` 拷贝**——异地重建会因 `node:22-slim` 漂浮 tag 拿到老基底导致 sharp 加载失败、复验全挂（Dockerfile 已改钉 `node:22.23.2-slim`，但跨机仍以 save/load 为准） |
+| 学生安装包 | 变体 kit（serverUrl 指向 `http://medai.nju.edu.cn/lab/api`）：`cd dsh/kit && PLATFORM_URL=http://medai.nju.edu.cn/lab ./build-kit.sh`，产物放 `/var/www/lab/kit/` |
+| 注意 | ① 该机 :80 上 dify 的 `/api`、`/agent` 等 502 是**部署前既有状态**（dify 未运行，与本次无关）；② 本机（lab.xiaohe.biz 这台）DNS 解析不到 medai.nju.edu.cn，公网验证须从校园网做；③ **该机 CPU 是 QEMU vCPU（无 SSE4.2/POPCNT，不达 x86-64-v2）**，sharp prebuilt 被拒会让 dsh 启动即崩——复验 profile 已禁用 `attachment-local`（见 verify-image profile 注释），若重装该机 VM 建议 CPU 改 host-passthrough |
+
+
 常用验证：
 
 ```bash

@@ -1,4 +1,5 @@
 import client from './client';
+import { apiUrl } from '../config';
 import type {
   Assignment,
   Chapter,
@@ -34,7 +35,7 @@ export const uploadFile = (file: File) => {
 
 /** 经 axios（带 JWT）下载存储文件并触发浏览器保存 */
 export const downloadStoredFile = async (info: StoredFileInfo) => {
-  const blob = await client.get<unknown, Blob>(info.url, {
+  const blob = await client.get<unknown, Blob>(apiUrl(info.url), {
     responseType: 'blob',
     timeout: 120000,
   });

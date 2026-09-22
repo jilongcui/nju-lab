@@ -1,10 +1,13 @@
 import { Button, Card, Steps, Typography } from 'antd';
 import { CloudDownloadOutlined } from '@ant-design/icons';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
+import { withBase } from '../../config';
 
 const { Title, Paragraph, Text } = Typography;
 
 export default function ClientDownload() {
+  // 当前部署的平台 API 地址（根/子目录部署自适应）
+  const serverUrl = `${window.location.origin}${withBase('api')}`;
   useAuxiliaryPanel(
     '关于学生端',
     <div>
@@ -26,7 +29,7 @@ export default function ClientDownload() {
           type="primary"
           size="large"
           icon={<CloudDownloadOutlined />}
-          href="/kit/nju-lab-student-kit.zip"
+          href={withBase('kit/nju-lab-student-kit.zip')}
           download
         >
           下载 nju-lab-student-kit.zip
@@ -57,8 +60,7 @@ export default function ClientDownload() {
             },
             {
               title: '启动并填写配置',
-              description:
-                '终端运行 dsh --profile nju-lab-student，浏览器打开后进入 设置 → nju-lab：serverUrl 填 https://lab.xiaohe.biz/api，token 粘贴上一步的 token。',
+              description: `终端运行 dsh --profile nju-lab-student，浏览器打开后进入 设置 → nju-lab：serverUrl 填 ${serverUrl}，token 粘贴上一步的 token。`,
             },
           ]}
         />

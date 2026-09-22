@@ -4,6 +4,7 @@ import { Alert, Button, Card, Form, Input, Typography, theme } from 'antd';
 import { ExperimentOutlined, LockOutlined, UserOutlined } from '@ant-design/icons';
 import { login } from '../../api';
 import { useAuthStore } from '../../stores/auth';
+import { withBase } from '../../config';
 
 const { Title, Text } = Typography;
 
@@ -70,7 +71,7 @@ export default function Login() {
             block
             style={{ marginTop: 12 }}
             onClick={() => {
-              window.location.href = '/api/auth/cas/login';
+              window.location.href = withBase('api/auth/cas/login');
             }}
           >
             南京大学统一认证登录

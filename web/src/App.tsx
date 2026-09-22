@@ -83,7 +83,10 @@ const router = createBrowserRouter([
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },
-]);
+], {
+  // 子目录部署（VITE_BASE=/lab/）时路由挂在 /lab 下
+  basename: import.meta.env.BASE_URL,
+});
 
 export default function App() {
   return <RouterProvider router={router} />;

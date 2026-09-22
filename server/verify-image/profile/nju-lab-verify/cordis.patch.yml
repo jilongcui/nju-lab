@@ -58,3 +58,9 @@
 # headless 一次性运行不需要 LLM 起会话标题，关掉省一次额外请求。
 - id: session-title-llm
   disabled: true
+
+# 复验不处理图片附件。attachment-local 依赖 sharp，其 prebuilt 二进制要求
+# x86-64-v2 指令集（SSE4.2/POPCNT），在老 QEMU 虚拟机（如 njuserver）上会
+# 让整个 cordis 插件加载器崩溃、dsh 启动即退出 1（2026-09-22 实测），禁用。
+- id: attachment-local
+  disabled: true

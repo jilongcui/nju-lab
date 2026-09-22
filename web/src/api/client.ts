@@ -2,9 +2,10 @@ import axios, { AxiosError } from 'axios';
 import { message } from 'antd';
 import type { ApiResponse } from '../types';
 import { useAuthStore } from '../stores/auth';
+import { withBase } from '../config';
 
 const client = axios.create({
-  baseURL: '/api',
+  baseURL: withBase('api'),
   timeout: 15000,
 });
 
@@ -31,8 +32,9 @@ client.interceptors.response.use(
   (error: AxiosError<ApiResponse>) => {
     if (error.response?.status === 401) {
       useAuthStore.getState().logout();
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
+      const loginPath = withBase('login');
+      if (window.location.pathname !== loginPath) {
+        window.location.href = loginPath;
       }
       message.error('登录已过期，请重新登录');
     } else {
