@@ -157,7 +157,7 @@ dsh --profile nju-lab-student --no-open
 | 能力 | 状态 |
 | --- | --- |
 | 构建 / host 半加载 | ✅ 已验证：`npm run build` 产出 `lib/`，`dsh --profile nju-lab-student` 启动出现 `[nju-lab-client] host half loaded` |
-| client 半挂载 | ✅ 两阶段注册（tab type + body + title），写法对照官方 `dsh-client-ui-sidebar-files` |
+| client 半挂载 | ✅ Playwright 真实浏览器验证（2026-09-22）：CJS + `__ModuleLoader__.load` 外壳被模块系统接受；tab 两阶段注册（type + body + title）生效，`guide` 入口 + 轮询 `sidebarRight.openTab` 自动展开右栏并渲染 ClaimPanel；设置卡片经 `settingsScope` 写入落盘 `settings.yaml` |
 | `nju_lab_list_assignments` | ✅ 已实现 |
 | `nju_lab_claim` | ✅ 真实下载 + sha256 校验 + 解压；真实平台联调通过 |
 | `nju_lab_submit` | ✅ 打包/哈希/上传/提交；真实平台联调后库里是 `skillZipRef=file:<id>` |
@@ -226,6 +226,8 @@ dsh: UNSUPPORTED_REASONING_EFFORT: provider "deepseek-official" model "deepseek-
 - client 半产物必须是**自注册的 classic script**：`window.__ModuleLoader__.load({ id, factory })`，工厂体内是 CJS（`require` / `module.exports`）。combo 路由按字节原样拼接各包产物，发 ESM 会让整个 combo 脚本在浏览器 parse 阶段就 SyntaxError（`import outside a module`），**同脚本内所有包的工厂都注册不上**（报 `loaded without registering ... via __ModuleLoader__.load`）。`tsdown.config.ts` 里用 `format: 'cjs'` + `build:done` 钩子包外壳（不能用 rolldown banner/footer，会让 dts 的 fake-js 解析失败）。
 - client 侧的类型增强（`ctx.slots`、`ctx.sidebarRightTabs`）声明在包的 **`./client` 子路径**，`import type {} from '<pkg>/client'` 才会生效。
 - **服务访问需要 inject**：`ctx.foo` 在未注入时直接抛 `cannot get property "foo" without inject`，所以"运行时探测某服务在不在"是行不通的。要可选依赖，用 `ctx.inject(['foo'], (scoped) => { ... })`（服务不出现就不执行）。`connection`/`settings` 只在 `dsh web` 下存在，headless 没有 —— 硬写进 `inject` 数组会让插件在 headless 下**整个加载失败**。
+- **tab 注册 ≠ tab 可见**：右栏停靠面每会话一份、刷新后回折叠态，且只在选中会话时挂载席位。tab 类型要加 `guide` 入口才会上引导页（省略即不上）；要主动展开就用 `ctx.sidebarRight.openTab(kind)`（写操作在无挂载会话面时抛错，我们轮询到首次成功）。契约全文见官方子系统文档《右侧 Sidebar》。
+- **设置页要两个半侧配合**（官方 cookbook《新增设置卡片》）：Host 半 `installSection` 只喂命名空间；设置页插件配置 tab 只渲染有卡片认领的命名空间 —— 卡片由 client 半注册到 `settings.plugin.item`（key = 命名空间），用 `ctx.settingsScope.bind({ namespace })` 读写（`set`/`unset`，revision 设栅）。官方卡片的辅助组件不能跨包 import（bundle 纯净度门禁），卡片样式要自绘。
 
 **配置与设置页**
 

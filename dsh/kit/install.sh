@@ -51,7 +51,7 @@ cat <<MSG
 
   1. 启动：dsh --profile nju-lab-student
   2. 浏览器打开后，点右侧栏「NJU-Lab」标签
-  3. 首次使用请在 设置 → nju-lab 填写：
+  3. 首次使用请在 设置 → Plugins →「NJU-Lab 平台」填写：
        serverUrl: https://lab.xiaohe.biz/api
        token:     登录平台 → 右上角头像 →「API Token」→ 生成
   （也可用环境变量预设：NJU_LAB_SERVER_URL / NJU_LAB_TOKEN）

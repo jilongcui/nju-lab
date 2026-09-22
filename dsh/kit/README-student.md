@@ -17,7 +17,7 @@
 
 1. 浏览器登录平台 https://lab.xiaohe.biz → 右上角头像 →「API Token」→「生成 token」→ 复制。
 2. 终端启动：`dsh --profile nju-lab-student`，浏览器自动打开（或手动打开提示的地址）。
-3. 打开 设置 → nju-lab：
+3. 打开 设置（左下 Settings）→ Plugins →「NJU-Lab 平台」卡片：
    - `serverUrl`：`https://lab.xiaohe.biz/api`
    - `token`：粘贴第 1 步的 token
 
