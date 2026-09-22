@@ -203,7 +203,7 @@ function Banner({ banner, onClose }: { banner: Banner; onClose: () => void }) {
   )
 }
 
-export function ClaimPanel() {
+export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | undefined }) {
   const [snapshot, setSnapshot] = useState<SnapshotDto | null>(null)
   const [banner, setBanner] = useState<Banner | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -211,7 +211,12 @@ export function ClaimPanel() {
 
   const load = useCallback(async () => {
     try {
-      setSnapshot(await call<SnapshotDto>(ROUTES.assignments))
+      // 带上当前会话 id：host 按会话工作区判断本地材料与落盘目录
+      const sessionId = getSessionId?.()
+      const url = sessionId
+        ? `${ROUTES.assignments}?sessionId=${encodeURIComponent(sessionId)}`
+        : ROUTES.assignments
+      setSnapshot(await call<SnapshotDto>(url))
     } catch (e) {
       setBanner({
         kind: 'error',
@@ -221,7 +226,7 @@ export function ClaimPanel() {
     } finally {
       setLoaded(true)
     }
-  }, [])
+  }, [getSessionId])
 
   useEffect(() => {
     void load()
@@ -232,12 +237,13 @@ export function ClaimPanel() {
     async (assignmentId: string, action: 'claim' | 'submit') => {
       setBusy(assignmentId)
       setBanner(null)
+      const sessionId = getSessionId?.()
       try {
         if (action === 'claim') {
           const outcome = await call<ClaimOutcomeDto>(ROUTES.claim, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ assignmentId }),
+            body: JSON.stringify({ assignmentId, sessionId }),
           })
           const details = [`落盘目录：${outcome.dir}`]
           for (const artifact of outcome.artifacts) {
@@ -257,7 +263,7 @@ export function ClaimPanel() {
           const outcome = await call<SubmitOutcomeDto>(ROUTES.submit, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ assignmentId }),
+            body: JSON.stringify({ assignmentId, sessionId }),
           })
           setBanner({
             kind: 'ok',
@@ -282,7 +288,7 @@ export function ClaimPanel() {
         setBusy(null)
       }
     },
-    [load],
+    [load, getSessionId],
   )
 
   const evalConfig = snapshot?.evalConfig ?? null

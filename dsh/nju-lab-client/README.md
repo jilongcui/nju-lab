@@ -100,7 +100,7 @@ dsh --profile nju-lab-student --no-open
 | 工具 | 行为 | 平台 API |
 | --- | --- | --- |
 | `nju_lab_list_assignments` | 列出任务：解锁状态、章节、截止时间、最新提交 | `GET /me/assignments` |
-| `nju_lab_claim` | 领取：**真实下载**模板与数据集到 `<workspace>/nju-lab/<id>/`、逐个校验 sha256、纯 JS 解压模板，并**探测真正的 Skill 根**（模板带顶层目录时是 `skill/csv-cleaner`）+ 钉死评估条件 | `POST /assignments/:id/claim`、`GET /files/:id` |
+| `nju_lab_claim` | 领取：**真实下载**模板与数据集到 `<会话工作区>/nju-lab/<id>/`、逐个校验 sha256、纯 JS 解压模板，并**探测真正的 Skill 根**（模板带顶层目录时是 `skill/csv-cleaner`）+ 钉死评估条件；claimed/submitted 幂等重发 | `POST /assignments/:id/claim`、`GET /files/:id` |
 | `nju_lab_submit` | 提交前自检 → 逐文件 sha256 → 打包 ZIP → 生成 `.dshc` → 上传两者 → 以 fileId 模式提交 | `POST /files`、`POST /assignments/:id/submit` |
 
 ### 2. 右侧栏面板（client 半）
@@ -109,7 +109,7 @@ dsh --profile nju-lab-student --no-open
 
 | 路由 | 语义 |
 | --- | --- |
-| `GET /api/nju-lab.assignments` | 首屏快照：任务列表 + 当前钉定条件 + 落盘目录 + `tokenConfigured` |
+| `GET /api/nju-lab.assignments` | 首屏快照：任务列表 + 当前钉定条件 + 落盘目录 + `tokenConfigured`（带 `?sessionId=` 时按会话工作区判定） |
 | `POST /api/nju-lab.claim` | `{ assignmentId }` → 领取结果（落盘点、解压目录、evalConfig） |
 | `POST /api/nju-lab.submit` | `{ assignmentId, skillDir?, note? }` → 提交结果 |
 
@@ -124,14 +124,15 @@ dsh --profile nju-lab-student --no-open
 - `tools` 需要 `ctx.tools.restrict({ allow })`，**waterfall 管不了工具集**（实现见 `src/host/restrict.ts`）
 - `timeoutSeconds` DSH 侧没有对应能力，仅作展示
 
-**跨进程持久化（`src/host/eval-state.ts`）**：闭包只活一个进程，而 DSH 每次启动都是新进程（headless 更是每条任务一个进程）。学生 claim 完关掉 DSH 再打开，条件就丢了 —— 工具面重新放开，等于"自测条件 ≠ 复验条件"。所以 claim 成功后把条件写进工作区：
+**跨进程持久化（`src/host/eval-state.ts`）**：闭包只活一个进程，而 DSH 每次启动都是新进程（headless 更是每条任务一个进程）。学生 claim 完关掉 DSH 再打开，条件就丢了 —— 工具面重新放开，等于"自测条件 ≠ 复验条件"。所以 claim 成功后把条件写进**会话工作区**：
 
 ```
-<workspace>/nju-lab/pinned-eval-config.json
+<会话工作区>/nju-lab/pinned-eval-config.json
 { "assignmentId": "...", "evalConfig": { ... }, "claimedAt": "..." }
 ```
 
-- **启动时恢复**，且优先于配置里的 `evalConfig` 默认值（平台针对本学生下发的比静态默认更权威，否则一重启就退回默认，持久化就没意义了）；`agent/created` 时会话内的工具面随之收窄，面板也会显示条件来自哪个任务；
+**落盘根解析（2026-09-22 起）**：材料、钉定文件、提交默认目录、证据归属都跟随**会话工作区**（UI 里选的 workspace），而不是 dsh 进程启动目录 —— 学生常在 `~/Downloads` 之类的地方启动 dsh，项目语义却全在会话工作区上。解析顺序：显式 `workspaceDir` 配置 → 会话 cwd（工具经 `exec.agent.id`、面板经 `sessionId`，host 用 sessionPersistence 解析）→ 进程启动目录（兜底）。恢复也按此对齐：**agent 创建时按它自己的 cwd 找回 pinned 条件**并收窄工具面；启动时从进程目录的恢复只作兜底。
+
 - **平台本次没下发条件时清掉旧值**，避免上一个实验的限制被"继承"过来（那是无故收窄，可能让学生做不下去）；
 - 文件缺失静默跳过，损坏/形状不对只警告并忽略 —— 插件必须能在任何残留状态下正常启动；
 - 载体选工作区文件而不是 DSH 的 `ctx.storage`（storage-json 落在 `$DSH_HOME/storages/<域>`，语义上是设备级存储）：条件本来就绑定"这个工作区里的这次实验"，与领取物同处、学生可见可删，也与 `.dshc` 按会话 `header.cwd` 归属项目的口径一致。

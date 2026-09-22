@@ -24,6 +24,7 @@
     "client": {
       "platform": "web",
       "inject": [
+        "@deepseek-ai/dsh-api-session-controller",
         "@deepseek-ai/dsh-client-ui-sidebar-right",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-settings-plugins"
@@ -47,6 +48,7 @@
   },
   "devDependencies": {
     "@deepseek-ai/dsh-agent": "^0.1.5-rc.2",
+    "@deepseek-ai/dsh-api-session-controller": "^0.1.5-rc.2",
     "@deepseek-ai/dsh-client-connection": "^0.1.5-rc.2",
     "@deepseek-ai/dsh-client-ui-renderer": "^0.1.5-rc.2",
     "@deepseek-ai/dsh-client-ui-settings": "^0.1.5-rc.2",

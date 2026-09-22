@@ -110,8 +110,9 @@ export function registerTools(ctx: Context, actions: NjuLabActions): void {
         schema: { type: 'string' },
         render: (_args: unknown, value: string) => [{ type: 'text', text: value }],
       },
-      async execute(args: { assignmentId: string }) {
-        return renderClaim(await actions.claimAssignment(args.assignmentId))
+      async execute(args: { assignmentId: string }, exec) {
+        // 会话工作区优先：材料落在调用方 agent 的 cwd，而不是进程启动目录
+        return renderClaim(await actions.claimAssignment(args.assignmentId, exec?.agent?.id))
       },
     }),
   )
@@ -130,11 +131,12 @@ export function registerTools(ctx: Context, actions: NjuLabActions): void {
         schema: { type: 'string' },
         render: (_args: unknown, value: string) => [{ type: 'text', text: value }],
       },
-      async execute(args: { assignmentId: string; skillDir: string; note?: string }) {
+      async execute(args: { assignmentId: string; skillDir: string; note?: string }, exec) {
         const outcome = await actions.submitAssignment(
           args.assignmentId,
           args.skillDir,
           args.note,
+          exec?.agent?.id,
         )
         return renderSubmit(outcome, args.note)
       },

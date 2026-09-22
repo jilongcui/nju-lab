@@ -12,7 +12,7 @@ import { constants } from 'node:fs'
 
 import { fileSha256, type Assignment, type PlatformApi, type StoredFileInfo } from './api.ts'
 import type { EvalConfig } from './config.ts'
-import { clearPinnedEvalConfig, savePinnedEvalConfig } from './eval-state.ts'
+import { clearPinnedEvalConfig, loadPinnedEvalConfig, savePinnedEvalConfig } from './eval-state.ts'
 import { buildCapsule, type AuditEvent, type EvidenceSession } from './evidence.ts'
 import { buildZip, extractZip } from './zip.ts'
 
@@ -98,9 +98,19 @@ export interface SubmitOutcome {
 }
 
 export interface NjuLabActions {
+  /** 兜底根：显式配置 workspaceDir，或进程启动目录（无会话上下文时使用）。 */
   readonly workspaceRoot: string
-  /** 领取物落盘与打包产物的目录。 */
-  assignmentDir(assignmentId: string): string
+  /**
+   * 本次操作的工作区根。解析顺序：显式 `workspaceDir` 配置 → 会话工作区
+   * （`sessionId` 经 `resolveSessionCwd` 解析）→ 进程启动目录。
+   *
+   * 为什么是会话工作区优先于启动目录：学生常在任意目录（~/Downloads）启动
+   * dsh，而项目语义（agent 读写、沙箱、Skill、提交打包）都绑在 UI 里选的
+   * 会话工作区上 —— 材料落在启动目录就是"下载了但找不到"。
+   */
+  resolveRoot(sessionId?: string): Promise<string>
+  /** 领取物落盘与打包产物的目录（随 resolveRoot 的会话工作区走）。 */
+  assignmentDir(assignmentId: string, sessionId?: string): Promise<string>
   /** 当前钉定的评估条件（claim 后写入；供面板显示锁定状态）。 */
   currentEvalConfig(): EvalConfig | undefined
   /**
@@ -108,22 +118,28 @@ export interface NjuLabActions {
    * 用于面板提示"这条条件是哪次 claim 带来的"。
    */
   currentPinnedFrom(): string | undefined
+  /**
+   * 从指定工作区恢复上次 claim 钉下的条件（agent 创建时按其 cwd 调用）。
+   * 返回是否恢复成功；成功时经 onEvalConfig 回调生效。
+   */
+  restorePinnedFor(workspaceRoot: string): boolean
   listAssignments(): Promise<Assignment[]>
   /**
    * 本地材料是否已落盘（换机、清理工作区后为 false）。
    * 平台侧的 claimed 状态是云端的，本地有没有文件要另判 —— 面板据此把
-   * 「已领取」换成「重新下载」（平台对 claimed 任务的 claim 是幂等重发）。
+   * 「已领取」换成「重新下载」（平台对 claimed/submitted 的 claim 是幂等重发）。
    */
-  isMaterialized(assignmentId: string): Promise<boolean>
-  claimAssignment(assignmentId: string): Promise<ClaimOutcome>
+  isMaterialized(assignmentId: string, sessionId?: string): Promise<boolean>
+  claimAssignment(assignmentId: string, sessionId?: string): Promise<ClaimOutcome>
   /**
-   * 提交一个 Skill 目录。`skillDir` 省略时用领取目录下的 `skill/`。
+   * 提交一个 Skill 目录。`skillDir` 省略时用领取目录下的 `skill/`（随会话工作区）。
    * 自检（经 {@link resolveSkillRoot}）失败会抛错，且**不发起任何上传**。
    */
   submitAssignment(
     assignmentId: string,
     skillDir?: string,
     note?: string,
+    sessionId?: string,
   ): Promise<SubmitOutcome>
 }
 
@@ -143,8 +159,13 @@ async function collectFiles(root: string): Promise<Array<{ rel: string; abs: str
 }
 
 export interface CreateActionsOptions {
-  /** 落盘根目录；默认进程工作目录。 */
+  /** 显式落盘根目录（优先级最高）；省略时按"会话工作区 → 进程启动目录"解析。 */
   workspaceDir?: string
+  /**
+   * 由 sessionId 解析会话工作区（host 半经 sessionPersistence 注入）。
+   * 缺席或解析失败时回落到进程启动目录。
+   */
+  resolveSessionCwd?: (sessionId: string) => Promise<string | undefined>
   /** 初始评估条件（来自插件配置，或启动时从工作区恢复的钉定值）；claim 后会被平台下发值覆盖。 */
   initialEvalConfig?: EvalConfig
   /** 初始钉定来源任务（启动时从工作区恢复的）；claim 时会被覆盖。 */
@@ -154,8 +175,9 @@ export interface CreateActionsOptions {
   /**
    * 收集 `.dshc` 的过程证据（会话审计事件）。由 host 半注入 —— 它需要
    * `ctx.sessionPersistence`。返回空也无妨，**绝不因此挡住提交**。
+   * 参数是本次提交归属的工作区根（随会话工作区）。
    */
-  collectEvidence?: () => Promise<{
+  collectEvidence?: (workspaceRoot: string) => Promise<{
     sessions: EvidenceSession[]
     auditEvents: AuditEvent[]
   }>
@@ -165,40 +187,62 @@ export function createActions(
   api: PlatformApi,
   options: CreateActionsOptions = {},
 ): NjuLabActions {
-  const workspaceRoot = resolve(options.workspaceDir ?? process.cwd())
-  const assignmentDir = (assignmentId: string): string =>
-    join(workspaceRoot, 'nju-lab', assignmentId)
+  const fallbackRoot = resolve(options.workspaceDir ?? process.cwd())
 
   let evalConfig: EvalConfig | undefined = options.initialEvalConfig
   /** 这份条件来自哪个任务：claim 时写入；启动时可能由 index.ts 从工作区恢复。 */
   let pinnedFrom: string | undefined = options.initialPinnedFrom
 
   return {
-    workspaceRoot,
-    assignmentDir,
+    workspaceRoot: fallbackRoot,
+
+    async resolveRoot(sessionId?: string): Promise<string> {
+      if (options.workspaceDir) return fallbackRoot
+      if (sessionId && options.resolveSessionCwd) {
+        const cwd = await options.resolveSessionCwd(sessionId).catch(() => undefined)
+        if (cwd) return resolve(cwd)
+      }
+      return fallbackRoot
+    },
+
+    assignmentDir(assignmentId: string, sessionId?: string): Promise<string> {
+      return this.resolveRoot(sessionId).then((root) => join(root, 'nju-lab', assignmentId))
+    },
+
     currentEvalConfig: () => evalConfig,
     currentPinnedFrom: () => pinnedFrom,
 
+    restorePinnedFor(workspaceRoot: string): boolean {
+      const pinned = loadPinnedEvalConfig(workspaceRoot)
+      if (!pinned) return false
+      evalConfig = pinned.evalConfig
+      pinnedFrom = pinned.assignmentId
+      options.onEvalConfig?.(evalConfig)
+      return true
+    },
+
     listAssignments: () => api.myAssignments(),
 
-    async isMaterialized(assignmentId: string): Promise<boolean> {
+    async isMaterialized(assignmentId: string, sessionId?: string): Promise<boolean> {
       try {
-        return (await readdir(assignmentDir(assignmentId))).length > 0
+        return (await readdir(await this.assignmentDir(assignmentId, sessionId))).length > 0
       } catch {
         return false
       }
     },
 
-    async claimAssignment(assignmentId: string): Promise<ClaimOutcome> {
+    async claimAssignment(assignmentId: string, sessionId?: string): Promise<ClaimOutcome> {
       const result = await api.claim(assignmentId)
       evalConfig = result.evalConfig ?? undefined
       options.onEvalConfig?.(evalConfig)
+
+      const root = await this.resolveRoot(sessionId)
 
       // 跨进程持久化（见 `eval-state.ts` 顶部注释）：DSH 每次启动都是新进程，条件不落盘
       // 的话，学生关掉再打开就丢了 —— 工具面会重新放开，等于"自测条件 ≠ 复验条件"。
       if (result.evalConfig) {
         try {
-          savePinnedEvalConfig(workspaceRoot, assignmentId, result.evalConfig)
+          savePinnedEvalConfig(root, assignmentId, result.evalConfig)
         } catch (error) {
           // 不阻断领取：本次会话内的钉定仍然生效，只是重启后不再恢复。
           console.warn(
@@ -208,11 +252,11 @@ export function createActions(
         pinnedFrom = assignmentId
       } else {
         // 平台这次没下发条件 → 清掉旧的，别把上个实验的限制"继承"到这次。
-        clearPinnedEvalConfig(workspaceRoot)
+        clearPinnedEvalConfig(root)
         pinnedFrom = undefined
       }
 
-      const dir = assignmentDir(assignmentId)
+      const dir = join(root, 'nju-lab', assignmentId)
       await mkdir(dir, { recursive: true })
 
       const artifacts: DownloadedArtifact[] = []
@@ -264,17 +308,20 @@ export function createActions(
       assignmentId: string,
       skillDir?: string,
       _note?: string,
+      sessionId?: string,
     ): Promise<SubmitOutcome> {
-      const given = resolve(skillDir ?? join(assignmentDir(assignmentId), 'skill'))
+      const root = await this.resolveRoot(sessionId)
+      const outDir = join(root, 'nju-lab', assignmentId)
+      const given = resolve(skillDir ?? join(outDir, 'skill'))
 
       // 1) 提交前自检：先经 resolveSkillRoot 找到真正的 Skill 根，不通过就直接抛，
       //    一个字节都不上传。
-      const root = await resolveSkillRoot(given)
-      const files = await collectFiles(root)
+      const skillRoot = await resolveSkillRoot(given)
+      const files = await collectFiles(skillRoot)
 
       // ZIP 内路径：Skill 根比 `given` 深一层时保留那层目录名 —— 即"单层顶层目录"
       // 风格（`csv-cleaner/SKILL.md`），与服务端复验的探测语义一致。
-      const prefix = root === given ? '' : `${basename(root)}/`
+      const prefix = skillRoot === given ? '' : `${basename(skillRoot)}/`
       const zipName = (rel: string): string => `${prefix}${toPosix(rel)}`
 
       // 2) 逐文件 sha256（防篡改登记），键与 ZIP 内路径一致
@@ -286,7 +333,6 @@ export function createActions(
       }
 
       // 3) 打包 ZIP（纯 JS，跳过 node_modules/.git）
-      const outDir = assignmentDir(assignmentId)
       await mkdir(outDir, { recursive: true })
       const zipPath = join(outDir, 'skill.zip')
       await writeFile(zipPath, buildZip(entries))
@@ -300,7 +346,7 @@ export function createActions(
       let evidenceNote: string | undefined
       if (options.collectEvidence) {
         try {
-          evidence = await options.collectEvidence()
+          evidence = await options.collectEvidence(root)
         } catch (error) {
           evidenceNote = `证据采集失败：${(error as Error).message}`
         }
@@ -326,7 +372,7 @@ export function createActions(
 
       return {
         assignmentId,
-        skillRoot: root,
+        skillRoot,
         fileCount: entries.length,
         zipPath,
         skillZip: { fileId: skillUpload.fileId, sha256: skillUpload.sha256 },

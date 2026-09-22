@@ -74,19 +74,23 @@ export function registerPanelRoutes(
     path: PANEL_ROUTES.assignments,
     methods: ['GET'],
     requestBody: 'buffered',
-    fetch: () =>
+    fetch: (request) =>
       guarded(
         async (): Promise<PanelSnapshot> => {
+          // 面板 tab 挂在会话上：带 sessionId 时按会话工作区判断本地材料与展示目录
+          const sessionId = new URL(request.url).searchParams.get('sessionId') ?? undefined
           // 没有 token 就不去碰平台：面板要渲染的是"去配置"的指引，而不是一个 502
           const assignments = options.tokenConfigured() ? await actions.listAssignments() : []
           const materialized = await Promise.all(
-            assignments.map(async (a) => ((await actions.isMaterialized(a.id)) ? a.id : null)),
+            assignments.map(async (a) =>
+              (await actions.isMaterialized(a.id, sessionId)) ? a.id : null,
+            ),
           )
           return {
             assignments,
             downloaded: materialized.filter((id): id is string => id !== null),
             evalConfig: actions.currentEvalConfig() ?? null,
-            workspaceDir: actions.workspaceRoot,
+            workspaceDir: await actions.resolveRoot(sessionId),
             tokenConfigured: options.tokenConfigured(),
             pinnedFrom: actions.currentPinnedFrom(),
           }
@@ -101,7 +105,10 @@ export function registerPanelRoutes(
     fetch: (request) =>
       guarded(async () => {
         const body = await readJson(request)
-        return actions.claimAssignment(requireString(body, 'assignmentId'))
+        return actions.claimAssignment(
+          requireString(body, 'assignmentId'),
+          typeof body.sessionId === 'string' ? body.sessionId : undefined,
+        )
       }),
   })
 
@@ -116,6 +123,7 @@ export function registerPanelRoutes(
           requireString(body, 'assignmentId'),
           typeof body.skillDir === 'string' ? body.skillDir : undefined,
           typeof body.note === 'string' ? body.note : undefined,
+          typeof body.sessionId === 'string' ? body.sessionId : undefined,
         )
       }),
   })

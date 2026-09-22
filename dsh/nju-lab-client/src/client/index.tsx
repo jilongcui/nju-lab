@@ -5,6 +5,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 
 import { ClaimPanel } from './ClaimPanel.tsx'
 import { SettingsCard, type NjuLabSettings } from './SettingsCard.tsx'
@@ -17,8 +18,9 @@ export const name = 'nju-lab-client/client'
  *  - `sidebarRightTabs`：注册 tab 类型（tab 两阶段注册的 stage one）
  *  - `sidebarRight`：导航控制器，自动打开本插件的 tab
  *  - `settingsScope`：设置卡片的命名空间读写（由 ui-settings 提供）
+ *  - `sessions`：读当前选中会话 id（面板把它带给 host，让材料落到会话工作区）
  */
-export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight', 'settingsScope']
+export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight', 'settingsScope', 'sessions']
 
 /**
  * 本插件在右侧栏的 tab 身份。
@@ -57,10 +59,15 @@ export function apply(ctx: Context): void {
   )
 
   // stage two：在 keyed slot 上按 key 提供内容。
+  // getSessionId 读当前选中会话（面板 tab 只在该会话的视图里挂载，current 即所属会话）；
+  // host 用它把领取材料/评估条件钉定落到**会话工作区**，而不是进程启动目录。
+  const getSessionId = () => ctx.sessions.list.getSnapshot().current
   ctx.effect(
     () =>
       ctx.slots.inject('sidebar.right.pane.tab', () =>
-        ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID }, ClaimPanel),
+        ctx.slots.register({ name: 'sidebar.right.pane.tab', key: TAB_ID }, () => (
+          <ClaimPanel getSessionId={getSessionId} />
+        )),
       ),
     'nju-lab-client: tab body',
   )

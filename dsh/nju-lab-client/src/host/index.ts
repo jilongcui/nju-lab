@@ -1,6 +1,8 @@
 import type { Context } from '@deepseek-ai/cordis'
 // 触发 cordis 的 Context 增强（`ctx.settings`），声明在 dsh-settings。
 import type {} from '@deepseek-ai/dsh-settings'
+// Events（`agent/created`）与 payload.agent 的增强声明。
+import type {} from '@deepseek-ai/dsh-agent'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import { resolve } from 'node:path'
 
@@ -71,18 +73,42 @@ export function apply(ctx: Context, config: Config): void {
     })
   })
 
+  // 按会话工作区恢复钉定：材料与 pinned 文件跟随会话 cwd 之后，"启动时从进程目录
+  // 恢复"覆盖不到"在 A 目录启动、在 UI 里选 B 工作区"的情形。agent 创建时按它
+  // 自己的 cwd 找 pinned-eval-config.json，找到就接管（经 onEvalConfig 收窄工具面）。
+  // 注意注册在 registerToolRestriction **之前**（见该函数的注册顺序说明）。
+  ctx.on('agent/created', ({ agent }) => {
+    void (async () => {
+      const cwd = await resolveSessionCwd(agent.id)
+      if (cwd && actions.restorePinnedFor(cwd)) {
+        console.log(`[nju-lab-client] 按会话工作区恢复评估条件（${cwd}）`)
+      }
+    })()
+  })
+
   // 先装限制器：claim 之后要把它作用到已存在的 agent（`applyToLiveAgents`）。
+  // 它的 agent/created 监听器必须注册在**本插件其它同名监听器之后**：上面的恢复
+  // 监听器先行，这里最后注册 —— cordis 全部照序触发；而单槽事件捕获的测试
+  // harness 只会看到最后注册的那个（restrict 的），行为断言才不会落空。
   const restriction = registerToolRestriction(ctx, () => evalConfig)
 
-  /** 会话持久化服务：用来导出 `.dshc` 的过程证据（headless 下可能不存在）。 */
+  /** 会话持久化服务：用来导出 `.dshc` 的过程证据，并解析会话工作区（headless 下可能不存在）。 */
   let persistence: SessionPersistence | undefined
   ctx.inject(['sessionPersistence'], (scoped) => {
     persistence = scoped.sessionPersistence
   })
 
+  /** 由 sessionId 解析会话工作区；服务缺席或会话不存在时返回 undefined（调用方回落启动目录）。 */
+  const resolveSessionCwd = async (sessionId: string): Promise<string | undefined> => {
+    if (!persistence) return undefined
+    const snapshots = await persistence.list().catch(() => [])
+    return snapshots.find((s) => s.header.id === sessionId)?.header.cwd
+  }
+
   const api = new PlatformApi(() => readConfig())
   const actions = createActions(api, {
     workspaceDir: config.workspaceDir,
+    resolveSessionCwd,
     initialEvalConfig: evalConfig,
     initialPinnedFrom: pinned?.assignmentId,
     onEvalConfig: (next) => {
@@ -92,9 +118,9 @@ export function apply(ctx: Context, config: Config): void {
       restriction.applyToLiveAgents()
     },
     // 证据包：导出本项目工作目录下各会话的审计事件。失败不阻断提交（见 actions.ts）。
-    collectEvidence: async () => {
+    collectEvidence: async (root) => {
       if (!persistence) throw new Error('sessionPersistence 服务不可用')
-      return collectEvidence(persistence, workspaceRoot)
+      return collectEvidence(persistence, root)
     },
   })
 
