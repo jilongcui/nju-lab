@@ -17,10 +17,12 @@ command -v npm >/dev/null 2>&1 || fail "未找到 npm"
 info "Node.js $(node -v) ✓"
 
 # 2. pnpm（dsh plugin install 需要）
-if ! command -v pnpm >/dev/null 2>&1; then
-  info "未找到 pnpm，尝试启用 corepack…"
-  corepack enable >/dev/null 2>&1 || true
-  command -v pnpm >/dev/null 2>&1 || npm i -g pnpm
+# corepack 的 pnpm 只是 shim，首次运行要从 registry.npmjs.org 下载本体，
+# 网络不通时会失败，所以要验证 pnpm 真正可用，而不是只看 PATH 里有没有。
+export COREPACK_NPM_REGISTRY="${COREPACK_NPM_REGISTRY:-$(npm config get registry)}"
+if ! pnpm -v >/dev/null 2>&1; then
+  info "pnpm 不可用（corepack 下载失败或未安装），改用 npm 安装…"
+  npm i -g pnpm
 fi
 info "pnpm $(pnpm -v) ✓"
 

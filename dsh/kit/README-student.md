@@ -41,5 +41,5 @@
 - **`dsh: command not found`**：重开终端，或确认 npm 全局 bin 在 PATH（`npm prefix -g`）。
 - **工具调用返回 401**：token 未配或已失效 → 重新在平台生成并更新设置。
 - **领取按钮灰色/工具提示未解锁**：先完成该实验之前章节的课程学习。
-- **pnpm 安装失败**：`npm i -g pnpm` 手动装一次再重跑 `install.sh`。
+- **pnpm 安装失败 / 卡在 corepack 下载 pnpm**：corepack 默认从 registry.npmjs.org 下载 pnpm 本体，网络不通会超时。先 `npm i -g pnpm` 手动装一次再重跑 `install.sh` 即可。
 - **版本问题**：本学期 DSH 锁定 `0.1.5-rc.2`，**不要升级**，升级导致的异常请重装本安装包。
