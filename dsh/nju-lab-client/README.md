@@ -223,6 +223,7 @@ dsh: UNSUPPORTED_REASONING_EFFORT: provider "deepseek-official" model "deepseek-
 - slot 组件拿不到 `ctx`；要给它数据/回调，用 `ctx.slots.register({ ..., inject: () => ({...}) }, Component)`（`inject` 建在能访问 `ctx` 的闭包里）。
 - **`sidebar.right.pane.tab` 是按 key 的 keyed slot**，必须两阶段注册：先 `ctx.sidebarRightTabs.register({ id, kind, title })` 声明 tab 类型，再用它的 `id` 当 `key` 注册 body 与 `sidebar.right.pane.tab.title`。只写单阶段 `register({ name })` 什么也不会渲染。
 - client 半的 `react` / `react/jsx-runtime` 由 DSH 的模块 loader 在运行时提供，**必须在打包时外部化** —— 打包进来会出现第二份 React，hooks 直接崩。
+- client 半产物必须是**自注册的 classic script**：`window.__ModuleLoader__.load({ id, factory })`，工厂体内是 CJS（`require` / `module.exports`）。combo 路由按字节原样拼接各包产物，发 ESM 会让整个 combo 脚本在浏览器 parse 阶段就 SyntaxError（`import outside a module`），**同脚本内所有包的工厂都注册不上**（报 `loaded without registering ... via __ModuleLoader__.load`）。`tsdown.config.ts` 里用 `format: 'cjs'` + `build:done` 钩子包外壳（不能用 rolldown banner/footer，会让 dts 的 fake-js 解析失败）。
 - client 侧的类型增强（`ctx.slots`、`ctx.sidebarRightTabs`）声明在包的 **`./client` 子路径**，`import type {} from '<pkg>/client'` 才会生效。
 - **服务访问需要 inject**：`ctx.foo` 在未注入时直接抛 `cannot get property "foo" without inject`，所以"运行时探测某服务在不在"是行不通的。要可选依赖，用 `ctx.inject(['foo'], (scoped) => { ... })`（服务不出现就不执行）。`connection`/`settings` 只在 `dsh web` 下存在，headless 没有 —— 硬写进 `inject` 数组会让插件在 headless 下**整个加载失败**。
 
