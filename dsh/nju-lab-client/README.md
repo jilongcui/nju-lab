@@ -25,8 +25,9 @@ nju-lab-client/
     eval-state.ts     # 评估条件跨进程持久化：claim 时写盘、启动时恢复（只存闭包的话重启就丢）
     guidance.ts       # 模型引导：常驻 system prompt 段 + runtime 注册的 `nju-lab-experiment` skill
   src/client/         # 浏览器面
-    index.tsx         # 两阶段注册右侧栏 tab（type + body + title）
+    index.tsx         # 两阶段注册右侧栏 tab（type + body + title + guide）+ 自动打开 + 设置卡片注册
     ClaimPanel.tsx    # 任务面板：同源 fetch 取数，token 不进浏览器
+    SettingsCard.tsx  # 设置页「NJU-Lab 平台」卡片（settingsScope 读写 serverUrl/token）
 ```
 
 ## 构建
@@ -248,3 +249,56 @@ dsh: UNSUPPORTED_REASONING_EFFORT: provider "deepseek-official" model "deepseek-
 
 - host 侧用 `ctx.connection.fetch.register({ path: '/api/<name>', methods, requestBody: 'buffered', fetch: (req: Request) => Promise<Response> })`；`path` 是 `/api` 之下的绝对路径。
 - 部署与调试：profile 的插件是从 **pnpm 装的副本**读的 —— 改了插件源码必须重新 `dsh plugin --profile <name> install`；非 TTY 环境下要 `CI=true`（否则 pnpm 以 `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 中止）。
+
+## client 半开发总结（2026-09-22，真实浏览器验证定稿）
+
+这一节是把本插件 client 半从零到可用的完整方法论，按"声明 → 构建 → 可见 → 设置 → 验证"组织。每一步都标注了权威来源；与上文「关键事实 → 插件骨架」互为索引。
+
+### 1. 声明：一个包，两副面孔
+
+- host 半：`exports["."]` + bundle 的 `cordis.patch.yml` 插入挂载（profile 只需 `package.json` 依赖 + patch 行）。
+- client 半：`exports["./client"]` + `package.json` 的 `dsh.client = { platform: 'web', inject: [...], immediately: true }`。挂载侧**不需要**任何额外行 —— client-modules 服务自动扫描已启用 Loader 条目里声明了 `dsh.client` 的包，组合进 `window.__DSH_BOOT__`。
+- `dsh.client.inject` 填**包名**（模块图里工厂必须先于我们到场的包，如 `@deepseek-ai/dsh-client-ui-sidebar-right`）；`exports.inject` 填**服务名**（cordis 要等的服务，如 `slots`、`sidebarRight`、`settingsScope`）。两者别混。
+- client 侧类型增强一律 `import type {} from '<pkg>/client'`（`./client` 子路径），值导入会撞 bundle 纯净度门禁。
+
+### 2. 构建：产物必须是 lazy-CJS factory
+
+这是最容易翻车的一步（我们在此栽过：发 ESM 导致**整个 combo 脚本 parse 失败，50+ 个包的工厂全注册不上**，报 `loaded without registering ... via __ModuleLoader__.load`）。
+
+- 模块系统是懒加载 CJS 表：combo 路由把各包 `client.js` **按字节原样拼接**，浏览器按 classic script 解析。产物必须是自注册的 `window.__ModuleLoader__.load({ id, factory })`，工厂体内用 `require` / `module.exports`，副作用只在物化时跑。
+- 官方原话（cookbook《新增设置卡片》）："bundle 必须是 loader 的 lazy-CJS factory 产物……没有已发布的预设，本仓库之外的包得**自行复刻**同样的输出格式"。
+- 我们的复刻法（`tsdown.config.ts`）：`format: 'cjs'` + `build:done` 钩子手写外壳（**不能用** rolldown banner/footer —— 会进 dts 的 fake-js 解析而报错）+ `outExtensions` 强制 `.js` 对齐 `exports["./client"]`。
+- `react` / `react/jsx-runtime` 必须 external —— 它们是 shell 的种子模块，运行时 `require("react")` 由 loader 应答；打包进来就是第二份 React，hooks 直接崩。
+
+### 3. 可见性：注册了不等于看得见
+
+右栏停靠面的三条生命周期事实（官方子系统文档《右侧 Sidebar》）：**每会话一份、刷新后回折叠态、只在选中会话时挂载席位**。所以：
+
+- tab 类型注册的 `guide` 字段**省略即不上引导页**，用户没有任何入口发现你的 tab —— 必须加。
+- 要主动展开：公开 API 是 `ctx.sidebarRight.openTab(kind)`；席位未挂载时写操作抛错。官方没有"会话选中"事件，我们用 2s 轮询到首次成功（`src/client/index.tsx` 的 auto-open 段）。
+- 重复 `openTab` 同 (kind, address) 会聚焦已有 tab（页面类 tab 在 pane 内去重），所以轮询成功一次就停，避免抢焦点。
+
+### 4. 设置页：两个半侧缺一不可
+
+官方 cookbook《新增设置卡片》的配对模型：Host 半 `ctx.settings.installSection(ns, schema, ...)` 只负责**喂命名空间**；设置页插件配置 tab **只渲染有卡片认领的命名空间**——只装 Host 半的话设置页什么都看不到（我们踩过）。
+
+- 卡片由 client 半注册到 `settings.plugin.item`（**key = 命名空间**，这是两半配对的键）。
+- 读写走 `ctx.settingsScope.bind({ namespace })`：`getSnapshot()/subscribe()` 拿 `{ status, value, user, writable, revision }`，`set(field, v)` / `unset(field)` 写入（revision 设栅、串行化、失败可恢复）。`unset` = 清回组装层（composition base）。
+- 官方内置卡片的辅助组件（PluginCard/ValueField/CardForm）**不能跨包 import**（纯净度门禁），卡片样式自己画（`src/client/SettingsCard.tsx` 是最小可用版）。
+- scope 的 disposer 挂在**调用方** fiber 上，且写路径经提供方 ctx 转发 —— 调用方不需要自己 inject `remote.settings`。
+
+### 5. 验证方法论：curl 证明不了浏览器里能跑
+
+本次最大的教训：**HTTP 200 只证明字节送达，证明不了脚本能 parse、工厂能注册、UI 能渲染**。client 半的验证要分层：
+
+1. `npm run typecheck` + L1/L2 测试（61 条）——逻辑与 host 半契约；
+2. **vm 模拟 loader**：Node `vm` 里以 stub `window.__ModuleLoader__` 执行产物，断言 `id` 注册成功、`factory(require)` 物化出 `name/inject/apply` —— 秒级，能抓出 ESM 事故；
+3. **Playwright 真实浏览器 E2E**（终极判据）：起真 `dsh --profile nju-lab-student`，Chromium 走完 引导弹窗 → 选工作区 → 建会话，断言面板自动展开渲染、设置页卡片出现、保存写进 `$DSH_HOME/settings.yaml`。本次三个 bug 里有两个只有这一层能发现。
+
+### 6. 权威文档（比逆向 minified 产物可靠得多）
+
+- 官方文档站：https://deepseek-harness.github.io/deepseek-harness/
+  - 《右侧 Sidebar》子系统：`/reference/subsystems/sidebar-right` —— tab 类型注册、导航服务、slot 契约全文
+  - 《客户端 Slots》子系统：`/reference/subsystems/slots`
+  - cookbook《新增设置卡片》：`/reference/cookbook/adding-a-settings-card` —— 两半配对 + lazy-CJS factory 要求
+- 社区白皮书：https://electricitysheep.github.io/dsh-handbook/（第 3 章 profile 与插件系统、第 4 章插件开发实战）
