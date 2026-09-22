@@ -278,6 +278,25 @@ describe('host half: nju_lab_submit', () => {
       assert.equal(platform.submissions.length, 1)
       assert.match(platform.submissions[0].skillZipRef, /^file:/)
       assert.match(platform.submissions[0].skillZipSha256, /^[0-9a-f]{64}$/)
+      assert.equal(platform.submissions[0].version, 1)
+    })
+  })
+
+  test('resubmit creates a new version (multi-version submissions)', async () => {
+    await withClient({}, async ({ harness, platform }) => {
+      await harness.tool('nju_lab_claim').execute({ assignmentId: 'a-unlocked' })
+      const skillDir = await mkdtemp(join(tmpdir(), 'nju-skill-'))
+      await writeFile(join(skillDir, 'SKILL.md'), '# demo skill\n')
+
+      await harness.tool('nju_lab_submit').execute({ assignmentId: 'a-unlocked', skillDir })
+      // 平台允许多版本：已提交后再次提交生成 v2，历史版本保留
+      await harness.tool('nju_lab_submit').execute({ assignmentId: 'a-unlocked', skillDir })
+
+      assert.equal(platform.submissions.length, 2)
+      assert.deepEqual(
+        platform.submissions.map((s) => s.version),
+        [1, 2],
+      )
     })
   })
 

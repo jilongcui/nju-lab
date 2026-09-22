@@ -170,6 +170,9 @@ export interface SubmitPayload {
 }
 export const submitAssignment = (id: string, data: SubmitPayload) =>
   client.post<unknown, Submission>(`/assignments/${id}/submit`, data);
+/** 提交版本历史（学生限本人任务，教师限课程 owner），按版本号降序 */
+export const listAssignmentVersions = (id: string) =>
+  client.get<unknown, Submission[]>(`/assignments/${id}/submissions`);
 /** :id 为评估结果（evaluation）ID */
 export const getMyEvaluation = (id: string) =>
   client.get<unknown, Evaluation>(`/me/evaluations/${id}`);

@@ -33,7 +33,7 @@ export interface Assignment {
     deadline?: string | null
     chapterTitle?: string | null
   }
-  submission?: { id: string; status: string; submittedAt: string } | null
+  submission?: { id: string; status: string; submittedAt: string; version?: number } | null
 }
 
 /**

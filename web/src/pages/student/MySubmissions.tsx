@@ -10,6 +10,7 @@ import {
   Input,
   message,
   Modal,
+  Select,
   Skeleton,
   Space,
   Statistic,
@@ -22,6 +23,7 @@ import dayjs from 'dayjs';
 import {
   getSubmission,
   getSubmissionEvaluation,
+  listAssignmentVersions,
   listMyAssignments,
   submitAssignment,
 } from '../../api';
@@ -56,6 +58,7 @@ export default function MySubmissions() {
     submission: null,
     evaluation: null,
   });
+  const [versions, setVersions] = useState<Submission[]>([]);
   const [form] = Form.useForm<SubmitFormValues>();
 
   useAuxiliaryPanel(
@@ -65,6 +68,9 @@ export default function MySubmissions() {
         提交内容包含：完整 Skill 目录包（ZIP）、.dshc 证据包、两者的 SHA-256 哈希，以及会话审计事件（JSON）。
       </Paragraph>
       <Paragraph type="secondary">评分以平台独立复验为准，学生自报结果仅作参考。</Paragraph>
+      <Paragraph type="secondary">
+        提交后仍可再次提交，会生成新版本（v2、v3…），每个版本独立复验与评分，最多保留 10 版。
+      </Paragraph>
     </div>,
   );
 
@@ -119,6 +125,22 @@ export default function MySubmissions() {
       return;
     }
     setFeedback({ open: true, submission: null, evaluation: null });
+    setVersions([]);
+    setFeedbackLoading(true);
+    try {
+      const [sub, ev, vers] = await Promise.all([
+        getSubmission(submissionId),
+        getSubmissionEvaluation(submissionId).catch(() => null),
+        listAssignmentVersions(a.id).catch(() => [] as Submission[]),
+      ]);
+      setVersions(vers ?? []);
+      setFeedback({ open: true, submission: sub, evaluation: ev ?? sub.evaluation ?? null });
+    } finally {
+      setFeedbackLoading(false);
+    }
+  };
+
+  const switchVersion = async (submissionId: string) => {
     setFeedbackLoading(true);
     try {
       const [sub, ev] = await Promise.all([
@@ -159,7 +181,19 @@ export default function MySubmissions() {
             {
               title: '提交状态',
               render: (_, a) =>
-                a.submission ? <StatusTag status={a.submission.status} /> : <Text type="secondary">未提交</Text>,
+                a.submission ? (
+                  <Space size={4}>
+                    <Text>v{a.submission.version}</Text>
+                    <StatusTag status={a.submission.status} />
+                    {(a.submissionCount ?? 0) > 1 && (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        共 {a.submissionCount} 版
+                      </Text>
+                    )}
+                  </Space>
+                ) : (
+                  <Text type="secondary">未提交</Text>
+                ),
             },
             {
               title: '操作',
@@ -173,6 +207,11 @@ export default function MySubmissions() {
                   {a.status === 'claimed' && (
                     <Button size="small" type="primary" icon={<UploadOutlined />} onClick={() => setSubmitTarget(a)}>
                       提交
+                    </Button>
+                  )}
+                  {a.status === 'submitted' && (
+                    <Button size="small" type="primary" icon={<UploadOutlined />} onClick={() => setSubmitTarget(a)}>
+                      提交新版本
                     </Button>
                   )}
                   {a.submission && (
@@ -242,11 +281,32 @@ export default function MySubmissions() {
       </Modal>
 
       <Drawer
-        title="复验结果与教师反馈"
+        title={`复验结果与教师反馈${feedback.submission ? ` · v${feedback.submission.version}` : ''}`}
         open={feedback.open}
-        onClose={() => setFeedback({ open: false, submission: null, evaluation: null })}
+        onClose={() => {
+          setFeedback({ open: false, submission: null, evaluation: null });
+          setVersions([]);
+        }}
         width={480}
       >
+        {versions.length > 1 && (
+          <Select
+            size="small"
+            style={{ width: 220, marginBottom: 16 }}
+            value={feedback.submission?.id}
+            onChange={(id) => void switchVersion(id)}
+            options={versions.map((s) => ({
+              value: s.id,
+              label: (
+                <Space size={4}>
+                  <Text>v{s.version}</Text>
+                  <Text type="secondary">{dayjs(s.submittedAt).format('YYYY-MM-DD HH:mm')}</Text>
+                  <StatusTag status={s.status} />
+                </Space>
+              ),
+            }))}
+          />
+        )}
         {feedbackLoading ? (
           <Skeleton active paragraph={{ rows: 6 }} />
         ) : !feedback.submission ? (

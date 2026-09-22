@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Button,
   Card,
@@ -12,6 +12,7 @@ import {
   message,
   Popconfirm,
   Row,
+  Select,
   Skeleton,
   Space,
   Statistic,
@@ -21,7 +22,13 @@ import {
 } from 'antd';
 import { CheckOutlined, ExperimentOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { getSubmission, getSubmissionEvaluation, gradeSubmission, verifySubmission } from '../../api';
+import {
+  getSubmission,
+  getSubmissionEvaluation,
+  gradeSubmission,
+  listAssignmentVersions,
+  verifySubmission,
+} from '../../api';
 import type { Evaluation, RunResult, Submission } from '../../types';
 import StatusTag from '../../components/StatusTag';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
@@ -58,9 +65,11 @@ function RunCard({ title, result }: { title: string; result?: RunResult }) {
 
 export default function Grading() {
   const { submissionId = '' } = useParams();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [submission, setSubmission] = useState<Submission | null>(null);
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
+  const [versions, setVersions] = useState<Submission[]>([]);
   const [verifying, setVerifying] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
@@ -86,6 +95,7 @@ export default function Grading() {
       ]);
       setSubmission(sub);
       setEvaluation(ev ?? sub.evaluation ?? null);
+      setVersions(await listAssignmentVersions(sub.assignmentId).catch(() => [] as Submission[]));
       const finalEv = ev ?? sub.evaluation;
       if (finalEv) {
         form.setFieldsValue({
@@ -141,15 +151,38 @@ export default function Grading() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <Space>
           <Title level={4} style={{ margin: 0 }}>
-            批改 · 提交 {submission.id.slice(0, 8)}
+            批改 · v{submission.version}
           </Title>
+          {versions.length > 1 && (
+            <Text type="secondary">（共 {versions.length} 版）</Text>
+          )}
           <StatusTag status={submission.status} />
         </Space>
-        <Popconfirm title="将在一次性容器中独立重跑验证，确认触发？" onConfirm={handleVerify}>
-          <Button icon={<ReloadOutlined />} loading={verifying}>
-            触发复验
-          </Button>
-        </Popconfirm>
+        <Space>
+          {versions.length > 1 && (
+            <Select
+              size="middle"
+              style={{ width: 200 }}
+              value={submission.id}
+              onChange={(id) => navigate(`/teacher/submissions/${id}/grade`)}
+              options={versions.map((s) => ({
+                value: s.id,
+                label: (
+                  <Space size={4}>
+                    <Text>v{s.version}</Text>
+                    <StatusTag status={s.status} />
+                    <Text type="secondary">{dayjs(s.submittedAt).format('YYYY-MM-DD HH:mm')}</Text>
+                  </Space>
+                ),
+              }))}
+            />
+          )}
+          <Popconfirm title="将在一次性容器中独立重跑验证，确认触发？" onConfirm={handleVerify}>
+            <Button icon={<ReloadOutlined />} loading={verifying}>
+              触发复验
+            </Button>
+          </Popconfirm>
+        </Space>
       </div>
 
       <Row gutter={[16, 16]}>

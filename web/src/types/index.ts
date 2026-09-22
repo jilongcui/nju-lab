@@ -152,6 +152,8 @@ export interface AssignmentSubmissionBrief {
   id: string;
   status: SubmissionStatus;
   submittedAt: string;
+  /** 多版本：该提交的版本号（从 1 起） */
+  version: number;
 }
 
 /** GET /api/me/assignments 条目 */
@@ -163,6 +165,8 @@ export interface Assignment {
   project: AssignmentProjectBrief;
   /** 该任务最新一条提交，未提交为 null */
   submission?: AssignmentSubmissionBrief | null;
+  /** 已提交的版本总数 */
+  submissionCount?: number;
 }
 
 /** POST /api/assignments/:id/claim 响应 */
@@ -219,6 +223,8 @@ export interface Submission {
   assignmentId: string;
   studentId: string;
   submittedAt: string;
+  /** 多版本：版本号（从 1 起） */
+  version: number;
   skillZipRef: string;
   skillZipSha256?: string;
   capsuleRef: string;
@@ -236,7 +242,10 @@ export interface ProjectSubmissionRow {
   assignmentId: string;
   student: { id: string; username: string; nickname: string };
   assignmentStatus: AssignmentStatus;
+  /** 该任务最新一版提交 */
   submission: Submission | null;
+  /** 已提交的版本总数 */
+  versionCount?: number;
 }
 
 /** GET /api/courses/:id/progress（对象，非数组） */

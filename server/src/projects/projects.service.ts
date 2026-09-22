@@ -219,9 +219,20 @@ export class ProjectsService {
         assignmentId: In(assignments.map((a) => a.id).concat([''])),
       },
       relations: ['student', 'evaluation'],
-      order: { submittedAt: 'DESC' },
+      order: { version: 'DESC' },
     });
-    const byAssignment = new Map(submissions.map((s) => [s.assignmentId, s]));
+    // 多版本：每个任务只展示最新版（DESC 序下首次出现即最新），并附版本总数
+    const byAssignment = new Map<string, Submission>();
+    const countByAssignment = new Map<string, number>();
+    for (const s of submissions) {
+      countByAssignment.set(
+        s.assignmentId,
+        (countByAssignment.get(s.assignmentId) ?? 0) + 1,
+      );
+      if (!byAssignment.has(s.assignmentId)) {
+        byAssignment.set(s.assignmentId, s);
+      }
+    }
     return assignments.map((assignment) => ({
       assignmentId: assignment.id,
       student: {
@@ -231,6 +242,7 @@ export class ProjectsService {
       },
       assignmentStatus: assignment.status,
       submission: byAssignment.get(assignment.id) ?? null,
+      versionCount: countByAssignment.get(assignment.id) ?? 0,
     }));
   }
 
@@ -238,7 +250,7 @@ export class ProjectsService {
   async exportGradesCsv(teacher: User, projectId: string) {
     const rows = await this.listProjectSubmissions(teacher, projectId);
     const header = [
-      '学号', '姓名', '任务状态', '提交时间', '提交状态',
+      '学号', '姓名', '任务状态', '版本', '提交时间', '提交状态',
       '复验成功率', 'Token成本', '建议分', '教师评分', '教师评语',
     ];
     const escape = (v: unknown) => {
@@ -254,6 +266,7 @@ export class ProjectsService {
           row.student.username,
           row.student.nickname,
           row.assignmentStatus,
+          sub ? `v${sub.version}` : '',
           sub?.submittedAt
             ? new Date(sub.submittedAt).toISOString().slice(0, 16).replace('T', ' ')
             : '',
@@ -284,15 +297,20 @@ export class ProjectsService {
       relations: ['project'],
       order: { createdAt: 'DESC' },
     });
-    // 每个任务的最新一条提交，供学生端"查看反馈"直接跳转
+    // 每个任务的最新一条提交（多版本：version 最大者），供学生端"查看反馈"直接跳转
     const submissions = assignments.length
       ? await this.submissionRepo.find({
           where: { assignmentId: In(assignments.map((a) => a.id).concat([''])) },
-          order: { submittedAt: 'DESC' },
+          order: { version: 'DESC' },
         })
       : [];
     const latestByAssignment = new Map<string, Submission>();
+    const countByAssignment = new Map<string, number>();
     for (const s of submissions) {
+      countByAssignment.set(
+        s.assignmentId,
+        (countByAssignment.get(s.assignmentId) ?? 0) + 1,
+      );
       if (!latestByAssignment.has(s.assignmentId)) {
         latestByAssignment.set(s.assignmentId, s);
       }
@@ -324,8 +342,10 @@ export class ProjectsService {
               id: submission.id,
               status: submission.status,
               submittedAt: submission.submittedAt,
+              version: submission.version,
             }
           : null,
+        submissionCount: countByAssignment.get(assignment.id) ?? 0,
       });
     }
     return result;

@@ -135,6 +135,7 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 - ~~修改密码接口~~ ✅（2026-09-21：`POST /api/me/password`，成功后 tokenVersion+1 全端失效；Web 头像菜单弹窗）、~~数据库 migrations~~ ✅（见第 3.8 条）、~~后端常驻化~~ ✅（systemd，见第 2 节）、~~CSV 成绩导出~~ ✅（`GET /api/projects/:id/grades.csv`，项目详情页"导出成绩 CSV"按钮）
 - ~~学校统一认证~~ ✅（2026-09-21，CAS 3.0 双轨）：`GET /api/auth/cas/login` → 南大 authserver → `/api/auth/cas/callback` 校验 ticket → 按学号/工号自动注册为学生（教师由管理员提权）；本地账号保留。配置 `CAS_BASE_URL`/`PUBLIC_BASE_URL`（已指向 authserver.nju.edu.cn，模拟 CAS 全流程实测通过；真实账号未实测）
 - ~~学生端安装包/手册~~ ✅（2026-09-21）：`dsh/kit/build-kit.sh` 打包（profile + 插件产物 + install.sh + 手册）→ 静态托管 `https://lab.xiaohe.biz/kit/nju-lab-student-kit.zip`（nginx `location /kit/` 独立目录）；Web 学生菜单「客户端下载」页。插件更新后需重跑 build-kit + 部署
+- ~~提交多版本~~ ✅（2026-09-22）：`submissions.version`（迁移 `SubmissionVersions1790002700000`，存量按 submittedAt 回填）；重复提交生成 v2、v3…，上限 10 版，仅最新版 `verifying` 中拒绝（原「非 failed 拒绝重复提交」废止）；每版本独立复验/评分；版本历史 `GET /api/assignments/:id/submissions`（学生限本人/教师限课程 owner）；项目提交列表、待批改、成绩 CSV、学生任务列表一律按**最新版**归并（修了 `listProjectSubmissions` Map 键覆盖取到最旧版的 bug）；Web 学生「我的提交」可交新版本+反馈 Drawer 版本切换，教师批改页版本切换；插件面板显示 `v{n}` +「提交新版本」。全链路真机实测（含真实容器复验 v4）
 - 机房预装镜像
 - nju-lab-client 提交前自检（skillforge 规范检查）
 - SkillLibrary 参考技能库、章节自测题、成绩汇总

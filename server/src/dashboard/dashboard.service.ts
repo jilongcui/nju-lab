@@ -69,17 +69,24 @@ export class DashboardService {
     const submissions = assignments.length
       ? await this.submissionRepo.find({
           where: { assignmentId: In(assignments.map((a) => a.id).concat([''])) },
-          order: { submittedAt: 'DESC' },
+          order: { version: 'DESC' },
         })
       : [];
 
-    // 待批改 = 已提交但未评分（submitted/verifying/verified）
+    // 多版本：待批改按每个任务的最新版归并（旧版未评分不算待办）
+    const latestByAssignment = new Map<string, Submission>();
+    for (const s of submissions) {
+      if (!latestByAssignment.has(s.assignmentId)) {
+        latestByAssignment.set(s.assignmentId, s);
+      }
+    }
+    // 待批改 = 最新版已提交但未评分（submitted/verifying/verified）
     const pendingStatuses: SubmissionStatus[] = [
       SubmissionStatus.SUBMITTED,
       SubmissionStatus.VERIFYING,
       SubmissionStatus.VERIFIED,
     ];
-    const pending = submissions.filter((s) =>
+    const pending = [...latestByAssignment.values()].filter((s) =>
       pendingStatuses.includes(s.status),
     );
     const students = pending.length
@@ -100,6 +107,7 @@ export class DashboardService {
         return {
           submissionId: s.id,
           status: s.status,
+          version: s.version,
           submittedAt: s.submittedAt,
           projectId: project?.id ?? null,
           projectTitle: project?.title ?? '',

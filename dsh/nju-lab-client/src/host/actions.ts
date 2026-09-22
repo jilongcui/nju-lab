@@ -94,7 +94,7 @@ export interface SubmitOutcome {
   zipPath: string
   skillZip: { fileId: string; sha256: string }
   capsule: { fileId: string; sha256: string }
-  submission: { id: string; status: string }
+  submission: { id: string; status: string; version?: number }
 }
 
 export interface NjuLabActions {
@@ -362,13 +362,13 @@ export function createActions(
       const skillUpload = await api.uploadFile(zipPath, 'skill.zip')
       const capsuleUpload = await api.uploadFile(capsulePath, 'evidence.dshc')
 
-      // 6) 以 fileId 模式提交
+      // 6) 以 fileId 模式提交（平台支持多版本：重复提交生成 v2、v3…）
       const submission = (await api.submit(assignmentId, {
         skillZipFileId: skillUpload.fileId,
         capsuleFileId: capsuleUpload.fileId,
         auditEvents: capsule.auditEvents,
         fileHashes,
-      })) as { id?: string; status?: string } | null
+      })) as { id?: string; status?: string; version?: number } | null
 
       return {
         assignmentId,
@@ -380,6 +380,7 @@ export function createActions(
         submission: {
           id: submission?.id ?? '(unknown)',
           status: submission?.status ?? '(unknown)',
+          version: submission?.version,
         },
       }
     },

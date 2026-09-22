@@ -349,7 +349,19 @@ export default function ProjectDetail() {
             {
               title: '提交状态',
               render: (_, r) =>
-                r.submission ? <StatusTag status={r.submission.status} /> : <Text type="secondary">未提交</Text>,
+                r.submission ? (
+                  <Space size={4}>
+                    <Text>v{r.submission.version}</Text>
+                    <StatusTag status={r.submission.status} />
+                    {(r.versionCount ?? 0) > 1 && (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        共 {r.versionCount} 版
+                      </Text>
+                    )}
+                  </Space>
+                ) : (
+                  <Text type="secondary">未提交</Text>
+                ),
             },
             {
               title: '提交时间',

@@ -266,9 +266,11 @@ export async function startMockPlatform(options = {}) {
       if (!skillZip) return fail(400, 'Skill 包缺失')
       if (!capsule) return fail(400, '证据包（.dshc）缺失')
 
+      const version = submissions.filter((s) => s.assignmentId === assignmentId).length + 1
       const submission = {
         id: `submission-${submissions.length + 1}`,
         assignmentId,
+        version,
         skillZipRef: `file:${body.skillZipFileId}`,
         skillZipSha256: skillZip.sha256,
         capsuleRef: `file:${body.capsuleFileId}`,
@@ -284,6 +286,7 @@ export async function startMockPlatform(options = {}) {
         id: submission.id,
         status: submission.status,
         submittedAt: submission.submittedAt,
+        version,
       }
       return created(submission)
     }

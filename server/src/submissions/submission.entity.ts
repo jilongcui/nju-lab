@@ -43,6 +43,10 @@ export class Submission {
   @CreateDateColumn()
   submittedAt: Date;
 
+  /** 同一任务下的提交版本号，从 1 起递增 */
+  @Column({ type: 'int', default: 1 })
+  version: number;
+
   /** 完整 Skill 目录包（存储引用 + 哈希，本阶段不接对象存储） */
   @Column()
   skillZipRef: string;

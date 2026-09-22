@@ -25,6 +25,9 @@ import {
   SubmissionStatus,
 } from './submission.entity';
 
+/** 同一任务允许保留的最大提交版本数 */
+export const MAX_VERSIONS_PER_ASSIGNMENT = 10;
+
 @Injectable()
 export class SubmissionsService {
   constructor(
@@ -53,14 +56,21 @@ export class SubmissionsService {
     if (assignment.status === AssignmentStatus.PENDING) {
       throw new BadRequestException('请先领取任务再提交');
     }
-    const latest = await this.submissionRepo.findOne({
+    const versions = await this.submissionRepo.find({
       where: { assignmentId },
-      order: { submittedAt: 'DESC' },
+      order: { version: 'DESC' },
     });
-    // 允许在复验失败后重新提交；其他状态下重复提交拒绝
-    if (latest && latest.status !== SubmissionStatus.FAILED) {
-      throw new BadRequestException(`当前提交状态为 ${latest.status}，不能重复提交`);
+    const latest = versions[0];
+    // 多版本：复验进行中不允许再交（避免顶掉教师正在复验的对象）；其余状态随时可交新版本
+    if (latest && latest.status === SubmissionStatus.VERIFYING) {
+      throw new BadRequestException('最新版本正在复验中，请复验结束后再提交新版本');
     }
+    if (versions.length >= MAX_VERSIONS_PER_ASSIGNMENT) {
+      throw new BadRequestException(
+        `已达版本上限（${MAX_VERSIONS_PER_ASSIGNMENT}），不能再提交新版本`,
+      );
+    }
+    const nextVersion = (latest?.version ?? 0) + 1;
     const skillZip = await this.resolveArtifact(
       student,
       dto.skillZipFileId,
@@ -79,6 +89,7 @@ export class SubmissionsService {
       this.submissionRepo.create({
         assignmentId,
         studentId: student.id,
+        version: nextVersion,
         skillZipRef: skillZip.ref,
         skillZipSha256: skillZip.sha256,
         capsuleRef: capsule.ref,
@@ -143,7 +154,33 @@ export class SubmissionsService {
     return evaluation;
   }
 
-  /** GET /api/submissions/:id/evaluation —— 教师（课程 owner）或提交者本人可见 */
+  /** GET /api/assignments/:id/submissions —— 版本历史（学生限本人任务，教师限课程 owner），按版本号降序 */
+  async listVersions(user: User, assignmentId: string) {
+    const assignment = await this.assignmentRepo.findOne({
+      where: { id: assignmentId },
+      relations: ['project'],
+    });
+    if (!assignment) {
+      throw new NotFoundException('任务不存在');
+    }
+    if (user.role === UserRole.STUDENT) {
+      if (assignment.studentId !== user.id) {
+        throw new ForbiddenException('只能查看自己的提交');
+      }
+    } else if (user.role !== UserRole.ADMIN) {
+      const course = await this.courseRepo.findOne({
+        where: { id: assignment.project.courseId },
+      });
+      if (!course || course.teacherId !== user.id) {
+        throw new ForbiddenException('只有课程所属教师可以执行该操作');
+      }
+    }
+    return this.submissionRepo.find({
+      where: { assignmentId },
+      order: { version: 'DESC' },
+    });
+  }
+
   /** GET /api/submissions/:id —— 提交详情（教师或提交者本人） */
   async getSubmission(user: User, submissionId: string) {
     const submission = await this.submissionRepo.findOne({

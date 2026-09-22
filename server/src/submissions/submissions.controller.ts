@@ -49,7 +49,7 @@ export class SubmissionsController {
 export class AssignmentSubmitController {
   constructor(private readonly submissionsService: SubmissionsService) {}
 
-  /** 学生提交：ZIP + .dshc + 审计事件（引用与哈希） */
+  /** 学生提交：ZIP + .dshc + 审计事件（引用与哈希）；重复提交生成新版本（上限 10，verifying 中拒绝） */
   @Post(':id/submit')
   @Roles(UserRole.STUDENT)
   submit(
@@ -58,6 +58,12 @@ export class AssignmentSubmitController {
     @Body() dto: SubmitDto,
   ) {
     return this.submissionsService.submit(user, id, dto);
+  }
+
+  /** 版本历史（学生限本人，教师限课程 owner），按版本号降序 */
+  @Get(':id/submissions')
+  listVersions(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.submissionsService.listVersions(user, id);
   }
 }
 

@@ -38,6 +38,7 @@ interface SubmissionDto {
   id: string
   status: string
   submittedAt: string
+  version?: number
 }
 
 interface AssignmentDto {
@@ -394,7 +395,8 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
                 )}
                 {a.submission && (
                   <div style={dim}>
-                    最近提交 {statusText(a.submission.status)}
+                    最近提交 {a.submission.version ? `v${a.submission.version} · ` : ''}
+                    {statusText(a.submission.status)}
                     {a.submission.submittedAt ? ` · ${formatDeadline(a.submission.submittedAt)}` : ''}
                   </div>
                 )}
@@ -423,10 +425,16 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
                 <button
                   style={button}
                   disabled={isBusy || blocked || !claimed}
-                  title={claimed ? '打包 Skill 目录、生成 .dshc 并提交' : '请先领取任务再提交'}
+                  title={
+                    claimed
+                      ? a.submission
+                        ? '打包 Skill 目录、生成 .dshc 并提交为新版本（历史版本保留，独立复验评分）'
+                        : '打包 Skill 目录、生成 .dshc 并提交'
+                      : '请先领取任务再提交'
+                  }
                   onClick={() => void act(a.id, 'submit')}
                 >
-                  {isBusy ? '处理中…' : '提交'}
+                  {isBusy ? '处理中…' : a.submission ? '提交新版本' : '提交'}
                 </button>
               </div>
             </div>
