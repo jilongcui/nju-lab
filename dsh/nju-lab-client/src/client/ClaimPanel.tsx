@@ -10,8 +10,8 @@
  * 交互规则（与 host 半的能力对齐，避免学生点到必然失败的按钮）：
  *  - 未解锁 / 未配置 token → 领取与提交都禁用，并说明原因；
  *  - 已领取且材料在本地 → 领取禁用，提交才是可用动作；
- *  - 已领取但本地没有材料（换机/清理）→ 领取变成「重新下载」—— 平台对
- *    claimed 任务的 claim 是幂等重发；已提交则彻底不能重复领取（平台 400）；
+ *  - 已领取（含已提交）但本地没有材料（换机/清理）→ 领取变成「重新下载」——
+ *    平台对 claimed/submitted 的 claim 都幂等重发材料，不影响提交记录；
  *  - 未领取 → 提交禁用（平台会 400「请先领取任务再提交」）。
  *
  * 每次动作的结果（成功 / 失败）渲染成可关闭的横幅，并把 host 半返回的结构化细节
@@ -320,8 +320,8 @@ export function ClaimPanel() {
           const overdue = isOverdue(a.project?.deadline)
           const claimed = a.status !== 'pending'
           const localReady = snapshot.downloaded?.includes(a.id) ?? false
-          // 重新下载只开放给 claimed：pending 走正常领取，submitted 平台拒重复领取
-          const canRedownload = a.status === 'claimed' && !localReady
+          // 重新下载开放给 claimed 与 submitted：平台对两者的 claim 都幂等重发材料
+          const canRedownload = claimed && !localReady
           const isBusy = busy === a.id
           const blocked = !a.unlocked || !tokenConfigured
           return (
@@ -346,7 +346,7 @@ export function ClaimPanel() {
                     {a.submission.submittedAt ? ` · ${formatDeadline(a.submission.submittedAt)}` : ''}
                   </div>
                 )}
-                {claimed && !localReady && a.status === 'claimed' && (
+                {claimed && !localReady && (
                   <div style={{ ...dim, marginTop: 2 }}>本地没有领取材料（换机或已清理）</div>
                 )}
                 <div style={{ ...mono, ...dim, marginTop: 2 }}>{a.id}</div>
@@ -359,7 +359,7 @@ export function ClaimPanel() {
                     !a.unlocked
                       ? '尚未满足解锁条件，暂时不能领取'
                       : canRedownload
-                        ? '重新下载模板与数据集（平台对 claimed 任务幂等重发），并钉死评估条件'
+                        ? '重新下载模板与数据集（平台幂等重发材料，不影响提交记录），并钉死评估条件'
                         : claimed
                           ? '已领取，材料在工作区 nju-lab/ 下'
                           : '下载模板与数据集，并钉死评估条件'

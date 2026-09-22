@@ -344,9 +344,6 @@ export class ProjectsService {
     if (project.status !== ProjectStatus.PUBLISHED) {
       throw new BadRequestException('实验项目未发布或已关闭');
     }
-    if (assignment.status === AssignmentStatus.SUBMITTED) {
-      throw new BadRequestException('该任务已提交，无需重复领取');
-    }
     if (assignment.status === AssignmentStatus.PENDING) {
       const unlocked = await this.checkUnlock(student.id, project);
       if (!unlocked) {
@@ -358,6 +355,8 @@ export class ProjectsService {
       assignment.claimedAt = new Date();
       await this.assignmentRepo.save(assignment);
     }
+    // claimed / submitted 都幂等重发材料（状态不变）：学生换机或清理工作区后
+    // 可把模板与数据集拉回本地；已提交任务的提交记录与复验结果不受影响。
     // 领取成功后下发模板、测试数据集（真实下载地址 + 服务端 sha256）与评估条件
     return {
       assignment,
