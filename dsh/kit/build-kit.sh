@@ -16,5 +16,9 @@ cp install.sh dist/stage/
 chmod +x dist/stage/install.sh
 cp README-student.md dist/stage/README.md
 
+# 版本凭据：插件自更新靠它判断"本地 ≠ 远端"（见 nju-lab-client/src/host/update.ts）
+KIT_VERSION="$(date +%Y%m%d-%H%M)-$(git rev-parse --short HEAD 2>/dev/null || echo nogit)"
+printf '{"version":"%s"}\n' "$KIT_VERSION" > dist/stage/kit-version.json
+
 (cd dist/stage && zip -qr ../nju-lab-student-kit.zip .)
 echo "built: $(du -h dist/nju-lab-student-kit.zip | cut -f1)  dist/nju-lab-student-kit.zip"

@@ -179,6 +179,14 @@ export async function startMockPlatform(options = {}) {
     const created = (data) => send(201, { code: 0, data, message: 'ok' })
     const fail = (status, message) => send(status, { code: status, data: null, message })
 
+    // 安装包静态托管（生产是 nginx 的 location /kit/，公开可读，不经 API 鉴权）
+    if (method === 'GET' && path === '/kit/nju-lab-student-kit.zip') {
+      if (!options.kitZip) return fail(404, 'no kit')
+      res.writeHead(200, { 'content-type': 'application/zip' })
+      res.end(options.kitZip)
+      return
+    }
+
     // 下载是二进制流，不走 JSON 包装
     const downloadMatch = /^\/files\/([^/]+)$/.exec(path)
     if (method === 'GET' && downloadMatch) {

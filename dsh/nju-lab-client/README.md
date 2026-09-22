@@ -19,6 +19,7 @@ nju-lab-client/
     actions.ts        # 业务核心：list / claim / submit（工具与面板路由共用这一份）
     tools.ts          # 对话式工具（渲染层：把 actions 的结果变成文本）
     panel.ts          # ClaimPanel 的 host 路由（挂在 Connection 的 /api 通道上）
+    update.ts         # 插件自更新：拉平台安装包 zip，解出 nju-lab-client/ 覆盖插件目录（kit-version.json 判新旧）
     lock.ts           # agent/request 条件锁定（model + reasoningEffort）
     zip.ts            # 最小 ZIP 编解码（纯 JS，不调系统 zip/unzip）
     evidence.ts       # `.dshc` 证据包：从 sessionPersistence 导出会话 → 筛 approval/*、permission/* → 脱敏 → sha256 完整性
@@ -112,6 +113,7 @@ dsh --profile nju-lab-student --no-open
 | `GET /api/nju-lab.assignments` | 首屏快照：任务列表 + 当前钉定条件 + 落盘目录 + `tokenConfigured`（带 `?sessionId=` 时按会话工作区判定） |
 | `POST /api/nju-lab.claim` | `{ assignmentId }` → 领取结果（落盘点、解压目录、evalConfig） |
 | `POST /api/nju-lab.submit` | `{ assignmentId, skillDir?, note? }` → 提交结果 |
+| `POST /api/nju-lab.update` | 自更新：拉平台 `/kit/` 安装包、按 `kit-version.json` 判新旧、覆盖插件目录；重启 dsh 生效 |
 
 这样做的两个好处：**平台 token 永不进浏览器**；路由挂在 Connection 的 `/api` 共享通道上，自动继承它的 Host/Origin 围栏与浏览器认证，不用自己写鉴权。
 

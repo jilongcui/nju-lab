@@ -24,6 +24,7 @@ const ROUTES = {
   assignments: '/api/nju-lab.assignments',
   claim: '/api/nju-lab.claim',
   submit: '/api/nju-lab.submit',
+  update: '/api/nju-lab.update',
 } as const
 
 interface ProjectDto {
@@ -63,6 +64,8 @@ interface SnapshotDto {
   tokenConfigured: boolean
   /** 当前钉定条件来自哪个任务（重启后从工作区恢复的也会带上）。 */
   pinnedFrom?: string
+  /** 插件自更新信息；null 表示检查失败（不渲染更新条）。 */
+  update: { current: string | null; latest: string; available: boolean } | null
 }
 
 interface ArtifactDto {
@@ -294,6 +297,24 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
   const evalConfig = snapshot?.evalConfig ?? null
   const tokenConfigured = snapshot?.tokenConfigured ?? false
 
+  /** 插件自更新：host 拉平台安装包覆盖插件目录，重启 dsh 生效。 */
+  const doUpdate = async () => {
+    setBusy('__update__')
+    setBanner(null)
+    try {
+      const outcome = await call<{ message: string }>(ROUTES.update, { method: 'POST' })
+      setBanner({ kind: 'ok', title: '插件已更新', details: [outcome.message] })
+    } catch (e) {
+      setBanner({
+        kind: 'error',
+        title: '更新失败',
+        details: [e instanceof Error ? e.message : String(e)],
+      })
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
     <div style={{ padding: 12, fontSize: 13, overflowY: 'auto', height: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -311,6 +332,31 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
       {!loaded && <div style={{ ...dim, marginTop: 8 }}>加载中…</div>}
 
       {banner && <Banner banner={banner} onClose={() => setBanner(null)} />}
+
+      {snapshot?.update?.available && (
+        <div
+          style={{
+            ...row,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 8,
+          }}
+        >
+          <div>
+            发现新版本插件 <b>{snapshot.update.latest}</b>
+            <span style={dim}>（当前 {snapshot.update.current ?? '未知'}）</span>
+          </div>
+          <button
+            style={button}
+            disabled={busy !== null}
+            title="从平台下载最新插件并覆盖本地安装，重启 dsh 后生效"
+            onClick={() => void doUpdate()}
+          >
+            {busy === '__update__' ? '更新中…' : '立即更新'}
+          </button>
+        </div>
+      )}
 
       {snapshot && !tokenConfigured && (
         <div style={{ ...dim, marginTop: 8 }}>

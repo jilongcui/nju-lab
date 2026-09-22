@@ -135,6 +135,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.inject(['connection'], (scoped) => {
     registerPanelRoutes(scoped, actions, {
       tokenConfigured: () => Boolean(readConfig().token),
+      serverUrl: () => readConfig().serverUrl,
     })
   })
 

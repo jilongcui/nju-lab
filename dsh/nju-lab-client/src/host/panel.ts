@@ -15,6 +15,7 @@ import type {} from '@deepseek-ai/dsh-client-connection'
 import type { NjuLabActions } from './actions.ts'
 import type { Assignment } from './api.ts'
 import type { EvalConfig } from './config.ts'
+import { applyUpdate, checkUpdate, pluginDir, type UpdateInfo } from './update.ts'
 
 export const PANEL_ROUTES = {
   /** GET：任务列表 + 当前钉定条件 + 落盘目录 */
@@ -23,6 +24,8 @@ export const PANEL_ROUTES = {
   claim: '/api/nju-lab.claim',
   /** POST `{ assignmentId, skillDir?, note? }`：提交 */
   submit: '/api/nju-lab.submit',
+  /** POST：自更新插件（拉平台安装包覆盖本地插件目录，重启 dsh 生效） */
+  update: '/api/nju-lab.update',
 } as const
 
 /** 面板首屏需要的全部只读状态。 */
@@ -36,6 +39,8 @@ export interface PanelSnapshot {
   tokenConfigured: boolean
   /** 当前钉定条件来自哪个任务；重启后从工作区恢复的也会带上（见 eval-state.ts）。 */
   pinnedFrom?: string
+  /** 插件自更新信息；检查失败（平台不可达等）时为 null，面板不显示。 */
+  update: UpdateInfo | null
 }
 
 function json(body: unknown, status = 200): Response {
@@ -68,8 +73,23 @@ function requireString(body: Record<string, unknown>, key: string): string {
 export function registerPanelRoutes(
   ctx: Context,
   actions: NjuLabActions,
-  options: { tokenConfigured: () => boolean },
+  options: {
+    tokenConfigured: () => boolean
+    /** 平台 serverUrl（kit 安装包按同源 /kit/ 推导）；自更新用。 */
+    serverUrl: () => string
+    /** 插件目录（可注入；默认经 import.meta.url 解析 $DSH_HOME/nju-lab-client）。 */
+    resolvePluginDir?: () => Promise<string>
+  },
 ): void {
+  const dirOf = options.resolvePluginDir ?? pluginDir
+  /** 更新检查失败不拖累快照：面板拿不到更新信息只是不显示按钮。 */
+  const safeCheck = async (): Promise<UpdateInfo | null> => {
+    try {
+      return await checkUpdate(options.serverUrl(), await dirOf())
+    } catch {
+      return null
+    }
+  }
   ctx.connection.fetch.register({
     path: PANEL_ROUTES.assignments,
     methods: ['GET'],
@@ -93,6 +113,7 @@ export function registerPanelRoutes(
             workspaceDir: await actions.resolveRoot(sessionId),
             tokenConfigured: options.tokenConfigured(),
             pinnedFrom: actions.currentPinnedFrom(),
+            update: await safeCheck(),
           }
         },
       ),
@@ -125,6 +146,21 @@ export function registerPanelRoutes(
           typeof body.note === 'string' ? body.note : undefined,
           typeof body.sessionId === 'string' ? body.sessionId : undefined,
         )
+      }),
+  })
+
+  ctx.connection.fetch.register({
+    path: PANEL_ROUTES.update,
+    methods: ['POST'],
+    requestBody: 'buffered',
+    fetch: () =>
+      guarded(async () => {
+        const result = await applyUpdate(options.serverUrl(), await dirOf())
+        return {
+          ...result,
+          restartRequired: true,
+          message: `已更新到 ${result.version}（${result.files} 个文件）。退出并重启 dsh 后生效。`,
+        }
       }),
   })
 }

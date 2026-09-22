@@ -101,12 +101,13 @@ function post(harness, path, body) {
 }
 
 describe('host routes: nju-lab panel', () => {
-  test('registers the three routes on the shared /api channel', async () => {
+  test('registers the four routes on the shared /api channel', async () => {
     await withClient({}, async ({ harness }) => {
       assert.deepEqual(harness.routePaths(), [
         '/api/nju-lab.assignments',
         '/api/nju-lab.claim',
         '/api/nju-lab.submit',
+        '/api/nju-lab.update',
       ])
       assert.deepEqual(harness.route('/api/nju-lab.claim').methods, ['POST'])
       assert.deepEqual(harness.route('/api/nju-lab.assignments').methods, ['GET'])
