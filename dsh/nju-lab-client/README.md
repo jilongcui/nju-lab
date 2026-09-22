@@ -41,7 +41,7 @@ npm run typecheck  # host 与 client 两半都干净
 
 ## 测试
 
-L2 需要一个 `dsh` 可执行文件（仓库不内置）。它按 `DSH_BIN` → `PATH` 的顺序查找，找不到会 **skip**（TAP 里是 `ok … # SKIP`，**不是**通过）。所以 L2 的结论必须带 `DSH_BIN` 跑；不带的话 61 条里那 6 条 L2 静默 skip，`npm test` 仍显示全绿。
+L2 需要一个 `dsh` 可执行文件（仓库不内置）。它按 `DSH_BIN` → `PATH` 的顺序查找，找不到会 **skip**（TAP 里是 `ok … # SKIP`，**不是**通过）。所以 L2 的结论必须带 `DSH_BIN` 跑；不带的话 63 条里那 6 条 L2 静默 skip，`npm test` 仍显示全绿。
 
 ```sh
 npm test                                 # L1 + L2
@@ -150,6 +150,29 @@ dsh --profile nju-lab-student --no-open
 
 两者都走 `ctx.inject` 软依赖：缺 `systemPrompt` 或 `skills` 时静默跳过，插件照常加载。
 
+### 5. 插件自更新（`src/host/update.ts`）
+
+插件以 `file:` 依赖被拷进 `$DSH_HOME/nju-lab-client` —— dsh 对本地插件**没有更新通道**，早期每次修 bug 学生都要重下安装包、解压、跑 `install.sh`。自更新把这件事收进面板：
+
+```
+build-kit.sh 生成 kit-version.json（日期 + git rev）
+        │
+面板刷新 → host 按 serverUrl 同源推导 /kit/nju-lab-student-kit.zip
+        → 拉 zip 比对版本（5 分钟进程内缓存；失败静默降级为"不知道"）
+        → 本地 ≠ 远端 → 面板顶部「发现新版本 → 立即更新」
+        │
+立即更新 → 纯 JS readZip 只解出 nju-lab-client/ + kit-version.json
+        → 先清 lib/ 再覆盖写盘（防新版删文件后残留）
+        → 提示重启 dsh 生效（host 半已在内存，更新只换磁盘文件）
+```
+
+要点：
+
+- **版本凭据**是安装包里的 `kit-version.json`；旧安装没有该文件（current=null）→ 一律视为可更新，这正好是存量用户的迁移路径。
+- 插件目录经 `import.meta.url` 解析（Node 穿透 pnpm `file:` 符号链接，落在真实的 `$DSH_HOME/nju-lab-client`）；`NJU_LAB_PLUGIN_DIR` 环境变量是测试/调试逃生门。
+- 更新只覆盖 `nju-lab-client/` 子树与版本凭据，**不动** profile、不动 `$DSH_HOME` 其它内容、不动设置（serverUrl/token 在 `settings.yaml`，与插件文件无关）。
+- 我们的迭代节奏因此变成：改插件 → `dsh/kit/build-kit.sh` → 拷 zip 到 `/var/www/nju-lab/kit/` → 学生面板自己提示更新。**只有自更新能力之前的旧安装**才需要最后一次手动重下安装包。
+
 **为什么不用磁盘上的 `SKILL.md`（即"profile 内放文件"）**：DSH 的 skill 来源优先级是
 `project-dsh 100 · project-agents 200 · runtime 250 · custom 300 · user-dsh 400 · user-agents 500 · bundled 600`（越小越优先，见 `dsh-skill/lib/index.js` 的 `RUNTIME_RANK` / `BUNDLED_SKILL_RANK`）。官方在 `dsh-skill` 的 README 里把
 `ctx.skills.register()` 明确列为"**嵌入式 skill**"（插件自带数据）的用法，而 `dsh-skill-filesystem` 面向的是"skill 存在磁盘上"的场景。文件形态要额外满足：profile 目录不是默认发现根，得配 `customSkillDirs` / `bundledSkillDir`，且后者经 `resolve()` 按进程 cwd 解析（相对路径会走偏，只能绝对路径或 `!!js` 表达式）；而 profile 是拷到 `$DSH_HOME/profiles/<name>` 的副本，`dsh plugin install` 不管理散文件。runtime 注册零配置、优先级更高（250 > 400/600，只低于学生项目里的 `<projectRoot>/.dsh/skills`），且手册与插件同版本发布，不会出现"旧手册 + 新插件"。
@@ -170,8 +193,9 @@ dsh --profile nju-lab-student --no-open
 | ClaimPanel | ✅ 列表 / 领取 / 提交 / 显示钉定条件；host 路由已在真 `dsh web` 上验证（`GET /api/nju-lab.assignments` → 200）。交互与状态对齐 host 半：未解锁/无 token/未领取时按钮禁用并给出原因（`title` 提示），已领取后领取按钮变「已领取」、提交按钮才可用；**云端 claimed 但本地无材料（换机/清理）时按钮变「重新下载」**——平台对 claimed 任务的 claim 幂等重发材料，快照新增 `downloaded`（本地已落盘的任务 id）供面板判断；动作结果渲染成可关闭的成功/失败横幅，并摊开落盘目录、每个下载物（名称/大小/路径）、Skill 根、解压失败警告、submission id、两个 sha256 前缀与本地 ZIP 路径；截止时间过期标红 |
 | 登录与 token | ✅ 插件侧两个来源：DSH **设置页**的 `nju-lab` 节（`ctx.settings.installSection`，即时生效）+ `NJU_LAB_TOKEN` 环境变量作默认；缺失/被拒给可读提示。平台侧 `POST /api/me/tokens` + `revoke`（D-Lite+，`tokenVersion` 整体吊销）已实测可用 |
 | 评估条件跨进程持久化 | ✅ `src/host/eval-state.ts`：claim 后写 `<workspace>/nju-lab/pinned-eval-config.json`，启动时恢复（优先于配置里的默认值），平台本次未下发条件时清掉旧值；文件损坏/形状不对只警告并忽略。L2 实测：两趟**独立** `dsh` 进程，第二趟一启动工具面就已被收窄（含 `bash`、不含 `web_fetch`） |
-| 测试 | ✅ 61 条（55 L1 + 6 L2），带 `DSH_BIN` 真跑 `dsh` 时 **61 pass / 0 fail / 0 skip**；不带则 6 条 L2 静默 skip。真模型也验证过会自己调用工具 |
+| 测试 | ✅ 63 条（57 L1 + 6 L2），带 `DSH_BIN` 真跑 `dsh` 时 **63 pass / 0 fail / 0 skip**；不带则 6 条 L2 静默 skip。真模型也验证过会自己调用工具 |
 | 模型引导 | ✅ `src/host/guidance.ts`：常驻 system prompt 段（`nju-lab:workflow`，order 1800）+ 通过 `ctx.skills.register()` 注册的 `nju-lab-experiment` skill（目录 + 按需加载 + `/nju-lab-experiment`）。L2 实测（真 headless DSH）：引导文字出现在请求的 system 消息里，skill 目录列出该名字，模型调 `skill` 后拿回 `<skill_content name="nju-lab-experiment">` 正文 |
+| 插件自更新 | ✅ `src/host/update.ts`：`kit-version.json`（build-kit 注入日期 + git rev）判新旧，面板顶部「立即更新」→ 拉平台 `/kit/` zip 解出 `nju-lab-client/` 覆盖插件目录（先清 `lib/`），重启 dsh 生效；5 分钟检查缓存、失败静默降级；`NJU_LAB_PLUGIN_DIR` 为测试/调试逃生门。L1 全链路实测（mock 平台供 zip + 假插件目录）：报更新 → 覆盖 → 旧产物清除 → 再查无更新 |
 | `evalConfig.tools` 白名单 | ✅ 能力名 → DSH 工具名映射（`shell`→`bash`、`fs`→`read/write/edit/glob/grep`），在 `agent/created` 用 `agent.ctx.tools.restrict({ allow })` 生效，并在 claim 之后对**已存在**的 agent 补一刀。未知能力名忽略并显式警告 |
 | 证据包 `.dshc` | ✅ 真实实现：`collectEvidence()` 经 `ctx.sessionPersistence` 取**本工作目录下各会话**（按 `header.cwd` 归属，跨多次 DSH 启动）→ 按 `approval/`、`permission/` 前缀筛审计事件 → 递归脱敏（字符串 200 / 数组 50 / 深度 6）→ `buildCapsule()` 产出 `nju-lab.capsule/v1`（`sessions` + `auditEvents` + sha256 `integrity`，`note` 不入哈希）落盘 `evidence.dshc` → 上传并以 `capsuleFileId` 提交，`auditEvents` 一并交给平台。采集失败只记 `note`，**不阻断提交**。L2 实测（真 headless DSH）：17 个会话事件 → 2 条审计事件（`permission/preset`、`approval/policy`），无降级 |
 
@@ -294,7 +318,7 @@ dsh: UNSUPPORTED_REASONING_EFFORT: provider "deepseek-official" model "deepseek-
 
 本次最大的教训：**HTTP 200 只证明字节送达，证明不了脚本能 parse、工厂能注册、UI 能渲染**。client 半的验证要分层：
 
-1. `npm run typecheck` + L1/L2 测试（61 条）——逻辑与 host 半契约；
+1. `npm run typecheck` + L1/L2 测试（63 条）——逻辑与 host 半契约；
 2. **vm 模拟 loader**：Node `vm` 里以 stub `window.__ModuleLoader__` 执行产物，断言 `id` 注册成功、`factory(require)` 物化出 `name/inject/apply` —— 秒级，能抓出 ESM 事故；
 3. **Playwright 真实浏览器 E2E**（终极判据）：起真 `dsh --profile nju-lab-student`，Chromium 走完 引导弹窗 → 选工作区 → 建会话，断言面板自动展开渲染、设置页卡片出现、保存写进 `$DSH_HOME/settings.yaml`。本次三个 bug 里有两个只有这一层能发现。
 
