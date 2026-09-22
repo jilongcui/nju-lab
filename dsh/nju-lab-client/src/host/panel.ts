@@ -28,6 +28,8 @@ export const PANEL_ROUTES = {
 /** 面板首屏需要的全部只读状态。 */
 export interface PanelSnapshot {
   assignments: Assignment[]
+  /** 本地已落盘材料的任务 id（云端 claimed 但换机/清理后不在此列 → 面板给「重新下载」）。 */
+  downloaded: string[]
   evalConfig: EvalConfig | null
   workspaceDir: string
   /** 未配置 token 时面板应显示配置指引，而不是一个空列表 */
@@ -74,14 +76,21 @@ export function registerPanelRoutes(
     requestBody: 'buffered',
     fetch: () =>
       guarded(
-        async (): Promise<PanelSnapshot> => ({
+        async (): Promise<PanelSnapshot> => {
           // 没有 token 就不去碰平台：面板要渲染的是"去配置"的指引，而不是一个 502
-          assignments: options.tokenConfigured() ? await actions.listAssignments() : [],
-          evalConfig: actions.currentEvalConfig() ?? null,
-          workspaceDir: actions.workspaceRoot,
-          tokenConfigured: options.tokenConfigured(),
-          pinnedFrom: actions.currentPinnedFrom(),
-        }),
+          const assignments = options.tokenConfigured() ? await actions.listAssignments() : []
+          const materialized = await Promise.all(
+            assignments.map(async (a) => ((await actions.isMaterialized(a.id)) ? a.id : null)),
+          )
+          return {
+            assignments,
+            downloaded: materialized.filter((id): id is string => id !== null),
+            evalConfig: actions.currentEvalConfig() ?? null,
+            workspaceDir: actions.workspaceRoot,
+            tokenConfigured: options.tokenConfigured(),
+            pinnedFrom: actions.currentPinnedFrom(),
+          }
+        },
       ),
   })
 

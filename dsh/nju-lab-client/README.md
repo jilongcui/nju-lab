@@ -164,7 +164,7 @@ dsh --profile nju-lab-student --no-open
 | `nju_lab_submit` | ✅ 打包/哈希/上传/提交；真实平台联调后库里是 `skillZipRef=file:<id>` |
 | Skill 根探测（REQ §1.0） | ✅ `resolveSkillRoot`：`<dir>/SKILL.md` → 唯一子目录含 `SKILL.md` → 报错。claim 与 submit 两处同语义；传 `skill/` 或 Skill 根本身都能提交 |
 | 打包 / 解压 | ✅ 纯 JS（`src/host/zip.ts`：写 store、读 store + deflate），不依赖学生机器上的 `zip`/`unzip` |
-| ClaimPanel | ✅ 列表 / 领取 / 提交 / 显示钉定条件；host 路由已在真 `dsh web` 上验证（`GET /api/nju-lab.assignments` → 200）。交互与状态对齐 host 半：未解锁/无 token/未领取时按钮禁用并给出原因（`title` 提示），已领取后领取按钮变「已领取」、提交按钮才可用；动作结果渲染成可关闭的成功/失败横幅，并摊开落盘目录、每个下载物（名称/大小/路径）、Skill 根、解压失败警告、submission id、两个 sha256 前缀与本地 ZIP 路径；截止时间过期标红 |
+| ClaimPanel | ✅ 列表 / 领取 / 提交 / 显示钉定条件；host 路由已在真 `dsh web` 上验证（`GET /api/nju-lab.assignments` → 200）。交互与状态对齐 host 半：未解锁/无 token/未领取时按钮禁用并给出原因（`title` 提示），已领取后领取按钮变「已领取」、提交按钮才可用；**云端 claimed 但本地无材料（换机/清理）时按钮变「重新下载」**——平台对 claimed 任务的 claim 幂等重发材料，快照新增 `downloaded`（本地已落盘的任务 id）供面板判断；动作结果渲染成可关闭的成功/失败横幅，并摊开落盘目录、每个下载物（名称/大小/路径）、Skill 根、解压失败警告、submission id、两个 sha256 前缀与本地 ZIP 路径；截止时间过期标红 |
 | 登录与 token | ✅ 插件侧两个来源：DSH **设置页**的 `nju-lab` 节（`ctx.settings.installSection`，即时生效）+ `NJU_LAB_TOKEN` 环境变量作默认；缺失/被拒给可读提示。平台侧 `POST /api/me/tokens` + `revoke`（D-Lite+，`tokenVersion` 整体吊销）已实测可用 |
 | 评估条件跨进程持久化 | ✅ `src/host/eval-state.ts`：claim 后写 `<workspace>/nju-lab/pinned-eval-config.json`，启动时恢复（优先于配置里的默认值），平台本次未下发条件时清掉旧值；文件损坏/形状不对只警告并忽略。L2 实测：两趟**独立** `dsh` 进程，第二趟一启动工具面就已被收窄（含 `bash`、不含 `web_fetch`） |
 | 测试 | ✅ 61 条（55 L1 + 6 L2），带 `DSH_BIN` 真跑 `dsh` 时 **61 pass / 0 fail / 0 skip**；不带则 6 条 L2 静默 skip。真模型也验证过会自己调用工具 |

@@ -109,6 +109,12 @@ export interface NjuLabActions {
    */
   currentPinnedFrom(): string | undefined
   listAssignments(): Promise<Assignment[]>
+  /**
+   * 本地材料是否已落盘（换机、清理工作区后为 false）。
+   * 平台侧的 claimed 状态是云端的，本地有没有文件要另判 —— 面板据此把
+   * 「已领取」换成「重新下载」（平台对 claimed 任务的 claim 是幂等重发）。
+   */
+  isMaterialized(assignmentId: string): Promise<boolean>
   claimAssignment(assignmentId: string): Promise<ClaimOutcome>
   /**
    * 提交一个 Skill 目录。`skillDir` 省略时用领取目录下的 `skill/`。
@@ -174,6 +180,14 @@ export function createActions(
     currentPinnedFrom: () => pinnedFrom,
 
     listAssignments: () => api.myAssignments(),
+
+    async isMaterialized(assignmentId: string): Promise<boolean> {
+      try {
+        return (await readdir(assignmentDir(assignmentId))).length > 0
+      } catch {
+        return false
+      }
+    },
 
     async claimAssignment(assignmentId: string): Promise<ClaimOutcome> {
       const result = await api.claim(assignmentId)

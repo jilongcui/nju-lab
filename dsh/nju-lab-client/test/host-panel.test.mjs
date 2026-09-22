@@ -124,6 +124,7 @@ describe('host routes: nju-lab panel', () => {
       assert.equal(body.workspaceDir, workspaceDir)
       assert.equal(body.evalConfig, null, '还没有 claim，条件应未钉定')
       assert.equal(body.assignments.length, 2)
+      assert.deepEqual(body.downloaded, [], '还没有任何本地材料')
 
       const unlocked = body.assignments.find((a) => a.id === 'a-unlocked')
       assert.equal(unlocked.unlocked, true)
@@ -164,6 +165,7 @@ describe('host routes: nju-lab panel', () => {
       assert.equal(body.evalConfig.model, 'deepseek-flash')
       assert.deepEqual(body.evalConfig.tools, ['shell'])
       assert.equal(body.evalConfig.timeoutSeconds, 600)
+      assert.deepEqual(body.downloaded, ['a-unlocked'], 'claim 后本地材料应在 downloaded 里')
     })
   })
 
