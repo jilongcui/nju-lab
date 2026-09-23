@@ -31,6 +31,31 @@ export function casConfigFromEnv(): CasConfig | null {
 }
 
 /**
+ * 前端 SPA 的对外基路径（浏览器地址栏里可见的前缀）。
+ *
+ * 前端构建时 basename 固定为 /lab/，部署在 medai.nju.edu.cn/lab/ 下，
+ * 所以后端跳回前端不能再用根路径 /login/cas —— 那会落到同域的 FoxCMS 上。
+ * 取 PUBLIC_BASE_URL 的 path 部分（http://medai.nju.edu.cn/lab → /lab），
+ * 未配置或解析失败时退回默认 /lab。
+ *
+ * 与 casConfigFromEnv 不同：读网关头登录不依赖 CAS 服务端配置，
+ * 本函数必须在 CAS_BASE_URL 为空时也能正常工作。
+ */
+export function frontendBasePath(): string {
+  const raw = (process.env.PUBLIC_BASE_URL || '').trim();
+  if (raw) {
+    try {
+      // 根部署（https://lab.xiaohe.biz）的 pathname 是 ''，必须原样返回——
+      // 落进默认 /lab 会让 CAS 回跳在根部署上 404
+      return new URL(raw).pathname.replace(/\/+$/, '');
+    } catch {
+      // 非法 URL：忽略，走默认前缀
+    }
+  }
+  return '/lab';
+}
+
+/**
  * 南京大学统一身份认证（CAS 3.0）客户端。
  *
  * 流程：GET /api/auth/cas/login → 302 到学校登录页 → 学校回调
@@ -60,6 +85,20 @@ export class CasClient {
   loginUrl(): string {
     const cfg = this.requireConfig();
     return `${cfg.baseUrl}/login?service=${encodeURIComponent(this.serviceUrl())}`;
+  }
+
+  /** 本平台对外根地址（登出后回跳用） */
+  appRootUrl(): string {
+    return this.requireConfig().publicBaseUrl;
+  }
+
+  /**
+   * 学校登出地址（302 目标）。
+   * 文档：GET {认证地址}/authserver/logout?service=URLEncode(应用地址)
+   */
+  logoutUrl(service: string): string {
+    const cfg = this.requireConfig();
+    return `${cfg.baseUrl}/logout?service=${encodeURIComponent(service)}`;
   }
 
   /**
