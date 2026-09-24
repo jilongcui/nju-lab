@@ -88,11 +88,19 @@ export class AuthService {
   }
 
   /**
-   * CAS 统一认证登录（双轨并行）：按学号/工号找用户，不存在则自动注册为学生
-   * （随机密码，本地密码登录不可用；教师角色由管理员后台调整）。
+   * CAS 统一认证登录：按学号/工号找用户，不存在则按 CAS 身份注册
+   * （随机密码，本地密码登录不可用）。
+   *
+   * 角色由 CAS 属性推断（containerId 的 ou=JZG → 教师，见 cas.client 的
+   * resolveRoleFromCasAttributes）。已存在用户只在「CAS 判定为教师、库里还是学生」
+   * 时升级 —— 只升不降，免得把管理员手工设过的教师又降回学生。
    * 注意：用户名即绑定键——若同名本地账号已存在则直接并入（占位风险由管理员管控）。
    */
-  async loginWithCas(casUser: { username: string; displayName?: string }) {
+  async loginWithCas(casUser: {
+    username: string;
+    displayName?: string;
+    role?: UserRole;
+  }) {
     let user = await this.userRepo.findOne({
       where: { username: casUser.username },
     });
@@ -101,8 +109,15 @@ export class AuthService {
         username: casUser.username,
         nickname: casUser.displayName || casUser.username,
         password: `${randomUUID()}${randomUUID()}`,
-        role: UserRole.STUDENT,
+        role: casUser.role ?? UserRole.STUDENT,
       });
+    } else if (
+      casUser.role === UserRole.TEACHER &&
+      user.role === UserRole.STUDENT
+    ) {
+      // CAS 说是教职工、库里还是学生 → 升级（issueToken 读的是内存里的 user.role，需同步）
+      await this.userRepo.update(user.id, { role: UserRole.TEACHER });
+      user.role = UserRole.TEACHER;
     }
     return { user: this.sanitize(user), ...this.issueToken(user) };
   }
