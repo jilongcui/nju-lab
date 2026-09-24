@@ -1,8 +1,12 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
+
+/** CAS 校验诊断日志（记录认证机原始报文，用于确认属性名） */
+const logger = new Logger('CasClient');
 
 /** CAS 集成配置（环境变量；CAS_BASE_URL 为空表示未启用） */
 export interface CasConfig {
@@ -115,6 +119,13 @@ export class CasClient {
       `&service=${encodeURIComponent(this.serviceUrl())}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
     const xml = await res.text();
+
+    // 【属性探测】记录认证机返回的原始报文 + 其中释放的全部属性。
+    // 目的：确认南大认证机到底有没有返回身份（教师/学生）字段、字段叫什么名字——
+    // 属性名由学校属性释放策略决定，各校不同，只能实测。确认完毕后本段可删除。
+    logger.log(`CAS 校验原始响应: ${xml.replace(/\s*\n\s*/g, ' ').trim()}`);
+    logger.log(`CAS 属性解析: ${JSON.stringify(this.parseAttributes(xml))}`);
+
     const failure = /<cas:authenticationFailure[^>]*>([\s\S]*?)<\/cas:authenticationFailure>/.exec(xml);
     if (failure) {
       throw new UnauthorizedException(
@@ -131,5 +142,23 @@ export class CasClient {
         xml,
       )?.[1];
     return { username: user[1].trim(), displayName: displayName?.trim() };
+  }
+
+  /**
+   * 提取 <cas:attributes> 内的全部属性为键值对。
+   * 认证机未返回属性节点时返回空对象。
+   */
+  private parseAttributes(xml: string): Record<string, string> {
+    const block = /<cas:attributes>([\s\S]*?)<\/cas:attributes>/.exec(xml);
+    if (!block) {
+      return {};
+    }
+    const attributes: Record<string, string> = {};
+    const re = /<cas:([A-Za-z0-9_.-]+)>([\s\S]*?)<\/cas:\1>/g;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(block[1])) !== null) {
+      attributes[match[1]] = match[2].trim();
+    }
+    return attributes;
   }
 }
