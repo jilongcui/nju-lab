@@ -1,12 +1,11 @@
-import { Body, Controller, Get, Post, Query, Req, Res } from '@nestjs/common';
-import type { Request, Response } from 'express';
+import { Body, Controller, Get, Post, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { User } from '../users/user.entity';
 import { AuthService } from './auth.service';
 import { CasClient, frontendBasePath } from './cas.client';
 import { ChangePasswordDto, LoginDto, RegisterDto } from './dto/auth.dto';
-import { gatewayCasUserFromHeaders } from './gateway-cas';
 
 @Controller('auth')
 export class AuthController {
@@ -55,14 +54,13 @@ export class MePasswordController {
 }
 
 /**
- * 南京大学统一身份认证：与本地账号双轨并行。
+ * 南京大学统一身份认证（CAS 3.0 重定向流，与本地账号双轨并行）。
  *
- * 登录有两条路径，由本控制器自动挑选：
- *   1. 网关头（优先）：medai.nju.edu.cn 上游的学校统一认证网关认证后会注入
- *      CAS-USER / CAS-USER-CN 请求头，此时身份已可信，直接落地本平台会话，
- *      不再把用户送去 authserver 二次登录。
- *   2. CAS 3.0 重定向流（回退）：请求里没有网关头时（如直连、或网关未覆盖的入口），
- *      维持原有行为——302 到学校登录页，回调用 ticket 服务端校验。
+ * 由应用自己决定何时登录：302 到学校登录页 → 回调用 ticket 服务端校验 → 签发本平台 token。
+ *
+ * 历史：上游网关曾拦截全站并注入 CAS-USER / CAS-USER-CN 头代为认证，本控制器因此有过一条
+ * 「读网关头直接签发」的优先路径。网关放开（不再拦截、不再注入头）后该路径已移除——
+ * 请求头客户端可任意伪造，留着等于允许冒充任意账号。
  */
 @Controller('auth/cas')
 export class CasAuthController {
@@ -71,19 +69,10 @@ export class CasAuthController {
     private readonly authService: AuthService,
   ) {}
 
-  /**
-   * 统一认证入口（前端登录页「南京大学统一认证登录」按钮指向这里）。
-   * 有网关头 → 直接签发平台 token 跳回前端；无 → 302 到学校登录页。
-   */
+  /** 统一认证入口（前端登录页「南京大学统一认证登录」按钮指向这里）：跳学校登录页 */
   @Public()
   @Get('login')
-  async login(@Req() req: Request, @Res() res: Response) {
-    const gatewayUser = gatewayCasUserFromHeaders(req.headers);
-    if (gatewayUser) {
-      const { accessToken } = await this.authService.loginWithCas(gatewayUser);
-      res.redirect(this.tokenRedirectUrl(accessToken));
-      return;
-    }
+  login(@Res() res: Response) {
     res.redirect(this.casClient.loginUrl());
   }
 
@@ -107,8 +96,8 @@ export class CasAuthController {
   /**
    * 统一认证登出（官方文档的标准做法）。
    *
-   * 本平台 token 由前端清除；这里负责终止 CAS 会话——否则由于上游网关会持续注入
-   * 身份头，用户「退出」后一刷新就被自动登回去，无法切换账号。
+   * 本平台 token 由前端清除；这里负责终止 CAS 会话——否则统一认证会话还在，
+   * 用户「退出」后再点登录会被直接登回去，无法切换账号。
    *
    * service 固定用配置的应用地址，不接受外部传入（避免开放重定向）。
    */
