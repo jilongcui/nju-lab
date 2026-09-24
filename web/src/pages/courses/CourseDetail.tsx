@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
   Button,
@@ -15,33 +15,42 @@ import {
   Tag,
   Typography,
 } from 'antd';
-import { applyCourse, getPublicCourse, withdrawApplication } from '../../api';
-import type { PublicCourseDetail } from '../../types';
+import { getCatalogCourse, applyCourse, withdrawApplication } from '../../api';
+import type { CatalogCourseDetail } from '../../types';
 import { STATE_META, formatDateTime, formatSeats } from '../../applicationState';
-import { rememberReturnTo } from '../../session';
-import { useAuthStore } from '../../stores/auth';
+import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
 
 const { Title, Paragraph, Text } = Typography;
 
 /**
- * 课程公开页 —— 无需登录。
+ * 课程详情 / 报名页（需登录）。
  * 展示课程公开信息与章节大纲（**不含教学内容**），并承载申请入口。
  */
-export default function PublicCourseDetailPage() {
+export default function CourseDetail() {
   const { slug = '' } = useParams();
   const navigate = useNavigate();
-  const location = useLocation();
-  const token = useAuthStore((s) => s.token);
 
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [course, setCourse] = useState<PublicCourseDetail | null>(null);
+  const [course, setCourse] = useState<CatalogCourseDetail | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useAuxiliaryPanel(
+    '报名说明',
+    <div>
+      <Paragraph type="secondary">
+        名额按「已批准人数」计算，满员后不再受理新申请；被驳回后可以重新申请。
+      </Paragraph>
+      <Paragraph type="secondary">
+        申请通过后，课程会出现在「我的课程」里，实验任务也会一并下发。
+      </Paragraph>
+    </div>,
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setCourse(await getPublicCourse(slug));
+      setCourse(await getCatalogCourse(slug));
       setNotFound(false);
     } catch {
       setNotFound(true);
@@ -54,14 +63,8 @@ export default function PublicCourseDetailPage() {
     void load();
   }, [load]);
 
-  /** 未登录时先记下目标页再走登录（CAS 的 service 固定，只能靠 sessionStorage 回跳） */
   const handleApply = async () => {
     if (!course) {
-      return;
-    }
-    if (!token) {
-      rememberReturnTo(location.pathname);
-      navigate('/login', { state: { from: location.pathname } });
       return;
     }
     setBusy(true);
@@ -99,7 +102,7 @@ export default function PublicCourseDetailPage() {
         title="课程不存在或未公开"
         extra={
           <Button type="primary" onClick={() => navigate('/browse')}>
-            返回课程目录
+            返回选课
           </Button>
         }
       />
@@ -151,10 +154,7 @@ export default function PublicCourseDetailPage() {
               }
             />
           ) : null}
-          {!token ? (
-            <Text type="secondary">申请加入需要先登录（南大统一认证）。</Text>
-          ) : null}
-          <Button type="primary" size="large" loading={busy} onClick={handleApply}>
+          <Button type="primary" loading={busy} onClick={handleApply}>
             申请加入
           </Button>
         </Space>
@@ -188,7 +188,7 @@ export default function PublicCourseDetailPage() {
         type="info"
         showIcon
         message="暂不接受申请"
-        description="该课程当前为纯展示，未开放报名。"
+        description="该课程当前仅公开展示，未开放报名。"
       />
     );
   };
@@ -198,7 +198,7 @@ export default function PublicCourseDetailPage() {
       <Card>
         <Space direction="vertical" size={4} style={{ width: '100%' }}>
           <Space align="center" wrap>
-            <Title level={3} style={{ margin: 0 }}>
+            <Title level={4} style={{ margin: 0 }}>
               {course.title}
             </Title>
             <Tag color={meta.color}>{meta.text}</Tag>
@@ -215,9 +215,6 @@ export default function PublicCourseDetailPage() {
           <Descriptions.Item label="名额">
             {formatSeats(course.capacity, course.seatsLeft, course.approvedCount)}
           </Descriptions.Item>
-          {course.capacity != null ? (
-            <Descriptions.Item label="已批准">{course.approvedCount} 人</Descriptions.Item>
-          ) : null}
           {course.applicationCloseAt ? (
             <Descriptions.Item label="申请截止">
               {formatDateTime(course.applicationCloseAt)}

@@ -15,7 +15,7 @@ import {
   CourseApplicationsController,
   MeApplicationsController,
 } from './course-applications.controller';
-import { PublicCoursesController } from './public-courses.controller';
+import { CourseCatalogController } from './course-catalog.controller';
 import { CourseApplicationsService } from './course-applications.service';
 
 @Module({
@@ -36,7 +36,7 @@ import { CourseApplicationsService } from './course-applications.service';
     MeCoursesController,
     CourseApplicationsController,
     MeApplicationsController,
-    PublicCoursesController,
+    CourseCatalogController,
   ],
   providers: [CoursesService, CourseApplicationsService],
   exports: [TypeOrmModule, CoursesService],

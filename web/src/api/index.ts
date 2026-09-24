@@ -14,10 +14,10 @@ import type {
   ExperimentProject,
   MyApplication,
   MyCourse,
+  CatalogCourseBrief,
+  CatalogCourseDetail,
   ProjectDashboard,
   ProjectSubmissionRow,
-  PublicCourseBrief,
-  PublicCourseDetail,
   Role,
   StoredFileInfo,
   StudentUser,
@@ -183,11 +183,11 @@ export const listAssignmentVersions = (id: string) =>
 export const getMyEvaluation = (id: string) =>
   client.get<unknown, Evaluation>(`/me/evaluations/${id}`);
 
-// ---------- 公开课程目录（无需登录；登录时后端附带我的申请状态） ----------
-export const listPublicCourses = (params?: { keyword?: string; term?: string }) =>
-  client.get<unknown, PublicCourseBrief[]>('/public/courses', { params });
-export const getPublicCourse = (slug: string) =>
-  client.get<unknown, PublicCourseDetail>(`/public/courses/${slug}`);
+// ---------- 课程目录与详情（选课用，需登录） ----------
+export const listCatalogCourses = (params?: { keyword?: string; term?: string }) =>
+  client.get<unknown, CatalogCourseBrief[]>('/browse/courses', { params });
+export const getCatalogCourse = (slug: string) =>
+  client.get<unknown, CatalogCourseDetail>(`/browse/courses/${slug}`);
 
 // ---------- 课程申请（学生） ----------
 export const applyCourse = (courseId: string) =>

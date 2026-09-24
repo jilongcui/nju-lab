@@ -375,9 +375,11 @@ GET    /api/me/evaluations/:id          查看自己的复验结果与反馈
 | 启动 | 后端生产常驻：`systemctl start nju-lab`（unit `/etc/systemd/system/nju-lab.service`，`node dist/main.js`，Restart=always；发布 = `npm run build && sudo systemctl restart nju-lab`）；开发调试 `npm run start:dev`。前端改动需 `npm run build` 并替换 `/var/www/nju-lab/dist` |
 | DSH 客户端插件（agent 侧） | `dsh/nju-lab-client/`（host + client 双半）：安装步骤与当前实现状态见 `dsh/nju-lab-client/README.md`，入口约定见 `dsh/README.md`；测试 `DSH_BIN=/path/to/dsh npm test`（61 条 = 55 L1 + 6 L2） |
 
-### 课程公开目录与申请审批（2026-09-24 新增）
+### 课程目录、选课申请与工作台（2026-09-24 新增）
 
-`/lab` 从「全站需登录」拆出**公开区**（无需登录的课程目录与课程公开页），并补上**课程申请 → 教师审批 → 入册**链路。核心设计：`published` 只表示「别人能看到」，能否申请由 `applicationOpenAt`/`capacity` 独立决定；`Enrollment` 语义不变（= 已批准入册），申请用独立表 `course_applications`，因此可见性/内容授权/任务分发三处代码零改动。批准时在事务里建入册并**补发该课程全部已发布项目的 Assignment**（项目发布只发给"当时在册"的学生，后来入册的必须补）。
+`/lab` 补上**课程目录 → 申请 → 教师审批 → 入册**链路，并为学生新增**工作台**（登录后的落地页，含待办实验与「去选课」入口）。核心设计：`published` 只表示「别人能看到」，能否申请由 `applicationOpenAt`/`capacity` 独立决定；`Enrollment` 语义不变（= 已批准入册），申请用独立表 `course_applications`，因此可见性/内容授权/任务分发三处代码零改动。批准时在事务里建入册并**补发该课程全部已发布项目的 Assignment**（项目发布只发给"当时在册"的学生，后来入册的必须补）。
+
+⚠️ 当天有一次方向修订：课程目录初版设计为「**无需登录的公开区**」（独立布局 + `@OptionalAuth()` + `/api/public/courses`），当天下午**收回为登录后可见**（`/api/browse/courses`，未登录直接落登录页；`PublicLayout` 与 `@OptionalAuth()` 均已删除）。前后对照见 `docs/DESIGN-course-application-2026-09-24.md` §10。
 
 完整设计、接口清单、踩坑与端到端实测结论见 **`docs/DESIGN-course-application-2026-09-24.md`** 与 `HANDOFF.md` §6。门户侧在 FoxCMS 新增「实验平台」外链栏目（`out_link=/lab/browse`）接入。
 

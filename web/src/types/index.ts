@@ -76,8 +76,8 @@ export type ApplicationState =
 
 export type ApplicationStatus = 'pending' | 'approved' | 'rejected';
 
-/** GET /api/public/courses 条目 */
-export interface PublicCourseBrief {
+/** GET /api/browse/courses 条目 */
+export interface CatalogCourseBrief {
   id: string;
   slug: string | null;
   title: string;
@@ -101,13 +101,13 @@ export interface MyApplicationBrief {
   decisionNote: string | null;
 }
 
-/** GET /api/public/courses/:slug */
-export interface PublicCourseDetail
-  extends Omit<PublicCourseBrief, 'chapterCount'> {
+/** GET /api/browse/courses/:slug */
+export interface CatalogCourseDetail
+  extends Omit<CatalogCourseBrief, 'chapterCount'> {
   chapters: { id: string; order: number; title: string }[];
-  /** 仅登录时返回 */
+  /** 我的最近一次申请（登录用户） */
   myApplication: MyApplicationBrief | null;
-  /** 仅登录时返回 */
+  /** 我是否已入册 */
   myEnrollment: boolean;
 }
 

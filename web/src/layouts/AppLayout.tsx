@@ -26,10 +26,12 @@ import {
   ExperimentOutlined,
   FileDoneOutlined,
   FormOutlined,
+  HomeOutlined,
   KeyOutlined,
   LockOutlined,
   LogoutOutlined,
   MoonOutlined,
+  SearchOutlined,
   SunOutlined,
 } from '@ant-design/icons';
 import { changePassword, issueApiToken, revokeApiTokens } from '../api';
@@ -44,15 +46,18 @@ const { Text, Paragraph } = Typography;
 const SEGMENT_LABELS: Record<string, string> = {
   teacher: '教师端',
   student: '学生端',
+  home: '工作台',
   dashboard: '工作台',
   courses: '课程',
+  browse: '选课',
+  course: '课程',
   chapters: '章节',
   edit: '编辑',
   projects: '实验项目',
   submissions: '提交与反馈',
   client: '客户端下载',
   grade: '批改',
-  applications: '课程申请',
+  applications: '申请',
 };
 
 const MENUS = {
@@ -62,8 +67,10 @@ const MENUS = {
     { key: '/teacher/projects', icon: <ExperimentOutlined />, label: '实验项目' },
   ],
   student: [
+    { key: '/student/home', icon: <HomeOutlined />, label: '工作台' },
     { key: '/student/courses', icon: <BookOutlined />, label: '我的课程' },
-    { key: '/student/applications', icon: <FormOutlined />, label: '课程申请' },
+    { key: '/browse', icon: <SearchOutlined />, label: '选课' },
+    { key: '/student/applications', icon: <FormOutlined />, label: '我的申请' },
     { key: '/student/submissions', icon: <FileDoneOutlined />, label: '我的提交与反馈' },
     { key: '/student/client', icon: <CloudDownloadOutlined />, label: '客户端下载' },
   ],
@@ -117,9 +124,13 @@ export default function AppLayout() {
   const menuItems = MENUS[role];
 
   const selectedKey = useMemo(() => {
+    // 课程详情页归属于「选课」菜单项
+    const pathname = location.pathname.startsWith('/course/')
+      ? '/browse'
+      : location.pathname;
     const hit = menuItems
       .map((m) => m.key)
-      .filter((k) => location.pathname.startsWith(k))
+      .filter((k) => pathname.startsWith(k))
       .sort((a, b) => b.length - a.length)[0];
     return hit ?? menuItems[0]?.key;
   }, [location.pathname, menuItems]);

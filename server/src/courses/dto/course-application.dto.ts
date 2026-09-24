@@ -1,7 +1,7 @@
 import { IsOptional, IsString, MaxLength } from 'class-validator';
 
-/** GET /api/public/courses 的检索参数 */
-export class PublicCourseQueryDto {
+/** GET /api/browse/courses 的检索参数 */
+export class CatalogCourseQueryDto {
   /** 关键词：匹配标题或简介 */
   @IsOptional()
   @IsString()

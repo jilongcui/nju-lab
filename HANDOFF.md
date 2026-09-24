@@ -166,21 +166,31 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 - nju-lab-client 提交前自检（skillforge 规范检查）
 - SkillLibrary 参考技能库、章节自测题、成绩汇总
 
-## 6. 课程公开目录与申请审批 —— ✅ 已完成（2026-09-24）
+## 6. 课程目录、选课申请与工作台 —— ✅ 已完成（2026-09-24）
 
-完整设计见 **`docs/DESIGN-course-application-2026-09-24.md`**。要点：
+完整设计见 **`docs/DESIGN-course-application-2026-09-24.md`**（含当天的方向修订，见其 §10）。要点：
 
 **背景**：改造前 `/lab` 全站在 `RequireAuth` 后，未登录访客什么都看不到；学生只能看到教师手工加进名单的课（未入册时返回**空列表**），既不能发现课程也不能自己选课。
 
-**已落地的三层结构**：
+**⚠️ 当天二次决策（务必知悉）**：初版把课程目录做成「**无需登录的公开区**」（独立 `PublicLayout` + `@OptionalAuth()` 匿名放行 + `/api/public/courses`）。当天下午按产品决策**收回为登录后可见**：
+
+| | 初版 | 现行 |
+|---|---|---|
+| 未登录访客 | 能浏览课程目录/详情 | **直接落登录页** |
+| 接口 | `/api/public/courses[/:slug]` + `@OptionalAuth()` | `/api/browse/courses[/:slug]`，需登录（`@OptionalAuth()` 已删） |
+| 布局 | 独立 `PublicLayout`（深色顶栏） | 并入平台内布局（与工作台同壳） |
+
+**现行形态**：
 
 ```
-门户（FoxCMS，公开）→ 导览 + CTA
-/lab 公开区（新增，无需登录）：/browse 课程目录、/course/<slug> 公开课程页
-/lab 私域区（现有）：章节、实验、提交、复验、成绩
+门户（FoxCMS，公开）→「实验平台」外链栏目 → /lab/  （未登录则落登录页）
+/lab（需登录）
+   · 工作台：学生 /student/home、教师 /teacher/dashboard（登录后的落地页）
+   · 选课：/browse 课程目录 → /course/<slug> 课程详情 → 申请
+   · 学习与实验：章节、实验、提交、复验、成绩
 ```
 
-**核心语义**：`Course.status = published` 只表示「别人能看到」；**能否申请由 `applicationOpenAt` / `applicationCloseAt` / `capacity` 独立决定**（支持"先展示、到点开放申请"的热门课策略）。`applicationState` 由后端算（依赖已批准人数，前端算不出），取值 `open`/`not_open_yet`/`full`/`closed`/`not_published`。
+**核心语义**（未变）：`Course.status = published` 只表示「别人能看到」；**能否申请由 `applicationOpenAt` / `applicationCloseAt` / `capacity` 独立决定**（支持"先展示、到点开放申请"的热门课策略）。`applicationState` 由后端算（依赖已批准人数，前端算不出），取值 `open`/`not_open_yet`/`full`/`closed`/`not_published`。
 
 **数据层**：
 - 新增 `course_applications`：**不给 `Enrollment` 加状态**——保持它「已批准入册」的语义，可见性/内容授权/任务分发三处依赖它的代码**零改动**，且"容量按批准数"天然对齐
@@ -198,9 +208,9 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 
 **接口**：
 ```
-公开（@OptionalAuth）
-  GET  /api/public/courses            目录 + 检索(keyword/term)
-  GET  /api/public/courses/:slug      公开页（章节只给标题，不含教学内容；登录时附 myApplication/myEnrollment）
+课程目录与详情（需登录）
+  GET  /api/browse/courses            目录 + 检索(keyword/term)
+  GET  /api/browse/courses/:slug      课程详情（章节只给标题，不含教学内容；附 myApplication/myEnrollment）
 学生
   POST   /api/courses/:courseId/applications        申请
   DELETE /api/courses/:courseId/applications/:id    撤回（仅 pending）
@@ -212,14 +222,18 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 ```
 
 **前端**：
-- 公开区 `PublicLayout` + `/browse` + `/course/:slug`（「返回门户」用原生 `<a href="/">`——`<Link to="/">` 会因 basename=`/lab/` 导航到 lab 自己）
-- 教师端课程详情新增「公开报名」页签：名额上限、申请开放/截止时间、当前状态、公开页链接
-- 学生菜单新增「课程申请」；教师审批页 `/teacher/courses/:courseId/applications`（逐个批准/驳回、显示待审批/已批准/剩余名额）
+- **学生工作台** `/student/home`（新增）：统计卡（我的课程/待办实验/待审批申请/章节完成度）+ 待办实验列表 + 「去选课」入口。学生与教师的登录落地页都是工作台
+- 选课 `/browse` → 课程详情 `/course/:slug`，与平台其他页面共用 `AppLayout`（不再是独立公开站）
+- 教师端课程详情新增「公开报名」页签：名额上限、申请开放/截止时间、当前状态、公开链接
+- 学生菜单新增「选课」「我的申请」；教师审批页 `/teacher/courses/:courseId/applications`（逐个批准/驳回、显示待审批/已批准/剩余名额）
 - 被驳回后可重新申请（列表提示 + 可再次提交）
+- 深链被 `RequireAuth` 拦下 → 登录（含 CAS）后回到原页面（`web/src/session.ts` 的 returnTo）
 
-**端到端实测（2026-09-24，curl）**：匿名浏览公开目录 → 教师配置名额与开放时间 → 学生申请 → 重复申请被拒 → 教师批准（补发 1 个任务，学生任务列表出现）→ 驳回（带理由，学生可见）→ 重新申请成功 → 收名额至满（`full`）→ 满员批准被拒「名额已满」→ 满员新申请被拒 → 退课释放名额 → 队列中的申请补批成功。无效 token 访问公开页按匿名放行（200，非 401）。
+**端到端实测（2026-09-24，curl）**：浏览课程目录 → 教师配置名额与开放时间 → 学生申请 → 重复申请被拒 → 教师批准（补发 1 个任务，学生任务列表出现）→ 驳回（带理由，学生可见）→ 重新申请成功 → 收名额至满（`full`）→ 满员批准被拒「名额已满」→ 满员新申请被拒 → 退课释放名额 → 队列中的申请补批成功。
 
-**门户接入**：FoxCMS 新增栏目「实验平台」（`fox_column` id=128，`column_attr=1` 外链，`out_link=/lab/browse`），`templates/foxui01/nav.html` 的 `typeid` 加入 128；顺带删掉导航里指向不存在栏目的死项 `typeid='3,4'`。栏目记录在 `foxcms/sql/column-lab-entry.sql`（便于他处复用）。
+**收回归档后的接口验证**：未登录 `GET /lab/api/browse/courses` → **401**；旧路径 `/api/public/courses` → **404**；登录后正常返回目录。
+
+**门户接入**：FoxCMS 新增栏目「实验平台」（`fox_column` id=128，`column_attr=1` 外链，`out_link=/lab/browse`），`templates/foxui01/nav.html` 的 `typeid` 加入 128；顺带删掉导航里指向不存在栏目的死项 `typeid='3,4'`。栏目记录在 `foxcms/sql/column-lab-entry.sql`（便于他处复用）。未登录点它会被 `/lab` 的登录页接住。
 
 ## 7. 协作方式备忘
 

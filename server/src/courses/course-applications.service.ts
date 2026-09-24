@@ -26,16 +26,18 @@ import {
 
 export type { ApplicationState };
 
-export interface PublicCourseQuery {
+export interface CatalogCourseQuery {
   keyword?: string;
   term?: string;
 }
 
 /**
- * 公开课程目录 + 申请审批（见 docs/DESIGN-course-application-2026-09-24.md）。
+ * 课程目录（选课用）+ 申请审批（见 docs/DESIGN-course-application-2026-09-24.md）。
  *
  * 与 CoursesService 的分工：CoursesService 管课程自身的增删改（含章节、名单），
  * 本服务管「对外可见性 + 报名审批」。两者都不碰对方的语义。
+ *
+ * 注意：课程目录/详情接口是**需登录**的（平台内容登录后可见，2026-09-24 决策）。
  */
 @Injectable()
 export class CourseApplicationsService {
@@ -51,10 +53,10 @@ export class CourseApplicationsService {
     private readonly dataSource: DataSource,
   ) {}
 
-  // ---------- 公开目录（无需登录） ----------
+  // ---------- 课程目录与详情（需登录） ----------
 
-  /** GET /api/public/courses —— 已发布课程目录 + 检索 */
-  async listPublicCourses(query: PublicCourseQuery) {
+  /** GET /api/browse/courses —— 已发布课程目录 + 检索 */
+  async listCatalogCourses(query: CatalogCourseQuery) {
     const where: Record<string, unknown>[] = [];
     const base = { status: CourseStatus.PUBLISHED };
     if (query.keyword) {
@@ -115,11 +117,10 @@ export class CourseApplicationsService {
   }
 
   /**
-   * GET /api/public/courses/:slug —— 课程公开页。
+   * GET /api/browse/courses/:slug —— 课程详情（需登录）。
    * 章节只给标题（大纲），教学内容需入册后在私域区看。
-   * user 由 @OptionalAuth 注入：登录时额外返回「我的申请/入册状态」。
    */
-  async getPublicCourse(slug: string, user?: User) {
+  async getCatalogCourse(user: User, slug: string) {
     const course = await this.courseRepo.findOne({
       where: { slug },
       relations: ['teacher'],
@@ -143,25 +144,22 @@ export class CourseApplicationsService {
       decidedAt: Date | null;
       decisionNote: string | null;
     } | null = null;
-    let myEnrollment = false;
-    if (user) {
-      const mine = await this.applicationRepo.findOne({
-        where: { courseId: course.id, studentId: user.id },
-        order: { createdAt: 'DESC' },
-      });
-      if (mine) {
-        myApplication = {
-          id: mine.id,
-          status: mine.status,
-          createdAt: mine.createdAt,
-          decidedAt: mine.decidedAt,
-          decisionNote: mine.decisionNote,
-        };
-      }
-      myEnrollment = !!(await this.enrollmentRepo.findOne({
-        where: { courseId: course.id, studentId: user.id },
-      }));
+    const mine = await this.applicationRepo.findOne({
+      where: { courseId: course.id, studentId: user.id },
+      order: { createdAt: 'DESC' },
+    });
+    if (mine) {
+      myApplication = {
+        id: mine.id,
+        status: mine.status,
+        createdAt: mine.createdAt,
+        decidedAt: mine.decidedAt,
+        decisionNote: mine.decisionNote,
+      };
     }
+    const myEnrollment = !!(await this.enrollmentRepo.findOne({
+      where: { courseId: course.id, studentId: user.id },
+    }));
 
     return {
       id: course.id,

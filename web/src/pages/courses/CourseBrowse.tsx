@@ -1,32 +1,36 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import {
-  Card,
-  Col,
-  Empty,
-  Input,
-  Row,
-  Skeleton,
-  Space,
-  Tag,
-  Typography,
-} from 'antd';
+import { useNavigate } from 'react-router-dom';
+import { Card, Col, Empty, Input, Row, Skeleton, Space, Tag, Typography } from 'antd';
 import { ReadOutlined, TeamOutlined } from '@ant-design/icons';
-import { listPublicCourses } from '../../api';
-import type { PublicCourseBrief } from '../../types';
+import { listCatalogCourses } from '../../api';
+import type { CatalogCourseBrief } from '../../types';
 import { STATE_META, formatDateTime, formatSeats } from '../../applicationState';
+import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
 
 const { Title, Paragraph, Text } = Typography;
 
-/** 公开课程目录：无需登录（登录时后端会附带我的申请状态） */
+/** 选课：已公开的课程目录 + 检索。需登录（平台内容登录后可见）。 */
 export default function CourseBrowse() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [courses, setCourses] = useState<PublicCourseBrief[]>([]);
+  const [courses, setCourses] = useState<CatalogCourseBrief[]>([]);
+
+  useAuxiliaryPanel(
+    '选课说明',
+    <div>
+      <Paragraph type="secondary">
+        这里列出所有已公开的课程。点课程卡片查看大纲与名额，可申请时直接报名。
+      </Paragraph>
+      <Paragraph type="secondary">
+        热门课程可能设置了申请开放时间，未开放时无法提交；被驳回后可以重新申请。
+      </Paragraph>
+    </div>,
+  );
 
   const load = useCallback(async (keyword?: string) => {
     setLoading(true);
     try {
-      const data = await listPublicCourses(keyword ? { keyword } : undefined);
+      const data = await listCatalogCourses(keyword ? { keyword } : undefined);
       setCourses(data ?? []);
     } finally {
       setLoading(false);
@@ -39,19 +43,18 @@ export default function CourseBrowse() {
 
   return (
     <div>
-      <Title level={3} style={{ marginTop: 0 }}>
-        课程目录
+      <Title level={4} style={{ marginTop: 0 }}>
+        选课
       </Title>
       <Paragraph type="secondary">
-        这里列出所有已公开的课程。课程可申请时可直接报名，教师审批通过后即可进入学习并完成实验。
+        浏览已公开的课程并申请加入；教师审批通过后即可进入课程学习与实验。
       </Paragraph>
 
       <Input.Search
         allowClear
-        size="large"
         placeholder="搜索课程名称或简介"
         enterButton="搜索"
-        style={{ maxWidth: 480, marginBottom: 20 }}
+        style={{ maxWidth: 420, marginBottom: 16 }}
         onSearch={(v) => void load(v.trim() || undefined)}
       />
 
@@ -59,7 +62,7 @@ export default function CourseBrowse() {
         <Skeleton active paragraph={{ rows: 6 }} />
       ) : courses.length === 0 ? (
         <Card>
-          <Empty description="暂无已公开的课程" />
+          <Empty description="暂无可选课程" />
         </Card>
       ) : (
         <Row gutter={[16, 16]}>
@@ -69,11 +72,8 @@ export default function CourseBrowse() {
               <Col xs={24} sm={12} lg={8} key={c.id}>
                 <Card
                   hoverable
-                  title={
-                    <Link to={`/course/${c.slug}`} style={{ whiteSpace: 'normal' }}>
-                      {c.title}
-                    </Link>
-                  }
+                  onClick={() => navigate(`/course/${c.slug}`)}
+                  title={c.title}
                   extra={<Tag color={meta.color}>{meta.text}</Tag>}
                 >
                   <Space size={4} wrap>
@@ -98,7 +98,7 @@ export default function CourseBrowse() {
                   {c.applicationState === 'not_open_yet' && c.applicationOpenAt ? (
                     <div style={{ marginTop: 8 }}>
                       <Text type="warning">
-                        申请开放时间：{formatDateTime(c.applicationOpenAt)}
+                        申请开放：{formatDateTime(c.applicationOpenAt)}
                       </Text>
                     </div>
                   ) : null}
