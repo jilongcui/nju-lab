@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Alert, Button, Card, Form, Input, Typography, theme } from 'antd';
 import { ExperimentOutlined, LockOutlined, UserOutlined } from '@ant-design/icons';
 import { login } from '../../api';
 import { useAuthStore } from '../../stores/auth';
 import { withBase } from '../../config';
+import { consumeReturnTo, peekReturnTo, rememberReturnTo } from '../../session';
 
 const { Title, Text } = Typography;
 
@@ -16,6 +17,17 @@ export default function Login() {
   const { token } = theme.useToken();
   const [params] = useSearchParams();
   const casError = params.get('error');
+  const [returnTo, setReturnTo] = useState<string | null>(null);
+
+  // 从公开页跳来时带着 state.from：先记进 sessionStorage，
+  // 这样走 CAS（整页跳转，React state 会丢）也能回得来。
+  useEffect(() => {
+    const from = (location.state as { from?: string } | null)?.from;
+    if (from) {
+      rememberReturnTo(from);
+    }
+    setReturnTo(peekReturnTo());
+  }, [location.state]);
 
   const onFinish = async (values: { username: string; password: string }) => {
     setLoading(true);
@@ -25,7 +37,15 @@ export default function Login() {
       if (!accessToken) throw new Error('登录响应缺少 token');
       setAuth(accessToken, res.user);
       const from = (location.state as { from?: string } | null)?.from;
-      navigate(from && from !== '/' ? from : res.user.role === 'teacher' || res.user.role === 'admin' ? '/teacher/dashboard' : '/student/courses', { replace: true });
+      const target =
+        consumeReturnTo() ?? (from && from !== '/' ? from : null);
+      navigate(
+        target ??
+          (res.user.role === 'teacher' || res.user.role === 'admin'
+            ? '/teacher/dashboard'
+            : '/student/courses'),
+        { replace: true },
+      );
     } finally {
       setLoading(false);
     }
@@ -58,6 +78,14 @@ export default function Login() {
               message={casError === 'cas-no-ticket' ? '统一认证回调缺少 ticket' : '统一认证校验失败，请重试或改用账号密码登录'}
             />
           )}
+          {returnTo && !casError ? (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message="登录后将继续你刚才的操作"
+            />
+          ) : null}
           <Form.Item name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}>
             <Input prefix={<UserOutlined />} placeholder="用户名" autoComplete="username" />
           </Form.Item>
@@ -71,6 +99,7 @@ export default function Login() {
             block
             style={{ marginTop: 12 }}
             onClick={() => {
+              // 整页跳转到后端 CAS 入口；returnTo 已在 sessionStorage 里
               window.location.href = withBase('api/auth/cas/login');
             }}
           >

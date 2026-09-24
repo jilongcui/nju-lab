@@ -21,6 +21,8 @@ import {
   UpdateCourseDto,
   UpsertChapterDto,
 } from './dto/course.dto';
+import { buildSlugBase } from './slug.util';
+import { resolveApplicationState, seatsLeft } from './application-state.util';
 
 @Injectable()
 export class CoursesService {
@@ -41,13 +43,17 @@ export class CoursesService {
 
   // ---------- 课程 CRUD ----------
 
-  createCourse(teacher: User, dto: CreateCourseDto) {
-    const course = this.courseRepo.create({
-      title: dto.title,
-      term: dto.term ?? '',
-      description: dto.description ?? null,
-      teacherId: teacher.id,
-    });
+  async createCourse(teacher: User, dto: CreateCourseDto) {
+    const course = await this.courseRepo.save(
+      this.courseRepo.create({
+        title: dto.title,
+        term: dto.term ?? '',
+        description: dto.description ?? null,
+        teacherId: teacher.id,
+      }),
+    );
+    // 公开链接标识：建课时即生成，发布时若为空再兜底（见 publishCourse）
+    course.slug = await this.uniqueSlug(buildSlugBase(dto.title, course.id));
     return this.courseRepo.save(course);
   }
 
@@ -94,8 +100,17 @@ export class CoursesService {
           : { courseId, status: ChapterStatus.PUBLISHED },
       order: { order: 'ASC' },
     });
+    // 报名状态：教师端「公开报名」页签要用（与公开目录共用同一套判定）
+    const approvedCount = await this.enrollmentRepo.count({
+      where: { courseId },
+    });
+    const enrollmentState = {
+      applicationState: resolveApplicationState(course, approvedCount),
+      approvedCount,
+      seatsLeft: seatsLeft(course.capacity, approvedCount),
+    };
     if (chapters.length === 0) {
-      return { ...course, chapters };
+      return { ...course, ...enrollmentState, chapters };
     }
     // 章节下挂的实验项目一并返回（课程详情页大纲用）
     const projects = await this.projectRepo.find({
@@ -104,6 +119,7 @@ export class CoursesService {
     });
     return {
       ...course,
+      ...enrollmentState,
       chapters: chapters.map((ch) => ({
         ...ch,
         projects: projects
@@ -113,16 +129,72 @@ export class CoursesService {
     };
   }
 
+  /**
+   * 编辑课程。**显式逐字段赋值**而不是 Object.assign(course, dto)——
+   * class-transformer 会把 DTO 未提交的可选字段补成 undefined，
+   * 整体赋值会把实体上已有的值在内存里抹掉（HANDOFF 第 3.10 条踩过同类坑）。
+   */
   async updateCourse(user: User, courseId: string, dto: UpdateCourseDto) {
     const course = await this.getOwnedCourse(user, courseId);
-    Object.assign(course, dto);
+
+    if (dto.slug !== undefined) {
+      if (course.status === CourseStatus.PUBLISHED && dto.slug !== course.slug) {
+        throw new BadRequestException('课程已发布，公开链接标识不可再修改');
+      }
+      if (dto.slug) {
+        const normalized = dto.slug.trim().toLowerCase();
+        if (!/^[a-z0-9][a-z0-9-]*$/.test(normalized)) {
+          throw new BadRequestException(
+            '链接标识只能包含小写字母、数字和连字符',
+          );
+        }
+        course.slug = await this.uniqueSlug(normalized, course.id);
+      }
+    }
+
+    if (dto.title !== undefined) course.title = dto.title;
+    if (dto.term !== undefined) course.term = dto.term;
+    if (dto.description !== undefined) course.description = dto.description;
+    if (dto.capacity !== undefined) course.capacity = dto.capacity ?? null;
+    if (dto.applicationOpenAt !== undefined) {
+      course.applicationOpenAt = dto.applicationOpenAt
+        ? new Date(dto.applicationOpenAt)
+        : null;
+    }
+    if (dto.applicationCloseAt !== undefined) {
+      course.applicationCloseAt = dto.applicationCloseAt
+        ? new Date(dto.applicationCloseAt)
+        : null;
+    }
+
     return this.courseRepo.save(course);
   }
 
   async publishCourse(user: User, courseId: string) {
     const course = await this.getOwnedCourse(user, courseId);
     course.status = CourseStatus.PUBLISHED;
+    // 兜底：老数据/迁移遗漏时确保公开页可访问
+    if (!course.slug) {
+      course.slug = await this.uniqueSlug(buildSlugBase(course.title, course.id));
+    }
     return this.courseRepo.save(course);
+  }
+
+  /** 生成唯一公开链接标识；冲突时追加 -2、-3… */
+  private async uniqueSlug(base: string, excludeId?: string): Promise<string> {
+    const root = base || 'course';
+    let candidate = root;
+    let n = 1;
+    for (;;) {
+      const exists = await this.courseRepo.findOne({
+        where: { slug: candidate },
+      });
+      if (!exists || exists.id === excludeId) {
+        return candidate;
+      }
+      n += 1;
+      candidate = `${root}-${n}`;
+    }
   }
 
   /** 删除课程（级联删除章节、实验、选课、提交等，FK 已配置 CASCADE） */

@@ -166,7 +166,62 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 - nju-lab-client 提交前自检（skillforge 规范检查）
 - SkillLibrary 参考技能库、章节自测题、成绩汇总
 
-## 6. 协作方式备忘
+## 6. 课程公开目录与申请审批 —— ✅ 已完成（2026-09-24）
+
+完整设计见 **`docs/DESIGN-course-application-2026-09-24.md`**。要点：
+
+**背景**：改造前 `/lab` 全站在 `RequireAuth` 后，未登录访客什么都看不到；学生只能看到教师手工加进名单的课（未入册时返回**空列表**），既不能发现课程也不能自己选课。
+
+**已落地的三层结构**：
+
+```
+门户（FoxCMS，公开）→ 导览 + CTA
+/lab 公开区（新增，无需登录）：/browse 课程目录、/course/<slug> 公开课程页
+/lab 私域区（现有）：章节、实验、提交、复验、成绩
+```
+
+**核心语义**：`Course.status = published` 只表示「别人能看到」；**能否申请由 `applicationOpenAt` / `applicationCloseAt` / `capacity` 独立决定**（支持"先展示、到点开放申请"的热门课策略）。`applicationState` 由后端算（依赖已批准人数，前端算不出），取值 `open`/`not_open_yet`/`full`/`closed`/`not_published`。
+
+**数据层**：
+- 新增 `course_applications`：**不给 `Enrollment` 加状态**——保持它「已批准入册」的语义，可见性/内容授权/任务分发三处依赖它的代码**零改动**，且"容量按批准数"天然对齐
+- 生成列 `pendingFlag = IF(status='pending',1,NULL)` + 唯一索引 `uq_course_application_pending`（利用 MySQL 唯一索引允许多个 NULL）→ **允许重复申请，但同一课程同一学生同时只能有一条 pending**；申请历史完整保留
+- `courses` 新增 `slug` / `capacity` / `applicationOpenAt` / `applicationCloseAt`；迁移 `CourseApplications1790224400979`（含既有课程 slug 回填）
+
+**关键实现点（踩坑）**：
+1. **`@OptionalAuth()` 第三态**：原先只有「全拦」与 `@Public()`「全放」两种；公开课程页需要「带 token 识别身份、不带也放行」，否则登录用户看不到自己的申请状态
+2. **补发 Assignment 必须用独立方法，不能复用 `publishProject()`**：后者开头就把 `project.status` 改回 `PUBLISHED`（对已发布项目等于重新发布）、**不校验当前是否 draft**（会误发布草稿）；且 `ProjectStatus.CLOSED` 虽是纯预留、目前从未被任何代码设置，一旦将来启用「截止关闭项目」，那里的检查会让补发抛错。现为 `CourseApplicationsService.backfillAssignments()`，只挑 `status = PUBLISHED` 的项目补建
+3. **批准在事务里锁课程行**（`pessimistic_write`）：逐个批准下两个标签页同时批最后两个名额不会超额
+4. **满员不清空队列**：`full` 只阻止**新申请**；已提交的 pending 保留，退课释放名额后可继续补批（实测：退课 → state 回 `open` → 补批成功并补发任务）
+5. **CAS returnTo 用 sessionStorage**（`web/src/session.ts`）：后端 `service` 固定不接受外部传入（防开放重定向，别动），所以「课程页点申请 → CAS 登录 → 回到那门课」只能前端携带
+6. **`path: '*'` 兜底重定向**改掉了：原先一律去 `/`（在 RequireAuth 下），未登录访客会被弹到登录页；现为匿名→`/browse`、已登录→角色首页
+7. 顺带修正一处**既有 schema 漂移**：`submissions` 的复合索引 `IDX_submissions_assignment_version` 只在迁移里手建、实体没声明，导致 `migration:generate` 每次都生成一条无关的 `DROP INDEX`。已在 `Submission` 实体补 `@Index('IDX_submissions_assignment_version', ['assignmentId','version'])`
+
+**接口**：
+```
+公开（@OptionalAuth）
+  GET  /api/public/courses            目录 + 检索(keyword/term)
+  GET  /api/public/courses/:slug      公开页（章节只给标题，不含教学内容；登录时附 myApplication/myEnrollment）
+学生
+  POST   /api/courses/:courseId/applications        申请
+  DELETE /api/courses/:courseId/applications/:id    撤回（仅 pending）
+  GET    /api/me/applications                       我的申请
+教师
+  GET  /api/courses/:courseId/applications          列表（按 createdAt 升序＝先到先得）+ 名额/队列信息
+  POST /api/courses/:courseId/applications/:id/approve   批准（建入册 + 补发任务，返回 assignmentsCreated）
+  POST /api/courses/:courseId/applications/:id/reject    驳回（可选 note）
+```
+
+**前端**：
+- 公开区 `PublicLayout` + `/browse` + `/course/:slug`（「返回门户」用原生 `<a href="/">`——`<Link to="/">` 会因 basename=`/lab/` 导航到 lab 自己）
+- 教师端课程详情新增「公开报名」页签：名额上限、申请开放/截止时间、当前状态、公开页链接
+- 学生菜单新增「课程申请」；教师审批页 `/teacher/courses/:courseId/applications`（逐个批准/驳回、显示待审批/已批准/剩余名额）
+- 被驳回后可重新申请（列表提示 + 可再次提交）
+
+**端到端实测（2026-09-24，curl）**：匿名浏览公开目录 → 教师配置名额与开放时间 → 学生申请 → 重复申请被拒 → 教师批准（补发 1 个任务，学生任务列表出现）→ 驳回（带理由，学生可见）→ 重新申请成功 → 收名额至满（`full`）→ 满员批准被拒「名额已满」→ 满员新申请被拒 → 退课释放名额 → 队列中的申请补批成功。无效 token 访问公开页按匿名放行（200，非 401）。
+
+**门户接入**：FoxCMS 新增栏目「实验平台」（`fox_column` id=128，`column_attr=1` 外链，`out_link=/lab/browse`），`templates/foxui01/nav.html` 的 `typeid` 加入 128；顺带删掉导航里指向不存在栏目的死项 `typeid='3,4'`。栏目记录在 `foxcms/sql/column-lab-entry.sql`（便于他处复用）。
+
+## 7. 协作方式备忘
 
 - 前后端联调纪律见第 3.3 条；改后端后 `cd server && npm run build && sudo systemctl restart nju-lab`（或开发期 `start:dev` 重启）；改前端后需重新 build + 部署 /var/www
 - 每完成一块，同步更新 `nju-lab-craft.md` §13（实现现状）与本 HANDOFF；代码提交进 git（main 分支）

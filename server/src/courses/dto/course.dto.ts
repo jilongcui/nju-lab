@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayNotEmpty,
   IsArray,
+  IsDateString,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -44,6 +45,28 @@ export class UpdateCourseDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  /** 公开链接标识；课程发布后锁定，不允许再改（保证已分享链接不失效） */
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  slug?: string | null;
+
+  /** 名额上限；null = 不限。判定口径是「已批准数」 */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  capacity?: number | null;
+
+  /** 申请开放时间（ISO 字符串）；null = 不开放申请（纯展示） */
+  @IsOptional()
+  @IsDateString()
+  applicationOpenAt?: string | null;
+
+  /** 申请截止时间（ISO 字符串）；null = 不设截止 */
+  @IsOptional()
+  @IsDateString()
+  applicationCloseAt?: string | null;
 }
 
 /** 创建/更新章节：带 id 时视为更新该章节 */

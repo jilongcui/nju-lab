@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
+  Alert,
   Button,
   Card,
   Col,
+  DatePicker,
+  Descriptions,
+  Divider,
   Empty,
   Form,
   Input,
@@ -19,6 +23,7 @@ import {
   Space,
   Table,
   Tabs,
+  Tag,
   Typography,
 } from 'antd';
 import {
@@ -41,8 +46,10 @@ import {
   listStudents,
   removeEnrollment,
   saveChapter,
+  updateCourse,
 } from '../../api';
 import type { Chapter, Course, CourseProgress, Enrollment, StudentUser } from '../../types';
+import { STATE_META, formatDateTime, formatSeats } from '../../applicationState';
 import StatusTag from '../../components/StatusTag';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
 
@@ -50,6 +57,7 @@ const { Title, Text, Paragraph } = Typography;
 
 export default function CourseDetail() {
   const { courseId = '' } = useParams();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [course, setCourse] = useState<Course | null>(null);
   const [progress, setProgress] = useState<CourseProgress | null>(null);
@@ -62,6 +70,7 @@ export default function CourseDetail() {
   const [submitting, setSubmitting] = useState(false);
   const [chapterForm] = Form.useForm();
   const [projectForm] = Form.useForm();
+  const [enrollForm] = Form.useForm();
 
   useAuxiliaryPanel(
     '课程详情说明',
@@ -71,6 +80,10 @@ export default function CourseDetail() {
       </Paragraph>
       <Paragraph type="secondary">
         实验默认解锁规则：完成所属章节之前的全部已发布章节。章节下线后学生不可见。
+      </Paragraph>
+      <Paragraph type="secondary">
+        「公开报名」页签控制课程是否出现在公开目录、名额上限与申请开放时间。
+        发布课程只表示「公开可见」，能否申请由开放时间独立决定。
       </Paragraph>
     </div>,
   );
@@ -94,6 +107,39 @@ export default function CourseDetail() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // 报名设置表单与课程数据同步（时间字段用 dayjs 供 DatePicker 使用）
+  useEffect(() => {
+    if (!course) {
+      return;
+    }
+    enrollForm.setFieldsValue({
+      capacity: course.capacity ?? undefined,
+      applicationOpenAt: course.applicationOpenAt ? dayjs(course.applicationOpenAt) : null,
+      applicationCloseAt: course.applicationCloseAt ? dayjs(course.applicationCloseAt) : null,
+    });
+  }, [course, enrollForm]);
+
+  /** 保存公开报名设置 */
+  const handleSaveEnrollmentSetting = async () => {
+    const values = await enrollForm.validateFields();
+    setSubmitting(true);
+    try {
+      await updateCourse(courseId, {
+        capacity: values.capacity ?? null,
+        applicationOpenAt: values.applicationOpenAt
+          ? values.applicationOpenAt.toISOString()
+          : null,
+        applicationCloseAt: values.applicationCloseAt
+          ? values.applicationCloseAt.toISOString()
+          : null,
+      } as Partial<Course>);
+      message.success('公开报名设置已保存');
+      await load();
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   // ---------- 章节 ----------
   const handleCreateChapter = async () => {
@@ -350,6 +396,98 @@ export default function CourseDetail() {
     </Card>
   );
 
+  /** 公开报名设置：控制课程是否可被申请、名额上限与申请开放时间 */
+  const enrollmentTab = (
+    <Row gutter={[16, 16]}>
+      <Col xs={24} lg={14}>
+        <Card title="公开报名设置">
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="「已发布」只表示课程对外可见"
+            description="能否申请由下面的开放时间与名额共同决定。留空表示不开放申请（纯展示）。"
+          />
+          <Form form={enrollForm} layout="vertical">
+            <Form.Item
+              name="capacity"
+              label="名额上限"
+              extra="留空表示不限名额。名额按「已批准人数」计算，满后不再受理新申请。"
+            >
+              <InputNumber min={0} style={{ width: 200 }} placeholder="不限" />
+            </Form.Item>
+            <Form.Item
+              name="applicationOpenAt"
+              label="申请开放时间"
+              extra="留空则始终不开放申请；设为未来时间可实现「先展示、到点开放申请」。"
+            >
+              <DatePicker showTime allowClear style={{ width: 260 }} placeholder="不开放申请" />
+            </Form.Item>
+            <Form.Item name="applicationCloseAt" label="申请截止时间" extra="留空表示不设截止。">
+              <DatePicker showTime allowClear style={{ width: 260 }} placeholder="不设截止" />
+            </Form.Item>
+            <Space>
+              <Button
+                type="primary"
+                loading={submitting}
+                onClick={handleSaveEnrollmentSetting}
+              >
+                保存设置
+              </Button>
+              <Button onClick={() => navigate(`/teacher/courses/${courseId}/applications`)}>
+                去审批报名
+              </Button>
+            </Space>
+          </Form>
+        </Card>
+      </Col>
+      <Col xs={24} lg={10}>
+        <Card title="当前报名状态">
+          {(() => {
+            const meta = STATE_META[course.applicationState ?? 'not_published'];
+            const approvedCount = enrollments.length;
+            return (
+              <Descriptions column={1} size="small">
+                <Descriptions.Item label="课程可见性">
+                  <StatusTag status={course.status} />
+                </Descriptions.Item>
+                <Descriptions.Item label="申请入口">
+                  <Tag color={meta.color}>{meta.text}</Tag>
+                </Descriptions.Item>
+                <Descriptions.Item label="名额">
+                  {formatSeats(course.capacity ?? null, null, approvedCount)}
+                </Descriptions.Item>
+                <Descriptions.Item label="申请开放时间">
+                  {course.applicationOpenAt
+                    ? formatDateTime(course.applicationOpenAt)
+                    : '未开放申请'}
+                </Descriptions.Item>
+                <Descriptions.Item label="申请截止时间">
+                  {course.applicationCloseAt
+                    ? formatDateTime(course.applicationCloseAt)
+                    : '不设截止'}
+                </Descriptions.Item>
+                <Descriptions.Item label="公开页链接">
+                  {course.slug ? (
+                    <a href={`${import.meta.env.BASE_URL}course/${course.slug}`} target="_blank" rel="noreferrer">
+                      /course/{course.slug}
+                    </a>
+                  ) : (
+                    <Text type="secondary">已发布后自动生成</Text>
+                  )}
+                </Descriptions.Item>
+              </Descriptions>
+            );
+          })()}
+          <Divider style={{ margin: '12px 0' }} />
+          <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+            提示：课程发布后公开链接标识会锁定，保证已分享的链接不失效。
+          </Paragraph>
+        </Card>
+      </Col>
+    </Row>
+  );
+
   return (
     <div>
       <Space style={{ marginBottom: 16 }}>
@@ -365,6 +503,7 @@ export default function CourseDetail() {
         items={[
           { key: 'chapters', label: '章节与实验', children: chaptersTab },
           { key: 'students', label: `学生管理（${enrollments.length}）`, children: studentsTab },
+          { key: 'enrollment', label: '公开报名', children: enrollmentTab },
         ]}
       />
 

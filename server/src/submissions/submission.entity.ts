@@ -20,6 +20,7 @@ export enum SubmissionStatus {
 }
 
 @Entity('submissions')
+@Index('IDX_submissions_assignment_version', ['assignmentId', 'version'])
 export class Submission {
   @PrimaryGeneratedColumn('uuid')
   id: string;

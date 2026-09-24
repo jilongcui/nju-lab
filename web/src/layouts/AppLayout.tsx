@@ -25,6 +25,7 @@ import {
   DashboardOutlined,
   ExperimentOutlined,
   FileDoneOutlined,
+  FormOutlined,
   KeyOutlined,
   LockOutlined,
   LogoutOutlined,
@@ -51,6 +52,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   submissions: '提交与反馈',
   client: '客户端下载',
   grade: '批改',
+  applications: '课程申请',
 };
 
 const MENUS = {
@@ -61,6 +63,7 @@ const MENUS = {
   ],
   student: [
     { key: '/student/courses', icon: <BookOutlined />, label: '我的课程' },
+    { key: '/student/applications', icon: <FormOutlined />, label: '课程申请' },
     { key: '/student/submissions', icon: <FileDoneOutlined />, label: '我的提交与反馈' },
     { key: '/student/client', icon: <CloudDownloadOutlined />, label: '客户端下载' },
   ],
