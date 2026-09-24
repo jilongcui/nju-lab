@@ -1,6 +1,8 @@
 # NJU-Lab：基于 DSH 的 Skill 工程实验平台 · 系统设计
 
 > 版本说明：本版已根据 dsh-handbook 第 1/3/13 章的事实修订（三元架构），并已同步 **2026-09-21 首期实现**的全部技术决策与变更：技术栈落定 NestJS + TypeORM + MySQL + React/AntD、nginx 生产部署、admin 角色、API 全量清单、当前实现状态与遗留项（见第十三节）。
+>
+> **2026-09-24 更新**：njuserver 部署点接入**南大统一认证（CAS 3.0）** —— 校园网关放开后认证改由应用自负，走标准 ticket 重定向流（登录 / 登出 / 角色判定均已上生产）；角色由 CAS 属性 `containerId` 判定（`ou=JZG` = 教职工）；前端产物按 `VITE_BASE=/lab/` 重建部署。详见 §6.1 与 HANDOFF.md §2.1 / §3.4。
 
 ## 一、平台定位：这是什么？
 
@@ -181,7 +183,7 @@ nginx（443 ssl，80→443 301）
 
 | 模块 | 职责 |
 |---|---|
-| auth | 注册/登录、JWT 签发。认证逻辑抽象为 `AuthProvider` 接口（当前 `LocalAuthProvider`），后期接学校统一认证新增 Provider 即可 |
+| auth | 注册/登录、JWT 签发。**认证双轨**：本地 `LocalAuthProvider`（bcryptjs，示例账号与开发）+ **南大统一认证 CAS 3.0**（`cas.client.ts`：ticket 重定向流 → `/p3/serviceValidate` 校验 → `loginWithCas()` 找/建用户；角色由 CAS 属性 `containerId` 判定，`ou=JZG`=教职工 → teacher，**只升不降**）。`AuthProvider` 接口保留给纯本地体系 |
 | users | `GET /me`；`GET /users/students` 学生名单（教师选课用） |
 | courses | 课程/章节 CRUD 与发布、删除（级联）、选课名单（增/查/移出）、学习进度、课程 dashboard |
 | projects | 实验项目 CRUD/发布/删除、Assignment 生成、claim（unlockRule 校验）、`/me/assignments`（内嵌最新 submission） |
@@ -327,12 +329,12 @@ GET    /api/me/evaluations/:id          查看自己的复验结果与反馈
 已完成（DSH 侧，2026-09-21）：`nju-lab-client` 定制客户端插件全链路 —— 右侧栏任务面板（领取 / 提交 / 钉定条件展示 + 错误提示）、`agent/request` 条件锁定 + `ctx.tools.restrict()` 工具面收窄、**评估条件跨进程持久化**（claim 写盘 + 启动恢复，重启或分次 headless 运行都不丢钉定）、真实模板与数据集下载校验（含 Skill 根探测）、提交（ZIP + `.dshc` 证据包 + 审计事件）、模型引导（system prompt 段 + `nju-lab-experiment` skill）；真实容器复验（`DockerEvaluationRunner`）
 未完成：审计事件展示深化；~~CSV 导出~~（2026-09-21 已有：项目级成绩 CSV）
 
-### 第三阶段：平台化与扩展（未开始）
+### 第三阶段：平台化与扩展（🔶 部分完成）
 
 - DSH 接入：第〇阶段实证 + 真实容器复验（headless + 断网 + approval=never）+ 学生端 profile 配置脚本
 - 对象存储（S3/OSS；当前 files 模块为本地磁盘存储，生产化时替换）
 - 学科工具包、自动评分辅助、参考技能库（SkillLibrary）
-- 学校统一认证（新增 AuthProvider）、成绩系统对接；~~数据库 migrations、后端常驻化~~（2026-09-21 已完成）
+- ~~学校统一认证~~（**2026-09-24 已完成**：南大 CAS 3.0 接入，登录 / 登出 / 角色判定均已上生产，见 §6.1）、成绩系统对接；~~数据库 migrations、后端常驻化~~（2026-09-21 已完成）
 
 ## 十一、风险与对策
 
