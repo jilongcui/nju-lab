@@ -1,11 +1,13 @@
 # NJU-Lab 开发交接（Handoff）
 
 > 写给接手对话：本文档包含继续开发所需的全部上下文。先读本文件，再按需读 `nju-lab-craft.md`（系统设计总文档）。
-> 更新时间：2026-09-21
+> 更新时间：2026-09-24
 
 ## 0. 一句话现状
 
 NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已验收通过（2026-09-21，见 `docs/ACCEPTANCE-2026-09-21.md`）**：学生本地 DSH（插件）登录 → 看任务 → 领取（真实下载 + sha256 校验 + 解压 + 条件钉死）→ 开发 Skill → 自测 3/3 → 提交（真实 ZIP + `.dshc` 证据包 + 审计事件）→ 服务端真实容器复验（deepseek-flash，baseline/treatment + LLM judge）→ 教师批改 → 学生看反馈，全程一次跑通、零代码修复，总成本 ≈59k tokens / ≈100s。生产化关键项也已落地：容器 SNI 白名单网络隔离、evalConfig.model 逐项目映射、修改密码、migrations、systemd 常驻、CSV 成绩导出。**剩余为后续阶段功能**（第 5 节）。
+
+**2026-09-24：njuserver 接入南大统一认证（CAS 3.0）** —— 校园网关放开全站后，认证改由应用自负：`/lab` 走标准 CAS ticket 重定向流，角色由 CAS 属性 `containerId`（`ou=JZG` = 教职工）自动判定，登出接 CAS 登出，已用真实账号实测走通；前端产物已按 `VITE_BASE=/lab/` 重建并部署。详见 §2.1 与 §3.4。
 
 ## 1. 仓库布局
 
@@ -47,15 +49,16 @@ NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已�
 |---|---|
 | 机器 | `ssh njuserver`（124.221.233.118:6001，ubuntu，sudo 有密码） |
 | 入口 | `http://medai.nju.edu.cn/lab/`（**HTTP，无 443**；公网流量经校园网关到本机 :80，网关只认 Host） |
+| 统一认证 | **CAS 3.0，由应用自负（2026-09-24 起）**：校园网关已放开全站，`/lab/api/auth/cas/login` → 302 到 `https://authserver.nju.edu.cn/authserver/login` → 回调 `/lab/api/auth/cas/callback?ticket=` 服务端校验后签发平台 JWT，再 302 回 `/lab/login/cas?token=`；登出 `/lab/api/auth/cas/logout`。角色由 CAS 属性 `containerId` 判定（`ou=JZG`=教职工）。详见 §3.4 |
 | nginx | `/etc/nginx/sites-enabled/cms.conf` 的 medai server 块内新增 3 个 location：`/lab/api/`→`127.0.0.1:3100/api/`（去前缀，read_timeout 660s）、`/lab/`→`root /var/www`（SPA + `/lab/kit/` 安装包，try_files 回退 `/lab/index.html`）、`= /lab`→301。改动前备份在 `~/cms.conf.bak-20260922` |
 | 代码/数据 | `~/nju-lab/server`（含 uploads、.env 已改为本机 DB 密码与 `PUBLIC_BASE_URL=http://medai.nju.edu.cn/lab`）；Node v24.14.0 在 `~/opt/node24`（用户态，系统 Node 是 22） |
 | git | **裸仓库 `~/nju-lab.git` 已加为本机 remote：`git push njuserver main`**；工作副本 `~/nju-lab/repo`。纪律：所有改动先提交再 push，**禁止直接在部署目录改代码**——2026-09-23 发现网关 CAS 登录改动（gateway-cas.ts 等 3 个文件）只在 njuserver 部署目录存在、未入 git，已收编回本仓库；部署目录以 repo 为准 |
-| 静态产物 | `/var/www/lab/`（`index.html`+`assets`+`kit/`），www-data 所有；**前端须用 `VITE_BASE=/lab/ npm run build` 构建**，部署 `cp -r dist/. /var/www/lab/` |
+| 静态产物 | `/var/www/lab/`（`index.html`+`assets`+`kit/`），www-data 所有；**前端须用 `VITE_BASE=/lab/ npm run build` 构建**（先在 `repo/web` 里 `npm install`），部署 `cp -r dist/. /var/www/lab/`。⚠️ 该机 `sudo` 要密码、`/var/www/lab` 属 www-data 不可直写 —— 可用 docker 绕过：`docker run --rm --entrypoint sh -v /var/www/lab:/target -v ~/nju-lab/repo/web/dist:/source:ro nginx:alpine -c 'cp -rf /source/. /target/ && chown -R 33:33 /target/index.html /target/assets'`（只动 `index.html`+`assets/`，别碰 `kit/`） |
 | 数据库 | 系统 MySQL 8.0（127.0.0.1:3306），库/用户 `nju_lab`（随机密码在 server/.env） |
 | 服务 | `systemctl` 单元 `nju-lab.service`（`~/nju-lab/nju-lab.service` 有副本）。**不要加 PrivateTmp/ProtectSystem**——runner 靠 `/tmp` 给容器 bind-mount，PrivateTmp 会导致挂载为空、复验全挂（2026-09-22 踩过） |
 | Docker | ubuntu 在 docker 组；docker.io 直连不通，走 `swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/<img>` 拉取后 tag 回原名（`nginx:alpine` 已就位）；**`nju-lab-verify:0.1.5-rc.2` 是生产的 `docker save/load` 拷贝**——异地重建会因 `node:22-slim` 漂浮 tag 拿到老基底导致 sharp 加载失败、复验全挂（Dockerfile 已改钉 `node:22.23.2-slim`，但跨机仍以 save/load 为准） |
 | 学生安装包 | 变体 kit（serverUrl 指向 `http://medai.nju.edu.cn/lab/api`）：`cd dsh/kit && PLATFORM_URL=http://medai.nju.edu.cn/lab ./build-kit.sh`，产物放 `/var/www/lab/kit/` |
-| 注意 | ① 该机 :80 上 dify 的 `/api`、`/agent` 等 502 是**部署前既有状态**（dify 未运行，与本次无关）；② 本机（lab.xiaohe.biz 这台）DNS 解析不到 medai.nju.edu.cn，公网验证须从校园网做；③ **该机 CPU 是 QEMU vCPU（无 SSE4.2/POPCNT，不达 x86-64-v2）**，sharp prebuilt 被拒会让 dsh 启动即崩——复验 profile 已禁用 `attachment-local`（见 verify-image profile 注释），若重装该机 VM 建议 CPU 改 host-passthrough |
+| 注意 | ① 该机 :80 上 dify 的 `/api`、`/agent` 等 502 是**部署前既有状态**（dify 未运行，与本次无关）；② 本机（lab.xiaohe.biz 这台）DNS 解析不到 medai.nju.edu.cn，公网验证须从校园网做；③ **该机 CPU 是 QEMU vCPU（无 SSE4.2/POPCNT，不达 x86-64-v2）**，sharp prebuilt 被拒会让 dsh 启动即崩——复验 profile 已禁用 `attachment-local`（见 verify-image profile 注释），若重装该机 VM 建议 CPU 改 host-passthrough；④ **校园网关 `219.219.115.199`**（medai 与 authservertest 解析到同一 IP、按 Host 分发；正式认证机是另一个 IP `219.219.115.211`）策略为"校内/VPN 直通、校外强制认证"；**`authservertest` 是网关配置里指的测试认证机（对 medai 返回"应用未注册"），不是我们的** —— 我们代码/配置里搜不到它，`.env` 的 `CAS_BASE_URL` 一直是正式机。判定 302 是谁发的：公网响应无 `Server:` 头（网关发的）、直连本机有 `Server: nginx/1.18.0` + `X-Powered-By: Express`（我们的） |
 
 
 常用验证：
@@ -73,7 +76,11 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 1. **统一响应格式**：后端所有接口返回 `{code, data, message}`（code=0 成功）；前端 axios 拦截器统一解包。
 2. **登录返回字段是 `accessToken`**（不是 token）——这个坑修过一次。
 3. **新接口必须先定契约再两端实现，联调以 curl 实测为准**。前后端并行开发曾产生 10 类字段/结构不匹配（详见 craft 文档 §13），不要凭想象写字段名。
-4. **认证抽象**：后端 `AuthProvider` 接口（当前 `LocalAuthProvider`），接学校统一认证时新增 Provider。
+4. **认证：本地账号 + 南大统一认证（CAS 3.0）双轨**（njuserver 生产用 CAS，2026-09-24 起）
+   - **本地**：`AuthProvider` 接口 + `LocalAuthProvider`（bcryptjs），只服务示例账号与开发。
+   - **CAS**（`server/src/auth/cas.client.ts`）：标准 ticket 重定向流 —— `GET /api/auth/cas/login` → 302 `{CAS_BASE_URL}/login?service=` → 回调 `GET /api/auth/cas/callback?ticket=` 调 `/p3/serviceValidate` 校验 → `AuthService.loginWithCas()` 找/建用户 → 签发平台 JWT → 302 `{前端基路径}/login/cas?token=`。登出 `GET /api/auth/cas/logout` → 302 `{CAS_BASE_URL}/logout?service=`。配置：`CAS_BASE_URL` / `CAS_VALIDATE_PATH` / `PUBLIC_BASE_URL`（service 回调 = `${PUBLIC_BASE_URL}/api/auth/cas/callback`，**须在认证机管控台注册**）。
+   - **角色判定**（`resolveRoleFromCasAttributes`）：CAS 3.0 的 `<cas:attributes>` 里 `containerId` 是 LDAP OU —— **`ou=JZG` = 教职工 → `teacher`**，其余（ou=XS 学生 / ou=YJS 研究生…）及拿不到时一律 `student`。**别用工号位数兜底**：实测南大工号有 7 位（如 `0611010`）、规律不可靠，误判成 teacher 是权限放大。新用户按此建号；已存在用户**只升不降**（管理员手工设的 teacher 不会被降回学生）。
+   - ⚠️ **不要再加「读网关头直接签发」的路径**：上游网关拦截时代它会注入 `CAS-USER`/`CAS-USER-CN`，据此直接签发平台 token 的写法曾存在、网关放开后已移除 —— 请求头客户端可任意伪造（`curl -H 'CAS-USER: 任意学号'` 就能冒充任意账号，含管理员）。除非同时加来源 IP 白名单。
 5. **角色**：`admin`（RolesGuard 放行一切 + 各服务归属校验豁免）、`teacher`、`student`。公开注册只允许 teacher/student。
 6. **复验抽象**：`server/src/submissions/evaluation-runner.ts` 的 `EvaluationRunner` 接口，两种实现：`MockEvaluationRunner`（确定性假数据，无 Docker/key 的开发环境用）与 `DockerEvaluationRunner`（真实容器复验），`EVALUATION_RUNNER=mock|docker` 环境变量切换（默认 mock，当前 .env 为 docker）。
 7. **部署纪律**：禁止把 Vite dev server 挂 nginx 当生产（HMR WebSocket 必挂）；前端产物放 `/var/www/nju-lab/dist`（不能放 `/home/ubuntu`，750 权限）；`sites-enabled/` 下所有文件都会被 nginx 加载，备份文件必须移出。
