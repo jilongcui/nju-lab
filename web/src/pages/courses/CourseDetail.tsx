@@ -12,12 +12,16 @@ import {
   Result,
   Skeleton,
   Space,
-  Tag,
   Typography,
 } from 'antd';
 import { getCatalogCourse, applyCourse, withdrawApplication } from '../../api';
 import type { CatalogCourseDetail } from '../../types';
-import { STATE_META, formatDateTime, formatSeats } from '../../applicationState';
+import {
+  courseStateLabel,
+  formatDateTime,
+  formatSeats,
+  stateTextType,
+} from '../../applicationState';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
 
 const { Title, Paragraph, Text } = Typography;
@@ -109,7 +113,6 @@ export default function CourseDetail() {
     );
   }
 
-  const meta = STATE_META[course.applicationState];
   const myApp = course.myApplication;
 
   /** 申请区：按「已入册 → 已申请 → 可申请 → 其它状态」的优先级渲染 */
@@ -201,7 +204,12 @@ export default function CourseDetail() {
             <Title level={4} style={{ margin: 0 }}>
               {course.title}
             </Title>
-            <Tag color={meta.color}>{meta.text}</Tag>
+            <Text
+              type={stateTextType(course.applicationState)}
+              style={{ fontSize: 13 }}
+            >
+              {courseStateLabel(course)}
+            </Text>
           </Space>
           <Text type="secondary">
             授课教师：{course.teacherName || '未署名'} {course.term ? `· ${course.term}` : ''}

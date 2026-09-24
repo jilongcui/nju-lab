@@ -28,6 +28,22 @@ export function courseStateLabel(c: {
   return STATE_META[c.applicationState].text;
 }
 
+/**
+ * 状态在界面上的「轻重」——选课界面只是补充信息，不用彩色标签抢戏，
+ * 统一走纯文字；只有「可申请」（可操作的信号）和「已满」（要注意）给一点颜色。
+ */
+export function stateTextType(
+  state: ApplicationState,
+): 'success' | 'warning' | 'secondary' {
+  if (state === 'open') {
+    return 'success';
+  }
+  if (state === 'full') {
+    return 'warning';
+  }
+  return 'secondary';
+}
+
 export function formatDateTime(v?: string | null): string {
   if (!v) {
     return '';

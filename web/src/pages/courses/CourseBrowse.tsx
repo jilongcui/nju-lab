@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Empty, Input, Skeleton, Space, Tag, Typography } from 'antd';
+import { Card, Empty, Input, Skeleton, Space, Typography } from 'antd';
 import { ReadOutlined, TeamOutlined } from '@ant-design/icons';
 import { listCatalogCourses } from '../../api';
 import type { CatalogCourseBrief } from '../../types';
 import {
-  STATE_META,
   courseStateLabel,
   formatDateTime,
   formatSeats,
+  stateTextType,
 } from '../../applicationState';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
 
@@ -83,7 +83,6 @@ export default function CourseBrowse() {
           }}
         >
           {courses.map((c) => {
-            const meta = STATE_META[c.applicationState];
             return (
               <Card
                 key={c.id}
@@ -91,9 +90,12 @@ export default function CourseBrowse() {
                 onClick={() => navigate(`/course/${c.slug}`)}
                 title={c.title}
                 extra={
-                  <Tag color={meta.color} style={{ marginInlineEnd: 0 }}>
+                  <Text
+                    type={stateTextType(c.applicationState)}
+                    style={{ fontSize: 12, fontWeight: 'normal' }}
+                  >
                     {courseStateLabel(c)}
-                  </Tag>
+                  </Text>
                 }
                 style={{ height: '100%' }}
               >
