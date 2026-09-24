@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Col, Empty, Input, Row, Skeleton, Space, Tag, Typography } from 'antd';
+import { Card, Empty, Input, Skeleton, Space, Tag, Typography } from 'antd';
 import { ReadOutlined, TeamOutlined } from '@ant-design/icons';
 import { listCatalogCourses } from '../../api';
 import type { CatalogCourseBrief } from '../../types';
-import { STATE_META, formatDateTime, formatSeats } from '../../applicationState';
+import {
+  STATE_META,
+  courseStateLabel,
+  formatDateTime,
+  formatSeats,
+} from '../../applicationState';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
 
 const { Title, Paragraph, Text } = Typography;
@@ -65,48 +70,63 @@ export default function CourseBrowse() {
           <Empty description="暂无可选课程" />
         </Card>
       ) : (
-        <Row gutter={[16, 16]}>
+        /*
+         * 用 grid + auto-fill 而不是 antd 的 Col 断点：断点只看视口宽度，
+         * 不知道右侧辅助面板是否展开；这里按**容器实际宽度**决定列数——
+         * 面板展开（内容区变窄）时自动从三列降到两列，收起时自动回升。
+         */
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(min(320px, 100%), 1fr))',
+            gap: 16,
+          }}
+        >
           {courses.map((c) => {
             const meta = STATE_META[c.applicationState];
             return (
-              <Col xs={24} sm={12} lg={8} key={c.id}>
-                <Card
-                  hoverable
-                  onClick={() => navigate(`/course/${c.slug}`)}
-                  title={c.title}
-                  extra={<Tag color={meta.color}>{meta.text}</Tag>}
+              <Card
+                key={c.id}
+                hoverable
+                onClick={() => navigate(`/course/${c.slug}`)}
+                title={c.title}
+                extra={
+                  <Tag color={meta.color} style={{ marginInlineEnd: 0 }}>
+                    {courseStateLabel(c)}
+                  </Tag>
+                }
+                style={{ height: '100%' }}
+              >
+                <Space size={4} wrap>
+                  <Text type="secondary">{c.teacherName || '未署名教师'}</Text>
+                  {c.term ? <Text type="secondary">· {c.term}</Text> : null}
+                </Space>
+                <Paragraph
+                  type="secondary"
+                  ellipsis={{ rows: 3 }}
+                  style={{ marginTop: 8, minHeight: 66 }}
                 >
-                  <Space size={4} wrap>
-                    <Text type="secondary">{c.teacherName || '未署名教师'}</Text>
-                    {c.term ? <Text type="secondary">· {c.term}</Text> : null}
-                  </Space>
-                  <Paragraph
-                    type="secondary"
-                    ellipsis={{ rows: 3 }}
-                    style={{ marginTop: 8, minHeight: 66 }}
-                  >
-                    {c.description || '暂无课程简介'}
-                  </Paragraph>
-                  <Space size={16} wrap>
-                    <Text type="secondary">
-                      <ReadOutlined /> {c.chapterCount} 章
+                  {c.description || '暂无课程简介'}
+                </Paragraph>
+                <Space size={16} wrap>
+                  <Text type="secondary">
+                    <ReadOutlined /> {c.chapterCount} 章
+                  </Text>
+                  <Text type="secondary">
+                    <TeamOutlined /> {formatSeats(c.capacity, c.seatsLeft, c.approvedCount)}
+                  </Text>
+                </Space>
+                {c.applicationState === 'not_open_yet' && c.applicationOpenAt ? (
+                  <div style={{ marginTop: 8 }}>
+                    <Text type="warning">
+                      申请开放：{formatDateTime(c.applicationOpenAt)}
                     </Text>
-                    <Text type="secondary">
-                      <TeamOutlined /> {formatSeats(c.capacity, c.seatsLeft, c.approvedCount)}
-                    </Text>
-                  </Space>
-                  {c.applicationState === 'not_open_yet' && c.applicationOpenAt ? (
-                    <div style={{ marginTop: 8 }}>
-                      <Text type="warning">
-                        申请开放：{formatDateTime(c.applicationOpenAt)}
-                      </Text>
-                    </div>
-                  ) : null}
-                </Card>
-              </Col>
+                  </div>
+                ) : null}
+              </Card>
             );
           })}
-        </Row>
+        </div>
       )}
     </div>
   );
