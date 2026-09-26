@@ -5,12 +5,17 @@ import type {
   Chapter,
   ClaimResult,
   Course,
+  CourseApplicationRow,
+  CourseApplicationsView,
   CourseDashboard,
   CourseProgress,
   Enrollment,
   Evaluation,
   ExperimentProject,
+  MyApplication,
   MyCourse,
+  CatalogCourseBrief,
+  CatalogCourseDetail,
   ProjectDashboard,
   ProjectSubmissionRow,
   Role,
@@ -177,3 +182,30 @@ export const listAssignmentVersions = (id: string) =>
 /** :id 为评估结果（evaluation）ID */
 export const getMyEvaluation = (id: string) =>
   client.get<unknown, Evaluation>(`/me/evaluations/${id}`);
+
+// ---------- 课程目录与详情（选课用，需登录） ----------
+export const listCatalogCourses = (params?: { keyword?: string; term?: string }) =>
+  client.get<unknown, CatalogCourseBrief[]>('/browse/courses', { params });
+export const getCatalogCourse = (slug: string) =>
+  client.get<unknown, CatalogCourseDetail>(`/browse/courses/${slug}`);
+
+// ---------- 课程申请（学生） ----------
+export const applyCourse = (courseId: string) =>
+  client.post<unknown, CourseApplicationRow>(`/courses/${courseId}/applications`);
+export const withdrawApplication = (courseId: string, id: string) =>
+  client.delete<unknown, null>(`/courses/${courseId}/applications/${id}`);
+export const listMyApplications = () =>
+  client.get<unknown, MyApplication[]>('/me/applications');
+
+// ---------- 报名审批（教师） ----------
+export const listCourseApplications = (courseId: string) =>
+  client.get<unknown, CourseApplicationsView>(`/courses/${courseId}/applications`);
+export const approveApplication = (courseId: string, id: string) =>
+  client.post<unknown, CourseApplicationRow>(
+    `/courses/${courseId}/applications/${id}/approve`,
+  );
+export const rejectApplication = (courseId: string, id: string, note?: string) =>
+  client.post<unknown, CourseApplicationRow>(
+    `/courses/${courseId}/applications/${id}/reject`,
+    { note },
+  );

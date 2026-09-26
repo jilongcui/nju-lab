@@ -1,11 +1,13 @@
 # NJU-Lab 开发交接（Handoff）
 
 > 写给接手对话：本文档包含继续开发所需的全部上下文。先读本文件，再按需读 `nju-lab-craft.md`（系统设计总文档）。
-> 更新时间：2026-09-21
+> 更新时间：2026-09-24
 
 ## 0. 一句话现状
 
 NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已验收通过（2026-09-21，见 `docs/ACCEPTANCE-2026-09-21.md`）**：学生本地 DSH（插件）登录 → 看任务 → 领取（真实下载 + sha256 校验 + 解压 + 条件钉死）→ 开发 Skill → 自测 3/3 → 提交（真实 ZIP + `.dshc` 证据包 + 审计事件）→ 服务端真实容器复验（deepseek-flash，baseline/treatment + LLM judge）→ 教师批改 → 学生看反馈，全程一次跑通、零代码修复，总成本 ≈59k tokens / ≈100s。生产化关键项也已落地：容器 SNI 白名单网络隔离、evalConfig.model 逐项目映射、修改密码、migrations、systemd 常驻、CSV 成绩导出。**剩余为后续阶段功能**（第 5 节）。
+
+**2026-09-24：njuserver 接入南大统一认证（CAS 3.0）** —— 校园网关放开全站后，认证改由应用自负：`/lab` 走标准 CAS ticket 重定向流，角色由 CAS 属性 `containerId`（`ou=JZG` = 教职工）自动判定，登出接 CAS 登出，已用真实账号实测走通；前端产物已按 `VITE_BASE=/lab/` 重建并部署。详见 §2.1 与 §3.4。
 
 ## 1. 仓库布局
 
@@ -47,15 +49,16 @@ NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已�
 |---|---|
 | 机器 | `ssh njuserver`（124.221.233.118:6001，ubuntu，sudo 有密码） |
 | 入口 | `http://medai.nju.edu.cn/lab/`（**HTTP，无 443**；公网流量经校园网关到本机 :80，网关只认 Host） |
+| 统一认证 | **CAS 3.0，由应用自负（2026-09-24 起）**：校园网关已放开全站，`/lab/api/auth/cas/login` → 302 到 `https://authserver.nju.edu.cn/authserver/login` → 回调 `/lab/api/auth/cas/callback?ticket=` 服务端校验后签发平台 JWT，再 302 回 `/lab/login/cas?token=`；登出 `/lab/api/auth/cas/logout`。角色由 CAS 属性 `containerId` 判定（`ou=JZG`=教职工）。详见 §3.4 |
 | nginx | `/etc/nginx/sites-enabled/cms.conf` 的 medai server 块内新增 3 个 location：`/lab/api/`→`127.0.0.1:3100/api/`（去前缀，read_timeout 660s）、`/lab/`→`root /var/www`（SPA + `/lab/kit/` 安装包，try_files 回退 `/lab/index.html`）、`= /lab`→301。改动前备份在 `~/cms.conf.bak-20260922` |
 | 代码/数据 | `~/nju-lab/server`（含 uploads、.env 已改为本机 DB 密码与 `PUBLIC_BASE_URL=http://medai.nju.edu.cn/lab`）；Node v24.14.0 在 `~/opt/node24`（用户态，系统 Node 是 22） |
 | git | **GitHub 为主远端：`git@github.com:jilongcui/nju-lab.git`（remote `origin`，main 跟踪 origin/main）**；njuserver 裸仓库 `~/nju-lab.git` 为部署 remote（`git push njuserver main`），工作副本 `~/nju-lab/repo`。纪律：所有改动先提交再 push（两个 remote 都推），**禁止直接在部署目录改代码**——2026-09-23 发现网关 CAS 登录改动（gateway-cas.ts 等 3 个文件）只在 njuserver 部署目录存在、未入 git，已收编回本仓库；部署目录以 repo 为准 |
-| 静态产物 | `/var/www/lab/`（`index.html`+`assets`+`kit/`），www-data 所有；**前端须用 `VITE_BASE=/lab/ npm run build` 构建**，部署 `cp -r dist/. /var/www/lab/` |
+| 静态产物 | `/var/www/lab/`（`index.html`+`assets`+`kit/`），www-data 所有；**前端须用 `VITE_BASE=/lab/ npm run build` 构建**（先在 `repo/web` 里 `npm install`），部署 `cp -r dist/. /var/www/lab/`。⚠️ 该机 `sudo` 要密码、`/var/www/lab` 属 www-data 不可直写 —— 可用 docker 绕过：`docker run --rm --entrypoint sh -v /var/www/lab:/target -v ~/nju-lab/repo/web/dist:/source:ro nginx:alpine -c 'cp -rf /source/. /target/ && chown -R 33:33 /target/index.html /target/assets'`（只动 `index.html`+`assets/`，别碰 `kit/`） |
 | 数据库 | 系统 MySQL 8.0（127.0.0.1:3306），库/用户 `nju_lab`（随机密码在 server/.env） |
 | 服务 | `systemctl` 单元 `nju-lab.service`（`~/nju-lab/nju-lab.service` 有副本）。**不要加 PrivateTmp/ProtectSystem**——runner 靠 `/tmp` 给容器 bind-mount，PrivateTmp 会导致挂载为空、复验全挂（2026-09-22 踩过） |
 | Docker | ubuntu 在 docker 组；docker.io 直连不通，走 `swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/<img>` 拉取后 tag 回原名（`nginx:alpine` 已就位）；**`nju-lab-verify:0.1.5-rc.2` 是生产的 `docker save/load` 拷贝**——异地重建会因 `node:22-slim` 漂浮 tag 拿到老基底导致 sharp 加载失败、复验全挂（Dockerfile 已改钉 `node:22.23.2-slim`，但跨机仍以 save/load 为准） |
 | 学生安装包 | 变体 kit（serverUrl 指向 `http://medai.nju.edu.cn/lab/api`）：`cd dsh/kit && PLATFORM_URL=http://medai.nju.edu.cn/lab ./build-kit.sh`，产物放 `/var/www/lab/kit/` |
-| 注意 | ① 该机 :80 上 dify 的 `/api`、`/agent` 等 502 是**部署前既有状态**（dify 未运行，与本次无关）；② 本机（lab.xiaohe.biz 这台）DNS 解析不到 medai.nju.edu.cn，公网验证须从校园网做；③ **该机 CPU 是 QEMU vCPU（无 SSE4.2/POPCNT，不达 x86-64-v2）**，sharp prebuilt 被拒会让 dsh 启动即崩——复验 profile 已禁用 `attachment-local`（见 verify-image profile 注释），若重装该机 VM 建议 CPU 改 host-passthrough |
+| 注意 | ① 该机 :80 上 dify 的 `/api`、`/agent` 等 502 是**部署前既有状态**（dify 未运行，与本次无关）；② 本机（lab.xiaohe.biz 这台）DNS 解析不到 medai.nju.edu.cn，公网验证须从校园网做；③ **该机 CPU 是 QEMU vCPU（无 SSE4.2/POPCNT，不达 x86-64-v2）**，sharp prebuilt 被拒会让 dsh 启动即崩——复验 profile 已禁用 `attachment-local`（见 verify-image profile 注释），若重装该机 VM 建议 CPU 改 host-passthrough；④ **校园网关 `219.219.115.199`**（medai 与 authservertest 解析到同一 IP、按 Host 分发；正式认证机是另一个 IP `219.219.115.211`）策略为"校内/VPN 直通、校外强制认证"；**`authservertest` 是网关配置里指的测试认证机（对 medai 返回"应用未注册"），不是我们的** —— 我们代码/配置里搜不到它，`.env` 的 `CAS_BASE_URL` 一直是正式机。判定 302 是谁发的：公网响应无 `Server:` 头（网关发的）、直连本机有 `Server: nginx/1.18.0` + `X-Powered-By: Express`（我们的） |
 
 
 常用验证：
@@ -73,7 +76,11 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 1. **统一响应格式**：后端所有接口返回 `{code, data, message}`（code=0 成功）；前端 axios 拦截器统一解包。
 2. **登录返回字段是 `accessToken`**（不是 token）——这个坑修过一次。
 3. **新接口必须先定契约再两端实现，联调以 curl 实测为准**。前后端并行开发曾产生 10 类字段/结构不匹配（详见 craft 文档 §13），不要凭想象写字段名。
-4. **认证抽象**：后端 `AuthProvider` 接口（当前 `LocalAuthProvider`），接学校统一认证时新增 Provider。
+4. **认证：本地账号 + 南大统一认证（CAS 3.0）双轨**（njuserver 生产用 CAS，2026-09-24 起）
+   - **本地**：`AuthProvider` 接口 + `LocalAuthProvider`（bcryptjs），只服务示例账号与开发。
+   - **CAS**（`server/src/auth/cas.client.ts`）：标准 ticket 重定向流 —— `GET /api/auth/cas/login` → 302 `{CAS_BASE_URL}/login?service=` → 回调 `GET /api/auth/cas/callback?ticket=` 调 `/p3/serviceValidate` 校验 → `AuthService.loginWithCas()` 找/建用户 → 签发平台 JWT → 302 `{前端基路径}/login/cas?token=`。登出 `GET /api/auth/cas/logout` → 302 `{CAS_BASE_URL}/logout?service=`。配置：`CAS_BASE_URL` / `CAS_VALIDATE_PATH` / `PUBLIC_BASE_URL`（service 回调 = `${PUBLIC_BASE_URL}/api/auth/cas/callback`，**须在认证机管控台注册**）。
+   - **角色判定**（`resolveRoleFromCasAttributes`）：CAS 3.0 的 `<cas:attributes>` 里 `containerId` 是 LDAP OU —— **`ou=JZG` = 教职工 → `teacher`**，其余（ou=XS 学生 / ou=YJS 研究生…）及拿不到时一律 `student`。**别用工号位数兜底**：实测南大工号有 7 位（如 `0611010`）、规律不可靠，误判成 teacher 是权限放大。新用户按此建号；已存在用户**只升不降**（管理员手工设的 teacher 不会被降回学生）。
+   - ⚠️ **不要再加「读网关头直接签发」的路径**：上游网关拦截时代它会注入 `CAS-USER`/`CAS-USER-CN`，据此直接签发平台 token 的写法曾存在、网关放开后已移除 —— 请求头客户端可任意伪造（`curl -H 'CAS-USER: 任意学号'` 就能冒充任意账号，含管理员）。除非同时加来源 IP 白名单。
 5. **角色**：`admin`（RolesGuard 放行一切 + 各服务归属校验豁免）、`teacher`、`student`。公开注册只允许 teacher/student。
 6. **复验抽象**：`server/src/submissions/evaluation-runner.ts` 的 `EvaluationRunner` 接口，两种实现：`MockEvaluationRunner`（确定性假数据，无 Docker/key 的开发环境用）与 `DockerEvaluationRunner`（真实容器复验），`EVALUATION_RUNNER=mock|docker` 环境变量切换（默认 mock，当前 .env 为 docker）。
 7. **部署纪律**：禁止把 Vite dev server 挂 nginx 当生产（HMR WebSocket 必挂）；前端产物放 `/var/www/nju-lab/dist`（不能放 `/home/ubuntu`，750 权限）；`sites-enabled/` 下所有文件都会被 nginx 加载，备份文件必须移出。
@@ -152,14 +159,83 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 ## 5. 后续阶段（端到端之后，见 craft 文档 §10）
 
 - ~~修改密码接口~~ ✅（2026-09-21：`POST /api/me/password`，成功后 tokenVersion+1 全端失效；Web 头像菜单弹窗）、~~数据库 migrations~~ ✅（见第 3.8 条）、~~后端常驻化~~ ✅（systemd，见第 2 节）、~~CSV 成绩导出~~ ✅（`GET /api/projects/:id/grades.csv`，项目详情页"导出成绩 CSV"按钮）
-- ~~学校统一认证~~ ✅（2026-09-21，CAS 3.0 双轨）：`GET /api/auth/cas/login` → 南大 authserver → `/api/auth/cas/callback` 校验 ticket → 按学号/工号自动注册为学生（教师由管理员提权）；本地账号保留。配置 `CAS_BASE_URL`/`PUBLIC_BASE_URL`（已指向 authserver.nju.edu.cn，模拟 CAS 全流程实测通过；真实账号未实测）
+- ~~统一认证（CAS 3.0 双轨）~~ ✅ **已完成并上生产**（2026-09-21 接入，2026-09-24 **真实账号实测通过**）：`GET /api/auth/cas/login` → 南大 authserver → `/api/auth/cas/callback` 校验 ticket（`/p3/serviceValidate`）→ **按 CAS 属性 `containerId` 定角色**（`ou=JZG`=教职工→teacher，其余→student；**已不再一律注册为学生**，教师也不用管理员手工提权）→ 签发平台 JWT；登出 `GET /api/auth/cas/logout` 接 CAS 登出。配置 `CAS_BASE_URL`/`CAS_VALIDATE_PATH`/`PUBLIC_BASE_URL`（均指向正式机 authserver.nju.edu.cn）。详见 §3.4
 - ~~学生端安装包/手册~~ ✅（2026-09-21）：`dsh/kit/build-kit.sh` 打包（profile + 插件产物 + install.sh + 手册）→ 静态托管 `https://lab.xiaohe.biz/kit/nju-lab-student-kit.zip`（nginx `location /kit/` 独立目录）；Web 学生菜单「客户端下载」页。插件更新后需重跑 build-kit + 部署
 - ~~提交多版本~~ ✅（2026-09-22）：`submissions.version`（迁移 `SubmissionVersions1790002700000`，存量按 submittedAt 回填）；重复提交生成 v2、v3…，上限 10 版，仅最新版 `verifying` 中拒绝（原「非 failed 拒绝重复提交」废止）；每版本独立复验/评分；版本历史 `GET /api/assignments/:id/submissions`（学生限本人/教师限课程 owner）；项目提交列表、待批改、成绩 CSV、学生任务列表一律按**最新版**归并（修了 `listProjectSubmissions` Map 键覆盖取到最旧版的 bug）；Web 学生「我的提交」可交新版本+反馈 Drawer 版本切换，教师批改页版本切换；插件面板显示 `v{n}` +「提交新版本」。全链路真机实测（含真实容器复验 v4）
 - 机房预装镜像
 - nju-lab-client 提交前自检（skillforge 规范检查）
 - SkillLibrary 参考技能库、章节自测题、成绩汇总
 
-## 6. 协作方式备忘
+## 6. 课程目录、选课申请与工作台 —— ✅ 已完成（2026-09-24）
+
+完整设计见 **`docs/DESIGN-course-application-2026-09-24.md`**（含当天的方向修订，见其 §10）。要点：
+
+**背景**：改造前 `/lab` 全站在 `RequireAuth` 后，未登录访客什么都看不到；学生只能看到教师手工加进名单的课（未入册时返回**空列表**），既不能发现课程也不能自己选课。
+
+**⚠️ 当天二次决策（务必知悉）**：初版把课程目录做成「**无需登录的公开区**」（独立 `PublicLayout` + `@OptionalAuth()` 匿名放行 + `/api/public/courses`）。当天下午按产品决策**收回为登录后可见**：
+
+| | 初版 | 现行 |
+|---|---|---|
+| 未登录访客 | 能浏览课程目录/详情 | **直接落登录页** |
+| 接口 | `/api/public/courses[/:slug]` + `@OptionalAuth()` | `/api/browse/courses[/:slug]`，需登录（`@OptionalAuth()` 已删） |
+| 布局 | 独立 `PublicLayout`（深色顶栏） | 并入平台内布局（与工作台同壳） |
+
+**现行形态**：
+
+```
+门户（FoxCMS，公开）→「实验平台」外链栏目 → /lab/  （未登录则落登录页）
+/lab（需登录）
+   · 工作台：学生 /student/home、教师 /teacher/dashboard（登录后的落地页）
+   · 选课：/browse 课程目录 → /course/<slug> 课程详情 → 申请
+   · 学习与实验：章节、实验、提交、复验、成绩
+```
+
+**核心语义**（未变）：`Course.status = published` 只表示「别人能看到」；**能否申请由 `applicationOpenAt` / `applicationCloseAt` / `capacity` 独立决定**（支持"先展示、到点开放申请"的热门课策略）。`applicationState` 由后端算（依赖已批准人数，前端算不出），取值 `open`/`not_open_yet`/`full`/`closed`/`not_published`。
+
+**数据层**：
+- 新增 `course_applications`：**不给 `Enrollment` 加状态**——保持它「已批准入册」的语义，可见性/内容授权/任务分发三处依赖它的代码**零改动**，且"容量按批准数"天然对齐
+- 生成列 `pendingFlag = IF(status='pending',1,NULL)` + 唯一索引 `uq_course_application_pending`（利用 MySQL 唯一索引允许多个 NULL）→ **允许重复申请，但同一课程同一学生同时只能有一条 pending**；申请历史完整保留
+- `courses` 新增 `slug` / `capacity` / `applicationOpenAt` / `applicationCloseAt`；迁移 `CourseApplications1790224400979`（含既有课程 slug 回填）
+
+**关键实现点（踩坑）**：
+1. **`@OptionalAuth()` 第三态**：原先只有「全拦」与 `@Public()`「全放」两种；公开课程页需要「带 token 识别身份、不带也放行」，否则登录用户看不到自己的申请状态
+2. **补发 Assignment 必须用独立方法，不能复用 `publishProject()`**：后者开头就把 `project.status` 改回 `PUBLISHED`（对已发布项目等于重新发布）、**不校验当前是否 draft**（会误发布草稿）；且 `ProjectStatus.CLOSED` 虽是纯预留、目前从未被任何代码设置，一旦将来启用「截止关闭项目」，那里的检查会让补发抛错。现为 `CourseApplicationsService.backfillAssignments()`，只挑 `status = PUBLISHED` 的项目补建
+3. **批准在事务里锁课程行**（`pessimistic_write`）：逐个批准下两个标签页同时批最后两个名额不会超额
+4. **满员不清空队列**：`full` 只阻止**新申请**；已提交的 pending 保留，退课释放名额后可继续补批（实测：退课 → state 回 `open` → 补批成功并补发任务）
+5. **CAS returnTo 用 sessionStorage**（`web/src/session.ts`）：后端 `service` 固定不接受外部传入（防开放重定向，别动），所以「课程页点申请 → CAS 登录 → 回到那门课」只能前端携带
+6. **`path: '*'` 兜底重定向**改掉了：原先一律去 `/`（在 RequireAuth 下），未登录访客会被弹到登录页；现为匿名→`/browse`、已登录→角色首页
+7. 顺带修正一处**既有 schema 漂移**：`submissions` 的复合索引 `IDX_submissions_assignment_version` 只在迁移里手建、实体没声明，导致 `migration:generate` 每次都生成一条无关的 `DROP INDEX`。已在 `Submission` 实体补 `@Index('IDX_submissions_assignment_version', ['assignmentId','version'])`
+
+**接口**：
+```
+课程目录与详情（需登录）
+  GET  /api/browse/courses            目录 + 检索(keyword/term)
+  GET  /api/browse/courses/:slug      课程详情（章节只给标题，不含教学内容；附 myApplication/myEnrollment）
+学生
+  POST   /api/courses/:courseId/applications        申请
+  DELETE /api/courses/:courseId/applications/:id    撤回（仅 pending）
+  GET    /api/me/applications                       我的申请
+教师
+  GET  /api/courses/:courseId/applications          列表（按 createdAt 升序＝先到先得）+ 名额/队列信息
+  POST /api/courses/:courseId/applications/:id/approve   批准（建入册 + 补发任务，返回 assignmentsCreated）
+  POST /api/courses/:courseId/applications/:id/reject    驳回（可选 note）
+```
+
+**前端**：
+- **学生工作台** `/student/home`（新增）：统计卡（我的课程/待办实验/待审批申请/章节完成度）+ 待办实验列表 + 「去选课」入口。学生与教师的登录落地页都是工作台
+- 选课 `/browse` → 课程详情 `/course/:slug`，与平台其他页面共用 `AppLayout`（不再是独立公开站）
+- 教师端课程详情新增「公开报名」页签：名额上限、申请开放/截止时间、当前状态、公开链接
+- 学生菜单新增「选课」「我的申请」；教师审批页 `/teacher/courses/:courseId/applications`（逐个批准/驳回、显示待审批/已批准/剩余名额）
+- 被驳回后可重新申请（列表提示 + 可再次提交）
+- 深链被 `RequireAuth` 拦下 → 登录（含 CAS）后回到原页面（`web/src/session.ts` 的 returnTo）
+
+**端到端实测（2026-09-24，curl）**：浏览课程目录 → 教师配置名额与开放时间 → 学生申请 → 重复申请被拒 → 教师批准（补发 1 个任务，学生任务列表出现）→ 驳回（带理由，学生可见）→ 重新申请成功 → 收名额至满（`full`）→ 满员批准被拒「名额已满」→ 满员新申请被拒 → 退课释放名额 → 队列中的申请补批成功。
+
+**收回归档后的接口验证**：未登录 `GET /lab/api/browse/courses` → **401**；旧路径 `/api/public/courses` → **404**；登录后正常返回目录。
+
+**门户接入**：FoxCMS 新增栏目「实验平台」（`fox_column` id=128，`column_attr=1` 外链，`out_link=/lab/browse`），`templates/foxui01/nav.html` 的 `typeid` 加入 128；顺带删掉导航里指向不存在栏目的死项 `typeid='3,4'`。栏目记录在 `foxcms/sql/column-lab-entry.sql`（便于他处复用）。未登录点它会被 `/lab` 的登录页接住。
+
+## 7. 协作方式备忘
 
 - 前后端联调纪律见第 3.3 条；改后端后 `cd server && npm run build && sudo systemctl restart nju-lab`（或开发期 `start:dev` 重启）；改前端后需重新 build + 部署 /var/www
 - 每完成一块，同步更新 `nju-lab-craft.md` §13（实现现状）与本 HANDOFF；代码提交进 git（main 分支）

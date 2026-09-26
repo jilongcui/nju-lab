@@ -53,6 +53,93 @@ export interface Course {
   /** 学生视角（/me/courses） */
   courseStatus?: CourseStatus;
   completedCount?: number;
+  /** 公开目录与申请审批（见 docs/DESIGN-course-application-2026-09-24.md） */
+  slug?: string | null;
+  capacity?: number | null;
+  applicationOpenAt?: string | null;
+  applicationCloseAt?: string | null;
+  /** 教师视角：后端算出的报名状态与名额占用 */
+  applicationState?: ApplicationState;
+  approvedCount?: number;
+  seatsLeft?: number | null;
+}
+
+// ---------- 公开课程目录与申请审批 ----------
+
+/** 后端算出的申请状态（前端拿不到别人的入册数，不能自行判断） */
+export type ApplicationState =
+  | 'not_published'
+  | 'not_open_yet'
+  | 'open'
+  | 'full'
+  | 'closed';
+
+export type ApplicationStatus = 'pending' | 'approved' | 'rejected';
+
+/** GET /api/browse/courses 条目 */
+export interface CatalogCourseBrief {
+  id: string;
+  slug: string | null;
+  title: string;
+  term: string;
+  description: string | null;
+  teacherName: string;
+  chapterCount: number;
+  capacity: number | null;
+  approvedCount: number;
+  seatsLeft: number | null;
+  applicationOpenAt: string | null;
+  applicationCloseAt: string | null;
+  applicationState: ApplicationState;
+}
+
+export interface MyApplicationBrief {
+  id: string;
+  status: ApplicationStatus;
+  createdAt: string;
+  decidedAt: string | null;
+  decisionNote: string | null;
+}
+
+/** GET /api/browse/courses/:slug */
+export interface CatalogCourseDetail
+  extends Omit<CatalogCourseBrief, 'chapterCount'> {
+  chapters: { id: string; order: number; title: string }[];
+  /** 我的最近一次申请（登录用户） */
+  myApplication: MyApplicationBrief | null;
+  /** 我是否已入册 */
+  myEnrollment: boolean;
+}
+
+/** GET /api/me/applications 条目 */
+export interface MyApplication extends MyApplicationBrief {
+  course: { id: string; slug: string | null; title: string; term: string } | null;
+  applicationState: ApplicationState;
+  enrolled: boolean;
+}
+
+/** GET /api/courses/:courseId/applications 里的申请行 */
+export interface CourseApplicationRow {
+  id: string;
+  studentId: string;
+  username: string;
+  nickname: string;
+  status: ApplicationStatus;
+  createdAt: string;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  decisionNote: string | null;
+}
+
+/** GET /api/courses/:courseId/applications */
+export interface CourseApplicationsView {
+  courseId: string;
+  capacity: number | null;
+  approvedCount: number;
+  seatsLeft: number | null;
+  applicationState: ApplicationState;
+  pendingCount: number;
+  applications: CourseApplicationRow[];
 }
 
 export interface StudentChapterBrief {

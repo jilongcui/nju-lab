@@ -41,6 +41,31 @@ export class Course {
   @Column({ type: 'enum', enum: CourseStatus, default: CourseStatus.DRAFT })
   status: CourseStatus;
 
+  // ---------- 公开目录与申请审批（见 docs/DESIGN-course-application-2026-09-24.md） ----------
+
+  /**
+   * 公开链接标识（/lab/course/<slug>）。
+   * 发布后锁定，不再允许修改，保证已分享的链接不失效。
+   */
+  @Index({ unique: true })
+  @Column({ type: 'varchar', length: 128, nullable: true })
+  slug: string | null;
+
+  /** 名额上限；null = 不限。判定口径是「已批准数」（count(enrollments)） */
+  @Column({ type: 'int', nullable: true })
+  capacity: number | null;
+
+  /**
+   * 申请开放时间：null = 不开放申请（纯展示）；未来 = 待开放；过去 = 开放中。
+   * 与 status 解耦——published 只表示「别人能看到」。
+   */
+  @Column({ type: 'datetime', nullable: true })
+  applicationOpenAt: Date | null;
+
+  /** 申请截止时间；null = 不设截止 */
+  @Column({ type: 'datetime', nullable: true })
+  applicationCloseAt: Date | null;
+
   @OneToMany(() => Chapter, (chapter) => chapter.course)
   chapters: Chapter[];
 

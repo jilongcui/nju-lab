@@ -1,8 +1,31 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
+import { UserRole } from '../users/user.entity';
+
+/** CAS 校验诊断日志（记录认证机原始报文，用于确认属性名） */
+const logger = new Logger('CasClient');
+
+/**
+ * 由 CAS 属性推断平台角色。
+ *
+ * 南大认证机在 <cas:attributes> 里给了容器（LDAP OU）：
+ *   containerId = "ou=JZG,ou=People"    → 教职工（JZG = 教职工）
+ *   其余（ou=XS 学生、ou=YJS 研究生 …）  → 学生
+ *
+ * 判据**只用 containerId，不做工号位数兜底**：实测南大工号 7 位（0611010）也有、
+ * 位数规律不可靠；而误判成教师是权限放大，宁可保守 —— 拿不到 containerId 时
+ * 一律按学生，真教师由管理员在后台调整。
+ */
+export function resolveRoleFromCasAttributes(
+  attributes: Record<string, string>,
+): UserRole {
+  const containerId = (attributes.containerId || '').toUpperCase();
+  return containerId.includes('OU=JZG') ? UserRole.TEACHER : UserRole.STUDENT;
+}
 
 /** CAS 集成配置（环境变量；CAS_BASE_URL 为空表示未启用） */
 export interface CasConfig {
@@ -107,7 +130,7 @@ export class CasClient {
    */
   async validateTicket(
     ticket: string,
-  ): Promise<{ username: string; displayName?: string }> {
+  ): Promise<{ username: string; displayName?: string; role: UserRole }> {
     const cfg = this.requireConfig();
     const url =
       `${cfg.baseUrl}${cfg.validatePath}` +
@@ -115,6 +138,14 @@ export class CasClient {
       `&service=${encodeURIComponent(this.serviceUrl())}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
     const xml = await res.text();
+    const attributes = this.parseAttributes(xml);
+
+    // 【属性探测】记录认证机原始报文 + 全部属性。
+    // 已确认身份字段是 containerId（ou=JZG = 教职工）；此段留着继续核对学生账号
+    // 的属性值（ou=XS？），核对完可删。
+    logger.log(`CAS 校验原始响应: ${xml.replace(/\s*\n\s*/g, ' ').trim()}`);
+    logger.log(`CAS 属性解析: ${JSON.stringify(attributes)}`);
+
     const failure = /<cas:authenticationFailure[^>]*>([\s\S]*?)<\/cas:authenticationFailure>/.exec(xml);
     if (failure) {
       throw new UnauthorizedException(
@@ -130,6 +161,29 @@ export class CasClient {
       /<cas:(?:cn|displayName|name)>([^<]+)<\/cas:(?:cn|displayName|name)>/.exec(
         xml,
       )?.[1];
-    return { username: user[1].trim(), displayName: displayName?.trim() };
+    const username = user[1].trim();
+    return {
+      username,
+      displayName: displayName?.trim(),
+      role: resolveRoleFromCasAttributes(attributes),
+    };
+  }
+
+  /**
+   * 提取 <cas:attributes> 内的全部属性为键值对。
+   * 认证机未返回属性节点时返回空对象。
+   */
+  private parseAttributes(xml: string): Record<string, string> {
+    const block = /<cas:attributes>([\s\S]*?)<\/cas:attributes>/.exec(xml);
+    if (!block) {
+      return {};
+    }
+    const attributes: Record<string, string> = {};
+    const re = /<cas:([A-Za-z0-9_.-]+)>([\s\S]*?)<\/cas:\1>/g;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(block[1])) !== null) {
+      attributes[match[1]] = match[2].trim();
+    }
+    return attributes;
   }
 }

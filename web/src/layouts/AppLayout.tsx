@@ -25,13 +25,17 @@ import {
   DashboardOutlined,
   ExperimentOutlined,
   FileDoneOutlined,
+  FormOutlined,
+  HomeOutlined,
   KeyOutlined,
   LockOutlined,
   LogoutOutlined,
   MoonOutlined,
+  SearchOutlined,
   SunOutlined,
 } from '@ant-design/icons';
 import { changePassword, issueApiToken, revokeApiTokens } from '../api';
+import { withBase } from '../config';
 import { useAuthStore } from '../stores/auth';
 import { PRESET_COLORS, useThemeStore } from '../stores/theme';
 import AuxiliaryPanel from './AuxiliaryPanel';
@@ -42,14 +46,18 @@ const { Text, Paragraph } = Typography;
 const SEGMENT_LABELS: Record<string, string> = {
   teacher: '教师端',
   student: '学生端',
+  home: '工作台',
   dashboard: '工作台',
   courses: '课程',
+  browse: '选课',
+  course: '课程',
   chapters: '章节',
   edit: '编辑',
   projects: '实验项目',
   submissions: '提交与反馈',
   client: '客户端下载',
   grade: '批改',
+  applications: '申请',
 };
 
 const MENUS = {
@@ -59,7 +67,10 @@ const MENUS = {
     { key: '/teacher/projects', icon: <ExperimentOutlined />, label: '实验项目' },
   ],
   student: [
+    { key: '/student/home', icon: <HomeOutlined />, label: '工作台' },
     { key: '/student/courses', icon: <BookOutlined />, label: '我的课程' },
+    { key: '/browse', icon: <SearchOutlined />, label: '选课' },
+    { key: '/student/applications', icon: <FormOutlined />, label: '我的申请' },
     { key: '/student/submissions', icon: <FileDoneOutlined />, label: '我的提交与反馈' },
     { key: '/student/client', icon: <CloudDownloadOutlined />, label: '客户端下载' },
   ],
@@ -113,9 +124,13 @@ export default function AppLayout() {
   const menuItems = MENUS[role];
 
   const selectedKey = useMemo(() => {
+    // 课程详情页归属于「选课」菜单项
+    const pathname = location.pathname.startsWith('/course/')
+      ? '/browse'
+      : location.pathname;
     const hit = menuItems
       .map((m) => m.key)
-      .filter((k) => location.pathname.startsWith(k))
+      .filter((k) => pathname.startsWith(k))
       .sort((a, b) => b.length - a.length)[0];
     return hit ?? menuItems[0]?.key;
   }, [location.pathname, menuItems]);
@@ -129,8 +144,11 @@ export default function AppLayout() {
   }, [location.pathname]);
 
   const handleLogout = () => {
+    // 只清本地 token 不够：统一认证会话还在，会被自动登回去（换不了账号）。
+    // 再走一趟 CAS 登出终止会话 —— 后端端点会 302 到 authserver 的 logout。
+    // 注意：api/client.ts 里 401 拦截器的被动登出**不**走这里（token 过期不该把人从统一认证里踢出去）。
     logout();
-    navigate('/login');
+    window.location.href = withBase('api/auth/cas/logout');
   };
 
   const handleIssueToken = async () => {
