@@ -1,0 +1,17 @@
+[Unit]
+Description=NJU-Lab experiment platform (NestJS, port 3100)
+After=network.target mysql.service docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/nju-lab/server
+Environment=NODE_ENV=production
+ExecStart=/home/ubuntu/opt/node24/bin/node dist/main.js
+Restart=always
+RestartSec=5
+MemoryMax=800M
+
+[Install]
+WantedBy=multi-user.target
