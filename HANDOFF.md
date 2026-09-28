@@ -326,6 +326,16 @@ sharp 恢复、路径 A 禁用段退役、工作台镜像已重建为**完整功
      同时后端要按 `WORKSPACE_PUBLIC_BASE` 的 `{key}` 把该 authority 传进容器的 `--trusted-host`。
    - `wsKey` 作为**子域**出现，而 URL 规范/浏览器/`new URL().host` 都会把 hostname 小写化：
      用 base64url 时 key 被改写 → `auth_request` 查不到会话 → **403**。现用 16 字节 hex。
+7. **校园网关不透传 WebSocket 升级**（2026-09-28 实测，**当前唯一阻塞项**）：
+   浏览器侧 `wss://medai.nju.edu.cn/api/remote.mux` 一直失败（dsh 前端报 `connection lost, retry #N`），
+   access.log 里对应的是 **404 / 45 字节**——既不是 dsh 的 404（9 字节 `not found`），也不是本机 nginx 的
+   403/502，说明**升级请求没有以"升级"形态到达本机**。
+   对照实验（绕开网关，直连本机 nginx，带完整升级头）→ **101 Switching Protocols**；
+   同一 URL 若剥掉 `Upgrade`/`Connection` → dsh 回 404 `not found`（9 字节）。
+   ⇒ 本机 nginx / cookie 分流 / 容器全部正常；需要**网关侧开启 WebSocket 透传**
+   （或改走不带 TLS 终止的入口）。注意 WS 是 dsh 会话事件流的唯一通道（`/api/remote.mux`），
+   SSE `/plugins/events` 只是插件热重载，**没有 WS 时 UI 只能打开、不能真正交互**。
+
 6. **单 Host（medai）下的定案形态：页面认路径 + 根路径认 cookie**（2026-09-28 实测）：
    独立域名/端口不可得（学生只能走 80 端口、Host 只能是 medai），于是把会话标识**拆成两半** ——
    页面 `/lab/ws/<wsKey>/…` 用**路径**里的 key；dsh 写死的 `/api/**`、`/plugins/**`、
@@ -364,6 +374,13 @@ WebSocket 101、SSE 200 正常。
    `include /etc/nginx/snippets/medai-workspace-server.conf;` → `sudo nginx -t && sudo systemctl reload nginx`。
    （这两个片段已在容器里按**现网 cms.conf 的真实结构**拼装做过 `nginx -t` 校验，syntax ok。）
    完整取舍说明见 `lab-nginx-snippet.conf` 与设计文档 §4.5.2。
+1.5 **（2026-09-28 新增，最高优先）网关 WebSocket 透传**：见 §8.3 第 7 条 ——
+   本机链路已实测 101，需网络中心在**校园网关**上开启 WS 升级透传
+   （若网关是 nginx：`proxy_http_version 1.1` + `proxy_set_header Upgrade/Connection` + `map $http_upgrade $connection_upgrade`；
+   若是其他反代/负载设备，开"WebSocket 支持"）。
+   在解决前，工作台可以打开界面但**不能正常交互**（事件流接不上）。
+   可先试的临时办法：用 **`http://`（80 端口）**访问（若网关不强制跳 https），
+   绕开 443 的 TLS 终止层看 WS 是否通。
 2. **独立域名/端口形态（形态 A）已确认不可得**（学生只能走 80 端口、Host 只能是 medai，
    2026-09-28 使用方确认）→ 现用 §8.3 第 5 条的 cookie 分流形态；将来若拿到域名/端口可切回形态 A。
 3. **浏览器实测未做**：禁掉 `session-controller` 对实验流程（claim → 开发 → 自测 → 提交）的实际影响**未知**。
