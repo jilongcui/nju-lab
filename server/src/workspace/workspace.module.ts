@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module';
 import { ContainerRuntimeModule } from '../container-runtime/container-runtime.module';
 import { WorkspaceController } from './workspace.controller';
 import { WorkspaceService } from './workspace.service';
@@ -11,7 +12,7 @@ import { WorkspaceService } from './workspace.service';
  * 空闲回收、以及给学生/nginx 的接口。
  */
 @Module({
-  imports: [ContainerRuntimeModule],
+  imports: [ContainerRuntimeModule, AuthModule],
   controllers: [WorkspaceController],
   providers: [WorkspaceService],
   exports: [WorkspaceService],

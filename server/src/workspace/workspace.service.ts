@@ -9,6 +9,7 @@ import {
 import { randomBytes } from 'crypto';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
+import { AuthService } from '../auth/auth.service';
 import { ContainerRuntime } from '../container-runtime/container-runtime';
 import { User } from '../users/user.entity';
 import {
@@ -97,7 +98,10 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
   private readonly sessions = new Map<string, Session>();
   private sweepTimer?: NodeJS.Timeout;
 
-  constructor(private readonly runtime: ContainerRuntime) {}
+  constructor(
+    private readonly runtime: ContainerRuntime,
+    private readonly auth: AuthService,
+  ) {}
 
   onModuleInit(): void {
     this.adoptOrReclaim();
@@ -150,6 +154,9 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
 
     const trustedHosts = this.trustedHosts(session.wsKey);
     const mounts = this.studentMounts(user.id);
+    // 兜底环境里**不该让学生自己填 token**：后端替他签发一个短时效 token 注入容器，
+    // 插件（nju-lab-client）读 NJU_LAB_TOKEN / NJU_LAB_SERVER_URL 即可领任务、提交。
+    const apiToken = this.auth.issueWorkspaceToken(user).accessToken;
     try {
       this.runtime.runDetached({
         name: containerName,
@@ -181,6 +188,7 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
           ...(WORKSPACE_PLATFORM_API
             ? [`NJU_LAB_SERVER_URL=${WORKSPACE_PLATFORM_API}`]
             : []),
+          `NJU_LAB_TOKEN=${apiToken}`,
         ],
       });
       this.logger.log(
@@ -452,14 +460,24 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
    */
   private platformHosts(): string[] {
     if (!WORKSPACE_PLATFORM_API) return [];
+    let hostname: string;
     try {
-      const { hostname } = new URL(WORKSPACE_PLATFORM_API);
-      return [`${hostname}:host-gateway`];
+      hostname = new URL(WORKSPACE_PLATFORM_API).hostname;
     } catch {
       this.logger.warn(
         `WORKSPACE_PLATFORM_API 不是合法 URL，容器将无法访问平台：${WORKSPACE_PLATFORM_API}`,
       );
       return [];
     }
+    // ⚠️ 必须是宿主在**出栈隔离网络**里的地址，不是 `host-gateway`（那是默认 bridge 的
+    //    172.17.0.1，隔离容器没有到它的路由 → ENETUNREACH，实测踩过）。
+    const gateway = this.runtime.egressGateway();
+    if (!gateway) {
+      this.logger.warn(
+        `取不到出栈网络网关，容器将无法访问平台 API：${WORKSPACE_PLATFORM_API}`,
+      );
+      return [];
+    }
+    return [`${hostname}:${gateway}`];
   }
 }

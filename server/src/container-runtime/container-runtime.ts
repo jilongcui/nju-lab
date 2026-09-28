@@ -169,6 +169,22 @@ export class ContainerRuntime {
   }
 
   /**
+   * 宿主在**出栈隔离网络**里的网关地址（容器够得着的那一个）。
+   *
+   * ⚠️ 不要用 docker 的 `host-gateway`：它解析成宿主在**默认 bridge** 上的 IP（172.17.0.1），
+   * 而隔离容器只在 internal 网络里（172.18.0.0/16），没有到那个网段的路由 → `ENETUNREACH`
+   * （2026-09-29 实测：容器回调平台 API 全部失败，就是这个原因）。
+   * 宿主 nginx 监听 0.0.0.0:80，所以这个网关地址是可达的。
+   */
+  egressGateway(): string | null {
+    const r = this.docker([
+      'network', 'inspect', EGRESS_NETWORK, '-f',
+      '{{(index .IPAM.Config 0).Gateway}}',
+    ]);
+    return r.ok && r.out ? r.out : null;
+  }
+
+  /**
    * 前台执行一个一次性容器并等待结束。
    * 参数顺序与抽取前保持一致（`run --rm --name … IMAGE ARGS`）。
    */

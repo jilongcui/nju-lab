@@ -64,6 +64,17 @@ export class AuthService {
     return this.issueToken(user, '365d');
   }
 
+  /**
+   * 平台侧工作台（兜底环境）用：**短时效** API token，由后端起容器时自动注入 `NJU_LAB_TOKEN`。
+   *
+   * 为什么短：它会被放进学生的容器环境里（学生能看到自己的 env），露出的窗口要尽量小 ——
+   * 容器回收后它最多再有效 24 小时；过期后学生重新「启动实验环境」即会签发新的。
+   * 与 `issueApiToken` 同为无状态 JWT（无 DB 写入，不累积），受同一个 `tokenVersion` 吊销约束。
+   */
+  issueWorkspaceToken(user: User) {
+    return this.issueToken(user, '24h');
+  }
+
   /** POST /api/me/tokens/revoke —— tokenVersion + 1：本人全部已签发 token（含 Web 登录态）立即失效 */
   async revokeAllTokens(user: User) {
     await this.userRepo.increment({ id: user.id }, 'tokenVersion', 1);

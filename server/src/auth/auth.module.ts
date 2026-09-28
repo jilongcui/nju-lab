@@ -27,6 +27,7 @@ import { LocalAuthProvider } from './providers/local-auth.provider';
     }),
   ],
   controllers: [AuthController, MeTokensController, MePasswordController, CasAuthController],
+  exports: [AuthService],
   providers: [
     AuthService,
     CasClient,
