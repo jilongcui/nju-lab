@@ -38,6 +38,8 @@ const require = createRequire(import.meta.url);
 const WebSocket = require('ws');
 
 const PORT = Number(process.env.WORKSPACE_BRIDGE_PORT || 9091);
+/** 轮询模式下每条会话保留多少条帧（超出的丢弃） */
+const MAX_LOG = 2000;
 /** 会话在 SSE 断开后保留多久（便于重连复用同一条 WS） */
 const LINGER_MS = Number(process.env.WORKSPACE_BRIDGE_LINGER_MS || 60_000);
 /* 心跳间隔：用**真实 SSE 事件**（不是注释行）——有些中间层只按"有数据"保活，
@@ -81,10 +83,15 @@ async function ensureDshCookie(force = false) {
   return dshCookie;
 }
 
-/** id → { ws, res, lingerTimer, pending } */
+/**
+ * id → { ws, res, lingerTimer, log, seq }
+ *
+ * `log` 是**帧历史**（`[event, payload, seq]`），供短轮询按游标读取 ——
+ * 因为校园网关会在 ~20 秒后掐掉任何流式响应（2026-09-29 实测：宿主直连能活 50s，
+ * 经网关只活 16-24s，且心跳无效），所以**下行不能依赖长连接**。
+ */
 const sessions = new Map();
-/** SSE 尚未挂上时最多缓存多少帧（防止异常情况下无界增长） */
-const MAX_PENDING = 1000;
+
 
 function sseWrite(res, event, data) {
   res.write(`event: ${event}\ndata: ${data}\n\n`);
@@ -93,8 +100,14 @@ function sseWrite(res, event, data) {
 function closeSession(id, code = 1000, reason = 'disposed') {
   const s = sessions.get(id);
   if (!s) return;
-  sessions.delete(id);
   clearTimeout(s.lingerTimer);
+
+  // ⚠️ 关闭事件**也要进帧历史**：轮询客户端靠它知道上游断了。
+  //    只发给 SSE 是不够的 —— 轮询模式下客户端会一直轮询一个死会话（2026-09-29 实测踩过）。
+  s.seq += 1;
+  s.log.push(['closed', JSON.stringify({ code, reason }), s.seq]);
+  if (s.log.length > MAX_LOG) s.log.shift();
+
   if (s.res) {
     try {
       sseWrite(s.res, 'closed', JSON.stringify({ code, reason }));
@@ -102,12 +115,18 @@ function closeSession(id, code = 1000, reason = 'disposed') {
     } catch {
       /* 已断开 */
     }
+    s.res = undefined;
   }
   try {
     s.ws?.close();
   } catch {
     /* ignore */
   }
+
+  // 会话**不立刻删**：留 LINGER_MS 让客户端把那条 closed 取走；
+  // 这期间带 id 的请求仍能复用/读取（拿不到就新建）。
+  s.lingerTimer = setTimeout(() => sessions.delete(id), LINGER_MS);
+  s.lingerTimer.unref?.();
   console.log(`[bridge] session ${id} closed (${code} ${reason})`);
 }
 
@@ -133,11 +152,10 @@ function attachSse(id, s, res) {
   });
   sseWrite(res, 'ready', JSON.stringify({ id }));
 
-  // 把"SSE 挂上之前"收到的上游帧补发出去。这些帧很关键：dsh 在 WS open 的瞬间
-  // 就会推"接入/代际"帧，丢一条客户端就会一直卡在 generation is still not ready。
-  if (s.pending && s.pending.length) {
-    for (const [ev, payload] of s.pending) sseWrite(res, ev, payload);
-    s.pending = [];
+  // 把已经攒下的帧补发出去（SSE 只是可选快速路径；轮询模式下走 log 游标）
+  if (s.log && s.log.length) {
+    for (const [ev, payload] of s.log) sseWrite(res, ev, payload);
+    s.log = [];
   }
 
   const hb = setInterval(() => {
@@ -185,8 +203,9 @@ async function newSession(res) {
       Cookie: cookie,
     },
   });
-  const s = { ws, res: undefined, lingerTimer: undefined, pending: [] };
+  const s = { ws, res: undefined, lingerTimer: undefined, log: [], seq: 0 };
   sessions.set(id, s);
+  // 轮询模式（res 为 null）时不会挂 SSE，帧只进 log，由 /poll 按游标取走
 
   ws.on('open', () => {
     console.log(`[bridge] session ${id} upstream open (${DSH_WS_URL})`);
@@ -197,15 +216,17 @@ async function newSession(res) {
     const payload = isBinary
       ? JSON.stringify({ b64: Buffer.from(data).toString('base64') })
       : String(data);
-    if (!s.res) {
-      // SSE 还没挂上（或正在重连）：**入队**，等 attachSse 时补发 —— 绝不能丢
-      if (s.pending.length < MAX_PENDING) s.pending.push([ev, payload]);
-      return;
-    }
-    try {
-      sseWrite(s.res, ev, payload);
-    } catch {
-      /* ignore */
+    // 1) 进帧历史（轮询读它）——**绝不丢帧**
+    s.seq += 1;
+    s.log.push([ev, payload, s.seq]);
+    if (s.log.length > MAX_LOG) s.log.shift();
+    // 2) 若挂了 SSE（可选路径），同时推一份
+    if (s.res) {
+      try {
+        sseWrite(s.res, ev, payload);
+      } catch {
+        /* ignore */
+      }
     }
   });
   ws.on('close', (code, reason) => {
@@ -228,6 +249,20 @@ async function newSession(res) {
     if (!s.ws) sessions.delete(id);
   });
   return { id, s };
+}
+
+/** 按游标取出帧并回给轮询客户端 */
+function respondPoll(s, id, since, res) {
+  const frames = [];
+  for (const [ev, payload, seq] of s.log) {
+    if (seq > since) frames.push([ev, payload]);
+  }
+  const next = s.log.length ? s.log[s.log.length - 1][2] : since;
+  res.writeHead(200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+  });
+  res.end(JSON.stringify({ id, next, frames }));
 }
 
 const server = createServer((req, res) => {
@@ -253,6 +288,24 @@ const server = createServer((req, res) => {
       res.writeHead(500, { 'Content-Type': 'text/plain' });
       res.end(`client script unavailable: ${e.message}`);
     }
+    return;
+  }
+
+  // **短轮询**（下行主路径）：GET /wsbridge/poll?id=<id>&since=<seq>
+  // 返回 { id, next, frames: [[event,payload],...] }；不带 id 时新建会话。
+  if (req.method === 'GET' && url.pathname === '/wsbridge/poll') {
+    const since = Number(url.searchParams.get('since') ?? 0) || 0;
+    const existing = id ? sessions.get(id) : undefined;
+    if (existing) {
+      respondPoll(existing, id, since, res);
+      return;
+    }
+    newSession(null)
+      .then((created) => respondPoll(created.s, created.id, since, res))
+      .catch((e) => {
+        res.writeHead(503, { 'Content-Type': 'text/plain' });
+        res.end(`bridge: ${e.message}`);
+      });
     return;
   }
 

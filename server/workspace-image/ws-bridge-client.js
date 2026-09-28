@@ -27,6 +27,12 @@
   var LAST_SESSION_ID = null;
   var LAST_SESSION_URL = null;
   var MATCH = /\/api\/remote\.mux(?:[?#]|$)/;
+  /**
+   * 下行用**短轮询**而不是 SSE：校园网关会在 ~20 秒后掐掉任何流式响应
+   * （2026-09-29 实测：宿主直连的 SSE 能活 50s，经网关只活 16-24s，且心跳无效）。
+   * 轮询对长连接零假设。1 秒一轮：延迟可接受，请求量 1 人 1 req/s。
+   */
+  var POLL_MS = 1000;
   var CONNECTING = 0, OPEN = 1, CLOSING = 2, CLOSED = 3;
 
   function decode(b64) {
@@ -49,6 +55,7 @@
     this._id = null;
     this._abort = new AbortController();
     this._sseAbort = null;
+    this._pollTimer = null;
     this._closed = false;
     this._queue = [];
 
@@ -110,10 +117,66 @@
     var pingTimeout = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout)
       ? AbortSignal.timeout(2000) : undefined;
     fetch(EP + '/ping', { signal: pingTimeout, cache: 'no-store' })
-      .then(function (r) { if (!r.ok) throw new Error('bridge disabled'); return self._openStream(url); })
+      .then(function (r) { if (!r.ok) throw new Error('bridge disabled'); self._startPolling(url); })
       .catch(function () { self._useNative(url); });
   };
 
+  /** 下行主路径：短轮询（`GET /wsbridge/poll?id=&since=`） */
+  Bridged.prototype._startPolling = function (url) {
+    var self = this;
+    var since = 0;
+    var wait = POLL_MS;
+    var tick = function () {
+      if (self._closed) return;
+      var q = '?since=' + since + (self._id ? '&id=' + encodeURIComponent(self._id) : '');
+      fetch(EP + '/poll' + q, { cache: 'no-store' })
+        .then(function (r) {
+          if (!r.ok) throw new Error('poll HTTP ' + r.status);
+          return r.json();
+        })
+        .then(function (body) {
+          wait = POLL_MS;
+          if (body.id) {
+            self._id = body.id;
+            LAST_SESSION_ID = body.id;
+            LAST_SESSION_URL = self.url;
+            if (self.readyState === CONNECTING) {
+              self.readyState = OPEN;
+              self._emit('open', { type: 'open' }, 'onopen');
+              var q0 = self._queue;
+              self._queue = [];
+              for (var i = 0; i < q0.length; i++) self.send(q0[i]);
+            }
+          }
+          (body.frames || []).forEach(function (f) {
+            if (f[0] === 'text') {
+              self._emit('message', { type: 'message', data: f[1] }, 'onmessage');
+            } else if (f[0] === 'bin') {
+              var buf;
+              try { buf = decode(JSON.parse(f[1]).b64); } catch (e) { buf = new ArrayBuffer(0); }
+              self._emit('message', { type: 'message', data: buf }, 'onmessage');
+            } else if (f[0] === 'closed') {
+              // 上游（dsh）把这条会话关了：忘掉它，下次重连要**新建**，
+              // 否则每个新对象都会取到同一条 closed 反复重连（死循环）。
+              var code = 1000, reason = 'closed';
+              try { var j = JSON.parse(f[1]); code = j.code || 1000; reason = j.reason || ''; } catch (e) { /* ignore */ }
+              if (LAST_SESSION_ID === self._id) { LAST_SESSION_ID = null; LAST_SESSION_URL = null; }
+              self._id = null;
+              self.readyState = CLOSED;
+              self._closed = true;
+              if (self._pollTimer) clearTimeout(self._pollTimer);
+              self._emit('close', { type: 'close', code: code, reason: reason, wasClean: code === 1000 }, 'onclose');
+            }
+          });
+          if (typeof body.next === 'number') since = body.next;
+        })
+        .catch(function () { wait = Math.min(wait * 2, 5000); })
+        .then(function () { if (!self._closed) self._pollTimer = setTimeout(tick, wait); });
+    };
+    tick();
+  };
+
+  /** 备选路径：SSE 长连接（当前不用 —— 网关会掐；将来网关支持长连接可切回） */
   Bridged.prototype._openStream = function (url) {
     var self = this;
     this._sseAbort = new AbortController();
@@ -219,6 +282,7 @@
     this._closed = true;
     this.readyState = CLOSING;
     var id = this._id;
+    if (this._pollTimer) clearTimeout(this._pollTimer);
     try { this._sseAbort && this._sseAbort.abort(); } catch (e) { /* ignore */ }
     if (id) {
       fetch(EP + '/close?id=' + encodeURIComponent(id), { method: 'POST', keepalive: true })
