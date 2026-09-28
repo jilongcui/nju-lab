@@ -23,7 +23,7 @@
  * 或 `medai.nju.edu.cn`，带端口时写 `host:port`）。
  */
 import { spawn } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { createServer, connect } from 'node:net';
 import { networkInterfaces } from 'node:os';
 
@@ -41,6 +41,11 @@ const BRIDGE_PORT = Number(process.env.WORKSPACE_BRIDGE_PORT || 9091);
 const BRIDGE_ON = !/^(0|false|no|off)$/i.test(process.env.WORKSPACE_WS_BRIDGE ?? '1');
 /** dsh launch token 的落盘位置（桥读它换自己的 cookie） */
 const TOKEN_FILE = process.env.WORKSPACE_TOKEN_FILE || '/tmp/dsh-launch-token';
+/**
+ * dsh 的工作目录：学生的持久卷挂在这里（`<数据根>/<userId>` → `/work`），
+ * 所以学生的文件不随容器消失。没挂卷时这里就是个普通目录，行为与以前一致。
+ */
+const WORKDIR = process.env.WORKSPACE_WORKDIR || '/work';
 /**
  * 额外信任的 authority（逗号分隔），来自平台配置；一般留空即可。
  * 容器会**自动**把自己的 `IP:PORT` 加进信任列表——因为对外访问走容器 IP
@@ -103,7 +108,12 @@ const args = ['--profile', PROFILE, '--port', String(DSH_PORT), '--no-open'];
 for (const host of trusted) args.push('--trusted-host', host);
 console.log(`[workspace] trusted-host: ${trusted.join(' ')}`);
 console.log(`[workspace] starting: dsh ${args.join(' ')}`);
-const child = spawn('dsh', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+try {
+  mkdirSync(WORKDIR, { recursive: true }); // 没挂持久卷时的兜底
+} catch (e) {
+  console.warn(`[workspace] 创建 ${WORKDIR} 失败：${e.message}`);
+}
+const child = spawn('dsh', args, { stdio: ['ignore', 'pipe', 'pipe'], cwd: WORKDIR });
 
 // 3) 捕获 launch token（dsh 打印形如 `http://127.0.0.1:<port>/?token=<xxx>`）
 let announced = false;

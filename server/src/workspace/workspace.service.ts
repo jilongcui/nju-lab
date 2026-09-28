@@ -7,11 +7,14 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
+import { mkdirSync } from 'fs';
+import { join } from 'path';
 import { ContainerRuntime } from '../container-runtime/container-runtime';
 import { User } from '../users/user.entity';
 import {
   WORKSPACE_CONTAINER_PORT,
   WORKSPACE_CPUS,
+  WORKSPACE_DATA_DIR,
   WORKSPACE_IDLE_TIMEOUT_MS,
   WORKSPACE_IMAGE,
   WORKSPACE_LABEL_KEY,
@@ -96,12 +99,7 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
   constructor(private readonly runtime: ContainerRuntime) {}
 
   onModuleInit(): void {
-    // 后端重启后内存状态已丢，磁盘上可能残留上一次的容器：按 label 全部回收。
-    // 用 label 而不是"名字前缀"，避免误伤其他模块的容器。
-    for (const name of this.runtime.listByLabel(WORKSPACE_LABEL_KEY)) {
-      this.logger.warn(`reclaiming orphan workspace container: ${name}`);
-      this.runtime.stop(name);
-    }
+    this.adoptOrReclaim();
     this.sweepTimer = setInterval(
       () => this.sweep(),
       WORKSPACE_SWEEP_INTERVAL_MS,
@@ -150,6 +148,7 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
     this.sessions.set(user.id, session);
 
     const trustedHosts = this.trustedHosts(session.wsKey);
+    const mounts = this.studentMounts(user.id);
     try {
       this.runtime.runDetached({
         name: containerName,
@@ -160,6 +159,8 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
         egressProxyIp: this.runtime.ensureEgressProxy(),
         extraHosts: this.platformHosts(),
         labels: [`${WORKSPACE_LABEL_KEY}=${user.id}`],
+        // 持久卷：学生的文件与会话历史（容器重建也不丢；目录不可写时为空数组）
+        mounts,
         env: [
           // **必须**带上本次会话的对外 authority（`<wsKey>.<域>`）：
           // dsh 的 WebSocket（`/api/remote.mux`）会校验 `Origin` 与它看到的 `Host`
@@ -350,6 +351,75 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
       }
     }
     return [...new Set(hosts.filter(Boolean))];
+  }
+
+  /**
+   * 后端重启后的处置：**能接回来的就接回来，其余回收**。
+   *
+   * 为什么可以接：容器还在跑，dsh 的 launch token 一直留在它的日志里（`readToken`），
+   * 容器 IP 也能查到 —— 于是"重启后端"不再等于"学生的环境被清空"（2026-09-29 之前的行为）。
+   *
+   * 什么时候必须回收：
+   *   · 容器已不在运行（dsh 崩溃时 entrypoint 会让容器退出）；
+   *   · 容器所用的**镜像与当前配置不一致**（说明镜像升级过，接回来的仍是旧环境）；
+   *   · 读不到 token / 拿不到 IP（状态不完整，学生进去也是坏的）。
+   *
+   * ⚠️ 唯一无法恢复的是 `wsKey`（内存里的随机值）→ 接管时**重新生成**：
+   *    学生回「实验环境」页会看到"已就绪"，点一次「进入」即可（**仍是同一个容器**，文件与历史都在）。
+   */
+  private adoptOrReclaim(): void {
+    const wantedImage = this.runtime.imageId(WORKSPACE_IMAGE);
+    for (const name of this.runtime.listByLabel(WORKSPACE_LABEL_KEY)) {
+      const userId = this.runtime.labelValue(name, WORKSPACE_LABEL_KEY);
+      const drop = (why: string) => {
+        this.logger.warn(`reclaiming workspace container ${name}: ${why}`);
+        this.runtime.stop(name);
+      };
+      if (!userId) { drop('缺少 label'); continue; }
+      if (!this.runtime.isRunning(name)) { drop('容器未运行'); continue; }
+      const image = this.runtime.containerImageId(name);
+      if (wantedImage && image && image !== wantedImage) {
+        drop(`镜像已升级（容器 ${image.slice(7, 19)} ≠ 当前 ${wantedImage.slice(7, 19)}）`);
+        continue;
+      }
+      const token = this.readToken(name);
+      const ip = this.runtime.containerIp(name);
+      if (!token || !ip) { drop('读不到 launch token 或容器 IP'); continue; }
+
+      this.sessions.set(userId, {
+        userId,
+        wsKey: randomBytes(16).toString('hex'), // 新的会话键（旧的随进程消失了）
+        containerName: name,
+        status: 'running',
+        token,
+        containerIp: ip,
+        startedAt: Date.now(),
+        lastSeenAt: Date.now(),
+      });
+      this.logger.log(`workspace adopted: user=${userId} container=${name}`);
+    }
+  }
+
+  /**
+   * 学生的持久化挂载：`<WORKSPACE_DATA_DIR>/<userId>` → `/work`（dsh 的工作目录）
+   * 与其中的 `dsh-sessions` → `$DSH_HOME/sessions`（会话历史）。
+   * 目录不可写（例如 `/data` 被只读挂载）时只告警并返回空 —— **不能因此让学生起不了容器**。
+   */
+  private studentMounts(userId: string): string[] {
+    if (!WORKSPACE_DATA_DIR) return [];
+    const dir = join(WORKSPACE_DATA_DIR, userId);
+    const sessions = join(dir, 'dsh-sessions');
+    try {
+      mkdirSync(sessions, { recursive: true });
+    } catch (e) {
+      this.logger.warn(
+        `工作区目录不可写，本次不挂载持久卷（学生的文件将随容器消失）：${dir} —— ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      );
+      return [];
+    }
+    return [`${dir}:/work`, `${sessions}:/opt/workspace/dsh-home/sessions`];
   }
 
   private sweep(): void {

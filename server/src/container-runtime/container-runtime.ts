@@ -256,6 +256,26 @@ export class ContainerRuntime {
       : [];
   }
 
+  /** 读容器某个 label 的值（没有则返回 null） */
+  labelValue(name: string, key: string): string | null {
+    const r = this.docker([
+      'inspect', '-f', `{{index .Config.Labels "${key}"}}`, name,
+    ]);
+    return r.ok && r.out ? r.out : null;
+  }
+
+  /** 镜像 ID（判断"容器是否基于当前配置的镜像"时用；镜像或标签不存在返回 null） */
+  imageId(ref: string): string | null {
+    const r = this.docker(['image', 'inspect', '-f', '{{.Id}}', ref]);
+    return r.ok && r.out ? r.out : null;
+  }
+
+  /** 容器所用的镜像 ID */
+  containerImageId(name: string): string | null {
+    const r = this.docker(['inspect', '-f', '{{.Image}}', name]);
+    return r.ok && r.out ? r.out : null;
+  }
+
   /** 容器当前是否在运行 */
   isRunning(name: string): boolean {
     return (

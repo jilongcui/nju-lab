@@ -109,3 +109,15 @@ export const WORKSPACE_PROXY_PATH = process.env.WORKSPACE_PROXY_PATH || '/lab/ws
  * nginx 的变量名不允许 `-`，所以用下划线（`nju_ws` ↔ `$cookie_nju_ws`）。
  */
 export const WORKSPACE_SESSION_COOKIE = 'nju_ws';
+
+/**
+ * 学生工作区的持久化根目录（**宿主**路径）。
+ *
+ * 挂两处进容器：`<根>/<userId>` → `/work`（dsh 的工作目录 —— 学生的文件就落在这里）、
+ * `<根>/<userId>/dsh-sessions` → `$DSH_HOME/sessions`（dsh 的会话历史）。
+ * 于是**容器被删/重建**（镜像升级、异常退出、重启后端）也不丢文件与历史。
+ *
+ * 留空 = 关闭持久化（退回"容器内数据随容器消失"）。
+ * ⚠️ 目录不可写时（例如 `/data` 被内核以只读挂载）后端**只告警、不挂载**，不影响学生用。
+ */
+export const WORKSPACE_DATA_DIR = process.env.WORKSPACE_DATA_DIR ?? '/data/workspaces';
