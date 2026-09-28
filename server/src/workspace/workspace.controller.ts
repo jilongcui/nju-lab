@@ -13,8 +13,10 @@ import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { User, UserRole } from '../users/user.entity';
 import {
+  WORKSPACE_BRIDGE_PORT,
   WORKSPACE_PROXY_PATH,
   WORKSPACE_SESSION_COOKIE,
+  WORKSPACE_WS_BRIDGE,
 } from './workspace.config';
 import { WorkspaceService } from './workspace.service';
 
@@ -106,7 +108,17 @@ export class WorkspaceController {
       mode === 'fallback'
         ? this.workspace.resolveUpstreamOrNull(key ?? '')
         : this.workspace.resolveUpstream(key ?? '');
-    if (upstream) res.setHeader('X-Workspace-Upstream', upstream);
+    if (upstream) {
+      res.setHeader('X-Workspace-Upstream', upstream);
+      // 桥与容器**同一个 IP、另一个端口**：nginx 用它做 /wsbridge/ 的上游
+      // （网关不透传 WebSocket 时的替代通道；未启用桥时不下发这个头）
+      if (WORKSPACE_WS_BRIDGE) {
+        res.setHeader(
+          'X-Workspace-Bridge-Upstream',
+          upstream.replace(/:\d+$/, `:${WORKSPACE_BRIDGE_PORT}`),
+        );
+      }
+    }
     return null;
   }
 }

@@ -17,11 +17,13 @@ import {
   WORKSPACE_LABEL_KEY,
   WORKSPACE_MAX_TOTAL,
   WORKSPACE_MEMORY,
+  WORKSPACE_BRIDGE_PORT,
   WORKSPACE_PLATFORM_API,
   WORKSPACE_PUBLIC_BASE,
   WORKSPACE_PUBLIC_BASE_KEY_PLACEHOLDER,
   WORKSPACE_SWEEP_INTERVAL_MS,
   WORKSPACE_TRUSTED_HOSTS,
+  WORKSPACE_WS_BRIDGE,
 } from './workspace.config';
 
 export type WorkspaceStatus = 'starting' | 'running' | 'failed';
@@ -168,6 +170,8 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
             ? [`WORKSPACE_TRUSTED_HOSTS=${trustedHosts.join(',')}`]
             : []),
           `WORKSPACE_PROXY_PORT=${WORKSPACE_CONTAINER_PORT}`,
+          // 是否在容器内启动 WS→HTTPS 桥（网关不透传 WS 时的替代通道）
+          `WORKSPACE_WS_BRIDGE=${WORKSPACE_WS_BRIDGE ? '1' : '0'}`,
           ...(WORKSPACE_PLATFORM_API
             ? [`NJU_LAB_SERVER_URL=${WORKSPACE_PLATFORM_API}`]
             : []),

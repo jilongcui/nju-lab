@@ -286,6 +286,8 @@ Host 只能是 `medai.nju.edu.cn`）→ 采用等价形态：
 > **没有会话的流量原样回落 FoxCMS**）。cookie 由后端 `GET /lab/api/workspace/enter?k=<wsKey>` 种下。
 
 **仍缺**：① 浏览器里跑通完整实验流程；② 宿主机 nginx 真实部署（§8.5 第 1 条；前端入口页已完成）。
+⏳ **网关不接受 WebSocket 的绕行方案（B）已就位**：容器内 WS→HTTPS 桥 + 页面适配，端到端实测通过，
+靠 `WORKSPACE_WS_BRIDGE` 一个开关即可切回原生 WS —— 见 §8.5 第 1.5 条与设计文档 §4.6.1。
 
 ✅ **2026-09-28 另：路径 B 已落地** —— VM CPU 改为 host-passthrough（Xeon Gold 6530，SSE4.2/POPCNT/AVX2），
 sharp 恢复、路径 A 禁用段退役、工作台镜像已重建为**完整功能**（文件上传/附件/交付物面板/会话控制器）。
@@ -383,9 +385,15 @@ WebSocket 101、SSE 200 正常。
    ③ ⚠️ 若该 server/location 里**已有** `proxy_set_header Connection close;`（或 `""`），
       它会覆盖②新增的那行 —— 必须删掉或改成 `$connection_upgrade`，这是最常见的漏改点；
    ④ `nginx -t && nginx -s reload`。若是其他反代/负载设备，开"WebSocket 支持"开关）。
-   在解决前，工作台可以打开界面但**不能正常交互**（事件流接不上）。
-   可先试的临时办法：用 **`http://`（80 端口）**访问（若网关不强制跳 https），
-   绕开 443 的 TLS 终止层看 WS 是否通。
+   **当前处置（2026-09-28）**：已实现**方案 B** —— 容器内 `bridge.mjs` 把 dsh 的 WS
+   拆成「下行 SSE + 上行 POST」（都是网关放行的普通 HTTPS），页面注入 `/wsbridge/client.js`
+   做适配，**全体仍是 https**。端到端实测通过（详见设计文档 §4.6.1）。
+   · 切回原生 WS（网关开好之后）：注入 `WORKSPACE_WS_BRIDGE=0` 即可，不用改前端/nginx
+   · 涉及改动：镜像新增 `bridge.mjs`/`ws-bridge-client.js` + entrypoint 起桥；
+     后端 `WORKSPACE_WS_BRIDGE`（默认开）与 `X-Workspace-Bridge-Upstream`；
+     nginx 片段新增 `location ^~ /wsbridge/` + 页面注入一行 script
+   · 已知边界：桥让**上行**帧变成"一帧一个 POST"（下行一条 SSE）；若网关连 SSE 长连接也掐，
+     桥侧会话 linger 60s，客户端重连即可（会有短暂空窗）
 2. **独立域名/端口形态（形态 A）已确认不可得**（学生只能走 80 端口、Host 只能是 medai，
    2026-09-28 使用方确认）→ 现用 §8.3 第 5 条的 cookie 分流形态；将来若拿到域名/端口可切回形态 A。
 3. **浏览器实测未做**：禁掉 `session-controller` 对实验流程（claim → 开发 → 自测 → 提交）的实际影响**未知**。

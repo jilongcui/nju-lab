@@ -30,7 +30,6 @@
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
-import { networkInterfaces } from 'node:os';
 import { randomBytes } from 'node:crypto';
 
 const require = createRequire(import.meta.url);
@@ -44,17 +43,41 @@ const LINGER_MS = Number(process.env.WORKSPACE_BRIDGE_LINGER_MS || 60_000);
 const HEARTBEAT_MS = 15_000;
 const MAX_UPLOAD = 2 * 1024 * 1024;
 
-/** dsh 的 WS 地址：走 entrypoint 的转发口，Host/Origin 用容器自己的 IP:9090 */
-function selfAuthority() {
-  for (const addrs of Object.values(networkInterfaces())) {
-    for (const a of addrs ?? []) {
-      if (a.family === 'IPv4' && !a.internal) return `${a.address}:9090`;
-    }
+/**
+ * 连 dsh 的方式：直连它绑定的 loopback（entrypoint 的 9090 只是给 nginx 用的 TCP 转发）。
+ *
+ * ⚠️ authority 必须自洽：dsh 的 auth cookie 是**按 authority 签发**的。
+ * 浏览器那份 cookie 的 authority 是外部域名（nginx 传的 Host），而桥是按 `127.0.0.1:<dsh端口>`
+ * 连它的 —— 用浏览器 cookie 必然 401（实测踩过）。所以桥**自己**用 launch token 换一份
+ * 「authority = 127.0.0.1:<dsh端口>」的 cookie 自用。
+ * 代价是 entrypoint 要把该地址加进 dsh 的 `--trusted-host`（只绑 loopback，不扩大攻击面）。
+ */
+const DSH_PORT = Number(process.env.WORKSPACE_PORT || 8080);
+const DSH_AUTHORITY = `127.0.0.1:${DSH_PORT}`;
+const DSH_WS_URL = `ws://${DSH_AUTHORITY}/api/remote.mux`;
+const TOKEN_FILE = process.env.WORKSPACE_TOKEN_FILE || '/tmp/dsh-launch-token';
+
+/** 缓存"桥自己那份" dsh cookie（onwership 在桥内，不涉及学生凭证） */
+let dshCookie = null;
+async function ensureDshCookie(force = false) {
+  if (dshCookie && !force) return dshCookie;
+  let token = '';
+  try {
+    token = readFileSync(TOKEN_FILE, 'utf8').trim();
+  } catch {
+    /* 还没写（dsh 未就绪） */
   }
-  return '127.0.0.1:9090';
+  if (!token) throw new Error('dsh launch token 不可用（entrypoint 尚未写入）');
+  const res = await fetch(`http://${DSH_AUTHORITY}/?token=${encodeURIComponent(token)}`, {
+    redirect: 'manual',
+  });
+  const list = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
+  const pair = list.map((c) => c.split(';')[0]).find((c) => c.startsWith('dsh-auth-'));
+  if (!pair) throw new Error(`换 dsh cookie 失败：HTTP ${res.status}`);
+  dshCookie = pair;
+  console.log('[bridge] 已取得桥自身的 dsh cookie（authority=' + DSH_AUTHORITY + '）');
+  return dshCookie;
 }
-const AUTHORITY = selfAuthority();
-const DSH_WS_URL = `ws://${AUTHORITY}/api/remote.mux`;
 
 /** id → { ws, res, lingerTimer } */
 const sessions = new Map();
@@ -127,12 +150,22 @@ function attachSse(id, s, res) {
   res.on('error', cleanup);
 }
 
-function newSession(cookie, res) {
+async function newSession(res) {
   const id = randomBytes(9).toString('hex');
+  let cookie;
+  try {
+    cookie = await ensureDshCookie();
+  } catch (e) {
+    if (res) {
+      res.writeHead(503, { 'Content-Type': 'text/plain' });
+      res.end(`bridge: ${e.message}`);
+    }
+    throw e;
+  }
   const ws = new WebSocket(DSH_WS_URL, {
     headers: {
-      Cookie: cookie || '',
-      Origin: `http://${AUTHORITY}`,
+      Origin: `http://${DSH_AUTHORITY}`,
+      Cookie: cookie,
     },
   });
   const s = { ws, res: undefined, lingerTimer: undefined };
@@ -153,6 +186,7 @@ function newSession(cookie, res) {
   });
   ws.on('close', (code, reason) => {
     const text = String(reason ?? '');
+    if (code === 1006 || code === 1008) dshCookie = null; // 可能是 cookie 失效，下次重建时重换
     console.log(`[bridge] session ${id} upstream closed (${code} ${text})`);
     closeSession(id, code || 1000, text || 'upstream closed');
   });
@@ -210,8 +244,9 @@ const server = createServer((req, res) => {
       attachSse(id, sessions.get(id), res);
       return;
     }
-    const created = newSession(req.headers.cookie, res);
-    attachSse(created.id, created.s, res);
+    newSession(res)
+      .then((created) => attachSse(created.id, created.s, res))
+      .catch((e) => console.log(`[bridge] 新建会话失败：${e.message}`));
     return;
   }
 
@@ -246,5 +281,5 @@ const server = createServer((req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[bridge] listening 0.0.0.0:${PORT} → ${DSH_WS_URL}`);
+  console.log(`[bridge] listening 0.0.0.0:${PORT} → ${DSH_WS_URL}（Host 取请求里的 authority）`);
 });

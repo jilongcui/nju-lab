@@ -423,6 +423,49 @@ dsh 升级若新增别的**根路径前缀**，要在 nginx 补 location（当�
 **仍待办**：把 `wsKey` 与平台账号绑定校验（例如 start 时写入 `wsKey → userId`，
 `proxy-auth` 同时校验来源），以便日后给"工作台入口页"加二次确认。
 
+### 4.6.1 方案 B：把实时通道改走普通 HTTPS（网关不透传 WebSocket 时）**[已实测 2026-09-28]**
+
+**问题**：medai 的 443 由**校园网关**（TLS 终止那一层）提供，而那层**不透传 WebSocket 升级**。
+浏览器里 `wss://medai.nju.edu.cn/api/remote.mux` 被以 **404 / 45 字节**拒掉 —— 这个响应
+本机根本产生不出来（本机只有 dsh 的 404/9 字节、FoxCMS 的 200/JSON、nginx 的 403/502）；
+而绕开网关直连本机 nginx、带完整升级头 → **101 Switching Protocols**。
+WS 是 dsh 会话事件流的**唯一**通道（`/plugins/events` 只是插件热重载），
+所以没有它 UI 能打开但**不能交互**（前端一直 `connection lost, retry #N`）。
+
+**方案 B**：在容器内加一座桥，把那条 WS 原样拆成"下行 SSE + 上行 POST"——两者都是
+网关一定放行的普通 HTTPS：
+
+```
+浏览器 dsh 客户端（以为在用 WebSocket）
+  │  下行 GET  /wsbridge/events   → SSE 流（一条 event = 一条 WS 帧）
+  │  上行 POST /wsbridge/send     → 一帧一个请求
+  ▼  校园网关（不懂 WS，但普通 HTTPS 双向都通）
+本机 nginx：`location ^~ /wsbridge/`（复用 cookie 分流；proxy_buffering off）
+  ▼
+容器内 bridge.mjs（监听 9091）
+  ├─ 用 dsh 的 launch token 换一份「自己」的 cookie，连 ws://127.0.0.1:8080/api/remote.mux
+  ├─ WS 来帧 → SSE 事件（文本原样；二进制用 base64）
+  └─ POST body → 原样写进 WS
+```
+
+**四个关键实现点**（都踩过，别再改回去）：
+
+1. **authority 必须自洽**：dsh 的 auth cookie 是**按 authority 签发**的。浏览器那份 cookie 的
+   authority 是外部域名（nginx 传的 `Host`），桥直连 dsh（`127.0.0.1:<dsh端口>`）时对不上 → **401**。
+   → 桥**自己**用 launch token 换一份 authority=`127.0.0.1:<dsh端口>` 的 cookie 自用；
+   entrypoint 把 token 写到 `/tmp/dsh-launch-token`，并把该地址加进 dsh 的 `--trusted-host`
+   （只绑 loopback，不扩大攻击面）。
+2. `ws` 客户端**没法**用 `headers.Host` 覆盖 authority（实测无效）——这正是选 1 那条路的原因。
+3. 桥**不解析** dsh 的 mux 协议（透明转发），所以不受其内部协议影响；帧是 JSON 文本。
+4. **切回形态 A 的开关**：页面注入的适配脚本先探一次 `/wsbridge/ping`，
+   探不到就**自动退回原生 WebSocket**；平台侧只要 `WORKSPACE_WS_BRIDGE=0`（桥不启动）即可，
+   **不改前端、不改 nginx、不用重建页面**。网关侧开好 WS 后随时可以切回去。
+
+**实测**（真实后端 + 真实镜像 + 复刻 medai 骨架的 nginx）：页面注入的 `<script src="/wsbridge/client.js">`
+生效；`/wsbridge/ping` 200、`/wsbridge/client.js` 200；SSE `ready → open`；`POST /wsbridge/send` → 204；
+发一个非法帧被 dsh 以 `1008 invalid Remote stream request` 拒绝（证明帧确实进了 dsh 的 mux 解析器）；
+直连 WS 与"经桥"结果一致。
+
 ### 4.7 生命周期
 
 | 事件 | 动作 |

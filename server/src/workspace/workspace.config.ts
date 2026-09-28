@@ -18,6 +18,21 @@ export const WORKSPACE_CONTAINER_PORT = Number(
   process.env.WORKSPACE_CONTAINER_PORT || 9090,
 );
 
+/** WS→HTTPS 桥的容器内端口（bridge.mjs 监听它；nginx 用它做 /wsbridge/ 的上游） */
+export const WORKSPACE_BRIDGE_PORT = Number(
+  process.env.WORKSPACE_BRIDGE_PORT || 9091,
+);
+
+/**
+ * 是否启用「WS→HTTPS 桥」：校园网关（TLS 终止那层）不透传 WebSocket 升级时，
+ * dsh 的实时通道必须改走普通 HTTPS（见 `workspace-image/bridge.mjs` 与设计文档 §4.6.1）。
+ * 网关上开放 WS 之后，把它设为 `0` 即切回原生 WebSocket —— 页面适配脚本探测不到桥会
+ * 自动退回原生实现，**不需要改前端或 nginx**。
+ */
+export const WORKSPACE_WS_BRIDGE = !/^(0|false|no|off)$/i.test(
+  process.env.WORKSPACE_WS_BRIDGE ?? '1',
+);
+
 /**
  * 同时在线的实例上限（防端口/内存耗尽）。
  *

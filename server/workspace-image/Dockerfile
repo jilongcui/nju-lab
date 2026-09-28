@@ -40,7 +40,7 @@ RUN ln -s /opt/workspace/nju-lab-client ${DSH_HOME}/nju-lab-client \
 RUN ln -s /opt/verify/node_modules /opt/workspace/node_modules
 ENV PATH=/opt/workspace/node_modules/.bin:$PATH
 
-# 4) 入口：容器内转发 + dsh web
-COPY server/workspace-image/entrypoint.mjs ./
-EXPOSE 9090
+# 4) 入口：容器内转发 + dsh web（+ 可选的 WS→HTTPS 桥，见 entrypoint.mjs / bridge.mjs）
+COPY server/workspace-image/entrypoint.mjs server/workspace-image/bridge.mjs server/workspace-image/ws-bridge-client.js ./
+EXPOSE 9090 9091
 ENTRYPOINT ["node", "/opt/workspace/entrypoint.mjs"]

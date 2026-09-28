@@ -23,12 +23,24 @@
  * 或 `medai.nju.edu.cn`，带端口时写 `host:port`）。
  */
 import { spawn } from 'node:child_process';
+import { writeFileSync } from 'node:fs';
 import { createServer, connect } from 'node:net';
 import { networkInterfaces } from 'node:os';
 
 const PROFILE = process.env.WORKSPACE_PROFILE || 'nju-lab-workspace';
 const DSH_PORT = Number(process.env.WORKSPACE_PORT || 8080);
 const PROXY_PORT = Number(process.env.WORKSPACE_PROXY_PORT || 9090);
+/** WS→HTTPS 桥的监听端口（与 bridge.mjs 约定一致） */
+const BRIDGE_PORT = Number(process.env.WORKSPACE_BRIDGE_PORT || 9091);
+/**
+ * 是否启动 WS 桥：校园网关（TLS 终止那层）不透传 WebSocket 升级时，
+ * dsh 的实时通道（`/api/remote.mux`）只能改走"普通 HTTPS" —— 见 bridge.mjs。
+ * 默认**开启**；网关侧开放 WS 之后，平台只需注入 `WORKSPACE_WS_BRIDGE=0` 即切回原生 WebSocket
+ * （页面适配脚本探测不到桥就自动退回原生，不需要改前端/nginx）。
+ */
+const BRIDGE_ON = !/^(0|false|no|off)$/i.test(process.env.WORKSPACE_WS_BRIDGE ?? '1');
+/** dsh launch token 的落盘位置（桥读它换自己的 cookie） */
+const TOKEN_FILE = process.env.WORKSPACE_TOKEN_FILE || '/tmp/dsh-launch-token';
 /**
  * 额外信任的 authority（逗号分隔），来自平台配置；一般留空即可。
  * 容器会**自动**把自己的 `IP:PORT` 加进信任列表——因为对外访问走容器 IP
@@ -56,6 +68,22 @@ createServer((client) => {
   );
 });
 
+// 1.5) 可选：WS → 普通 HTTPS 桥（默认开；WORKSPACE_WS_BRIDGE=0 关闭）
+if (BRIDGE_ON) {
+  const bridge = spawn('node', [new URL('./bridge.mjs', import.meta.url).pathname], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, WORKSPACE_BRIDGE_PORT: String(BRIDGE_PORT) },
+  });
+  bridge.stdout.on('data', (d) => process.stdout.write(d));
+  bridge.stderr.on('data', (d) => process.stderr.write(d));
+  // 桥挂掉不影响 dsh（客户端探测不到桥会自动退回原生 WebSocket）
+  bridge.on('exit', (code) =>
+    console.warn(`[workspace] bridge exited (code=${code}); clients will fall back to native WebSocket`),
+  );
+} else {
+  console.log('[workspace] WS bridge disabled (WORKSPACE_WS_BRIDGE=0)');
+}
+
 // 2) dsh web（绑 loopback；对外可达性由上面的转发层负责）
 //
 // dsh 的 browser-trust fence 只信任显式声明的 authority，所以必须把
@@ -68,7 +96,9 @@ for (const addr of Object.values(networkInterfaces())) {
     }
   }
 }
-const trusted = [...new Set([...selfAuthorities, ...EXTRA_TRUSTED])];
+// ⚠️ 额外信任 loopback：WS 桥直连 dsh 时用的就是它（与它换到的 cookie 的 authority 一致）。
+//    不暴露到网络（dsh 只绑 127.0.0.1），所以加进来没有安全面。
+const trusted = [...new Set([...selfAuthorities, `127.0.0.1:${DSH_PORT}`, ...EXTRA_TRUSTED])];
 const args = ['--profile', PROFILE, '--port', String(DSH_PORT), '--no-open'];
 for (const host of trusted) args.push('--trusted-host', host);
 console.log(`[workspace] trusted-host: ${trusted.join(' ')}`);
@@ -83,6 +113,13 @@ const scanToken = (chunk) => {
   if (!m) return;
   announced = true;
   console.log(`WORKSPACE_TOKEN=${m[1]}`);
+  // 给 WS 桥用：它拿这个 token 换一份"authority = 127.0.0.1:<dsh 端口>"的 cookie，
+  // 从而不依赖浏览器那份（后者的 authority 是外部域名，桥直连 dsh 时对不上）。
+  try {
+    writeFileSync(TOKEN_FILE, `${m[1]}\n`, { mode: 0o600 });
+  } catch (e) {
+    console.warn(`[workspace] 写 ${TOKEN_FILE} 失败：${e.message}`);
+  }
   console.log(`WORKSPACE_READY port=${PROXY_PORT}`);
 };
 child.stdout.on('data', (d) => {
