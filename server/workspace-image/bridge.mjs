@@ -40,7 +40,9 @@ const WebSocket = require('ws');
 const PORT = Number(process.env.WORKSPACE_BRIDGE_PORT || 9091);
 /** 会话在 SSE 断开后保留多久（便于重连复用同一条 WS） */
 const LINGER_MS = Number(process.env.WORKSPACE_BRIDGE_LINGER_MS || 60_000);
-const HEARTBEAT_MS = 15_000;
+/* 心跳间隔：用**真实 SSE 事件**（不是注释行）——有些中间层只按"有数据"保活，
+   而它不认识注释行；另外把间隔压到 10s，抢在网关的空闲超时之前（实测 SSE 活不过 ~20s）。 */
+const HEARTBEAT_MS = 10_000;
 const MAX_UPLOAD = 2 * 1024 * 1024;
 
 /**
@@ -79,8 +81,10 @@ async function ensureDshCookie(force = false) {
   return dshCookie;
 }
 
-/** id → { ws, res, lingerTimer } */
+/** id → { ws, res, lingerTimer, pending } */
 const sessions = new Map();
+/** SSE 尚未挂上时最多缓存多少帧（防止异常情况下无界增长） */
+const MAX_PENDING = 1000;
 
 function sseWrite(res, event, data) {
   res.write(`event: ${event}\ndata: ${data}\n\n`);
@@ -129,9 +133,17 @@ function attachSse(id, s, res) {
   });
   sseWrite(res, 'ready', JSON.stringify({ id }));
 
+  // 把"SSE 挂上之前"收到的上游帧补发出去。这些帧很关键：dsh 在 WS open 的瞬间
+  // 就会推"接入/代际"帧，丢一条客户端就会一直卡在 generation is still not ready。
+  if (s.pending && s.pending.length) {
+    for (const [ev, payload] of s.pending) sseWrite(res, ev, payload);
+    s.pending = [];
+  }
+
   const hb = setInterval(() => {
+    // 用真实事件（客户端适配层会忽略 ka）
     try {
-      res.write(': ka\n\n');
+      sseWrite(res, 'ka', '{}');
     } catch {
       /* ignore */
     }
@@ -146,7 +158,12 @@ function attachSse(id, s, res) {
       s.lingerTimer.unref?.();
     }
   };
-  res.on('close', cleanup);
+  res.on('close', () => {
+    console.log(
+      `[bridge] session ${id} SSE disconnected${res.writableEnded ? ' (ended)' : ' (client aborted)'}`,
+    );
+    cleanup();
+  });
   res.on('error', cleanup);
 }
 
@@ -168,7 +185,7 @@ async function newSession(res) {
       Cookie: cookie,
     },
   });
-  const s = { ws, res: undefined, lingerTimer: undefined };
+  const s = { ws, res: undefined, lingerTimer: undefined, pending: [] };
   sessions.set(id, s);
 
   ws.on('open', () => {
@@ -176,10 +193,17 @@ async function newSession(res) {
     if (s.res) sseWrite(s.res, 'open', '{}');
   });
   ws.on('message', (data, isBinary) => {
-    if (!s.res) return;
+    const ev = isBinary ? 'bin' : 'text';
+    const payload = isBinary
+      ? JSON.stringify({ b64: Buffer.from(data).toString('base64') })
+      : String(data);
+    if (!s.res) {
+      // SSE 还没挂上（或正在重连）：**入队**，等 attachSse 时补发 —— 绝不能丢
+      if (s.pending.length < MAX_PENDING) s.pending.push([ev, payload]);
+      return;
+    }
     try {
-      if (isBinary) sseWrite(s.res, 'bin', JSON.stringify({ b64: Buffer.from(data).toString('base64') }));
-      else sseWrite(s.res, 'text', String(data));
+      sseWrite(s.res, ev, payload);
     } catch {
       /* ignore */
     }

@@ -22,6 +22,10 @@
   if (!Native) return;
 
   var EP = '/wsbridge';
+  // 跨 new WebSocket 记住上一次的会话 id：重连时复用它，桥那边就能接着用**同一条上游 WS**，
+  // dsh 侧的多路复用状态才不会每次重连都被重置（否则永远等不到 generation）。
+  var LAST_SESSION_ID = null;
+  var LAST_SESSION_URL = null;
   var MATCH = /\/api\/remote\.mux(?:[?#]|$)/;
   var CONNECTING = 0, OPEN = 1, CLOSING = 2, CLOSED = 3;
 
@@ -113,7 +117,10 @@
   Bridged.prototype._openStream = function (url) {
     var self = this;
     this._sseAbort = new AbortController();
-    return fetch(EP + '/events', { signal: this._sseAbort.signal, cache: 'no-store' })
+    var reuse = (LAST_SESSION_URL === url && LAST_SESSION_ID)
+      ? '?id=' + encodeURIComponent(LAST_SESSION_ID)
+      : '';
+    return fetch(EP + '/events' + reuse, { signal: this._sseAbort.signal, cache: 'no-store' })
       .then(function (res) {
         if (!res.ok || !res.body) throw new Error('bridge unavailable');
         var reader = res.body.getReader();
@@ -153,8 +160,13 @@
       else if (line.charAt(0) === ':') return; // 心跳/注释
     }
     var self = this;
+    if (event === 'ka') return; // 心跳（保活用的空事件）
     if (event === 'ready') {
-      try { this._id = JSON.parse(data).id; } catch (e) { /* ignore */ }
+      try {
+        this._id = JSON.parse(data).id;
+        LAST_SESSION_ID = this._id;
+        LAST_SESSION_URL = this.url;
+      } catch (e) { /* ignore */ }
       if (this.readyState === CONNECTING) {
         this.readyState = OPEN;
         this._emit('open', { type: 'open' }, 'onopen');
