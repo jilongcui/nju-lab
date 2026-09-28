@@ -68,7 +68,7 @@ NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已�
 | 数据库 | 系统 MySQL 8.0（127.0.0.1:3306），库/用户 `nju_lab`（随机密码在 server/.env） |
 | 服务 | `systemctl` 单元 `nju-lab.service`（`~/nju-lab/nju-lab.service` 有副本）。**不要加 PrivateTmp/ProtectSystem**——runner 靠 `/tmp` 给容器 bind-mount，PrivateTmp 会导致挂载为空、复验全挂（2026-09-22 踩过） |
 | Docker | ubuntu 在 docker 组；docker.io 直连不通，走 `swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/<img>` 拉取后 tag 回原名（`nginx:alpine` 已就位）；**`nju-lab-verify:0.1.5-rc.2` 是生产的 `docker save/load` 拷贝**——异地重建会因 `node:22-slim` 漂浮 tag 拿到老基底导致 sharp 加载失败、复验全挂（Dockerfile 已改钉 `node:22.23.2-slim`，但跨机仍以 save/load 为准） |
-| 注意⑦ | ⚠️ **2026-09-29 发现：根分区 `/` 与 `/data` 都是被内核降级后的 `ro` 挂载**（`/proc/mounts` 里 `ro,nosuid,nodev`，而 fstab 写的是 `defaults` = rw）；只有 `~/nju-lab` 这一个子目录被单独 remount 成 `rw`，服务才得以继续跑。**症状**：不能在 `/home/ubuntu` 或 `/data` 下创建目录（`Read-only file system`），于是工作台的持久卷（`/data/workspaces`）挂不上。**处置**：先 `dmesg \| grep -i ext4` 看内核为什么降级，再从救援/单用户模式 `fsck.ext4 -f /dev/mapper/ubuntu--vg-ubuntu--lv` 与 `…-lab--data`，然后 `mount -o remount,rw /`、`mount -o remount,rw /data` 复核 |
+| 注意⑦ | **agent 会话（Reasonix）跑在"只读根 + 仅 workspace 可写"的沙箱里**：用受限会话自己的 shell 看 `/proc/mounts`，会看到 `/` 与 `/data` 都是 `ro`（还会多出一条 `udev … /home/ubuntu/.reasonix/.env devtmpfs ro`）——**那是沙箱的视图，不是宿主状态**（宿主一直是 `rw`，见 `mount` 实测）。**要判定宿主文件系统/权限，一律用 docker**（`docker run --rm -v /data:/d …`）或看服务日志。⚠️ 2026-09-29 曾据此误报"根分区被内核降级为只读"，实际是假象，已更正。另外 `/data` 属 `root:root`，后端以 `ubuntu` 跑，所以 **`/data/workspaces` 需要一次性建好并 chown 给 ubuntu**（已用 docker 完成） |
 | 存储 | **2026-09-28 扩容**：根分区 49G→**98G**（可用 9G→**60G**）；新增 LVM 数据盘 `/data` = **957G**（1T 的 `sda` 整盘做 PV 加入 `ubuntu-vg`，`lvcreate -l 95%FREE`、`mkfs.ext4 -m 1`、fstab 用 UUID + `nofail`），VG 余量 51.2G。此前"根分区仅剩 9G"是最高风险项，已解除；清单见 `docs/OPS-2026-09-28-storage-expansion.md` |
 | 学生安装包 | 变体 kit（serverUrl 指向 `http://medai.nju.edu.cn/lab/api`）：`cd dsh/kit && PLATFORM_URL=http://medai.nju.edu.cn/lab ./build-kit.sh`，产物放 `/var/www/lab/kit/` |
 | 注意 | ① 该机 :80 上 dify 的 `/api`、`/agent` 等 502 是**部署前既有状态**（dify 未运行，与本次无关）；② 本机（lab.xiaohe.biz 这台）DNS 解析不到 medai.nju.edu.cn，公网验证须从校园网做；③ **该机 CPU 是 QEMU vCPU（无 SSE4.2/POPCNT，不达 x86-64-v2）**，sharp prebuilt 被拒会让 dsh 启动即崩——复验 profile 已禁用 `attachment-local`（见 verify-image profile 注释），若重装该机 VM 建议 CPU 改 host-passthrough；④ **校园网关 `219.219.115.199`**（medai 与 authservertest 解析到同一 IP、按 Host 分发；正式认证机是另一个 IP `219.219.115.211`）策略为"校内/VPN 直通、校外强制认证"；**`authservertest` 是网关配置里指的测试认证机（对 medai 返回"应用未注册"），不是我们的** —— 我们代码/配置里搜不到它，`.env` 的 `CAS_BASE_URL` 一直是正式机。判定 302 是谁发的：公网响应无 `Server:` 头（网关发的）、直连本机有 `Server: nginx/1.18.0` + `X-Powered-By: Express`（我们的）；⑤ **该机不支持嵌套虚拟化**（无 `/dev/kvm`、无 kvm 模块，2026-09-28 实测）——**不能跑 KVM 虚拟机**，"每人一台 VM"在该机不可行，只能走容器；⑥ dify 遗留容器仍在运行（`docker-sandbox-1`/`db-1`/`redis-1`/`weaviate-1`/`ssrf_proxy-1`，Up 3 months），其中 **`docker-sandbox-1` 占约 8.2G 内存且 `--memory 0`（无限额）+ `restart=always`**，是内存侧唯一会突然挤爆的隐患，`~/dify` 另占磁盘 8.5G —— 处置前须确认学院无人使用 |
@@ -425,7 +425,8 @@ WebSocket 101、SSE 200 正常。
   前端产物已同步到 `/var/www/lab`（含「实验环境」入口页）。**只剩宿主机 nginx 未合并**（§8.5 第 1 条）。
 - 工作台配置项见 `server/.env.example` 末段（大部分有默认值，可先不配）。
 - 工作台的**持久卷根目录**由 `WORKSPACE_DATA_DIR` 配置（默认 `/data/workspaces`；留空 = 关闭持久化）。
-  ⚠️ 该目录必须**可写**（见 §2.1 注意⑦：本机 `/data` 目前是只读，所以持久化暂未生效）；不可写时后端只告警、不阻塞。
+  2026-09-29 已建好 `/data/workspaces`（属 `ubuntu`）并用 docker 验证：ubuntu 可建 `<userId>` 子目录、
+  学生容器挂 `/work` 读写正常、宿主可见同一文件 ✔ → 持久化已生效（不可写时后端只告警、不阻塞）。
 - ⚠️ **反代上线必须配 `WORKSPACE_PUBLIC_BASE=https://{key}.<工作台域>`（`{key}` 必填）**：
   后端据此算出**每会话**的对外 authority 并注入容器的 `--trusted-host`；
   不配则 nginx 传外部 Host 时 WebSocket 会 403（§8.3 第 5 条）。
