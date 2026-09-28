@@ -4,11 +4,11 @@ import {
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
-import { spawn, spawnSync } from 'child_process';
 import { createHash } from 'crypto';
 import { mkdtemp, mkdir, readFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import { ContainerRuntime } from '../container-runtime/container-runtime';
 import { FilesService } from '../files/files.service';
 import { ExperimentProject } from '../projects/project.entity';
 import { EvaluationRunner, EvaluationRunResult } from './evaluation-runner';
@@ -21,21 +21,6 @@ const VERIFY_TIMEOUT_MS = Number(process.env.VERIFY_TIMEOUT_MS || 600_000);
 /** 成本控制：最多跑几个 case；0 = 全部。evalConfig.maxCases 优先 */
 const VERIFY_MAX_CASES = Number(process.env.VERIFY_MAX_CASES || 0);
 const VERIFY_JUDGE_MODE = process.env.VERIFY_JUDGE_MODE || 'llm';
-const VERIFY_DOCKER_MEMORY = process.env.VERIFY_DOCKER_MEMORY || '1g';
-const VERIFY_DOCKER_CPUS = process.env.VERIFY_DOCKER_CPUS || '1';
-
-// ---- 出栈白名单（SNI 代理隔离，配置见 server/verify-image/egress-proxy/nginx.conf）----
-// internal 网络：无外网路由（DNS 黑洞 + 直连 IP 都堵死）；复验容器只能到达代理容器。
-const VERIFY_EGRESS_NETWORK = process.env.VERIFY_EGRESS_NETWORK || 'nju-verify-egress';
-const VERIFY_EGRESS_PROXY = process.env.VERIFY_EGRESS_PROXY || 'nju-verify-egress-proxy';
-const VERIFY_EGRESS_PROXY_IMAGE = process.env.VERIFY_EGRESS_PROXY_IMAGE || 'nginx:alpine';
-const VERIFY_EGRESS_PROXY_CONF =
-  process.env.VERIFY_EGRESS_PROXY_CONF ||
-  join(process.cwd(), 'verify-image', 'egress-proxy', 'nginx.conf');
-/** 钉到代理 IP 的白名单域名（须与 nginx.conf 的 map 及驱动 BASE_URL 主机一致） */
-const VERIFY_EGRESS_DOMAINS = (
-  process.env.VERIFY_EGRESS_DOMAINS || 'api.deepseek.com,api.moonshot.cn'
-).split(',');
 
 interface JudgeVerdict {
   pass: boolean;
@@ -80,18 +65,22 @@ interface DriverResult {
 
 /**
  * 真实复验执行器：每个提交起一个一次性 Docker 容器
- * （dsh headless + approval=never + workspace-write 沙箱 + 资源限额），
+ * （dsh headless + approval=never + workspace-write 沙箱 + 资源限额 + 出栈白名单），
  * 跑 baseline/treatment 两轮对比 + LLM judge 评分，回填真实数据。
  *
- * 遗留（生产化）：网络白名单代理——当前容器走默认 bridge 网络，
- * 模型 API 出站与学生 Skill 出站未隔离（镜像与本文档均已标注）。
+ * 容器编排（资源限额 / 出栈隔离 / 一次性）已抽到 ContainerRuntime，
+ * 与将来的实验工作台共用同一份隔离策略；本类只保留复验特有的业务：
+ * 解析上传、组织输入输出挂载、映射结果与证据一致性检查。
  */
 @Injectable()
 export class DockerEvaluationRunner implements EvaluationRunner {
   readonly name = 'docker';
   private readonly logger = new Logger(DockerEvaluationRunner.name);
 
-  constructor(private readonly filesService: FilesService) {}
+  constructor(
+    private readonly filesService: FilesService,
+    private readonly runtime: ContainerRuntime,
+  ) {}
 
   async run(
     submission: Submission,
@@ -110,7 +99,7 @@ export class DockerEvaluationRunner implements EvaluationRunner {
     );
     const capsuleHashVerified = await this.verifyCapsuleHash(submission);
     // 出栈白名单代理：幂等确保 internal 网络与双宿主代理容器存在，取其内部 IP
-    const egressProxyIp = this.ensureEgressProxy();
+    const egressProxyIp = this.runtime.ensureEgressProxy();
 
     const workRoot = await mkdtemp(join(tmpdir(), `nju-verify-${submission.id.slice(0, 8)}-`));
     const outDir = join(workRoot, 'out');
@@ -124,17 +113,38 @@ export class DockerEvaluationRunner implements EvaluationRunner {
     const maxCases = project.evalConfig?.maxCases ?? VERIFY_MAX_CASES;
     const judgeMode = project.evalConfig?.judgeMode ?? VERIFY_JUDGE_MODE;
 
-    const driver = await this.runContainer({
-      containerName,
-      skillPath,
-      datasetPath,
-      outDir,
-      timeoutMs,
-      maxCases,
-      judgeMode,
+    const driver = await this.runtime.runOneShot({
+      name: containerName,
+      image: VERIFY_IMAGE,
       egressProxyIp,
-      model: project.evalConfig?.model,
-      reasoningEffort: project.evalConfig?.reasoningEffort,
+      // key 由服务端环境透传，不进镜像、不落盘（DEEPSEEK 优先，MOONSHOT 回退）
+      env: [
+        'DEEPSEEK_API_KEY',
+        'MOONSHOT_API_KEY',
+        'DSH_TELEMETRY_DISABLED=1',
+        // 逐项目模型映射：容器内驱动据此改写 profile（缺省用镜像 profile 钉死的值）
+        ...(project.evalConfig?.model
+          ? [`VERIFY_MODEL=${project.evalConfig.model}`]
+          : []),
+        ...(project.evalConfig?.reasoningEffort
+          ? [`VERIFY_REASONING_EFFORT=${project.evalConfig.reasoningEffort}`]
+          : []),
+      ],
+      // 提交物与数据集只读挂载；结果写到独立输出目录
+      mounts: [
+        `${skillPath}:/inputs/skill.zip:ro`,
+        `${datasetPath}:/inputs/dataset.zip:ro`,
+        `${outDir}:/outputs`,
+      ],
+      args: [
+        '--skill', '/inputs/skill.zip',
+        '--dataset', '/inputs/dataset.zip',
+        '--out', '/outputs/result.json',
+        '--judge-mode', judgeMode,
+        '--timeout-ms', String(Math.min(300_000, timeoutMs)),
+        ...(maxCases > 0 ? ['--max-cases', String(maxCases)] : []),
+      ],
+      timeoutMs,
     });
 
     try {
@@ -143,181 +153,6 @@ export class DockerEvaluationRunner implements EvaluationRunner {
     } finally {
       await rm(workRoot, { recursive: true, force: true }).catch(() => undefined);
     }
-  }
-
-  // ---------- 出栈白名单代理 ----------
-
-  private docker(args: string[]): { ok: boolean; out: string } {
-    const r = spawnSync('docker', args, { encoding: 'utf8', timeout: 120_000 });
-    return {
-      ok: r.status === 0,
-      out: `${r.stdout ?? ''}${r.stderr ?? ''}`.trim(),
-    };
-  }
-
-  /**
-   * 幂等确保出栈隔离设施存在并返回代理容器在 internal 网络里的 IP：
-   * - `docker network create --internal nju-verify-egress`（无外网路由）
-   * - 双宿主代理容器（默认 bridge + internal 网络，挂只读 nginx.conf）
-   * 代理不可用时复验必须失败（fail-closed），不能回退到开放网络。
-   */
-  private ensureEgressProxy(): string {
-    if (!this.docker(['network', 'inspect', VERIFY_EGRESS_NETWORK]).ok) {
-      const created = this.docker([
-        'network', 'create', '--internal', VERIFY_EGRESS_NETWORK,
-      ]);
-      if (!created.ok) {
-        throw new InternalServerErrorException(
-          `复验出栈网络创建失败: ${created.out.slice(0, 300)}`,
-        );
-      }
-      this.logger.log(`egress network created: ${VERIFY_EGRESS_NETWORK} (--internal)`);
-    }
-
-    if (!this.docker(['inspect', VERIFY_EGRESS_PROXY]).ok) {
-      if (!this.docker(['image', 'inspect', VERIFY_EGRESS_PROXY_IMAGE]).ok) {
-        const pull = this.docker(['pull', VERIFY_EGRESS_PROXY_IMAGE]);
-        if (!pull.ok) {
-          throw new InternalServerErrorException(
-            `复验出栈代理镜像拉取失败: ${pull.out.slice(0, 300)}`,
-          );
-        }
-      }
-      const run = this.docker([
-        'run', '-d', '--name', VERIFY_EGRESS_PROXY,
-        '--restart', 'unless-stopped',
-        '-v', `${VERIFY_EGRESS_PROXY_CONF}:/etc/nginx/nginx.conf:ro`,
-        VERIFY_EGRESS_PROXY_IMAGE,
-      ]);
-      if (!run.ok) {
-        throw new InternalServerErrorException(
-          `复验出栈代理容器创建失败: ${run.out.slice(0, 300)}`,
-        );
-      }
-      this.logger.log(`egress proxy container created: ${VERIFY_EGRESS_PROXY}`);
-    }
-    const state = this.docker([
-      'inspect', '-f', '{{.State.Running}}', VERIFY_EGRESS_PROXY,
-    ]);
-    if (state.out !== 'true') {
-      const started = this.docker(['start', VERIFY_EGRESS_PROXY]);
-      if (!started.ok) {
-        throw new InternalServerErrorException(
-          `复验出栈代理容器启动失败: ${started.out.slice(0, 300)}`,
-        );
-      }
-    }
-
-    const queryIp = () => {
-      // with 模式：未接入该网络时输出空串而不是报 template 错（报错文本曾被误当 IP）
-      const r = this.docker([
-        'inspect', '-f',
-        `{{with (index .NetworkSettings.Networks "${VERIFY_EGRESS_NETWORK}")}}{{.IPAddress}}{{end}}`,
-        VERIFY_EGRESS_PROXY,
-      ]);
-      return r.ok ? r.out : '';
-    };
-    let ip = queryIp();
-    if (!ip) {
-      // 已有容器可能是在网络创建之前建的，补挂 internal 网络
-      const connected = this.docker([
-        'network', 'connect', VERIFY_EGRESS_NETWORK, VERIFY_EGRESS_PROXY,
-      ]);
-      if (!connected.ok) {
-        throw new InternalServerErrorException(
-          `复验出栈代理接入 ${VERIFY_EGRESS_NETWORK} 失败: ${connected.out.slice(0, 300)}`,
-        );
-      }
-      ip = queryIp();
-    }
-    if (!ip) {
-      throw new InternalServerErrorException(
-        '复验出栈代理在 internal 网络中没有 IP（fail-closed，拒绝在开放网络下复验）',
-      );
-    }
-    return ip;
-  }
-
-  // ---------- 容器执行 ----------
-
-  private runContainer(opts: {
-    containerName: string;
-    skillPath: string;
-    datasetPath: string;
-    outDir: string;
-    timeoutMs: number;
-    maxCases: number;
-    judgeMode: string;
-    egressProxyIp: string;
-    model?: string;
-    reasoningEffort?: string;
-  }): Promise<{ code: number | null; timedOut: boolean; stdout: string; stderr: string; durationMs: number }> {
-    const args = [
-      'run', '--rm', '--name', opts.containerName,
-      '--memory', VERIFY_DOCKER_MEMORY,
-      '--cpus', VERIFY_DOCKER_CPUS,
-      // 出栈隔离：internal 网络（无外网路由），白名单域名钉到 SNI 代理 IP；
-      // 非白名单域名 DNS 失败、直连 IP 无路由
-      '--network', VERIFY_EGRESS_NETWORK,
-      ...VERIFY_EGRESS_DOMAINS.flatMap((d) => [
-        '--add-host', `${d}:${opts.egressProxyIp}`,
-      ]),
-      // key 由服务端环境透传，不进镜像、不落盘（DEEPSEEK 优先，MOONSHOT 回退）
-      '-e', 'DEEPSEEK_API_KEY',
-      '-e', 'MOONSHOT_API_KEY',
-      '-e', 'DSH_TELEMETRY_DISABLED=1',
-    ];
-    // 逐项目模型映射：容器内驱动据此改写 profile（缺省用镜像 profile 钉死的值）
-    if (opts.model) {
-      args.push('-e', `VERIFY_MODEL=${opts.model}`);
-    }
-    if (opts.reasoningEffort) {
-      args.push('-e', `VERIFY_REASONING_EFFORT=${opts.reasoningEffort}`);
-    }
-    args.push(
-      // 提交物与数据集只读挂载；结果写到独立输出目录
-      '-v', `${opts.skillPath}:/inputs/skill.zip:ro`,
-      '-v', `${opts.datasetPath}:/inputs/dataset.zip:ro`,
-      '-v', `${opts.outDir}:/outputs`,
-      VERIFY_IMAGE,
-      '--skill', '/inputs/skill.zip',
-      '--dataset', '/inputs/dataset.zip',
-      '--out', '/outputs/result.json',
-      '--judge-mode', opts.judgeMode,
-      '--timeout-ms', String(Math.min(300_000, opts.timeoutMs)),
-    );
-    if (opts.maxCases > 0) {
-      args.push('--max-cases', String(opts.maxCases));
-    }
-
-    this.logger.log(`verify container start: ${opts.containerName} (image ${VERIFY_IMAGE}, timeout ${opts.timeoutMs}ms)`);
-    const startedAt = Date.now();
-    return new Promise((resolvePromise, reject) => {
-      const proc = spawn('docker', args, { stdio: ['ignore', 'pipe', 'pipe'] });
-      let stdout = '';
-      let stderr = '';
-      proc.stdout.on('data', (d) => { stdout = (stdout + d).slice(-64_000); });
-      proc.stderr.on('data', (d) => { stderr = (stderr + d).slice(-64_000); });
-      const killer = setTimeout(() => {
-        proc.kill('SIGKILL');
-        // --rm 的客户端被杀后容器可能残留，按名字强制清理
-        spawn('docker', ['kill', opts.containerName]).on('error', () => undefined);
-      }, opts.timeoutMs);
-      proc.on('error', (e) => {
-        clearTimeout(killer);
-        reject(new InternalServerErrorException(`无法启动 docker: ${e.message}`));
-      });
-      proc.on('close', (code, signal) => {
-        clearTimeout(killer);
-        resolvePromise({
-          code,
-          timedOut: signal === 'SIGKILL',
-          stdout,
-          stderr,
-          durationMs: Date.now() - startedAt,
-        });
-      });
-    });
   }
 
   private async readResult(
