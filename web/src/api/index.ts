@@ -26,6 +26,12 @@ import type {
   TeacherSummary,
   User,
   WorkspaceInfo,
+  ChapterSlidesResponse,
+  SlideDeckConfig,
+  SlideDeckView,
+  SlideJson,
+  SlideTemplateDesign,
+  SlideTemplateView,
 } from '../types';
 
 // ---------- 文件 ----------
@@ -221,3 +227,75 @@ export const getWorkspaceStatus = () =>
 /** 主动结束工作台（幂等） */
 export const stopWorkspace = () =>
   client.post<unknown, { stopped: boolean }>('/workspace/stop');
+
+// ---------- 章节幻灯片（reveal.js） ----------
+
+export const getChapterSlides = (chapterId: string) =>
+  client.get<unknown, ChapterSlidesResponse>(`/chapters/${chapterId}/slides`);
+
+/** 触发两阶段生成（异步：立即返回 generating，前端轮询 getChapterSlides） */
+export const generateChapterSlides = (
+  chapterId: string,
+  data: { templateId?: string; force?: boolean } = {},
+) =>
+  client.post<unknown, { deck: SlideDeckView; cached: boolean }>(
+    `/chapters/${chapterId}/slides/generate`,
+    data,
+  );
+
+export const saveChapterSlides = (
+  chapterId: string,
+  data: {
+    slides?: SlideJson[];
+    markdown?: string;
+    title?: string;
+    templateId?: string | null;
+    config?: SlideDeckConfig;
+  },
+) =>
+  client.put<unknown, { deck: SlideDeckView; warnings: string[] }>(
+    `/chapters/${chapterId}/slides`,
+    data,
+  );
+
+/** 仅把"基准章节哈希"对齐到当前内容（保留现有 deck，不重生成） */
+export const syncChapterSlidesHash = (chapterId: string) =>
+  client.post<unknown, { deck: SlideDeckView }>(
+    `/chapters/${chapterId}/slides/sync-hash`,
+  );
+
+export const deleteChapterSlides = (chapterId: string) =>
+  client.delete<unknown, { deleted: boolean }>(`/chapters/${chapterId}/slides`);
+
+export const listSlideTemplates = (courseId: string) =>
+  client.get<unknown, SlideTemplateView[]>(`/slide-templates?courseId=${courseId}`);
+
+export const createSlideTemplate = (
+  courseId: string,
+  data: {
+    name: string;
+    description?: string;
+    fromBuiltinId?: string;
+    design?: SlideTemplateDesign;
+    config?: SlideDeckConfig;
+  },
+) =>
+  client.post<unknown, SlideTemplateView>(
+    `/slide-templates?courseId=${courseId}`,
+    data,
+  );
+
+export const updateSlideTemplate = (
+  id: string,
+  data: {
+    name?: string;
+    description?: string;
+    design?: SlideTemplateDesign;
+    config?: SlideDeckConfig;
+  },
+) => client.put<unknown, SlideTemplateView>(`/slide-templates/${id}`, data);
+
+export const deleteSlideTemplate = (id: string) =>
+  client.delete<unknown, { deleted: boolean; unboundDecks: number }>(
+    `/slide-templates/${id}`,
+  );

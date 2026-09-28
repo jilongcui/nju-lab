@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Button, Card, Empty, Form, Input, message, Segmented, Skeleton, Space } from 'antd';
-import { SaveOutlined } from '@ant-design/icons';
+import { PlayCircleOutlined, SaveOutlined } from '@ant-design/icons';
 import { getChapter, saveChapter } from '../../api';
 import type { Chapter } from '../../types';
 import MarkdownView from '../../components/MarkdownView';
@@ -12,6 +12,7 @@ const { Paragraph } = Typography;
 
 export default function ChapterEdit() {
   const { chapterId = '' } = useParams();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [chapter, setChapter] = useState<Chapter | null>(null);
   const [mode, setMode] = useState<'edit' | 'preview'>('edit');
@@ -71,6 +72,12 @@ export default function ChapterEdit() {
       title="章节编辑"
       extra={
         <Space>
+          <Button
+            icon={<PlayCircleOutlined />}
+            onClick={() => navigate(`/teacher/chapters/${chapterId}/slides`)}
+          >
+            幻灯片
+          </Button>
           <Segmented
             value={mode}
             onChange={(v) => setMode(v as 'edit' | 'preview')}

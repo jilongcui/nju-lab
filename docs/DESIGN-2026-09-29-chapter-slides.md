@@ -89,6 +89,15 @@
 未压缩 141KB（gzip 后约 35–40KB），**可以直接内联进 `srcdoc` 的 `<script type="module">`，不需要任何相对路径解析**；
 配套 `reveal.css` 54KB、`reset.css` 594B。
 
+**内联的实现方式（2026-09-29 实测，踩过）**：reveal 的 `package.json` `exports` **不导出 `./dist/*`**
+（只有 `.`、`./reveal.css`、`./theme/*`、`plugin/math`），因此
+`import 'reveal.js/dist/reveal.js?raw'` 直接被 exports 拦掉；改用 alias 指到文件再配 `?raw` 也不生效
+（Vite 解析不了，Rollup 把它当 external，**构建直接失败**）。最终方案是 **vite virtual 模块插件**
+（`vite.config.ts` 的 `revealRawPlugin`）：`resolveId`/`load` 直接读 `node_modules/reveal.js/dist/` 下的文件，
+`export default JSON.stringify(内容)`，主题走白名单防路径穿越。收益：主 bundle 只增 ~23KB，
+**reveal 本体 119KB / `reveal.css` 54KB / 各主题 5–46KB 全部是按需懒加载 chunk**（构建产物里可见
+`_virtual_reveal-script-*.js` 等），只有真正打开幻灯片才拉。
+
 A 形态的两个实现要点：
 - **键盘与全屏**：iframe 内跑一段我们自己的胶水脚本，监听 `message` 事件调用 `Reveal.next()/prev()/slide(i)`；父窗口负责接管按键与"演示模式"（把 iframe 铺满 viewport），**不依赖 iframe 内的 Fullscreen API**（opaque origin 下不保险）。
 - **跨章节切换**：父窗口换 deck 时重建那一个 iframe 的 `srcdoc`（或复用 iframe + postMessage 增量换 `slides`），不退出演示态。
@@ -227,7 +236,9 @@ Markdown 视图的约定（受支持子集，刻意保持小）：
 
 ## 10. 展示与切换
 
-**教师端**（挂在 `teacher/chapters/:chapterId/edit`，与现有「编辑 / 预览」并列加一格「幻灯片」）
+**教师端**（**[实现期收敛 2026-09-29]** 独立路由 `/teacher/chapters/:chapterId/slides`，
+而不是塞进章节编辑页的标签：放映态要独占视口、跨章节切换要换路由，独立页面更干净；
+章节编辑页加一个「幻灯片」入口按钮）
 - 左侧：页缩略列表（增/删/拖排序/上下移动）
 - 中间：当前页编辑（字段表单 **或** md / json 全文视图切换）
 - 右侧：实时预览（iframe）
@@ -274,13 +285,17 @@ Markdown 视图的约定（受支持子集，刻意保持小）：
 - `app.module.ts` 注册 `SlidesModule`；`.env.example` 增加 `SLIDES_GENERATOR/SLIDES_MODEL/SLIDES_MAX_SLIDES/SLIDES_MAX_TOKENS`
 - `courses.service.ts`：`readChapter`/`getChapter` 旁挂 `chapterChanged`（或由 slides 模块自行计算，避免耦合）
 
-**前端**
-- 新增 `web/src/slides/`：`render.ts`（SlideJson → 自包含 reveal 文档）、`layouts/*.tsx` 或模板字符串、`revealAsset.ts`（`import('reveal.js/dist/reveal.mjs?raw')` 懒加载 + 缓存）、`mdProjection.ts`（slides ⇄ markdown）、`SlideStage.tsx`（iframe 封装：srcdoc、按键转发、演示模式）
-- 新增 `web/src/pages/teacher/ChapterSlides.tsx`（或作为 `ChapterEdit.tsx` 的新标签页）
-- 改 `web/src/pages/student/ChapterRead.tsx`：顶部「文档 ⇄ 幻灯片」
-- 改 `web/src/api/index.ts`、`web/src/types/index.ts`：新接口与类型
-- `package.json` 增加 `reveal.js`（仅 `?raw` 内联用，不进主 bundle）
-- **不改** `deploy/deploy-web-lab.sh`（A 形态不新增静态文件，这是选它的理由之一）
+**前端 [已实现 2026-09-29]**
+- `web/src/slides/revealAssets.ts`（virtual 模块懒加载 + 主题白名单缓存）、`markdown.ts`
+  （marked → **DOMParser 白名单清理**，实测 marked@12 会把 `<script>`/`onerror=`/`javascript:` 原样输出）、
+  `renderDeck.ts`（SlideJson → 自包含 srcdoc 文档 + `postMessage` 桥）、`files.ts`（`file:<id>` → data URL）、
+  `SlideStage.tsx`（iframe `sandbox="allow-scripts"`、按键转发、演示模式、`gotoIndex` 跳页）、
+  `virtual.d.ts`（virtual 模块类型声明）
+- `web/src/pages/teacher/ChapterSlides.tsx`（独立路由页）+ `ChapterEdit.tsx` 加「幻灯片」入口
+- `web/src/pages/student/ChapterRead.tsx`：顶部「文档 ⇄ 幻灯片」
+- `web/src/api/index.ts`、`web/src/types/index.ts`：新增接口与类型
+- `package.json` 加 `reveal.js@^6`；`vite.config.ts` 加 `revealRawPlugin`
+- **未改** `deploy/deploy-web-lab.sh`（不新增静态文件，部署面零变化）
 
 ## 14. 分期
 

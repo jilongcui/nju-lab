@@ -447,3 +447,108 @@ export interface WorkspaceInfo {
   lastSeenAt: number;
   error?: string;
 }
+
+// ---------- 章节幻灯片（reveal.js） ----------
+
+export type SlideLayout =
+  | 'cover'
+  | 'section'
+  | 'bullets'
+  | 'two-col'
+  | 'code'
+  | 'quote'
+  | 'image'
+  | 'end';
+
+/** deck 内容真源（与后端 server/src/slides/deck.schema.ts 一一对应） */
+export interface SlideJson {
+  id: string;
+  layout: SlideLayout;
+  title?: string;
+  subtitle?: string;
+  bullets?: string[];
+  /** two-col：两栏 Markdown */
+  left?: string;
+  right?: string;
+  code?: { lang: string; content: string };
+  quote?: { text: string; cite?: string };
+  /** 只允许 `file:<fileId>`（平台内文件），渲染前由前端取内容转成 data URL */
+  image?: { url: string; caption?: string };
+  notes?: string;
+  attrs?: { background?: string; transition?: string; className?: string };
+}
+
+export interface SlideDeckConfig {
+  transition?: 'none' | 'fade' | 'slide' | 'convex' | 'concave' | 'zoom';
+  slideNumber?: boolean | 'c/t';
+  progress?: boolean;
+  hash?: boolean;
+  controls?: boolean;
+  center?: boolean;
+  loop?: boolean;
+}
+
+/** 模板"可视化调参"的结构化值（v1 不允许自由写 CSS） */
+export interface SlideTemplateDesign {
+  primary?: string;
+  background?: string;
+  text?: string;
+  accent?: string;
+  fontFamily?: string;
+  headingFontFamily?: string;
+  footerText?: string;
+  logoFileId?: string | null;
+  radius?: number;
+  density?: 'compact' | 'cozy' | 'loose';
+}
+
+export interface SlideTemplateView {
+  id: string;
+  name: string;
+  description: string | null;
+  baseTheme: string;
+  design: SlideTemplateDesign;
+  /** 服务端已编译好的 CSS 变量块 */
+  css: string;
+  config: SlideDeckConfig | null;
+  isBuiltin: boolean;
+}
+
+export type SlideDeckStatus = 'empty' | 'generating' | 'ready' | 'failed';
+
+export interface SlideDeckView {
+  id: string;
+  chapterId: string;
+  courseId: string;
+  title: string;
+  slides: SlideJson[];
+  markdown: string;
+  templateId: string | null;
+  config: SlideDeckConfig;
+  status: SlideDeckStatus;
+  generatedBy: string | null;
+  model: string | null;
+  tokensUsed: number | null;
+  basedOnChapterHash: string | null;
+  error: string | null;
+  warnings: string | null;
+  updatedAt: string;
+}
+
+export interface ChapterSlidesResponse {
+  deck: SlideDeckView | null;
+  chapterHash: string;
+  /** 生成之后章节内容又被改过 —— 只提示，绝不自动重生成 */
+  chapterChanged: boolean;
+  template: SlideTemplateView;
+  /** 学生端为空数组 */
+  templates: SlideTemplateView[];
+  canEdit: boolean;
+  generator: {
+    generator: string;
+    baseUrl?: string | null;
+    model?: string | null;
+    keyEnv?: string | null;
+    keyConfigured?: boolean;
+  };
+}
