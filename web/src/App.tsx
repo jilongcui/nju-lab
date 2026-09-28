@@ -11,7 +11,6 @@ import CourseDetail from './pages/courses/CourseDetail';
 import TeacherDashboard from './pages/teacher/Dashboard';
 import CourseList from './pages/teacher/CourseList';
 import TeacherCourseDetail from './pages/teacher/CourseDetail';
-import CourseApplications from './pages/teacher/CourseApplications';
 import ChapterEdit from './pages/teacher/ChapterEdit';
 import ProjectDetail from './pages/teacher/ProjectDetail';
 import ProjectList from './pages/teacher/ProjectList';
@@ -91,10 +90,6 @@ const router = createBrowserRouter([
       { path: 'teacher/dashboard', element: teacher(<TeacherDashboard />) },
       { path: 'teacher/courses', element: teacher(<CourseList />) },
       { path: 'teacher/courses/:courseId', element: teacher(<TeacherCourseDetail />) },
-      {
-        path: 'teacher/courses/:courseId/applications',
-        element: teacher(<CourseApplications />),
-      },
       { path: 'teacher/chapters/:chapterId/edit', element: teacher(<ChapterEdit />) },
       { path: 'teacher/projects', element: teacher(<ProjectList />) },
       { path: 'teacher/projects/:projectId', element: teacher(<ProjectDetail />) },
