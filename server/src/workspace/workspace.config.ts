@@ -60,8 +60,25 @@ export const WORKSPACE_LABEL_KEY = 'nju-lab-workspace';
 export const WORKSPACE_PLATFORM_API = process.env.WORKSPACE_PLATFORM_API || '';
 
 /**
- * 反向代理模式的对外基址（如 `http://medai.nju.edu.cn/lab/ws`）。
+ * 反向代理模式的对外基址，**支持 `{key}` 占位符**（替换为该会话的 `wsKey`）。
  * 留空则只返回直连 URL（`http://127.0.0.1:<port>/?token=…`），供本机/内网验证。
+ *
+ * ⚠️ 必须是**每个会话独占的 authority**，即带上 `{key}` 子域：
+ *     `https://{key}.ws.example.com`
+ *
+ * 为什么不能走 `/lab/ws/<key>/` 这种子路径（2026-09-28 实测，见设计文档 §4.5）：
+ * 浏览器里的 dsh 把运行时路径全部锚定在 **origin 根**——
+ * RPC `new URL("/api/…", location.origin)`、WebSocket `wss://<origin>/api/remote.mux`、
+ * SSE `/plugins/events`、插件包 `/plugins/??…`（HTML 里的绝对路径）。
+ * 这些都不随页面路径走，nginx 的 `sub_filter`/`proxy_redirect` 改不动运行时拼接；
+ * 子路径方案下它们会打到宿主根的 `/api`（njuserver 上是 dify）而全废。
+ *
+ * 后端会把该 authority（`URL(...).host`，如 `abc123.ws.example.com`）作为
+ * per-session `--trusted-host` 传给容器 —— 不传的话 WebSocket 会被 dsh 的
+ * cross-origin 检查直接 403（`Origin` 与容器看到的 `Host` 不一致）。
  */
 export const WORKSPACE_PUBLIC_BASE = process.env.WORKSPACE_PUBLIC_BASE || '';
+
+/** `WORKSPACE_PUBLIC_BASE` 里的会话键占位符 */
+export const WORKSPACE_PUBLIC_BASE_KEY_PLACEHOLDER = '{key}';
 

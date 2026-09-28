@@ -6,6 +6,14 @@
 > 两条路**都以"容器内转发"为前提**（dsh 硬禁 `--host 0.0.0.0`，与 CPU 无关），该机制**已实测通过**（§4.4）。
 > 标 **[已实测]** 的结论均在本机验证过，标 **[待验证]** 的尚需验证。
 >
+> ⚠️ **2026-09-28 反代实测的重要更正**：早期版本设想的 `https://<域>/lab/ws/<session>/`
+> **子路径形态已被实测证伪**（§4.5）——浏览器里的 dsh 把运行时路径全部锚定在 **origin 根**
+> （`/api/…`、`/api/remote.mux`、`/plugins/events`、`/plugins/??…`），nginx 改不动这些运行时
+> 拼接。正确形态是**每个会话独占一个 authority**：`https://<wsKey>.<工作台域>/`（子域根路径），
+> 并且 nginx 必须把**外部 authority** 作为 `Host` 转给容器（否则 WebSocket 一律 403）。
+> 该形态已用真实镜像 + 真实后端 + nginx 反代端到端实测通过（HTTP/静态资源/插件包/SSE/WebSocket/
+> 越权拦截），**新增前置条件**：泛子域 DNS 解析 + 覆盖泛子域的证书（§4.5 末）。
+>
 > 关联：`HANDOFF.md` §2.1 · `docs/OPS-2026-09-28-storage-expansion.md` · `nju-lab-craft.md`
 
 ---
@@ -160,18 +168,22 @@ grep -o -E "sse4_2|popcnt|avx" /proc/cpuinfo | sort -u
 
 ```
 浏览器
-  │  https://lab.xiaohe.biz/lab/ws/<session>
+  │  https://<wsKey>.<工作台域>/?token=…      ← 每会话独占一个 authority（子域根路径）
   ▼
-宿主 nginx ──(auth_request 校验平台 JWT)──► nju-lab 后端（校验归属）
-  │                                              │
-  │  proxy_pass → 容器内代理端口                  └─► workspace 模块：起容器 / 分配端口 / 回收
+宿主 nginx ──(auth_request 用 wsKey 换 upstream)──► nju-lab 后端
+  │                                                    │
+  │  proxy_pass → 容器 IP:9090（Host=外部 authority）    └─► workspace 模块：起容器 / 分配上游 / 回收
   ▼
 学生容器（一人一个）
-  ├── 容器内反向代理  监听 0.0.0.0:<proxyPort>  →  127.0.0.1:<dshPort>
-  ├── dsh web（nju-lab-student profile，绑定 127.0.0.1）
+  ├── 容器内 TCP 转发  监听 0.0.0.0:9090  →  127.0.0.1:8080
+  ├── dsh web（`nju-lab-workspace` profile，绑定 127.0.0.1）
   ├── workspace 卷   /data/workspaces/<userId>
   └── 网络：internal + SNI 白名单出口（复用复验的 egress 机制）
 ```
+
+**鉴权不是平台 JWT**：浏览器是**直接导航**到工作台 URL 的（带不上 `Authorization`），
+所以 `auth_request` 走的是 `wsKey` **能力凭证**（24→16 字节 hex 随机、仅会话存活期内有效），
+配置示例见 `lab-nginx-snippet.conf`；取舍见 §4.6。
 
 ### 4.2 镜像（新建，不能复用复验镜像）
 
@@ -236,7 +248,27 @@ dsh web --port <n> --no-open --trusted-host <外部域>[:port]
 必须把**外部访问所用的那个 authority**（如 `127.0.0.1:19090`、`medai.nju.edu.cn`）经
 `--trusted-host` 传入。这一条对工作台的 nginx 反代配置是硬要求。
 
-**[待验证]**：WebSocket（UI 若使用）、静态资源在**真实 nginx 反代**（而非裸 TCP 转发）下的路径正确性。
+**[已实测 2026-09-28]**：经**真实 nginx 反代**（容器内 nginx + `auth_request` + 动态 `proxy_pass` +
+真实后端 + 真实工作台镜像）逐项验证：
+
+| 项 | 结果 |
+|---|---|
+| `GET /`（无 token） | ✅ 401（dsh 的 browser-trust fence 生效） |
+| `GET /?token=…` | ✅ **303 + Set-Cookie**（cookie 的 `authority` ＝ 它看到的 Host） |
+| 带 cookie `GET /` | ✅ 200，`<title>DeepSeek Harness</title>` |
+| 静态资源 `/assets/index-*.js` | ✅ 200（555 KB） |
+| 插件包 `/plugins/??…`（49 个 client.js 合并） | ✅ 200（10.9 MB） |
+| RPC `POST /api/<endpoint>` | ✅ 到达容器（dsh 回 404 `not found`，即请求确实进了 dsh） |
+| **WebSocket `/api/remote.mux`** | ✅ **101 Switching Protocols**（`Upgrade` 转发正确） |
+| SSE `/plugins/events` | ✅ 200 `text/event-stream`（需 `proxy_buffering off`） |
+| 伪造 wsKey | ✅ 403（`auth_request` 拦截） |
+| WS 的 `Origin` 换成别的域 | ✅ 403 `forbidden`（跨站防线，行为正确） |
+
+⚠️ **WebSocket 的 Origin 校验是本方案最硬的一条约束**（实测）：dsh 会校验 WS 请求的 `Origin`
+与它看到的 `Host`（及其授权列表）是否一致 —— 把 `Host` 传成**容器 IP** 时，HTTP 全部正常、
+**WebSocket 一律 403**。所以 nginx **必须** `proxy_set_header Host $http_host`（外部 authority），
+而后端必须把该 authority 经 `WORKSPACE_TRUSTED_HOSTS` 传进容器
+（已实现：按 `WORKSPACE_PUBLIC_BASE` 里的 `{key}` 自动展开成 per-session authority）。
 
 ### 4.5 路由：必须走容器 IP **[已实测，原方案已更正]**
 
@@ -266,6 +298,48 @@ docker run --network <internal> -p 127.0.0.1:21000:9090 ...
 > 副作用（正向）：不需要端口池、不会端口耗尽；但**容器 IP 不可达公网**，
 > 所以外部访问**必须**经 nginx（这也正是我们想要的收敛点）。
 
+### 4.5.1 路径形态：必须「独占 authority」（子路径方案已被实测证伪）**[已实测 2026-09-28]**
+
+早期版本（本文档 §4.1 与 `lab-nginx-snippet.conf` 的旧版）设想的是
+`https://lab.xiaohe.biz/lab/ws/<session>/?token=…` —— **子路径 + 响应体文本改写**。**走不通**：
+
+浏览器里的 dsh 把运行时路径全部锚定在 **origin 根**，与页面所在路径无关：
+
+| 客户端会请求的路径 | 出处 |
+|---|---|
+| `new URL("/api/<endpoint>", location.origin)` | `dsh-client-connection` 的 RPC 发送器 |
+| `wss://<origin>/api/remote.mux` | Remote stream 多路复用（WebSocket） |
+| `/plugins/events`（EventSource） | client-hmr 的事件流 |
+| `"/plugins/??…"`（index.html 里的绝对路径） | 插件包 preload / script |
+| `/open-in-app/{apps,open,icon}` | open-in-app 插件 |
+
+nginx 只能改**响应体文本**（`sub_filter`）与**重定向头**（`proxy_redirect`），改不了运行时用
+`location.origin` 拼出来的字符串。实测对照（同一个 nginx，两种 server 形态）：
+
+| 客户端真实行为 | 子路径 `/lab/ws/<key>/` | 独占 authority `<key>.<域>/` |
+|---|---|---|
+| `GET …?token=…`（入口交换） | ✅ 303（改回带前缀） | ✅ 303（原生 `location: /`，无需改写） |
+| `GET` 带 cookie | ✅ 200，`sub_filter` 也成功改了 `<base href>` 与 `"/plugins` | ✅ 200（原生正确） |
+| `POST /api/…`（**客户端实际发的绝对路径**） | ❌ **502** —— 命中宿主根的 `/api`（njuserver 上是 dify） | ✅ 200 / 404（到达 dsh） |
+| `/plugins/events`（绝对路径） | ❌ 404 | ✅ 200 `text/event-stream` |
+| `wss://…/api/remote.mux` | ❌ 同一原因必失败 | ✅ 101 |
+
+**结论**：工作台必须**独占一个 authority** → `https://<wsKey>.<工作台域>/`。
+一人一子域；nginx 从 `Host` 取 `wsKey` → `auth_request` → `proxy_pass`（见 `lab-nginx-snippet.conf`）。
+
+⚠️ **由此新增的部署前置条件（不落实则该形态上不了线）**：
+
+1. **泛子域 DNS**：`*.<工作台域>` 解析到宿主。
+   ⚠️ njuserver 的对外入口是校园网关按 **Host** 分发的 `medai.nju.edu.cn`（见 `HANDOFF` §2.1），
+   子域能否被网关/校内 DNS 放行**须在真实链路上确认**；若不行，备选是换一台可自控
+   Host 与证书的机器承载工作台（与 §7 的"换机器"选项合并考虑）。
+2. **证书**：覆盖 `*.<工作台域>`。否则 `?token=` 会明文过链路（这是**唯一的**凭证）。
+3. 后端 `WORKSPACE_PUBLIC_BASE=https://{key}.<工作台域>`（`{key}` 必填，见 `workspace.config.ts`）。
+
+⚠️ **wsKey 必须是大小写安全编码**（现为 16 字节 hex）：它作为**子域**出现，而 URL 规范与浏览器
+都会把 hostname 小写化（`new URL(...).host` 亦然）。用 base64url 时 key 会被改写，
+`auth_request` 拿小写 key 查不到会话 → 一律 403（实测踩过）。
+
 ### 4.6 鉴权（第一优先级，不可省）
 
 学生 A **绝不能**访问学生 B 的容器。建议：
@@ -277,11 +351,21 @@ docker run --network <internal> -p 127.0.0.1:21000:9090 ...
 ⚠️ 不要用"URL 里带不可猜 ID"当权限（现有 `GET /api/files/:id` 的 UUID 能力凭证模式
 在文件下载场景可接受，但工作台是**长驻的远程代码执行入口**，不能靠"猜不到"来保护）。
 
+**[已实测 2026-09-28]**：`auth_request` 形态已逐项验证 —— 伪造 `wsKey` → **403**、
+无 token 直接访问 → **401**（dsh 的 browser-trust fence）、
+`Origin` 与 authority 不一致的 WebSocket → **403**。
+
+⚠️ **当前 `wsKey` 就是唯一凭证**（浏览器带不上 JWT，`proxy-auth` 只能按 key 找会话）：
+因此 ① 必须 HTTPS（`?token=` 与 cookie 都会明文过链路）、② 会话回收/后端重启后 key 立即失效
+（内存态，已实现）、③ 上线前应补"同一 IP/UA 的并发会话上限"之类的滥用护栏。
+**仍待办**：把 `wsKey` 与平台账号绑定校验（例如 start 时写入 `wsKey → userId`，
+`proxy-auth` 同时校验来源），以便日后给"工作台入口页"加二次确认。
+
 ### 4.7 生命周期
 
 | 事件 | 动作 |
 |---|---|
-| 学生点「启动实验」 | 起容器 → 等 dsh web 就绪 → 返回访问 URL **[待验证：就绪检测方式]** |
+| 学生点「启动实验」 | 起容器 → 等 dsh web 就绪 → 返回访问 URL **[已实测：就绪检测＝读容器日志里的 `WORKSPACE_TOKEN=`；`start` 立即返回 `starting`，前端轮询 `status` 惰性推进，避免把 20-30s 的启动阻塞在请求里]** |
 | 空闲超时 | 回收容器（同时回收端口） |
 | 学生点「结束实验」 | 立即回收 |
 | 后端重启 | 需要能识别并回收孤儿容器（建议容器打 label，如 `nju-lab-workspace=<userId>`） |
@@ -339,15 +423,16 @@ docker run --network <internal> -p 127.0.0.1:21000:9090 ...
 
 ## 6. 改造点清单
 
-| # | 位置 | 改动 | 规模 |
-|---|---|---|---|
-| 1 | `server/workspace-image/`（新建） | Dockerfile + student profile 拷贝 + 容器内代理脚本 | 与 `verify-image/` 同构，小 |
-| 2 | `server/src/workspace/`（新建） | workspace 模块：起停容器、端口分配、空闲回收、孤儿清理 | 中，可大量参考 `docker-evaluation-runner.ts` |
-| 3 | `server/src/submissions/docker-evaluation-runner.ts` | **抽取**通用容器编排能力供两处复用（限额/网络/白名单/挂载） | 中，属重构 |
-| 4 | `server/verify-image/egress-proxy/nginx.conf` | 白名单加上平台自身 API 地址 | 小 |
-| 5 | 宿主 nginx `cms.conf` | 新增 `/lab/ws/` location + `auth_request` | 小 |
-| 6 | `web/` 前端 | 新增「我的实验环境」入口页（启动/进入/结束） | 小 |
-| 7 | `/etc/systemd/system/nju-lab.service` | 确认 `docker.sock` 访问权限（workspace 模块要调 docker） | 小 |
+| # | 位置 | 改动 | 规模 | 状态 |
+|---|---|---|---|---|
+| 1 | `server/workspace-image/`（新建） | Dockerfile + profile 拷贝 + 容器内转发脚本 | 与 `verify-image/` 同构，小 | ✅ 已完成并实测 |
+| 2 | `server/src/workspace/`（新建） | workspace 模块：起停容器、就绪探测、空闲回收、孤儿清理 | 中，可大量参考 `docker-evaluation-runner.ts` | ✅ 已完成并实测 |
+| 3 | `server/src/submissions/docker-evaluation-runner.ts` | **抽取**通用容器编排能力供两处复用（限额/网络/白名单/挂载） | 中，属重构 | ✅ 已完成（`server/src/container-runtime/`） |
+| 4 | `server/verify-image/egress-proxy/nginx.conf` | 白名单加上平台自身 API 地址 | 小 | ⏳ 待办（§8.5-5） |
+| 5 | 宿主 nginx | 工作台 **独立 server 块**（子域 + `auth_request` + 动态 `proxy_pass`） | 小 | ✅ 配置形态已实测（`lab-nginx-snippet.conf`）；**宿主机上尚未部署** |
+| 6 | `web/` 前端 | 新增「进入实验环境」入口页（启动/轮询/进入/结束） | 小 | ⏳ 待办（§8.5-3） |
+| 7 | `/etc/systemd/system/nju-lab.service` | 确认 `docker.sock` 访问权限（workspace 模块要调 docker） | 小 | ✅ 已具备 |
+| 8 | `server/src/workspace/workspace.service.ts` + `workspace.config.ts` | **per-session 对外 authority**：`WORKSPACE_PUBLIC_BASE` 支持 `{key}`，展开后自动进容器的 `--trusted-host`；`wsKey` 改 16 字节 hex（大小写安全） | 小 | ✅ 已完成（2026-09-28 反代实测导出，见 §4.5.1） |
 
 > 第 3 项是关键：**不要让工作台复制一份容器编排逻辑**，否则限额/白名单/隔离策略会在两处漂移。
 > 现有 `runContainer()`（`docker-evaluation-runner.ts:243`）已封装了限额、internal 网络、
@@ -384,17 +469,28 @@ docker run --network <internal> -p 127.0.0.1:21000:9090 ...
 
 ## 9. 待验证清单
 
-**已在 2026-09-28 验证**（见 §2.2 / §4.4）：
+**已在 2026-09-28 验证**（见 §2.2 / §4.4 / §4.5.1）：
 - ✅ 路径 A：禁 5 个消费者插件后 `dsh --profile web` 正常启动，UI 主干完整加载
 - ✅ 容器内转发（`0.0.0.0` → `127.0.0.1`）+ 端口映射 + 从容器外访问
 - ✅ `--trusted-host` 的必要性（不带则 401），以及 `?token=` → 303 + cookie 的鉴权交换
+- ✅ **nginx 反代**（真实后端 + 真实镜像 + `auth_request` + 动态 `proxy_pass`）：
+  401 / 303+cookie / 200 index / 静态资源 / 插件包（10.9 MB）/ RPC / **WebSocket 101** / SSE 200 /
+  伪造 wsKey 403 / 跨域 Origin 403（§4.4 表）
+- ✅ **反代路径形态定案**：子路径 `/lab/ws/<key>/` **证伪**，改为「子域独占 authority」；
+  连带定出 `Host` 必须传外部 authority、`wsKey` 必须大小写安全（§4.5.1）
+- ✅ **就绪探针**：`start` 立即返回、`status` 惰性读容器日志里的 `WORKSPACE_TOKEN=`（§4.7）
+- ✅ 孤儿容器回收（后端重启时按 label 回收上一次的容器，多次实测）
 
 **仍待验证**（按优先级）：
 
 1. **在浏览器里跑通一次完整实验流程**（claim → 开发 → 自测 → 提交）——验证 `session-controller`
    缺失的实际影响。**这是路径 A 能否真正上线的关键前提。**
+   本次反代实测只覆盖 HTTP/WS/SSE 层与静态资源，**没有跑过 JS**（无浏览器）。
 2. 并发 15-30 个 **web** 进程（而非 headless）的真实内存/CPU——§5.1 的 web 数据只有空闲态
-3. **nginx 反代**（而非裸 TCP 转发）下的静态资源路径与 WebSocket 正确性
-4. dsh web 的**就绪探针**（怎么判断"可以让学生访问了"）
+3. ~~nginx 反代下的静态资源路径与 WebSocket 正确性~~ ✅ 已实测（§4.4）；
+   **但仍是"容器内 nginx 测试实例"**，宿主机（真实 `cms.conf` / 校园网关）上的部署与
+   泛子域 DNS/证书尚未做（§4.5.1 的前置条件）
+4. ~~dsh web 的就绪探针~~ ✅ 已实现并实测（§4.7）
 5. 路径 B 完成后：`grep -o -E "sse4_2|popcnt" /proc/cpuinfo` 确认指令集到位，并复测 §2.1 的链条
 6. 路径 B 完成后：去掉禁插件 `--patch`，确认 web 恢复完整功能
+7. **泛子域 DNS + 泛证书**能否在目标环境落地（§4.5.1）——决定工作台挂在 njuserver 还是另找机器

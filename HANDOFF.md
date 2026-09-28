@@ -266,14 +266,18 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 - ⚠️ 受限会话（含 agent）带 `no_new_privs`，`sudo` 无法提权，跑不了 `systemctl restart` 等需 root 的操作；这类步骤一律在持有 sudo 的终端执行
 - 前后端联调纪律见第 3.3 条；每完成一块同步更新 `nju-lab-craft.md` §13 与本 HANDOFF，代码提交进 git（main 分支）
 
-## 8. 平台侧实验工作台 —— 🚧 后端与容器已实测，nginx 与浏览器待验（2026-09-28）
+## 8. 平台侧实验工作台 —— 🚧 反代形态已定案并实测；浏览器 / 真实部署待办（2026-09-28）
 
 ### 8.1 一句话
 
 给「本地装不上 DSH」的学生提供浏览器即可用的实验环境（一人一容器，单用户单会话）。
 **设计文档必读**：`docs/DESIGN-2026-09-28-platform-workspace.md`（含两条并行路径与全部取舍）。
 
-**当前状态：后端 + 容器侧端到端实测通过；nginx 反代与浏览器实测未做；前端入口页未做。**
+**当前状态（2026-09-28 二次更新）**：后端 + 容器 + **nginx 反代**已端到端实测通过
+（HTTP / 303 鉴权交换 / 静态资源 / 插件包 / RPC / **WebSocket 101** / SSE / 越权拦截）；
+反代**路径形态定案**：子路径 `/lab/ws/<key>/` 已**证伪**，改为「每人一个子域 authority」（§8.3 第 4 条）。
+**仍缺**：① 浏览器里跑通完整实验流程；② 前端入口页；③ 宿主机 nginx 真实部署
+（需先落实**泛子域 DNS + 泛证书**，见 §8.5 第 1 条）。
 
 ### 8.2 已完成
 
@@ -281,10 +285,14 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 |---|---|---|
 | 通用容器运行时 | `server/src/container-runtime/` | ✅ 复验行为**逐字节等价**（假 docker 对比 HEAD 与现状） |
 | 工作台镜像 | `server/workspace-image/` | ✅ 端到端（起容器 → dsh web → 200 + UI 主干加载） |
-| 工作台后端 | `server/src/workspace/` | ✅ 端到端（start → 16s 就绪 → 200 → stop） |
-| nginx 片段 | `lab-nginx-snippet.conf` **末段** | ⚠️ **未在真实 nginx 验证** |
+| 工作台后端 | `server/src/workspace/` | ✅ 端到端（start → 16s 就绪 → 200 → stop）+ per-session authority（§8.3 第 4 条） |
+| nginx 反代 | `lab-nginx-snippet.conf` | ✅ **配置形态已实测**（真实后端+镜像，含 WebSocket 101/SSE/RPC/越权）；⚠️ **宿主机上尚未部署**（需泛子域 DNS/证书） |
 
-### 8.3 三条实测结论（踩过，别再踩）
+> 反代实测方式（可复现）：临时后端实例（`PORT=3000 npx ts-node -T src/main.ts`，
+> 带 `WORKSPACE_PUBLIC_BASE='http://{key}.ws-test.local:18080'`）+ 容器内 nginx
+> （`--resolve` 模拟子域）+ `curl`。测完的临时 nginx 与容器均已回收。
+
+### 8.3 五条实测结论（踩过，别再踩）
 
 1. **`--internal` 网络的容器不会建立端口发布** —— `docker run -p` **静默失效**（`docker port` 为空）。
    对外访问**只能走容器 IP**（宿主对 `br-xxxx` 的 `172.18.0.1/16` 有直连路由）。
@@ -293,6 +301,19 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
    已实现在 `server/workspace-image/entrypoint.mjs`（纯 TCP 层，不解析 HTTP）。
 3. **dsh 的 browser-trust fence 只信任显式声明的 authority** —— 连它自己绑的 `127.0.0.1:<port>` 都不默认信任。
    必须传 `--trusted-host`，否则**一律 401**。entrypoint 会自动把自己网卡的 `IP:PROXY_PORT` 加进信任列表。
+4. **反代不能走子路径**（**2026-09-28 反代实测，推翻了原设计**）：浏览器里的 dsh 把运行时路径
+   全锚定在 **origin 根** —— RPC `new URL("/api/…", location.origin)`、
+   WebSocket `wss://<origin>/api/remote.mux`、SSE `/plugins/events`、插件包 `/plugins/??…`。
+   子路径 `/lab/ws/<key>/` 下页面**能开**（`sub_filter` 改写 HTML 生效），但这些绝对路径会打到
+   宿主根 `/api`（njuserver 上是 dify → **502**）/404 → **功能全废**。
+   → 改为**每会话独占一个 authority**：`https://<wsKey>.<工作台域>/`（配置见 `lab-nginx-snippet.conf`；
+   前置条件：**泛子域 DNS + 泛证书**）。
+5. **`Host` 必须传外部 authority，`wsKey` 必须大小写安全**（同上实测）：
+   - nginx `proxy_set_header Host $http_host`（**不能传容器 IP**）：dsh 的 WebSocket 会校验
+     `Origin` 与它看到的 `Host` 是否受信任 —— 传容器 IP 时 HTTP 全通、**WebSocket 一律 403**；
+     同时后端要按 `WORKSPACE_PUBLIC_BASE` 的 `{key}` 把该 authority 传进容器的 `--trusted-host`。
+   - `wsKey` 作为**子域**出现，而 URL 规范/浏览器/`new URL().host` 都会把 hostname 小写化：
+     用 base64url 时 key 被改写 → `auth_request` 查不到会话 → **403**。现用 16 字节 hex。
 
 ### 8.4 两条并行路径（2026-09-28 决定；详见设计文档 §2）
 
@@ -309,14 +330,21 @@ njuserver 的 QEMU vCPU 无 SSE4.2 → `sharp` 崩 → `dsh web` 起不来。
 
 ### 8.5 遗留清单（接手者按序看）
 
-1. **nginx 反代未验证**（见 §8.2）：`proxy_redirect`（dsh 的 303 是 `location: /`）、`sub_filter`
-   （HTML 的 `<base href="/">`）、WebSocket 升级都要在真实环境调；`$connection_upgrade` 需在 `http{}` 里 `map` 定义。
-2. **浏览器实测未做**：禁掉 `session-controller` 对实验流程（claim → 开发 → 自测 → 提交）的实际影响**未知**。
-   **这是路径 A 能否上线的关键前提**——请在能开浏览器的机器上验证。
-3. **前端入口页未做**：需要「进入实验环境」按钮（`web/src/pages/`），流程是
-   `POST /api/workspace/start` → 轮询 `GET /api/workspace/status` → 就绪后打开 `directUrl`/反代 URL。
-4. **容器未加固**：目前以 **root** 跑。生产前应加非 root、cap-drop、只读根。
-5. **平台 API 可达性未在真实链路验证**：容器在隔离网络里，需配 `WORKSPACE_PLATFORM_API`，
+1. **泛子域 DNS + 泛证书 —— 新的最高优先项，决定工作台能否上线**：反代形态要求每会话一个
+   authority（`<wsKey>.<工作台域>`，见 §8.3 第 4 条）。njuserver 的对外入口是校园网关按 **Host**
+   分发的 `medai.nju.edu.cn`（§2.1）——**子域能否被网关/校内 DNS 放行、证书怎么签须先确认**；
+   若不行，备选是换一台可自控 Host 与证书的机器承载工作台（与设计文档 §7「换机器」一并考虑）。
+2. **宿主机 nginx 未部署**（配置形态本身**已实测**，见 §8.2）：把 `lab-nginx-snippet.conf` 的工作台段
+   落到 `sites-enabled`（**独立 server 块 + `http{}` 里的两个 `map`**）。
+   ⚠️ 实测纠正：**不再需要** `proxy_redirect` / `sub_filter`（根路径语义天然正确），
+   但必须 `proxy_set_header Host $http_host`，否则 WebSocket 403。
+3. **浏览器实测未做**：禁掉 `session-controller` 对实验流程（claim → 开发 → 自测 → 提交）的实际影响**未知**。
+   **这是路径 A 能否上线的关键前提**——请在能开浏览器的机器上验证（本次只覆盖到 HTTP/WS/SSE 层，没跑 JS）。
+4. **前端入口页未做**：需要「进入实验环境」按钮（`web/src/pages/`），流程是
+   `POST /api/workspace/start` → 轮询 `GET /api/workspace/status` → 就绪后打开 **`publicBase`**
+   （已按 `{key}` 展开成 `https://<wsKey>.<域>`）+ `?token=…`；`directUrl` 只用于本机验证。
+5. **容器未加固**：目前以 **root** 跑。生产前应加非 root、cap-drop、只读根。
+6. **平台 API 可达性未在真实链路验证**：容器在隔离网络里，需配 `WORKSPACE_PLATFORM_API`，
    后端会把它指到宿主网关（`host-gateway`，已实现）；但 claim/submit 是否真的通**没测过**。
 
 ### 8.6 部署注意
@@ -326,4 +354,9 @@ njuserver 的 QEMU vCPU 无 SSE4.2 → `sharp` 崩 → `dsh web` 起不来。
   若在有 docker.io 的机器上从零构建，见 `server/workspace-image/Dockerfile` 注释里的替代路径。
 - 构建 context **必须是仓库根**（要 copy `dsh/nju-lab-client`）；已加仓库根 `.dockerignore` 防止把 node_modules 发给 daemon。
 - **工作台镜像与复验镜像不要合并**：bundle / profile / 驱动三者全不同（见 `server/workspace-image/README.md` 对照表）。
-- 工作台配置项见 `server/.env.example` 末段（全部有默认值，可先不配）。
+- 工作台配置项见 `server/.env.example` 末段（大部分有默认值，可先不配）。
+- ⚠️ **反代上线必须配 `WORKSPACE_PUBLIC_BASE=https://{key}.<工作台域>`（`{key}` 必填）**：
+  后端据此算出**每会话**的对外 authority 并注入容器的 `--trusted-host`；
+  不配则 nginx 传外部 Host 时 WebSocket 会 403（§8.3 第 5 条）。
+  本机/无域名时可用固定域（如 `http://ws-test.local:18080`，不含 `{key}`）——但此时**所有会话共享
+  同一个 authority、cookie 会互串**，只适合单会话调试。

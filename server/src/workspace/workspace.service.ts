@@ -19,6 +19,7 @@ import {
   WORKSPACE_MEMORY,
   WORKSPACE_PLATFORM_API,
   WORKSPACE_PUBLIC_BASE,
+  WORKSPACE_PUBLIC_BASE_KEY_PLACEHOLDER,
   WORKSPACE_SWEEP_INTERVAL_MS,
   WORKSPACE_TRUSTED_HOSTS,
 } from './workspace.config';
@@ -44,7 +45,15 @@ export interface WorkspaceInfo {
 
 interface Session {
   userId: string;
-  /** URL 里的不透明键（24 字节随机）；**不要拿 userId 当 URL 参数** */
+  /**
+   * URL 里的不透明键（16 字节 hex＝32 字符）。
+   *
+   * ⚠️ 必须是**大小写安全**的编码（hex）：它会作为**子域**出现（`<key>.<域>`），
+   * 而 URL 规范与浏览器都会把 hostname 小写化（`new URL(...).host` 同样如此），
+   * 大小写敏感编码（base64url）会在这里被改写 → `auth_request` 拿小写 key
+   * 查不到会话 → 一律 403（2026-09-28 实测踩过）。
+   * **不要拿 userId 当 URL 参数**。
+   */
   wsKey: string;
   containerName: string;
   status: WorkspaceStatus;
@@ -119,7 +128,7 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
 
     const session: Session = {
       userId: user.id,
-      wsKey: randomBytes(24).toString('base64url'),
+      wsKey: randomBytes(16).toString('hex'),
       containerName,
       status: 'starting',
       token: null,
@@ -129,6 +138,7 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
     };
     this.sessions.set(user.id, session);
 
+    const trustedHosts = this.trustedHosts(session.wsKey);
     try {
       this.runtime.runDetached({
         name: containerName,
@@ -140,10 +150,13 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
         extraHosts: this.platformHosts(),
         labels: [`${WORKSPACE_LABEL_KEY}=${user.id}`],
         env: [
-          // 容器会把自己的 `IP:port` 自动加进 dsh 的信任列表；
-          // 这里只补充"nginx 会改写成别的 Host"时才需要的 authority
-          ...(WORKSPACE_TRUSTED_HOSTS.length
-            ? [`WORKSPACE_TRUSTED_HOSTS=${WORKSPACE_TRUSTED_HOSTS.join(',')}`]
+          // **必须**带上本次会话的对外 authority（`<wsKey>.<域>`）：
+          // dsh 的 WebSocket（`/api/remote.mux`）会校验 `Origin` 与它看到的 `Host`
+          // 是否一致/是否受信任，而浏览器的 Origin 正是这个外部 authority。
+          // 容器只会自动信任自己的 `IP:port`，所以外部域名必须显式传进去，
+          // 否则 HTTP 能通、**WebSocket 一律 403**（2026-09-28 实测）。
+          ...(trustedHosts.length
+            ? [`WORKSPACE_TRUSTED_HOSTS=${trustedHosts.join(',')}`]
             : []),
           `WORKSPACE_PROXY_PORT=${WORKSPACE_CONTAINER_PORT}`,
           ...(WORKSPACE_PLATFORM_API
@@ -179,7 +192,7 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
   /**
    * 供 nginx `auth_request` 调用：用不透明 `wsKey` 换容器 `ip:port`。
    *
-   * ⚠️ 这是**能力凭证**语义（`wsKey` 为 24 字节随机、仅在会话存活期内有效）。
+   * ⚠️ 这是**能力凭证**语义（`wsKey` 为 16 字节 hex、仅在会话存活期内有效）。
    * 之所以不在这里校验平台 JWT：浏览器是**直接导航**到工作台 URL 的，
    * 带不上 `Authorization` 头。取舍详见设计文档 §4.6。
    */
@@ -241,11 +254,47 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
       directUrl: ready && upstream
         ? `http://${upstream}/?token=${s.token}`
         : null,
-      publicBase: WORKSPACE_PUBLIC_BASE || null,
+      publicBase: ready ? this.publicBase(s.wsKey) : null,
       startedAt: s.startedAt,
       lastSeenAt: s.lastSeenAt,
       error: s.error,
     };
+  }
+
+  /**
+   * 对外基址：把 `{key}` 替换成该会话的 `wsKey`。未配置 `WORKSPACE_PUBLIC_BASE` 时为 null。
+   *
+   * ⚠️ 基址必须**带上 `{key}`**（每会话一个子域）：dsh 的运行时路径锚定 origin 根，
+   * 无法在子路径下工作（见 `workspace.config.ts` 与设计文档 §4.5）。
+   */
+  private publicBase(wsKey: string): string | null {
+    if (!WORKSPACE_PUBLIC_BASE) return null;
+    return WORKSPACE_PUBLIC_BASE.split(WORKSPACE_PUBLIC_BASE_KEY_PLACEHOLDER).join(
+      wsKey,
+    );
+  }
+
+  /**
+   * 要传给容器内 dsh 的 `--trusted-host` authority 列表：
+   * 本次会话的**对外 authority**（`{key}` 展开后的 host，含端口）＋ 全局补充项。
+   *
+   * 为什么必须传：dsh 只信任显式声明的 authority，容器自动加的只有它自己的
+   * `IP:port`。nginx 反代若把 `Host` 传成外部域名（WebSocket 必须如此，否则
+   * `Origin` 与 `Host` 不一致 → 403），这个域名就得先在信任列表里。
+   */
+  private trustedHosts(wsKey: string): string[] {
+    const hosts = [...WORKSPACE_TRUSTED_HOSTS];
+    const base = this.publicBase(wsKey);
+    if (base) {
+      try {
+        hosts.push(new URL(base).host);
+      } catch {
+        this.logger.warn(
+          `WORKSPACE_PUBLIC_BASE 不是合法 URL，容器将不信任外部 authority：${base}`,
+        );
+      }
+    }
+    return [...new Set(hosts.filter(Boolean))];
   }
 
   private sweep(): void {
