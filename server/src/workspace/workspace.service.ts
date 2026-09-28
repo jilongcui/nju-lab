@@ -18,6 +18,7 @@ import {
   WORKSPACE_DATA_DIR,
   WORKSPACE_IDLE_TIMEOUT_MS,
   WORKSPACE_KEY_LABEL,
+  WORKSPACE_LLM_ENV,
   WORKSPACE_IMAGE,
   WORKSPACE_LABEL_KEY,
   WORKSPACE_MAX_TOTAL,
@@ -189,6 +190,9 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
             ? [`NJU_LAB_SERVER_URL=${WORKSPACE_PLATFORM_API}`]
             : []),
           `NJU_LAB_TOKEN=${apiToken}`,
+          // 模型 key：平台统一提供（只传变量名，值由 docker 从本进程环境读取 ——
+          // 既避免出现在 `ps` 里，也不用把密钥写进命令行）
+          ...WORKSPACE_LLM_ENV.filter((name) => !!process.env[name]),
         ],
       });
       this.logger.log(

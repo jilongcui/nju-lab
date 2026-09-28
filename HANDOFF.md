@@ -415,8 +415,17 @@ WebSocket 101、SSE 200 正常。
    ⚠️ **不要直接打开容器地址或 `publicBase`** —— cookie 分流形态必须经 enter 这一步。
    **待浏览器实测**（与第 3 条一起做）。
 5. **容器未加固**：目前以 **root** 跑。生产前应加非 root、cap-drop、只读根。
-6. **平台 API 可达性未在真实链路验证**：容器在隔离网络里，需配 `WORKSPACE_PLATFORM_API`，
-   后端会把它指到宿主网关（`host-gateway`，已实现）；但 claim/submit 是否真的通**没测过**。
+6. ~~平台 API 可达性未在真实链路验证~~ ✅ **2026-09-29 已实测**：
+   · 容器里**自动**注入 `NJU_LAB_TOKEN`（24 小时短时效 JWT，`AuthService.issueWorkspaceToken`）
+     与 `NJU_LAB_SERVER_URL` —— 兜底环境不该让学生手填 token；
+   · 平台域名经 `--add-host` 指到宿主在**隔离网络**里的地址（`172.18.0.1`），**不是**
+     docker 的 `host-gateway`（那会解析成默认 bridge 的 172.17.0.1，隔离容器没有那条路由 → ENETUNREACH）；
+   · 实测：容器内 `GET /me`、`/me/assignments`、`/me/courses` 全部 200。
+7. **兜底环境的模型额度由平台统一提供**（2026-09-29 加）：后端起容器时透传
+   `DEEPSEEK_API_KEY` / `MOONSHOT_API_KEY`（`docker run -e <NAME>`，**只写变量名不写值**，
+   所以密钥不进宿主 `ps`；容器内学生可见，属预期）。学生本地 DSH 仍用自己的 key。
+   实测：容器内 `GET https://api.deepseek.com/models` → 200（同时验证了容器经 SNI 白名单代理能出网）。
+   ⚠️ 建议给这个 key 设额度 —— 兜底环境人数少，但可控性要留着。
 
 ### 8.6 部署注意
 

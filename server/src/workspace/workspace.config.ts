@@ -129,3 +129,20 @@ export const WORKSPACE_DATA_DIR = process.env.WORKSPACE_DATA_DIR ?? '/data/works
  * 否则 wsKey 是内存里的随机值，重启就得让每个学生重新点一次「进入」。
  */
 export const WORKSPACE_KEY_LABEL = 'nju-lab-workspace-key';
+
+/**
+ * 要**透传**给工作台容器的模型 API key（环境变量名，逗号分隔）。
+ *
+ * 兜底环境由平台统一提供模型额度 —— 学生本地 DSH 用自己的 key，兜底环境用平台的，
+ * 语义清晰；否则学生在这个环境里连一句话都发不出去。
+ *
+ * ⚠️ 透传方式是 `docker run -e <NAME>`（**只写变量名、不写值**），所以 key 不会出现在
+ * 宿主进程列表里；但容器内学生能看到它（那本来就是给他的环境）——部署时请知悉，
+ * 并考虑对该 key 做额度限制。
+ */
+export const WORKSPACE_LLM_ENV = (
+  process.env.WORKSPACE_LLM_ENV || 'DEEPSEEK_API_KEY,MOONSHOT_API_KEY'
+)
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);

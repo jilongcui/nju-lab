@@ -222,9 +222,16 @@ sharp 加载失败、跨机重建全挂。CPU 修好后 sharp 可用，但**钉�
 - `--add-host <白名单域名>:<代理 IP>` → 钉到 SNI 代理
 - 白名单配置在 `server/verify-image/egress-proxy/nginx.conf`
 
-需要**扩白名单**：除 LLM API 外，还要允许学生容器访问**平台自身的 API**
-（`nju-lab-client` 插件要 claim/submit 用）。建议在 internal 网络中直接放行平台后端地址，
-不经代理。
+**[已实现 2026-09-29]** 两条出网需求分开处理：
+
+| 需求 | 做法 |
+|---|---|
+| 学生容器访问**平台自身 API**（claim/submit） | 把平台域名经 `--add-host` 指到宿主在**隔离网络**里的地址（`172.18.0.1`），不经代理、不走 `host-gateway`（后者是默认 bridge 的 172.17.0.1，隔离容器没有那条路由 → ENETUNREACH，实测） |
+| 学生容器访问 **LLM API** | 仍走既有 SNI 白名单代理（`api.deepseek.com` 等） |
+
+另外，模型 key 也由平台注入（`DEEPSEEK_API_KEY`/`MOONSHOT_API_KEY`，用 `docker run -e <NAME>`
+只传变量名）：兜底环境的额度由平台统一提供，学生本地 DSH 才用自己的 key。
+实测：容器内 `GET /me`、`/me/assignments` 与 `https://api.deepseek.com/models` 全部 200。
 
 ### 4.4 反代与 `--host` 限制的绕法
 
