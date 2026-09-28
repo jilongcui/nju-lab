@@ -23,6 +23,20 @@ npm run preview  # 预览生产构建
 - 种子账号（后端种子）：教师 `teacher / teacher123`，学生 `student1 / student123`。
 - 接口统一返回 `{ code, data, message }`（`code = 0` 成功），axios 响应拦截器统一解包并在失败时 `message.error` 提示；请求拦截器自动携带 `Authorization: Bearer <token>`，401 自动登出并跳转登录页。
 
+## 部署（线上 `/lab` 子目录）
+
+线上是 `http://medai.nju.edu.cn/lab/`：nginx `root /var/www` + SPA `try_files` 回退 `/lab/index.html`。
+
+```bash
+cd web && VITE_BASE=/lab/ npm run build   # base 必须带，否则资源路径全错
+cd .. && bash deploy/deploy-web-lab.sh    # 构建 → 备份 → 先 chunk 后 index.html → md5/Content-Type 自检
+```
+
+两条铁律（2026-09-29 踩过，详见 `HANDOFF.md` §2.2）：
+
+1. **先写 `assets/` 新 chunk，最后换 `index.html`** —— 顺序反了，缺失的 `.js` 会被 SPA 回退成 `200 text/html`，**页面白屏但 curl 状态码一切正常**。
+2. **验证要看 `Content-Type` 与 md5，不能只看 200**；`deploy-web-lab.sh` 已内置这两步，自检失败会自动回滚 `index.html`。
+
 ## 页面与路由清单
 
 登录/注册为独立全屏页，其余页面统一复用 `AppLayout` 三段式布局（左侧菜单区 / 中间功能区 / 右侧辅助区）。

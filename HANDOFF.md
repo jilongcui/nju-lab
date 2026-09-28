@@ -65,7 +65,7 @@ NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已�
 | 代码/数据 | `~/nju-lab/server`（含 uploads、.env 已改为本机 DB 密码与 `PUBLIC_BASE_URL=http://medai.nju.edu.cn/lab`）；Node v24.14.0 在 `~/opt/node24`（用户态，系统 Node 是 22） |
 | git | **GitHub 为唯一远端：`git@github.com:jilongcui/nju-lab.git`（remote `origin`，main 跟踪 origin/main）**——本机 `ubuntu` 的 SSH key 已登记到 GitHub，`fetch`/`push` 直连可用；**仓库根即 `~/nju-lab` 本身**，部署目录 `~/nju-lab/server`（仓库的子目录，systemd 指向它；`dist`/`.env`/`uploads`/`node_modules` 均在 `.gitignore`）。纪律：所有改动先提交再 push 到 `origin`，**禁止直接在部署目录改代码**——2026-09-23 发现网关 CAS 登录改动（gateway-cas.ts 等 3 个文件）只在 njuserver 部署目录存在、未入 git，已收编回本仓库；部署目录以 git 为准。~~本地裸仓库 `~/nju-lab.git`（旧「njuserver 部署 remote」）已于 2026-09-26 退休删除~~ ——它是 GitHub 仓库建成前的中转；无脚本/hook/其他仓库引用、无独有内容，备份 `~/nju-lab.git.bak-20260926.tar.gz` |
 | 目录收敛 | **2026-09-26**：原先并列的工作副本 `~/nju-lab/repo` 已**提升为仓库根**（`repo/` 这一层取消），`~/nju-lab` 现在既是 git 仓库根、也是部署目录树，与 §1 布局一致。`server/` 原地保留运行态（`dist`/`.env`/`uploads`/`node_modules`），只把 `src` 换成仓库最新版（此前是旧版、与 `dist` 漂移，有回退选课功能的风险）；`WorkingDirectory` 路径未变故**无需重启**（服务同一 PID 持续运行）。过时产物（`kit/`、`web-dist/`、`server/dist.bak-*`）移出到 `~/nju-lab-attic-20260926/`；部署配置副本 `nju-lab.service`、`lab-nginx-snippet.conf` 纳入仓库；迁移前备份 `~/nju-lab-migrate-bak-20260926.tar.gz` |
-| 静态产物 | `/var/www/lab/`（`index.html`+`assets`+`kit/`），www-data 所有；**前端须用 `VITE_BASE=/lab/ npm run build` 构建**（先在 `web/` 里 `npm install`），部署 `cp -r dist/. /var/www/lab/`。⚠️ 该机 `sudo` 要密码、`/var/www/lab` 属 www-data 不可直写 —— 可用 docker 绕过：`docker run --rm --entrypoint sh -v /var/www/lab:/target -v ~/nju-lab/web/dist:/source:ro nginx:alpine -c 'cp -rf /source/. /target/ && chown -R 33:33 /target/index.html /target/assets'`（只动 `index.html`+`assets/`，别碰 `kit/`） |
+| 静态产物 | `/var/www/lab/`（`index.html`+`assets`+`kit/`）。**前端须用 `VITE_BASE=/lab/ npm run build` 构建**（先在 `web/` 里 `npm install`）；部署走仓库脚本 **`bash deploy/deploy-web-lab.sh`**（构建 → 备份 → **先写 assets 新 chunk、最后换 index.html** → md5 + Content-Type 自检，失败自动回滚）。⚠️ **2026-09-29 起 `index.html`/`assets/` 属主已从 `www-data`(33) 改为 `ubuntu`(1000)**，可直接 `cp`，不再需要 sudo；若属主再次变回非当前用户（会话里 `ls` 显示 `nobody:65534`），按 §2.2 第 5 条「属主修复」处理。历史 docker 绕过（`cp -rf /source/. /target/ && chown -R 33:33 …`）只在需要把属主恢复成 www-data 时用；只动 `index.html`+`assets/`，别碰 `kit/`。纪律见 §2.2 |
 | 数据库 | 系统 MySQL 8.0（127.0.0.1:3306），库/用户 `nju_lab`（随机密码在 server/.env） |
 | 服务 | `systemctl` 单元 `nju-lab.service`（`~/nju-lab/nju-lab.service` 有副本）。**不要加 PrivateTmp/ProtectSystem**——runner 靠 `/tmp` 给容器 bind-mount，PrivateTmp 会导致挂载为空、复验全挂（2026-09-22 踩过） |
 | Docker | ubuntu 在 docker 组；docker.io 直连不通，走 `swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/<img>` 拉取后 tag 回原名（`nginx:alpine` 已就位）；**`nju-lab-verify:0.1.5-rc.2` 是生产的 `docker save/load` 拷贝**——异地重建会因 `node:22-slim` 漂浮 tag 拿到老基底导致 sharp 加载失败、复验全挂（Dockerfile 已改钉 `node:22.23.2-slim`，但跨机仍以 save/load 为准） |
@@ -85,6 +85,31 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 # 经 nginx 测线上：curl -sk --resolve lab.xiaohe.biz:443:127.0.0.1 https://lab.xiaohe.biz/...
 ```
 
+### 2.2 前端产物部署纪律（2026-09-29 踩坑，别再踩）
+
+同步 `/var/www/lab` 用 `bash deploy/deploy-web-lab.sh`（普通用户即可，不需要 sudo）。脚本固化的就是下面五条，
+手工部署时同样必须遵守：
+
+1. **顺序铁律：先写 `assets/` 新 chunk，最后才换 `index.html`。**
+   `/lab/` 是 `try_files $uri $uri/ /lab/index.html` 的 SPA 回退 —— 若 index.html 先换、chunk 还没到位，
+   浏览器要的 `/lab/assets/x.js` 会拿到 **`200` + `text/html`**（回退成 index.html 正文），ES module 按 MIME 解析即失败
+   → **页面白屏，而 curl 看状态码一切正常**。实测：
+   `curl -s -o /dev/null -w '%{http_code} %{content_type}\n' -H 'Host: medai.nju.edu.cn' http://127.0.0.1/lab/assets/NONEXISTENT.js` → `200 text/html`。
+   2026-09-29 就是这么把线上短暂搞白过一次（发现后先回滚 index.html，再按正确顺序重做）。
+2. **验证铁律：不能只看状态码。** 按**线上 index.html 实际引用的资源**逐个探测，要求 `Content-Type: application/javascript`，
+   并与本地 `web/dist` 核对 md5。脚本第 4、6 步做的正是这两件事，自检失败会把 index.html 自动回滚成备份。
+3. **旧 chunk 不删。** `assets/` 里同时保留几代 hash，缓存着旧 index.html 的浏览器才不会 404。
+4. **会话里看到的 `nobody:65534` 就是宿主上的 `www-data`，别当成陌生属主。** Reasonix 会话跑在 user namespace 里，
+   `cat /proc/self/uid_map` = `1000 0 1`（只有这一个映射）：除 uid 1000 外的属主一律显示为 overflow id `65534`，
+   而且 **ns 内的权限检查会拒绝写入 —— 宿主上是 root 身份也没用**，`danger-full-access` 也无效（它只放开沙箱路径白名单，
+   不改 inode 属主）。判定宿主真实属主用 docker：
+   `docker run --rm -v /var/www/lab:/d nginx:alpine stat -c '%A %U:%G %n' /d /d/assets`（本机 docker.io 不通，用已就位的 `nginx:alpine`）。
+   同理**沙箱内的报错不一定等于宿主结果**：2026-09-29 一次 `mv` 在会话里报了 6 条 `Permission denied`，宿主上其实已移动完成
+   —— 结论一律以 docker / HTTP 实测为准（同 §2.1 注意⑦）。
+5. **属主修复**（仅当 `assets/` 再次不属于当前用户、脚本提示不可写时）：
+   `mv /var/www/lab/assets /var/www/lab/assets.pre-deploy-<ts>`（rename 只需父目录写权限）→
+   `mkdir -m 755 /var/www/lab/assets` → 从旧目录补回历史 chunk → 再跑部署脚本（顺序仍是 chunk 先、index.html 后）。
+
 ## 3. 关键架构与纪律（踩坑沉淀，务必遵守）
 
 1. **统一响应格式**：后端所有接口返回 `{code, data, message}`（code=0 成功）；前端 axios 拦截器统一解包。
@@ -97,7 +122,7 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
    - ⚠️ **不要再加「读网关头直接签发」的路径**：上游网关拦截时代它会注入 `CAS-USER`/`CAS-USER-CN`，据此直接签发平台 token 的写法曾存在、网关放开后已移除 —— 请求头客户端可任意伪造（`curl -H 'CAS-USER: 任意学号'` 就能冒充任意账号，含管理员）。除非同时加来源 IP 白名单。
 5. **角色**：`admin`（RolesGuard 放行一切 + 各服务归属校验豁免）、`teacher`、`student`。公开注册只允许 teacher/student。
 6. **复验抽象**：`server/src/submissions/evaluation-runner.ts` 的 `EvaluationRunner` 接口，两种实现：`MockEvaluationRunner`（确定性假数据，无 Docker/key 的开发环境用）与 `DockerEvaluationRunner`（真实容器复验），`EVALUATION_RUNNER=mock|docker` 环境变量切换（默认 mock，当前 .env 为 docker）。
-7. **部署纪律**：禁止把 Vite dev server 挂 nginx 当生产（HMR WebSocket 必挂）；前端产物放 `/var/www/nju-lab/dist`（不能放 `/home/ubuntu`，750 权限）；`sites-enabled/` 下所有文件都会被 nginx 加载，备份文件必须移出。
+7. **部署纪律**：禁止把 Vite dev server 挂 nginx 当生产（HMR WebSocket 必挂）；前端产物放 `/var/www/nju-lab/dist`（不能放 `/home/ubuntu`，750 权限）；`sites-enabled/` 下所有文件都会被 nginx 加载，备份文件必须移出。**线上 `/lab` 前端静态产物同步的顺序与校验见 §2.2**（先 chunk 后 index.html；缺 chunk 会被 SPA 回退伪装成 `200 text/html`）。
 8. **TypeORM migrations**：`synchronize: false` + `migrationsRun: true`（启动自动执行）；初始迁移 `src/migrations/1790002605000-InitialSchema.ts`（已在既有库手工登记、在空库实测建表后 schema:log 零 diff）。改实体后：`npm run typeorm migration:generate -- src/migrations/<Name>` 生成迁移并核对 SQL，新环境启动即自动建表。
 9. **DSH 侧**：`agent/request` 是 waterfall，只能钉 provider/model/reasoningEffort/maxTokens；**钉工具集要用 `ctx.tools.restrict()`**；client 半由 client-modules 服务按 `package.json` 的 `dsh.client` 自动扫描挂载；slot 组件拿不到 ctx。
 10. **复验安全姿态**（verify profile）：一次性容器 + 断网 + `approval=never` + 资源限额。容器是唯一信任边界（DSH 沙箱不挡网络与进程）。
