@@ -384,6 +384,12 @@ WebSocket 101、SSE 200 正常。
   若在有 docker.io 的机器上从零构建，见 `server/workspace-image/Dockerfile` 注释里的替代路径。
 - 构建 context **必须是仓库根**（要 copy `dsh/nju-lab-client`）；已加仓库根 `.dockerignore` 防止把 node_modules 发给 daemon。
 - **工作台镜像与复验镜像不要合并**：bundle / profile / 驱动三者全不同（见 `server/workspace-image/README.md` 对照表）。
+- **路径 B（2026-09-28）之后的镜像状态**：`nju-lab-workspace:0.1.5-rc.2` = **完整功能版**
+  （CPU 修复后重建，含文件上传/附件/交付物面板/会话控制器）；
+  回滚点 `nju-lab-workspace:0.1.5-rc.2-no-sse42` = 旧的"路径 A"版（禁 5 个插件）——
+  只在**目标机器无 SSE4.2/POPCNT** 时才用它，并配合恢复 `profile/.../cordis.patch.yml` 的禁用段。
+- **已完成的环境就位（2026-09-28）**：后端 `.env` 已加 `WORKSPACE_PUBLIC_BASE=http://medai.nju.edu.cn`；
+  前端产物已同步到 `/var/www/lab`（含「实验环境」入口页）。**只剩宿主机 nginx 未合并**（§8.5 第 1 条）。
 - 工作台配置项见 `server/.env.example` 末段（大部分有默认值，可先不配）。
 - ⚠️ **反代上线必须配 `WORKSPACE_PUBLIC_BASE=https://{key}.<工作台域>`（`{key}` 必填）**：
   后端据此算出**每会话**的对外 authority 并注入容器的 `--trusted-host`；
