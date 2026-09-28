@@ -16,6 +16,7 @@ import {
   WORKSPACE_CPUS,
   WORKSPACE_DATA_DIR,
   WORKSPACE_IDLE_TIMEOUT_MS,
+  WORKSPACE_KEY_LABEL,
   WORKSPACE_IMAGE,
   WORKSPACE_LABEL_KEY,
   WORKSPACE_MAX_TOTAL,
@@ -158,7 +159,11 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
         // 与复验共用同一套出栈隔离：internal 网络 + 白名单域名钉到 SNI 代理
         egressProxyIp: this.runtime.ensureEgressProxy(),
         extraHosts: this.platformHosts(),
-        labels: [`${WORKSPACE_LABEL_KEY}=${user.id}`],
+        labels: [
+          `${WORKSPACE_LABEL_KEY}=${user.id}`,
+          // 会话键也落到 label：后端重启后接管时读回来，学生的 URL/cookie 才能继续有效
+          `${WORKSPACE_KEY_LABEL}=${session.wsKey}`,
+        ],
         // 持久卷：学生的文件与会话历史（容器重建也不丢；目录不可写时为空数组）
         mounts,
         env: [
@@ -386,9 +391,13 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
       const ip = this.runtime.containerIp(name);
       if (!token || !ip) { drop('读不到 launch token 或容器 IP'); continue; }
 
+      // 会话键从 label 读回 —— 于是"接管"对学生是无感的（URL 与 cookie 都不用换）；
+      // 只有拿不到 label（更早版本的容器）才退回"新生成一个"
+      const adoptedKey = this.runtime.labelValue(name, WORKSPACE_KEY_LABEL)
+        ?? randomBytes(16).toString('hex');
       this.sessions.set(userId, {
         userId,
-        wsKey: randomBytes(16).toString('hex'), // 新的会话键（旧的随进程消失了）
+        wsKey: adoptedKey,
         containerName: name,
         status: 'running',
         token,

@@ -121,3 +121,11 @@ export const WORKSPACE_SESSION_COOKIE = 'nju_ws';
  * ⚠️ 目录不可写时（例如 `/data` 被内核以只读挂载）后端**只告警、不挂载**，不影响学生用。
  */
 export const WORKSPACE_DATA_DIR = process.env.WORKSPACE_DATA_DIR ?? '/data/workspaces';
+
+/**
+ * 把会话键也写进容器 label（`nju-lab-workspace-key=<wsKey>`）。
+ *
+ * 用途：后端重启后**接管**容器时读回它，于是学生的 URL 与 cookie **继续有效** ——
+ * 否则 wsKey 是内存里的随机值，重启就得让每个学生重新点一次「进入」。
+ */
+export const WORKSPACE_KEY_LABEL = 'nju-lab-workspace-key';
