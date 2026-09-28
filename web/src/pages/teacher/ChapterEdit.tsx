@@ -17,7 +17,9 @@ export default function ChapterEdit() {
   const [mode, setMode] = useState<'edit' | 'preview'>('edit');
   const [saving, setSaving] = useState(false);
   const [form] = Form.useForm();
-  const content = Form.useWatch('content', form);
+  // 预览模式下渲染的是 MarkdownView，name="content" 的 Form.Item 会被卸载，
+  // 字段随之注销；useWatch 默认只读「已注册字段」，此处必须 preserve 才能从 store 取值
+  const content = Form.useWatch('content', { form, preserve: true }) as string | undefined;
 
   useAuxiliaryPanel(
     '章节编辑',
@@ -42,8 +44,11 @@ export default function ChapterEdit() {
   }, [load]);
 
   const handleSave = async () => {
-    const values = await form.validateFields();
+    await form.validateFields();
     if (!chapter) return;
+    // 同上：validateFields 只返回已注册字段，预览模式下 content 会缺席，
+    // 若直接使用会导致本次编辑被 chapter.content（旧值）静默覆盖，故取 store 全量值
+    const values = form.getFieldsValue(true) as Partial<Chapter>;
     setSaving(true);
     try {
       await saveChapter(chapter.courseId, { ...chapter, ...values });
