@@ -22,6 +22,7 @@ import {
   BookOutlined,
   CheckOutlined,
   CloudDownloadOutlined,
+  CloudServerOutlined,
   DashboardOutlined,
   ExperimentOutlined,
   FileDoneOutlined,
@@ -56,6 +57,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   projects: '实验项目',
   submissions: '提交与反馈',
   client: '客户端下载',
+  workspace: '实验环境',
   grade: '批改',
   applications: '申请',
 };
@@ -65,6 +67,7 @@ const MENUS = {
     { key: '/teacher/dashboard', icon: <DashboardOutlined />, label: '工作台' },
     { key: '/teacher/courses', icon: <BookOutlined />, label: '课程管理' },
     { key: '/teacher/projects', icon: <ExperimentOutlined />, label: '实验项目' },
+    { key: '/teacher/workspace', icon: <CloudServerOutlined />, label: '实验环境' },
   ],
   student: [
     { key: '/student/home', icon: <HomeOutlined />, label: '工作台' },
@@ -73,6 +76,7 @@ const MENUS = {
     { key: '/student/applications', icon: <FormOutlined />, label: '我的申请' },
     { key: '/student/submissions', icon: <FileDoneOutlined />, label: '我的提交与反馈' },
     { key: '/student/client', icon: <CloudDownloadOutlined />, label: '客户端下载' },
+    { key: '/student/workspace', icon: <CloudServerOutlined />, label: '实验环境' },
   ],
 };
 

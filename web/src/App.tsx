@@ -23,6 +23,7 @@ import ExperimentDetail from './pages/student/ExperimentDetail';
 import MySubmissions from './pages/student/MySubmissions';
 import MyApplications from './pages/student/MyApplications';
 import ClientDownload from './pages/student/ClientDownload';
+import Workspace from './pages/student/Workspace';
 
 /** 登录后的默认落地页：各自的工作台 */
 function homeOf(role?: Role) {
@@ -94,6 +95,8 @@ const router = createBrowserRouter([
       { path: 'teacher/projects', element: teacher(<ProjectList />) },
       { path: 'teacher/projects/:projectId', element: teacher(<ProjectDetail />) },
       { path: 'teacher/submissions/:submissionId/grade', element: teacher(<Grading />) },
+      // 实验环境两个角色都可用（教师用于课堂演示）
+      { path: 'teacher/workspace', element: teacher(<Workspace />) },
 
       // 学生端
       { path: 'student/home', element: student(<StudentHome />) },
@@ -104,6 +107,7 @@ const router = createBrowserRouter([
       { path: 'student/applications', element: student(<MyApplications />) },
       { path: 'student/submissions', element: student(<MySubmissions />) },
       { path: 'student/client', element: student(<ClientDownload />) },
+      { path: 'student/workspace', element: student(<Workspace />) },
     ],
   },
   { path: '*', element: <NotFoundRedirect /> },

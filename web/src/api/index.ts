@@ -25,6 +25,7 @@ import type {
   TeacherProjectRow,
   TeacherSummary,
   User,
+  WorkspaceInfo,
 } from '../types';
 
 // ---------- 文件 ----------
@@ -209,3 +210,14 @@ export const rejectApplication = (courseId: string, id: string, note?: string) =
     `/courses/${courseId}/applications/${id}/reject`,
     { note },
   );
+
+// ---------- 平台侧实验工作台（本地装不上 DSH 时的浏览器兜底环境） ----------
+/** 启动（或复用）自己的工作台；**立即返回**，就绪状态由 `getWorkspaceStatus` 轮询推进 */
+export const startWorkspace = () =>
+  client.post<unknown, WorkspaceInfo>('/workspace/start');
+/** 查询状态；从未启动过时后端返回 `null` */
+export const getWorkspaceStatus = () =>
+  client.get<unknown, WorkspaceInfo | null>('/workspace/status');
+/** 主动结束工作台（幂等） */
+export const stopWorkspace = () =>
+  client.post<unknown, { stopped: boolean }>('/workspace/stop');

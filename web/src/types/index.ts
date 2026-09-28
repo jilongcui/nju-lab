@@ -427,3 +427,23 @@ export interface ProjectDashboard {
   };
   evaluatedCount: number;
 }
+
+/** 平台侧实验工作台（兜底环境）：GET /api/workspace/status、POST /api/workspace/start */
+export interface WorkspaceInfo {
+  status: 'starting' | 'running' | 'failed';
+  /** 就绪后才非 null：URL 里的不透明会话键（16 字节 hex） */
+  wsKey: string | null;
+  /** dsh 的 launch token（`?token=` 不可省） */
+  token: string | null;
+  /** 容器在隔离网络里的 ip:port（nginx 反代目标） */
+  upstream: string | null;
+  /** 直连 URL（仅本机/内网验证用） */
+  directUrl: string | null;
+  /** 反代基址 */
+  publicBase: string | null;
+  /** 「进入实验环境」应导航到的入口；前端用 `apiUrl()` 转成带部署前缀后再跳转 */
+  enterUrl: string | null;
+  startedAt: number;
+  lastSeenAt: number;
+  error?: string;
+}

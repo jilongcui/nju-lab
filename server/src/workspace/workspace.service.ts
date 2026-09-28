@@ -38,6 +38,15 @@ export interface WorkspaceInfo {
   directUrl: string | null;
   /** 反代基址（配置了 `WORKSPACE_PUBLIC_BASE` 时非空） */
   publicBase: string | null;
+  /**
+   * 前端「进入实验环境」应该导航到的**入口**（相对 API 路径，前端用 `apiUrl()` 转成带部署前缀）。
+   * 就绪前为 null。
+   *
+   * ⚠️ 不要直接打开 `publicBase`/`directUrl`：反代形态（尤其形态 B 的 cookie 分流）需要先经过
+   * 入口把会话 cookie 种下，否则 dsh 写死的根路径请求（`/api/**` 等）路由不到容器。
+   * 见 `docs/DESIGN-2026-09-28-platform-workspace.md` §4.5.2。
+   */
+  enterUrl: string | null;
   startedAt: number;
   lastSeenAt: number;
   error?: string;
@@ -296,6 +305,7 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
         ? `http://${upstream}/?token=${s.token}`
         : null,
       publicBase: ready ? this.publicBase(s.wsKey) : null,
+      enterUrl: ready ? `/api/workspace/enter?k=${s.wsKey}` : null,
       startedAt: s.startedAt,
       lastSeenAt: s.lastSeenAt,
       error: s.error,
