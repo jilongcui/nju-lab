@@ -376,8 +376,13 @@ WebSocket 101、SSE 200 正常。
    完整取舍说明见 `lab-nginx-snippet.conf` 与设计文档 §4.5.2。
 1.5 **（2026-09-28 新增，最高优先）网关 WebSocket 透传**：见 §8.3 第 7 条 ——
    本机链路已实测 101，需网络中心在**校园网关**上开启 WS 升级透传
-   （若网关是 nginx：`proxy_http_version 1.1` + `proxy_set_header Upgrade/Connection` + `map $http_upgrade $connection_upgrade`；
-   若是其他反代/负载设备，开"WebSocket 支持"）。
+   （若网关是 nginx，**手工 4 步**：
+   ① `http{}` 里加 `map $http_upgrade $connection_upgrade { default upgrade; '' close; }`；
+   ② 承载 medai 的**每个** server 块（80 与 443 各一个）里加 `proxy_http_version 1.1;` +
+      `proxy_set_header Upgrade $http_upgrade;` + `proxy_set_header Connection $connection_upgrade;`；
+   ③ ⚠️ 若该 server/location 里**已有** `proxy_set_header Connection close;`（或 `""`），
+      它会覆盖②新增的那行 —— 必须删掉或改成 `$connection_upgrade`，这是最常见的漏改点；
+   ④ `nginx -t && nginx -s reload`。若是其他反代/负载设备，开"WebSocket 支持"开关）。
    在解决前，工作台可以打开界面但**不能正常交互**（事件流接不上）。
    可先试的临时办法：用 **`http://`（80 端口）**访问（若网关不强制跳 https），
    绕开 443 的 TLS 终止层看 WS 是否通。
