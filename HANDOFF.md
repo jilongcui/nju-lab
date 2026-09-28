@@ -238,5 +238,18 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 
 ## 7. 协作方式备忘
 
-- 前后端联调纪律见第 3.3 条；改后端后 `cd server && npm run build && sudo systemctl restart nju-lab`（或开发期 `start:dev` 重启）；改前端后需重新 build + 部署 /var/www
-- 每完成一块，同步更新 `nju-lab-craft.md` §13（实现现状）与本 HANDOFF；代码提交进 git（main 分支）
+**仓库与远端（2026-09-26 收敛后）**
+- **仓库根就是 `~/nju-lab` 本身**（原先并列的 `repo/` 工作副本已取消，见 §2.1「目录收敛」）；**单一远端 `origin` = GitHub**（`git@github.com:jilongcui/nju-lab.git`），SSH key 已登记、`fetch`/`push` 直连可用
+- git 提交身份已配好（local + global 均为 `jilongcui <jilongcui@163.com>`），`git commit` 无需再带 `-c`
+- 部署目录 `~/nju-lab/server` 是仓库子目录，`dist`/`.env`/`uploads`/`node_modules` 均在 `.gitignore`；**禁止直接在部署目录改代码**
+
+**改代码 → 编译 → 同步 → 提交**
+- 后端：`cd ~/nju-lab/server && npm run build && sudo systemctl restart nju-lab`（`restart` 已配免密 sudo，见 `/etc/sudoers.d/nju-lab`）。开发期用 `npm run start:dev`（ts-node 直跑 `src/`，手动前台、不走 systemd，**需先停 systemd 服务**以免抢 3100 端口）
+- 前端：`cd ~/nju-lab/web && VITE_BASE=/lab/ npm run build`（**必须带 `VITE_BASE=/lab/`**，否则 base 不对、子目录部署白屏）→ 把 `web/dist` 同步到 `/var/www/lab`（属 www-data）：有 sudo 时 `sudo cp -rf web/dist/. /var/www/lab/ && sudo chown -R www-data:www-data /var/www/lab`，无 sudo 时按 §2.1 的 docker 绕法。**只动 `index.html`+`assets/`，别碰 `kit/`**
+- 提交：`cd ~/nju-lab && git add -A && git commit -m "…" && git push origin main`
+- 改了实体（entity）→ `npm run typeorm migration:generate -- src/migrations/<Name>`；服务启动时 `migrationsRun: true` 自动执行
+
+**环境注意**
+- ⚠️ 线上跑的是**正式版**（systemd → `node dist/main.js`，`NODE_ENV=production`）：改 `src` 不生效，必须 build + restart；开发版是 `start:dev`
+- ⚠️ 受限会话（含 agent）带 `no_new_privs`，`sudo` 无法提权，跑不了 `systemctl restart` 等需 root 的操作；这类步骤一律在持有 sudo 的终端执行
+- 前后端联调纪律见第 3.3 条；每完成一块同步更新 `nju-lab-craft.md` §13 与本 HANDOFF，代码提交进 git（main 分支）
