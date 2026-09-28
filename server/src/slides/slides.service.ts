@@ -1,0 +1,612 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { createHash } from 'crypto';
+import { Repository } from 'typeorm';
+import { Chapter, ChapterStatus, Course } from '../courses/course.entity';
+import { CoursesService } from '../courses/courses.service';
+import { User, UserRole } from '../users/user.entity';
+import { mergeMarkdown, toMarkdown } from './deck-markdown';
+import {
+  DEFAULT_DECK_CONFIG,
+  DeckConfig,
+  DeckValidationError,
+  SlideJson,
+  normalizeSlides,
+  validateDeckConfig,
+} from './deck.schema';
+import { llmDiagnostics } from './llm.client';
+import { SlideDeck, SlideDeckStatus } from './slide-deck.entity';
+import { SlideTemplate } from './slide-template.entity';
+import {
+  SLIDES_GENERATE_PER_HOUR,
+  SLIDES_GENERATOR,
+  SLIDES_LIMITS,
+  SLIDES_MODEL,
+  SLIDES_PROMPT_VERSION,
+} from './slides.config';
+import { DeckSource, createDeckGenerator } from './slides.generator';
+import {
+  BUILTIN_TEMPLATES,
+  DEFAULT_TEMPLATE_ID,
+  TemplateDesign,
+  TemplateValidationError,
+  designToCss,
+  findBuiltinTemplate,
+  isAllowedBaseTheme,
+  validateTemplateDesign,
+} from './template.schema';
+import {
+  CreateTemplateDto,
+  GenerateDeckDto,
+  SaveDeckDto,
+  UpdateTemplateDto,
+} from './dto/slides.dto';
+
+/**
+ * 章节幻灯片（reveal.js）业务逻辑。
+ *
+ * 边界与纪律（设计文档 §9/§11/§12）：
+ *   · 权限口径**复用 CoursesService**（`getOwnedCourse` / `assertEnrolled`），不在这里另写一套
+ *   · 生成是异步的：先把状态置 GENERATING 落库再返回，后台任务完成后写回 READY/FAILED
+ *   · 缓存键 `sourceHash = sha256(正文 + 模型 + prompt 版本)`；命中直接复用，`force` 才重跑
+ *   · **绝不自动重生成**：章节改了只提示（`chapterChanged`），由教师决定
+ *   · 模板只存"调参"，CSS 由 `designToCss` 编译（窄字符集校验后的值才会进 CSS）
+ */
+
+export interface DeckView {
+  id: string;
+  chapterId: string;
+  courseId: string;
+  title: string;
+  slides: SlideJson[];
+  markdown: string;
+  templateId: string | null;
+  config: Required<DeckConfig> & DeckConfig;
+  status: SlideDeckStatus;
+  generatedBy: string | null;
+  model: string | null;
+  tokensUsed: number | null;
+  basedOnChapterHash: string | null;
+  error: string | null;
+  warnings: string | null;
+  updatedAt: Date;
+}
+
+export interface TemplateView {
+  id: string;
+  name: string;
+  description: string | null;
+  baseTheme: string;
+  design: TemplateDesign;
+  css: string;
+  config: DeckConfig | null;
+  isBuiltin: boolean;
+}
+
+interface ResolvedTemplate {
+  id: string;
+  name: string;
+  description: string | null;
+  baseTheme: string;
+  design: TemplateDesign;
+  css: string;
+  config: DeckConfig | null;
+  isBuiltin: boolean;
+}
+
+function sha256(text: string): string {
+  return createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
+@Injectable()
+export class SlidesService {
+  private readonly logger = new Logger(SlidesService.name);
+
+  /**
+   * 生成频次护栏：进程内滑动窗口。
+   * 平台是单进程 systemd 部署，够用；将来若多实例，这里要换成落库计数（已在设计文档 §8 记下）。
+   */
+  private readonly generateLog = new Map<string, number[]>();
+
+  constructor(
+    @InjectRepository(SlideDeck)
+    private readonly deckRepo: Repository<SlideDeck>,
+    @InjectRepository(SlideTemplate)
+    private readonly templateRepo: Repository<SlideTemplate>,
+    @InjectRepository(Chapter)
+    private readonly chapterRepo: Repository<Chapter>,
+    @InjectRepository(Course)
+    private readonly courseRepo: Repository<Course>,
+    private readonly coursesService: CoursesService,
+  ) {}
+
+  // ------------------------------------------------------------ 读取
+
+  async getDeck(user: User, chapterId: string) {
+    const chapter = await this.loadChapter(chapterId);
+    const canEdit = await this.canEdit(user, chapter.courseId);
+    await this.assertChapterAccess(user, chapter, canEdit);
+
+    const deck = await this.deckRepo.findOne({ where: { chapterId } });
+    const chapterHash = sha256(chapter.content ?? '');
+    const template = await this.resolveTemplate(
+      chapter.courseId,
+      deck?.templateId ?? null,
+    );
+
+    return {
+      deck: deck ? this.toDeckView(deck) : null,
+      chapterHash,
+      /** 生成之后章节又被改过 —— 只提示，不自动重生成 */
+      chapterChanged: !!deck?.basedOnChapterHash && deck.basedOnChapterHash !== chapterHash,
+      template: this.toTemplateView(template),
+      /** 学生不需要模板清单（也不能枚举课程模板） */
+      templates: canEdit ? await this.listCourseTemplates(chapter.courseId) : [],
+      canEdit,
+      generator:
+        SLIDES_GENERATOR === 'llm'
+          ? llmDiagnostics()
+          : { generator: 'mock', baseUrl: null, model: 'mock', keyEnv: null, keyConfigured: true },
+    };
+  }
+
+  // ------------------------------------------------------------ 生成
+
+  async generate(user: User, chapterId: string, dto: GenerateDeckDto) {
+    const chapter = await this.loadChapter(chapterId);
+    const course = await this.coursesService.getOwnedCourse(user, chapter.courseId);
+
+    if (!chapter.content?.trim()) {
+      throw new BadRequestException('章节还没有正文内容，先写点内容再生成幻灯片');
+    }
+
+    const chapterHash = sha256(chapter.content);
+    const sourceHash = sha256(
+      `${chapter.content}\u0000${SLIDES_GENERATOR === 'llm' ? SLIDES_MODEL : 'mock'}\u0000${SLIDES_PROMPT_VERSION}`,
+    );
+
+    let deck = await this.deckRepo.findOne({ where: { chapterId } });
+
+    if (
+      deck &&
+      !dto.force &&
+      deck.status === SlideDeckStatus.READY &&
+      deck.sourceHash === sourceHash
+    ) {
+      // 同内容 + 同模型 + 同 prompt 版本：直接复用，不重复烧额度
+      return { deck: this.toDeckView(deck), cached: true };
+    }
+    if (deck?.status === SlideDeckStatus.GENERATING && !dto.force) {
+      throw new ConflictException('该章节正在生成中，请稍候');
+    }
+
+    const templateId =
+      dto.templateId !== undefined ? dto.templateId || null : deck?.templateId ?? null;
+    await this.assertTemplateUsable(templateId, course.id, user);
+    this.assertRateLimit(course.id);
+
+    if (!deck) {
+      deck = this.deckRepo.create({
+        courseId: course.id,
+        chapterId,
+        title: chapter.title,
+        createdBy: user.id,
+        status: SlideDeckStatus.EMPTY,
+      });
+    }
+    deck.status = SlideDeckStatus.GENERATING;
+    deck.error = null;
+    deck.warnings = null;
+    deck.templateId = templateId;
+    deck.model = SLIDES_GENERATOR === 'llm' ? SLIDES_MODEL : 'mock';
+    deck.sourceHash = sourceHash;
+    deck.basedOnChapterHash = chapterHash;
+    deck = await this.deckRepo.save(deck);
+    this.recordGenerateAttempt(course.id);
+
+    // 后台跑（Node 单进程；前端轮询 status 直到 ready/failed）
+    void this.runGeneration(deck.id, {
+      courseTitle: course.title,
+      chapterTitle: chapter.title,
+      chapterContent: chapter.content,
+    });
+
+    return { deck: this.toDeckView(deck), cached: false };
+  }
+
+  private async runGeneration(deckId: string, source: DeckSource): Promise<void> {
+    const generator = createDeckGenerator(SLIDES_GENERATOR);
+    try {
+      const outcome = await generator.generate(source);
+      const deck = await this.deckRepo.findOne({ where: { id: deckId } });
+      if (!deck) return;
+      deck.slides = outcome.slides;
+      deck.markdown = toMarkdown(outcome.slides);
+      deck.title = outcome.deckTitle || deck.title;
+      deck.model = outcome.model;
+      deck.tokensUsed = outcome.tokens
+        ? outcome.tokens.promptTokens + outcome.tokens.completionTokens
+        : null;
+      deck.generatedBy = generator.mode;
+      deck.warnings = outcome.warnings.length ? outcome.warnings.join('\n') : null;
+      deck.error = null;
+      deck.status = SlideDeckStatus.READY;
+      await this.deckRepo.save(deck);
+      this.logger.log(
+        `章节幻灯片生成完成 deck=${deckId} 页数=${outcome.slides.length} 生成器=${generator.mode}`,
+      );
+    } catch (error) {
+      const message = (error as Error).message || '未知错误';
+      this.logger.error(`章节幻灯片生成失败 deck=${deckId}：${message}`);
+      const deck = await this.deckRepo.findOne({ where: { id: deckId } });
+      if (!deck) return;
+      deck.status = SlideDeckStatus.FAILED;
+      deck.error = message;
+      await this.deckRepo.save(deck);
+    }
+  }
+
+  // ------------------------------------------------------------ 编辑与保存
+
+  async save(user: User, chapterId: string, dto: SaveDeckDto) {
+    const chapter = await this.loadChapter(chapterId);
+    const course = await this.coursesService.getOwnedCourse(user, chapter.courseId);
+
+    const warnings: string[] = [];
+    let deck = await this.deckRepo.findOne({ where: { chapterId } });
+
+    let slides: SlideJson[] | undefined;
+    if (dto.slides !== undefined) {
+      slides = this.guardDeck(() => normalizeSlides(dto.slides as SlideJson[], SLIDES_LIMITS));
+      if (dto.markdown !== undefined) {
+        warnings.push('同时提交了 slides 与 markdown，已以 slides 为准');
+      }
+    } else if (dto.markdown !== undefined) {
+      const merged = this.guardDeck(() =>
+        mergeMarkdown(deck?.slides ?? [], dto.markdown as string, SLIDES_LIMITS),
+      );
+      slides = merged.slides;
+      warnings.push(...merged.warnings);
+    }
+
+    if (!deck && !slides) {
+      throw new BadRequestException('该章节还没有幻灯片，先手工创建或用生成功能');
+    }
+
+    if (slides) {
+      if (!deck) {
+        deck = this.deckRepo.create({
+          courseId: course.id,
+          chapterId,
+          title: chapter.title,
+          createdBy: user.id,
+          status: SlideDeckStatus.READY,
+          basedOnChapterHash: sha256(chapter.content ?? ''),
+        });
+      }
+      deck.slides = slides;
+      deck.markdown = toMarkdown(slides);
+      deck.status = SlideDeckStatus.READY;
+      deck.generatedBy = 'manual';
+      deck.error = null;
+      if (!deck.basedOnChapterHash) {
+        deck.basedOnChapterHash = sha256(chapter.content ?? '');
+      }
+    }
+
+    if (!deck) throw new BadRequestException('该章节还没有幻灯片');
+
+    if (dto.title !== undefined) deck.title = dto.title;
+    if (dto.templateId !== undefined) {
+      await this.assertTemplateUsable(dto.templateId, course.id, user);
+      deck.templateId = dto.templateId || null;
+    }
+    if (dto.config !== undefined) {
+      deck.config = this.guardDeck(() => validateDeckConfig(dto.config));
+    }
+
+    deck = await this.deckRepo.save(deck);
+    return { deck: this.toDeckView(deck), warnings };
+  }
+
+  /** 「保留现有 deck，仅把基准哈希对齐到当前章节内容」 */
+  async syncChapterHash(user: User, chapterId: string) {
+    const chapter = await this.loadChapter(chapterId);
+    await this.coursesService.getOwnedCourse(user, chapter.courseId);
+    const deck = await this.deckRepo.findOne({ where: { chapterId } });
+    if (!deck) throw new NotFoundException('该章节还没有幻灯片');
+    deck.basedOnChapterHash = sha256(chapter.content ?? '');
+    return { deck: this.toDeckView(await this.deckRepo.save(deck)) };
+  }
+
+  async removeDeck(user: User, chapterId: string) {
+    const chapter = await this.loadChapter(chapterId);
+    await this.coursesService.getOwnedCourse(user, chapter.courseId);
+    const deck = await this.deckRepo.findOne({ where: { chapterId } });
+    if (!deck) throw new NotFoundException('该章节还没有幻灯片');
+    await this.deckRepo.remove(deck);
+    return { deleted: true };
+  }
+
+  // ------------------------------------------------------------ 模板
+
+  async listTemplates(user: User, courseId: string) {
+    await this.coursesService.getOwnedCourse(user, courseId);
+    return this.listCourseTemplates(courseId);
+  }
+
+  async createTemplate(user: User, courseId: string, dto: CreateTemplateDto) {
+    await this.coursesService.getOwnedCourse(user, courseId);
+
+    let baseTheme = 'simple';
+    let design: TemplateDesign = {};
+    let config: DeckConfig | null = null;
+
+    if (dto.fromBuiltinId) {
+      const builtin = findBuiltinTemplate(dto.fromBuiltinId);
+      if (!builtin) throw new BadRequestException('指定的内置模板不存在');
+      baseTheme = builtin.baseTheme;
+      design = { ...builtin.design };
+      config = builtin.config ?? null;
+    }
+    if (dto.design !== undefined) {
+      design = { ...design, ...this.guardTemplate(() => validateTemplateDesign(dto.design)) };
+    }
+    if (dto.config !== undefined) {
+      config = this.guardDeck(() => validateDeckConfig(dto.config));
+    }
+
+    const template = await this.templateRepo.save(
+      this.templateRepo.create({
+        courseId,
+        name: dto.name,
+        description: dto.description ?? null,
+        baseTheme,
+        design,
+        config,
+        isBuiltin: false,
+        createdBy: user.id,
+      }),
+    );
+    return this.toTemplateView(this.resolveTemplateFromEntity(template));
+  }
+
+  async updateTemplate(user: User, templateId: string, dto: UpdateTemplateDto) {
+    const template = await this.templateRepo.findOne({ where: { id: templateId } });
+    if (!template) throw new NotFoundException('模板不存在');
+    if (template.isBuiltin || !template.courseId) {
+      throw new BadRequestException('内置模板不可修改，请先「另存为」课程模板');
+    }
+    await this.coursesService.getOwnedCourse(user, template.courseId);
+
+    if (dto.name !== undefined) template.name = dto.name;
+    if (dto.description !== undefined) template.description = dto.description;
+    if (dto.design !== undefined) {
+      template.design = this.guardTemplate(() => validateTemplateDesign(dto.design));
+    }
+    if (dto.config !== undefined) {
+      template.config = this.guardDeck(() => validateDeckConfig(dto.config));
+    }
+    const saved = await this.templateRepo.save(template);
+    return this.toTemplateView(this.resolveTemplateFromEntity(saved));
+  }
+
+  async deleteTemplate(user: User, templateId: string) {
+    const template = await this.templateRepo.findOne({ where: { id: templateId } });
+    if (!template) throw new NotFoundException('模板不存在');
+    if (template.isBuiltin || !template.courseId) {
+      throw new BadRequestException('内置模板不可删除');
+    }
+    await this.coursesService.getOwnedCourse(user, template.courseId);
+
+    // 被 deck 引用时先解绑（回落到平台默认），再删除 —— 不让历史 deck 打不开
+    const referenced = await this.deckRepo.find({ where: { templateId } });
+    for (const deck of referenced) {
+      deck.templateId = null;
+      await this.deckRepo.save(deck);
+    }
+    await this.templateRepo.remove(template);
+    return { deleted: true, unboundDecks: referenced.length };
+  }
+
+  // ------------------------------------------------------------ 内部工具
+
+  private async loadChapter(chapterId: string): Promise<Chapter> {
+    const chapter = await this.chapterRepo.findOne({ where: { id: chapterId } });
+    if (!chapter) throw new NotFoundException('章节不存在');
+    return chapter;
+  }
+
+  private async canEdit(user: User, courseId: string): Promise<boolean> {
+    if (user.role === UserRole.ADMIN) return true;
+    if (user.role !== UserRole.TEACHER) return false;
+    const course = await this.courseRepo.findOne({ where: { id: courseId } });
+    return !!course && course.teacherId === user.id;
+  }
+
+  /** 学生：章节已发布 + 在课程名单里；教师：课程 owner（口径与章节阅读接口一致） */
+  private async assertChapterAccess(user: User, chapter: Chapter, canEdit: boolean) {
+    if (user.role === UserRole.STUDENT) {
+      if (chapter.status !== ChapterStatus.PUBLISHED) {
+        throw new ForbiddenException('章节尚未发布');
+      }
+      await this.coursesService.assertEnrolled(chapter.courseId, user.id);
+      return;
+    }
+    if (!canEdit) throw new ForbiddenException('没有权限查看该章节的幻灯片');
+  }
+
+  private toDeckView(deck: SlideDeck): DeckView {
+    return {
+      id: deck.id,
+      chapterId: deck.chapterId,
+      courseId: deck.courseId,
+      title: deck.title,
+      slides: deck.slides ?? [],
+      markdown: deck.markdown ?? '',
+      templateId: deck.templateId,
+      config: { ...DEFAULT_DECK_CONFIG, ...(deck.config ?? {}) },
+      status: deck.status,
+      generatedBy: deck.generatedBy,
+      model: deck.model,
+      tokensUsed: deck.tokensUsed,
+      basedOnChapterHash: deck.basedOnChapterHash,
+      error: deck.error,
+      warnings: deck.warnings,
+      updatedAt: deck.updatedAt,
+    };
+  }
+
+  private toTemplateView(template: ResolvedTemplate): TemplateView {
+    return {
+      id: template.id,
+      name: template.name,
+      description: template.description,
+      baseTheme: template.baseTheme,
+      design: template.design,
+      css: template.css,
+      config: template.config,
+      isBuiltin: template.isBuiltin,
+    };
+  }
+
+  private async listCourseTemplates(courseId: string): Promise<TemplateView[]> {
+    const builtins: TemplateView[] = BUILTIN_TEMPLATES.map((builtin) => ({
+      id: builtin.id,
+      name: builtin.name,
+      description: builtin.description,
+      baseTheme: builtin.baseTheme,
+      design: builtin.design,
+      css: designToCss(builtin.design),
+      config: builtin.config ?? null,
+      isBuiltin: true,
+    }));
+    const customs = await this.templateRepo.find({
+      where: { courseId },
+      order: { createdAt: 'ASC' },
+    });
+    return [...builtins, ...customs.map((t) => this.toTemplateView(this.resolveTemplateFromEntity(t)))];
+  }
+
+  private resolveTemplateFromEntity(template: SlideTemplate): ResolvedTemplate {
+    const design = template.design ?? {};
+    const baseTheme = isAllowedBaseTheme(template.baseTheme)
+      ? (template.baseTheme as string)
+      : 'simple';
+    return {
+      id: template.id,
+      name: template.name,
+      description: template.description,
+      baseTheme,
+      design,
+      css: designToCss(design),
+      config: template.config,
+      isBuiltin: false,
+    };
+  }
+
+  /** 解析 deck 生效的模板；**找不到时回落到平台默认**（历史 deck 不因模板被删就打不开） */
+  private async resolveTemplate(
+    courseId: string,
+    templateId: string | null,
+  ): Promise<ResolvedTemplate> {
+    let fallbackId = DEFAULT_TEMPLATE_ID;
+    if (templateId) {
+      const builtin = findBuiltinTemplate(templateId);
+      if (builtin) {
+        return {
+          id: builtin.id,
+          name: builtin.name,
+          description: builtin.description,
+          baseTheme: builtin.baseTheme,
+          design: builtin.design,
+          css: designToCss(builtin.design),
+          config: builtin.config ?? null,
+          isBuiltin: true,
+        };
+      }
+      const custom = await this.templateRepo.findOne({
+        where: { id: templateId, courseId },
+      });
+      if (custom) return this.resolveTemplateFromEntity(custom);
+      fallbackId = templateId; // 记录一下，仍是回落默认
+    }
+    const builtin = findBuiltinTemplate(fallbackId) ?? findBuiltinTemplate(DEFAULT_TEMPLATE_ID);
+    if (!builtin) throw new NotFoundException('平台默认模板缺失');
+    return {
+      id: builtin.id,
+      name: builtin.name,
+      description: builtin.description,
+      baseTheme: builtin.baseTheme,
+      design: builtin.design,
+      css: designToCss(builtin.design),
+      config: builtin.config ?? null,
+      isBuiltin: true,
+    };
+  }
+
+  private async assertTemplateUsable(
+    templateId: string | null,
+    courseId: string,
+    user: User,
+  ) {
+    if (!templateId) return;
+    if (findBuiltinTemplate(templateId)) return;
+    const custom = await this.templateRepo.findOne({ where: { id: templateId } });
+    if (!custom) throw new BadRequestException('指定的模板不存在');
+    if (custom.courseId !== courseId) {
+      throw new ForbiddenException('不能使用其他课程的模板');
+    }
+    if (custom.createdBy && custom.createdBy !== user.id && user.role !== UserRole.ADMIN) {
+      // 同课程的教师之间共享模板是允许的（同课程协作），这里只拦跨课程
+    }
+  }
+
+  private assertRateLimit(courseId: string) {
+    const windowStart = Date.now() - 3_600_000;
+    const stamps = (this.generateLog.get(courseId) ?? []).filter((t) => t > windowStart);
+    this.generateLog.set(courseId, stamps);
+    if (stamps.length >= SLIDES_GENERATE_PER_HOUR) {
+      throw new ConflictException(
+        `本课程一小时内最多生成 ${SLIDES_GENERATE_PER_HOUR} 次，请稍后再试`,
+      );
+    }
+  }
+
+  private recordGenerateAttempt(courseId: string) {
+    const stamps = this.generateLog.get(courseId) ?? [];
+    stamps.push(Date.now());
+    this.generateLog.set(courseId, stamps);
+  }
+
+  /** 把内容校验错误翻译成 400（带"第几页哪里不对"的信息） */
+  private guardDeck<T>(fn: () => T): T {
+    try {
+      return fn();
+    } catch (error) {
+      if (error instanceof DeckValidationError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+  }
+
+  private guardTemplate<T>(fn: () => T): T {
+    try {
+      return fn();
+    } catch (error) {
+      if (error instanceof TemplateValidationError) {
+        throw new BadRequestException(error.message);
+      }
+      throw error;
+    }
+  }
+}
+

@@ -547,7 +547,8 @@ export class CoursesService {
     }
   }
 
-  private async assertEnrolled(courseId: string, studentId: string) {
+  /** 学生是否在课程名单里。公开给其他模块复用 —— 权限口径只留一份实现，避免各处漂移 */
+  async assertEnrolled(courseId: string, studentId: string) {
     const enrollment = await this.enrollmentRepo.findOne({
       where: { courseId, studentId },
     });

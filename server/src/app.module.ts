@@ -7,6 +7,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { CoursesModule } from './courses/courses.module';
+import { SlidesModule } from './slides/slides.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { FilesModule } from './files/files.module';
 import { ProjectsModule } from './projects/projects.module';
@@ -39,6 +40,7 @@ import { WorkspaceModule } from './workspace/workspace.module';
     DashboardModule,
     FilesModule,
     WorkspaceModule,
+    SlidesModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },
