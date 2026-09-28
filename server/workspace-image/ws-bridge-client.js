@@ -301,4 +301,47 @@
   Bridged.CLOSED = CLOSED;
 
   window.WebSocket = Bridged;
+
+  /*
+   * client-hmr 的 `/plugins/events`（SSE）也过不了校园网关（同样 ~20 秒被切断，
+   * 浏览器报 net::ERR_INCOMPLETE_CHUNKED_ENCODING）。
+   * 它只服务**插件热重载**：生产环境不会有文件变更 → 不会有帧；dsh 收到帧的处理也是 no-op。
+   * 所以给它一个"静默的" EventSource：消掉报错，且不损失任何功能。
+   * （若将来要在容器里改文件测热重载，把这段去掉即可。）
+   */
+  var NativeES = window.EventSource;
+  if (NativeES) {
+    var HMR_PATH = /\/plugins\/events(?:[?#]|$)/;
+    window.EventSource = function (url, config) {
+      var u = String(url);
+      if (!HMR_PATH.test(u)) {
+        return config === undefined ? new NativeES(u) : new NativeES(u, config);
+      }
+      var listeners = {};
+      return {
+        url: u,
+        readyState: 1,
+        withCredentials: false,
+        CONNECTING: 0,
+        OPEN: 1,
+        CLOSED: 2,
+        onmessage: null,
+        onopen: null,
+        onerror: null,
+        addEventListener: function (type, fn) {
+          (listeners[type] = listeners[type] || []).push(fn);
+        },
+        removeEventListener: function (type, fn) {
+          var a = listeners[type];
+          if (!a) return;
+          var i = a.indexOf(fn);
+          if (i >= 0) a.splice(i, 1);
+        },
+        close: function () { this.readyState = 2; },
+      };
+    };
+    window.EventSource.CONNECTING = 0;
+    window.EventSource.OPEN = 1;
+    window.EventSource.CLOSED = 2;
+  }
 })();
