@@ -462,9 +462,15 @@ WS 是 dsh 会话事件流的**唯一**通道（`/plugins/events` 只是插件�
    **不改前端、不改 nginx、不用重建页面**。网关侧开好 WS 后随时可以切回去。
 
 **实测**（真实后端 + 真实镜像 + 复刻 medai 骨架的 nginx）：页面注入的 `<script src="/wsbridge/client.js">`
-生效；`/wsbridge/ping` 200、`/wsbridge/client.js` 200；SSE `ready → open`；`POST /wsbridge/send` → 204；
-发一个非法帧被 dsh 以 `1008 invalid Remote stream request` 拒绝（证明帧确实进了 dsh 的 mux 解析器）；
-直连 WS 与"经桥"结果一致。
+生效；`/wsbridge/ping` 200、`/wsbridge/client.js` 200；`POST /wsbridge/send` → 204；
+发一个非法帧被 dsh 以 `1008 invalid Remote stream request` 拒绝（证明帧确实进了 dsh 的 mux 解析器）。
+⚠️ **下行最终没有用 SSE，改用 1 秒短轮询**（2026-09-29 实测）：校园网关对"流式响应"有约 20 秒的
+硬性时限 —— **宿主直连**的 SSE 能活满 50 秒（心跳正常），**经网关**的同一个流每 16–24 秒就被
+`client aborted`，把心跳换成真实事件也拦不住（不是空闲超时）。
+⇒ 桥提供 `GET /wsbridge/poll?id=&since=`（返回 `{id,next,frames}`，帧带 seq 游标），
+客户端适配层默认轮询（1 秒一轮，对长连接零假设）；SSE 端点保留，网关放开长连接后可切回。
+桥侧注意：`closeSession` 必须把 `closed` **也写进帧历史**并延迟删除会话，否则轮询客户端
+取不到"上游已断"、会一直轮询一个死会话（实测踩过）。
 
 ### 4.7 生命周期
 

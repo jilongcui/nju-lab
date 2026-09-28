@@ -331,7 +331,15 @@ sharp 恢复、路径 A 禁用段退役、工作台镜像已重建为**完整功
      同时后端要按 `WORKSPACE_PUBLIC_BASE` 的 `{key}` 把该 authority 传进容器的 `--trusted-host`。
    - `wsKey` 作为**子域**出现，而 URL 规范/浏览器/`new URL().host` 都会把 hostname 小写化：
      用 base64url 时 key 被改写 → `auth_request` 查不到会话 → **403**。现用 16 字节 hex。
-7. **校园网关不透传 WebSocket 升级**（2026-09-28 实测，**当前唯一阻塞项**）：
+8. **校园网关还会掐掉任何"流式响应"（约 20 秒）**（2026-09-29 实测）：
+   即使把 WS 换成 SSE 长连接也一样 —— **宿主直连**的 SSE 能活满 50 秒（心跳正常），
+   而**经网关**的同一个流每 16–24 秒就被 `client aborted`，且把心跳从"注释行"改成"真实事件"
+   也拦不住（说明不是空闲超时，而是网关对流式响应的硬性时限）。
+   ⇒ 工作台的下行**改用 1 秒短轮询**（`GET /wsbridge/poll?id=&since=`，对长连接零假设），
+   上行仍是 POST；SSE 端点保留在代码里，将来网关放开长连接可切回（`_openStream`）。
+   代价：流式回复有 ~1 秒颗粒感。
+
+7. **校园网关不透传 WebSocket 升级**（2026-09-28 实测）：
    浏览器侧 `wss://medai.nju.edu.cn/api/remote.mux` 一直失败（dsh 前端报 `connection lost, retry #N`），
    access.log 里对应的是 **404 / 45 字节**——既不是 dsh 的 404（9 字节 `not found`），也不是本机 nginx 的
    403/502，说明**升级请求没有以"升级"形态到达本机**。
