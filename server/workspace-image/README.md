@@ -58,10 +58,14 @@ dsh 的 browser-trust fence 只信任显式声明的 authority。
 **不要直接用 `docker run` 上生产**——上面的命令只用于本地验证。生产路径是后端
 `ContainerRuntime` 起容器，隔离策略集中在那里（见设计文档 §6 改造点）。
 
-## 路径 A 的说明（为什么 profile 里禁了 5 个插件）
+## 路径 A 已退役（2026-09-28）
 
-njuserver 的 QEMU vCPU 无 SSE4.2/POPCNT，`sharp` 加载失败会导致 `dsh web` 启动即崩。
-profile 里禁用了 `attachment-local` 及其**消费者**（必须一起禁，否则消费者 pending）。
+原先 njuserver 的 QEMU vCPU 无 SSE4.2/POPCNT，`sharp` 加载失败会让 `dsh web` 启动即崩，
+因此 profile 里禁用了 `attachment-local` 及其**消费者**（必须一起禁，否则消费者 pending）。
 
-CPU 修好后（设计文档 §2.3），删掉 `profile/nju-lab-workspace/cordis.patch.yml`
-末尾那一段即可恢复文件上传等完整功能。
+**2026-09-28 该 VM 的 CPU 改为 host-passthrough（Xeon Gold 6530，SSE4.2/POPCNT/AVX2），
+sharp 恢复 → 禁用段已从 `profile/nju-lab-workspace/cordis.patch.yml` 删除，镜像已重建，
+本镜像现在是完整功能版**（含 UI 文件上传 / 附件显示 / 交付物面板 / 会话控制器）。
+
+⚠️ 只有在把工作台部署到**无 SSE4.2/POPCNT** 的机器时才需要恢复那段禁用
+（`cordis.patch.yml` 里以注释形式保留了内容与原因）。

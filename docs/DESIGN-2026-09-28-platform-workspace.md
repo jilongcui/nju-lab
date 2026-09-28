@@ -1,8 +1,9 @@
 # 平台侧兜底实验工作台 —— 设计方案（2026-09-28）
 
-> **状态：设计稿；有两条并行路径**（见 §2）——
-> **路径 A：禁用 5 个消费者插件**（**已实测可行**，零前置条件，代价是缺文件上传/附件/交付物面板）；
-> **路径 B：改 CPU 模型**（功能完整，需管理员 + 重启生产 VM）。
+> **状态：已落地（2026-09-28）** —— 原设计的"两条并行路径"已收敛：
+> **路径 A（禁用 5 个消费者插件）已退役**；**路径 B（改 CPU 模型）已完成** ——
+> VM 的 CPU 改为 host-passthrough（Xeon Gold 6530，SSE4.2/POPCNT/AVX2），sharp 恢复正常，
+> 工作台镜像已重建为**完整功能**版（文件上传 / 附件 / 交付物面板 / 会话控制器都在）。见 §2.3。
 > 两条路**都以"容器内转发"为前提**（dsh 硬禁 `--host 0.0.0.0`，与 CPU 无关），该机制**已实测通过**（§4.4）。
 > 标 **[已实测]** 的结论均在本机验证过，标 **[待验证]** 的尚需验证。
 >
@@ -78,7 +79,7 @@ dsh: 3 entries did not activate
 现代:  ... sse sse2 ... sse4_1 sse4_2 popcnt avx avx2 fma ...   ← 多出这些
 ```
 
-### 2.2 路径 A：禁用消费者插件 **[已实测可行，零前置条件]**
+### 2.2 路径 A：禁用消费者插件 **[已实测可行；⚠️ 2026-09-28 已退役，见 §2.3]**
 
 原理：`attachment-local` 是 `attachments` / `fileUploads` 服务的**提供者**，不是可选功能开关。
 禁掉提供者后消费者插件会永远 pending，dsh 判定插件树加载失败而退出。因此必须**连消费者一起禁**。
@@ -117,7 +118,7 @@ patch 文件（经 `--patch` 传入）：
 - 已验证的是"UI 能完整加载"，**尚未在浏览器里跑通一次完整实验流程**；
   `session-controller` 缺失的实际影响需浏览器实测确认。
 
-### 2.3 路径 B：修 CPU 模型 **[功能完整，需重启]**
+### 2.3 路径 B：修 CPU 模型 **[✅ 2026-09-28 已完成并验证]**
 
 把 VM 的 CPU 模型改为 **`host-passthrough`**（或任何 ≥ Nehalem / 支持 x86-64-v2 的模型）。
 这是 `HANDOFF.md` §2.1 注意③ 早就给出的建议，当时因复验路径可绕过而未执行。
@@ -131,8 +132,18 @@ grep -o -E "sse4_2|popcnt|avx" /proc/cpuinfo | sort -u
 ⚠️ **改动需关机重启**，该机同时运行生产 MySQL、nju-lab 后端、dify 容器与复验代理——
 必须安排维护窗口并先备份。
 
-**与路径 A 的关系**：CPU 修好后 sharp 可用，**就不再需要禁那 5 个插件**，可拿回完整功能。
-两条路**并行推进**（2026-09-28 决定）：短期用 A 立刻可用，B 到位后切回完整功能。
+**与路径 A 的关系**：CPU 修好后 sharp 可用，**就不再需要禁那 5 个插件**。
+
+**2026-09-28 实际完成**：VM 的 CPU 模型改为 `host-passthrough` 并重启 ——
+`/proc/cpuinfo` 现为 `INTEL(R) XEON(R) GOLD 6530`，含 `sse4_2 / popcnt / avx / avx2`；
+`require('sharp')` 通过（libvips 8.18.6）→ 工作台 profile 的路径 A 禁用段已删除、镜像已重建，
+恢复**完整功能**。
+
+验证口径（可复现）：删段后 `dsh --profile nju-lab-workspace` **直接就绪、无 pending**；
+index 从 26279 → **28110** 字节，被禁的 4 个 client 插件回到 UI 清单
+（`dsh-api-session-controller`、`dsh-client-file-upload`、`dsh-client-ui-attachment`、
+`dsh-client-ui-deliverables`）；`--dump-config` 的 `disabled: true` 从
+**31（26 个 dsh 默认 + 我们 5 个）降回 26**（全为 dsh 默认）；WebSocket 101、SSE 200 均正常。
 
 ### 2.4 两条路的取舍
 
@@ -496,8 +507,8 @@ dsh 升级若新增别的**根路径前缀**，要在 nginx 补 location（当�
 
 | 形态 | 可行性 | 学生体验 | 备注 |
 |---|---|---|---|
-| **web + 路径 A（禁插件）** | ✅ **已验证可启动** | 网页，缺文件上传等 | **零前置条件**，短期首选（见 §2.2） |
-| **web + 路径 B（修 CPU）** | ✅ 根治 | 完整网页体验 | 需 ZStack 管理员 + 重启（见 §2.3） |
+| **web + 路径 A（禁插件）** | ⛔ **已退役**（2026-09-28） | —— | 只在"目标机器无 SSE4.2/POPCNT"时才需要（§2.2 与 profile 注释） |
+| **web + 路径 B（修 CPU）** | ✅ **已完成（2026-09-28）** | 完整网页体验 | CPU=host-passthrough，镜像已重建（§2.3） |
 | 终端形态（ttyd/wetty + `dsh` CLI） | ✅ 可用 | 终端界面，非网页 | headless 不需要 attachments，走复验同款 profile；比 web 更省事但体验差异大 |
 | 换机器（CPU 正常的） | ✅ | 同 web 形态 | 顺带解决"与生产 MySQL 同机"的隔离风险 |
 
@@ -545,8 +556,9 @@ dsh 升级若新增别的**根路径前缀**，要在 nginx 补 location（当�
    **仍未落地到宿主机**：需把 `lab-nginx-snippet.conf` 的三段（http{} 的 map + 内部 FoxCMS server、
    主 server 的 location）合并进 `cms.conf` / `snippets/medai-*.conf`，`nginx -t` 无误后 reload
 4. ~~dsh web 的就绪探针~~ ✅ 已实现并实测（§4.7）
-5. 路径 B 完成后：`grep -o -E "sse4_2|popcnt" /proc/cpuinfo` 确认指令集到位，并复测 §2.1 的链条
-6. 路径 B 完成后：去掉禁插件 `--patch`，确认 web 恢复完整功能
+5. ~~路径 B：确认指令集到位~~ ✅ 2026-09-28（Xeon Gold 6530，含 sse4_2/popcnt/avx2；
+   `require('sharp')` OK，libvips 8.18.6）
+6. ~~路径 B：去掉禁插件段、确认 web 恢复完整功能~~ ✅ 2026-09-28（验证口径见 §2.3）
 7. ~~泛子域 DNS + 泛证书~~：**已确认当前不可得**（学生只能走 80 端口 / `medai.nju.edu.cn`，
    2026-09-28 由使用方确认）→ 实际采用 §4.5.2 的 **cookie 分流**形态（已实测）；
    将来若拿到独立域名或端口，可切回更简单的形态 A（配置见 `lab-nginx-snippet.conf` 注释）

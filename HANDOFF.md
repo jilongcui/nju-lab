@@ -285,14 +285,18 @@ Host 只能是 `medai.nju.edu.cn`）→ 采用等价形态：
 > （`/api/**`、`/plugins/**`、`/open-in-app/**` 由会话 cookie `nju_ws` 认领容器，
 > **没有会话的流量原样回落 FoxCMS**）。cookie 由后端 `GET /lab/api/workspace/enter?k=<wsKey>` 种下。
 
-**仍缺**：① 浏览器里跑通完整实验流程；② 前端入口页；③ 宿主机 nginx 真实部署（§8.5 第 1、2 条）。
+**仍缺**：① 浏览器里跑通完整实验流程；② 宿主机 nginx 真实部署（§8.5 第 1 条；前端入口页已完成）。
+
+✅ **2026-09-28 另：路径 B 已落地** —— VM CPU 改为 host-passthrough（Xeon Gold 6530，SSE4.2/POPCNT/AVX2），
+sharp 恢复、路径 A 禁用段退役、工作台镜像已重建为**完整功能**（文件上传/附件/交付物面板/会话控制器）。
+详见 §8.4 与设计文档 §2.3。
 
 ### 8.2 已完成
 
 | 组件 | 位置 | 验证程度 |
 |---|---|---|
 | 通用容器运行时 | `server/src/container-runtime/` | ✅ 复验行为**逐字节等价**（假 docker 对比 HEAD 与现状） |
-| 工作台镜像 | `server/workspace-image/` | ✅ 端到端（起容器 → dsh web → 200 + UI 主干加载） |
+| 工作台镜像 | `server/workspace-image/` | ✅ 端到端（起容器 → dsh web → 200 + UI 主干加载）；✅ **2026-09-28 已重建为完整功能版**（路径 A 退役，见 §8.4） |
 | 工作台后端 | `server/src/workspace/` | ✅ 端到端（start → 16s 就绪 → 200 → stop）+ per-session authority + `enter` 入口（§8.3 第 5 条） |
 | nginx 反代 | `lab-nginx-snippet.conf` | ✅ **配置形态已实测**（真实后端+镜像：enter 种 cookie → 页面/RPC/**WebSocket 101**/SSE/10.9MB 插件包/伪造凭据被拒/无会话回落 FoxCMS）；⚠️ **宿主机上尚未部署** |
 
@@ -333,26 +337,33 @@ Host 只能是 `medai.nju.edu.cn`）→ 采用等价形态：
    会**终止同一 location 里后续的 `set`**。
    边界：会话 cookie 只有一个 ⇒ **同一浏览器同时只能进一个工作台会话**。
 
-### 8.4 两条并行路径（2026-09-28 决定；详见设计文档 §2）
+### 8.4 两条并行路径 —— ✅ 均已收敛（路径 B 落地，2026-09-28）
 
-njuserver 的 QEMU vCPU 无 SSE4.2 → `sharp` 崩 → `dsh web` 起不来。
+njuserver 原先的 QEMU vCPU 无 SSE4.2 → `sharp` 崩 → `dsh web` 起不来。当时的对策：
 
-- **路径 A（已在用，零前置条件）**：profile 里禁 5 个插件
+- **路径 A（已退役）**：profile 里禁 5 个消费者插件
   （`server/workspace-image/profile/nju-lab-workspace/cordis.patch.yml`）。
-  代价：**无 UI 文件上传 / 附件显示 / 交付物面板 / 会话控制器**。
-  ⚠️ **升级 dsh 后必须重新核对插件 id 与依赖关系**（`dsh --profile web --dump-config`）。
-  注意：`attachment-local` 是 `attachments`/`fileUploads` 服务的**提供者**，单禁它会让消费者 pending 而启动失败，
-  必须连消费者一起禁。
-- **路径 B（待办）**：请管理员把该 VM 的 CPU 模型改为 `host-passthrough`（**需关机重启**，见 §2.1 注意③）。
-  完成后删掉那段 patch 即恢复完整功能。
+  代价是**无 UI 文件上传 / 附件显示 / 交付物面板 / 会话控制器**。
+  ⚠️ 该禁用段现已**删除**；文件里保留了注释形式的"恢复方法"——
+  **只在目标机器无 SSE4.2/POPCNT 时才需要它**。
+- **路径 B（✅ 已完成）**：VM 的 CPU 模型改为 `host-passthrough` 并重启
+  （`/proc/cpuinfo` = `INTEL(R) XEON(R) GOLD 6530`，含 sse4_2/popcnt/avx/avx2；
+  `require('sharp')` OK，libvips 8.18.6）→ 禁用段删除、**镜像已重建**，恢复完整功能。
+
+**验证口径（可复现）**：删段后 dsh web 于是就绪、无 pending；index 26279 → **28110** 字节，
+4 个 client 插件回到 UI 清单；`--dump-config` 的 `disabled: true` 从 **31 → 26**（全为 dsh 默认）；
+WebSocket 101、SSE 200 正常。
 
 ### 8.5 遗留清单（接手者按序看）
 
-1. **宿主机 nginx 未部署（最高优先，配置形态已实测）**：把 `lab-nginx-snippet.conf` 的三段
-   合并进去 —— ① `http{}` 的 `map $http_upgrade`（若已有则合并）与回落用的内部 FoxCMS server
-   （`listen 127.0.0.1:8081` + `include snippets/medai-foxcms.conf`）；② 主 server 的
-   `/lab/ws/` + `/api/` + `/plugins/` + `/open-in-app/` + `/__ws-auth-{strict,fallback}`
-   以及 `/api/project/` 例外。`nginx -t` 无误后 reload。
+1. **宿主机 nginx 未部署（最高优先，配置形态已实测）**：直接用仓库里两个**可落地片段**——
+   `deploy/nginx/medai-workspace-http.conf`（`http{}` 级）与
+   `deploy/nginx/medai-workspace-server.conf`（主 server 内），
+   步骤：`sudo cp deploy/nginx/*.conf /etc/nginx/snippets/` → 在 `nginx.conf` 的 `http{}` 加
+   `include /etc/nginx/snippets/medai-workspace-http.conf;` → 在 `sites-enabled/cms.conf` 的 server 里加
+   `include /etc/nginx/snippets/medai-workspace-server.conf;` → `sudo nginx -t && sudo systemctl reload nginx`。
+   （这两个片段已在容器里按**现网 cms.conf 的真实结构**拼装做过 `nginx -t` 校验，syntax ok。）
+   完整取舍说明见 `lab-nginx-snippet.conf` 与设计文档 §4.5.2。
 2. **独立域名/端口形态（形态 A）已确认不可得**（学生只能走 80 端口、Host 只能是 medai，
    2026-09-28 使用方确认）→ 现用 §8.3 第 5 条的 cookie 分流形态；将来若拿到域名/端口可切回形态 A。
 3. **浏览器实测未做**：禁掉 `session-controller` 对实验流程（claim → 开发 → 自测 → 提交）的实际影响**未知**。

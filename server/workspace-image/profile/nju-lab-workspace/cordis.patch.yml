@@ -1,13 +1,31 @@
 # NJU-Lab 平台侧工作台 profile 的 tweak 层（应用在每个 bundle 层之后）。
 #
-# 与「学生本地」profile（dsh/profiles/nju-lab-student）的差异只有一条：
-#   本 profile 额外禁用下面「SSE4.2 依赖链」一节，使 dsh web 能在 njuserver
-#   （QEMU vCPU，无 SSE4.2/POPCNT）上启动。
-#   详见 docs/DESIGN-2026-09-28-platform-workspace.md §2.2（路径 A）。
-#   CPU 修好后（同文档 §2.3 路径 B），删掉那一段即可恢复完整功能。
+# 与「学生本地」profile（`dsh/profiles/nju-lab-student`）的差异：**现在为零**。
 #
-# 行 id 与字段名均可用真实 dsh 核对：
-#   $ dsh --profile web --dump-config
+# 2026-09-28 该 VM 的 CPU 模型改为 host-passthrough（Xeon Gold 6530，有 SSE4.2/POPCNT/AVX2），
+# sharp 恢复正常，原先为绕开 sharp 而禁用 5 个插件的「路径 A」**已退役**
+# （见 docs/DESIGN-2026-09-28-platform-workspace.md §2.2 / §2.3）。
+# 实测：删掉该段后 dsh web 直接就绪、无 pending，被禁的 4 个 client 插件回到 UI 清单，
+# `dump-config` 里的 `disabled: true` 从 31（26 个 dsh 默认 + 我们 5 个）降回 26（全为 dsh 默认）。
+#
+# ⚠️ 若把工作台部署到**没有 SSE4.2/POPCNT** 的机器（例如旧的 QEMU vCPU），
+#    dsh web 会因 sharp 加载失败而起不来，此时需恢复下面这段（即"路径 A"）：
+#
+#   - id: attachment-local
+#     disabled: true
+#   - id: session-controller
+#     disabled: true
+#   - id: file-upload
+#     disabled: true
+#   - id: ui-attachment
+#     disabled: true
+#   - id: ui-deliverables
+#     disabled: true
+#
+# 为什么必须连消费者一起禁：`attachment-local` 是 `attachments`/`fileUploads` 服务的**提供者**，
+# 单禁它会令消费者永远 pending、dsh 判定"插件树加载失败"而退出。
+#
+# 行 id 与字段名均可用真实 dsh 核对：`dsh --profile web --dump-config`
 
 # 文件沙箱默认模式（与学生本地一致：最小权限）
 - id: sandbox-policy
@@ -23,25 +41,3 @@
 - id: permission
   config:
     defaultPreset: workspace-write
-
-# ---- 路径 A：绕开 sharp（njuserver CPU 无 SSE4.2）----
-#
-# attachment-local 依赖 sharp，其 prebuilt 二进制要求 x86-64-v2（SSE4.2/POPCNT），
-# 在 njuserver 上加载即崩、dsh 启动失败。
-#
-# 但它**不是可选功能开关** —— 它是 attachments / fileUploads 服务的提供者。
-# 禁掉提供者后，依赖这些服务的消费者会永远 pending，dsh 判定"插件树加载失败"而退出。
-# 因此必须把消费者一并禁掉（实测：禁这 5 个后 dsh web 正常启动、UI 主干完整）。
-#
-# ⚠️ 升级 dsh 后必须重新核对 id 与依赖关系：
-#     $ dsh --profile web --dump-config | grep -nE "attachment|session-controller|file-upload|deliverable"
-- id: attachment-local
-  disabled: true
-- id: session-controller
-  disabled: true
-- id: file-upload
-  disabled: true
-- id: ui-attachment
-  disabled: true
-- id: ui-deliverables
-  disabled: true
