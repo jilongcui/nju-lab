@@ -1,0 +1,47 @@
+# NJU-Lab 平台侧工作台 profile 的 tweak 层（应用在每个 bundle 层之后）。
+#
+# 与「学生本地」profile（dsh/profiles/nju-lab-student）的差异只有一条：
+#   本 profile 额外禁用下面「SSE4.2 依赖链」一节，使 dsh web 能在 njuserver
+#   （QEMU vCPU，无 SSE4.2/POPCNT）上启动。
+#   详见 docs/DESIGN-2026-09-28-platform-workspace.md §2.2（路径 A）。
+#   CPU 修好后（同文档 §2.3 路径 B），删掉那一段即可恢复完整功能。
+#
+# 行 id 与字段名均可用真实 dsh 核对：
+#   $ dsh --profile web --dump-config
+
+# 文件沙箱默认模式（与学生本地一致：最小权限）
+- id: sandbox-policy
+  config:
+    mode: workspace-write
+
+# 审批策略：工作台是学生在浏览器里交互，与学生本地一致走 ask
+- id: approval
+  config:
+    policy: ask
+
+# 权限预设默认值（不含 danger-full-access）
+- id: permission
+  config:
+    defaultPreset: workspace-write
+
+# ---- 路径 A：绕开 sharp（njuserver CPU 无 SSE4.2）----
+#
+# attachment-local 依赖 sharp，其 prebuilt 二进制要求 x86-64-v2（SSE4.2/POPCNT），
+# 在 njuserver 上加载即崩、dsh 启动失败。
+#
+# 但它**不是可选功能开关** —— 它是 attachments / fileUploads 服务的提供者。
+# 禁掉提供者后，依赖这些服务的消费者会永远 pending，dsh 判定"插件树加载失败"而退出。
+# 因此必须把消费者一并禁掉（实测：禁这 5 个后 dsh web 正常启动、UI 主干完整）。
+#
+# ⚠️ 升级 dsh 后必须重新核对 id 与依赖关系：
+#     $ dsh --profile web --dump-config | grep -nE "attachment|session-controller|file-upload|deliverable"
+- id: attachment-local
+  disabled: true
+- id: session-controller
+  disabled: true
+- id: file-upload
+  disabled: true
+- id: ui-attachment
+  disabled: true
+- id: ui-deliverables
+  disabled: true

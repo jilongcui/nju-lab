@@ -12,6 +12,7 @@ import { FilesModule } from './files/files.module';
 import { ProjectsModule } from './projects/projects.module';
 import { SubmissionsModule } from './submissions/submissions.module';
 import { UsersModule } from './users/users.module';
+import { WorkspaceModule } from './workspace/workspace.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { UsersModule } from './users/users.module';
     SubmissionsModule,
     DashboardModule,
     FilesModule,
+    WorkspaceModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

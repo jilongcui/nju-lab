@@ -1,0 +1,15 @@
+# Docker build context 排除项（只影响 docker build，不影响 git）
+#
+# 工作台镜像的 build context 是仓库根（要 copy dsh/nju-lab-client），
+# 不加排除项会把 server/ + web/ 的 node_modules 一起发给 daemon，构建极慢。
+
+**/node_modules
+**/dist
+.git
+.gitignore
+server/uploads
+server/.env
+*.tar.gz
+*.bak
+.venv
+__pycache__
