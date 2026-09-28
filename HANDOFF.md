@@ -357,10 +357,11 @@ njuserver 的 QEMU vCPU 无 SSE4.2 → `sharp` 崩 → `dsh web` 起不来。
    2026-09-28 使用方确认）→ 现用 §8.3 第 5 条的 cookie 分流形态；将来若拿到域名/端口可切回形态 A。
 3. **浏览器实测未做**：禁掉 `session-controller` 对实验流程（claim → 开发 → 自测 → 提交）的实际影响**未知**。
    **这是路径 A 能否上线的关键前提**——请在能开浏览器的机器上验证（本次只覆盖到 HTTP/WS/SSE 层，没跑 JS）。
-4. **前端入口页未做**：需要「进入实验环境」按钮（`web/src/pages/`），流程是
-   `POST /api/workspace/start` → 轮询 `GET /api/workspace/status` → 就绪后**导航到
-   `apiUrl('/api/workspace/enter?k=<wsKey>')`**（后端种 cookie + 302 到工作台首页；
-   不要直接打开容器 URL —— cookie 分流形态必须经这一步）。`directUrl` 只用于本机验证。
+4. ~~前端入口页~~ ✅ 已完成（2026-09-28）：`web/src/pages/student/Workspace.tsx`，
+   学生/教师菜单「实验环境」；`start` → 轮询 `status` → 就绪后导航到 `enterUrl`
+   （`apiUrl(info.enterUrl)`，后端种 cookie + 302 到工作台首页）→ `stop`。
+   ⚠️ **不要直接打开容器地址或 `publicBase`** —— cookie 分流形态必须经 enter 这一步。
+   **待浏览器实测**（与第 3 条一起做）。
 5. **容器未加固**：目前以 **root** 跑。生产前应加非 root、cap-drop、只读根。
 6. **平台 API 可达性未在真实链路验证**：容器在隔离网络里，需配 `WORKSPACE_PLATFORM_API`，
    后端会把它指到宿主网关（`host-gateway`，已实现）；但 claim/submit 是否真的通**没测过**。

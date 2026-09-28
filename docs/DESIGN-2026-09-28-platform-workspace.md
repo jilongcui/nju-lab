@@ -481,7 +481,7 @@ dsh 升级若新增别的**根路径前缀**，要在 nginx 补 location（当�
 | 3 | `server/src/submissions/docker-evaluation-runner.ts` | **抽取**通用容器编排能力供两处复用（限额/网络/白名单/挂载） | 中，属重构 | ✅ 已完成（`server/src/container-runtime/`） |
 | 4 | `server/verify-image/egress-proxy/nginx.conf` | 白名单加上平台自身 API 地址 | 小 | ⏳ 待办（§8.5-5） |
 | 5 | 宿主 nginx（`cms.conf` + `snippets/`） | 形态 B：`/lab/ws/` 页面 location + `/api/`、`/plugins/`、`/open-in-app/` 三个 cookie 分流 location + 两个 internal auth + FoxCMS 回落内部 server | 中 | ✅ 配置形态已实测（`lab-nginx-snippet.conf`）；**宿主机上尚未部署** |
-| 6 | `web/` 前端 | 新增「进入实验环境」入口页（启动/轮询/进入/结束）——进入即导航到 `apiUrl('/api/workspace/enter?k=<wsKey>')` | 小 | ⏳ 待办（§8.5-3） |
+| 6 | `web/` 前端 | 「进入实验环境」入口页（启动/轮询/进入/结束）——进入即导航到 `apiUrl(info.enterUrl)` | 小 | ✅ 已完成（`web/src/pages/student/Workspace.tsx`，含学生/教师菜单）；浏览器实测待做 |
 | 7 | `/etc/systemd/system/nju-lab.service` | 确认 `docker.sock` 访问权限（workspace 模块要调 docker） | 小 | ✅ 已具备 |
 | 8 | `server/src/workspace/workspace.service.ts` + `workspace.config.ts` | **per-session 对外 authority**：`WORKSPACE_PUBLIC_BASE` 支持 `{key}`，展开后自动进容器的 `--trusted-host`；`wsKey` 改 16 字节 hex（大小写安全） | 小 | ✅ 已完成（2026-09-28 反代实测导出，见 §4.5.1） |
 | 9 | `server/src/workspace/workspace.controller.ts` + `workspace.service.ts` | 反代入口 `GET /api/workspace/enter?k=<wsKey>`：种会话 cookie（`nju_ws`）+ 302 到工作台首页；`proxy-auth` 增加 `mode=fallback`（查不到会话 → 204 无 header，供 nginx 回落） | 小 | ✅ 已完成并实测（形态 B 必需，见 §4.5.2） |
@@ -537,7 +537,9 @@ dsh 升级若新增别的**根路径前缀**，要在 nginx 补 location（当�
 
 1. **在浏览器里跑通一次完整实验流程**（claim → 开发 → 自测 → 提交）——验证 `session-controller`
    缺失的实际影响。**这是路径 A 能否真正上线的关键前提。**
-   本次反代实测只覆盖 HTTP/WS/SSE 层与静态资源，**没有跑过 JS**（无浏览器）。
+   入口页已就绪（§6 第 6 项），落到宿主机后即可测：启动 → 等待 → 进入 →
+   看 Network 里 `/api/**` 与 WS `/api/remote.mux` 是否 101，并顺带确认 FoxCMS 主站不受影响。
+   ⚠️ 本次反代实测只覆盖 HTTP/WS/SSE 层与静态资源，**没有跑过 JS**（无浏览器）。
 2. 并发 15-30 个 **web** 进程（而非 headless）的真实内存/CPU——§5.1 的 web 数据只有空闲态
 3. nginx 反代形态 ✅ 已实测（§4.4 / §4.5.2，含 cookie 分流与"无会话流量回落"回归）；
    **仍未落地到宿主机**：需把 `lab-nginx-snippet.conf` 的三段（http{} 的 map + 内部 FoxCMS server、
