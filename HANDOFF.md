@@ -414,8 +414,12 @@ WebSocket 101、SSE 200 正常。
 3. **浏览器实测** —— 🟢 **2026-09-29：兜底环境在浏览器中已真正可用**：
    **领取任务（claim）与对话交互由使用方验证通过** ✅（路径 B + 容器内 WS 网桥之后，
    原先缺的会话控制器/文件上传等插件都回来了，不再有"路径 A 缺功能"的问题）。
-   **仍待跑**：`开发 → 自测 → **提交 → 平台复验**`这一段（DB 里最后一条 submission 仍是
-   2026-09-21 的本地 DSH 验收数据）。提交成功后会起一次性复验容器（`DockerEvaluationRunner`）。
+   **已完成**：`开发 → 自测 → **提交**` ✅ —— 2026-09-28 23:15~23:18 由使用方提交三次
+   （v3/v4/v5），`POST /lab/api/files` ×2 + `POST /lab/api/assignments/<id>/submit` 全部 **201**，
+   DB 三条 `submitted` 记录齐全（skillZipRef/capsuleRef 均为真实上传文件）。
+   **仍待**：「教师触发复验 → 平台跑真实容器评估」这一段**尚未跑**
+   （入口 `POST /api/submissions/:id/verify`，须课程 owner 教师或 admin 触发；
+   `.env` 的 `DEEPSEEK_API_KEY`/`MOONSHOT_API_KEY` 与 runner 的透传已核对就绪，随时可跑）。
 4. ~~前端入口页~~ ✅ 已完成（2026-09-28）：`web/src/pages/student/Workspace.tsx`，
    学生/教师菜单「实验环境」；`start` → 轮询 `status` → 就绪后导航到 `enterUrl`
    （`apiUrl(info.enterUrl)`，后端种 cookie + 302 到工作台首页）→ `stop`。
