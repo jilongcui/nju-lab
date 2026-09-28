@@ -549,6 +549,7 @@ export default function CourseDetail() {
       >
         <Table<RosterRow>
           rowKey="key"
+          scroll={{ x: 900 }}
           dataSource={roster}
           pagination={false}
           locale={{ emptyText: <Empty description="暂无报名申请或学生" /> }}
@@ -556,6 +557,7 @@ export default function CourseDetail() {
             {
               title: '学生',
               key: 'student',
+              width: 175,
               render: (_, r) => (
                 <Space>
                   <Text>{r.nickname || r.username}</Text>
@@ -566,7 +568,7 @@ export default function CourseDetail() {
             {
               title: '状态',
               dataIndex: 'state',
-              width: 120,
+              width: 110,
               render: (state: RosterState, r) => (
                 <Space direction="vertical" size={0}>
                   <Tag color={ROSTER_META[state].color}>{ROSTER_META[state].text}</Tag>
@@ -581,22 +583,22 @@ export default function CourseDetail() {
             {
               title: '申请时间',
               dataIndex: 'appliedAt',
-              width: 170,
-              render: (v: string | null) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-'),
+              width: 160,
+              render: (v: string | null) => (v ? <span style={{ whiteSpace: 'nowrap' }}>{dayjs(v).format('YYYY-MM-DD HH:mm')}</span> : '-'),
             },
             {
               title: '加入时间',
               dataIndex: 'joinedAt',
-              width: 170,
-              render: (v: string | null) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm') : '-'),
+              width: 160,
+              render: (v: string | null) => (v ? <span style={{ whiteSpace: 'nowrap' }}>{dayjs(v).format('YYYY-MM-DD HH:mm')}</span> : '-'),
             },
             {
               title: '审批说明',
               key: 'note',
               render: (_, r) =>
-                r.decisionNote || r.decidedAt ? (
+                r.decisionNote ? (
                   <Space direction="vertical" size={0}>
-                    <Text>{r.decisionNote || '-'}</Text>
+                    <Text>{r.decisionNote}</Text>
                     <Text type="secondary" style={{ fontSize: 12 }}>
                       {formatDateTime(r.decidedAt)}
                     </Text>
@@ -608,7 +610,7 @@ export default function CourseDetail() {
             {
               title: '操作',
               key: 'action',
-              width: 180,
+              width: 150,
               render: (_, r) => {
                 if (r.state === 'pending') {
                   return (
