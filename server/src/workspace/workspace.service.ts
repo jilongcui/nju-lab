@@ -195,16 +195,57 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
    * ⚠️ 这是**能力凭证**语义（`wsKey` 为 16 字节 hex、仅在会话存活期内有效）。
    * 之所以不在这里校验平台 JWT：浏览器是**直接导航**到工作台 URL 的，
    * 带不上 `Authorization` 头。取舍详见设计文档 §4.6。
+   *
+   * **严格语义**（页面入口用）：查不到/未就绪一律 403 —— 伪造 key 必须被拒。
    */
   resolveUpstream(wsKey: string): string {
+    const upstream = this.resolveUpstreamOrNull(wsKey);
+    if (upstream) return upstream;
     for (const s of this.sessions.values()) {
       if (s.wsKey !== wsKey) continue;
-      if (s.status === 'failed') throw new ForbiddenException('工作台启动失败');
-      if (!s.containerIp) throw new ForbiddenException('工作台尚未就绪');
+      throw new ForbiddenException(
+        s.status === 'failed' ? '工作台启动失败' : '工作台尚未就绪',
+      );
+    }
+    throw new ForbiddenException('工作台会话不存在或已回收');
+  }
+
+  /**
+   * 同 `resolveUpstream`，但**查不到会话时返回 `null` 而不是抛错**。
+   *
+   * 用途：nginx 把 dsh 写死的**根路径前缀**（`/api/**`、`/plugins/**`、`/open-in-app/**`）
+   * 按 cookie 分流到工作台容器 —— 但同一个 server 上还跑着 FoxCMS/dify，
+   * 它们自己的请求（没有工作台 cookie，或 cookie 已过期）必须能**原样回落**到原来的
+   * location。所以这种场景下"无会话"是正常结果，不是错误（→ 204 + 无 header）。
+   */
+  resolveUpstreamOrNull(wsKey: string): string | null {
+    if (!wsKey) return null;
+    for (const s of this.sessions.values()) {
+      if (s.wsKey !== wsKey) continue;
+      if (s.status !== 'running' || !s.containerIp) return null;
       s.lastSeenAt = Date.now();
       return `${s.containerIp}:${WORKSPACE_CONTAINER_PORT}`;
     }
-    throw new ForbiddenException('工作台会话不存在或已回收');
+    return null;
+  }
+
+  /**
+   * 反代入口（「cookie 分流」形态）：校验会话并返回 dsh 的 launch token。
+   *
+   * 调用方（`WorkspaceController.enter`）据此种下会话 cookie 并 302 到工作台首页。
+   * 之所以要这一步，而不是让浏览器直接打开 `?token=…`：dsh 写死的根路径请求
+   * （`/api/**`、`/plugins/**`、`/open-in-app/**`）里没有会话标识，nginx 只能按
+   * cookie 认领容器 —— 首次进入必须先有 cookie。详见设计文档 §4.5.2。
+   */
+  enter(wsKey: string): { token: string } | null {
+    if (!wsKey) return null;
+    for (const s of this.sessions.values()) {
+      if (s.wsKey !== wsKey) continue;
+      if (s.status !== 'running' || !s.token) return null;
+      s.lastSeenAt = Date.now();
+      return { token: s.token };
+    }
+    return null;
   }
 
   // ---------- 内部 ----------

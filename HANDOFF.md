@@ -266,18 +266,26 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 - ⚠️ 受限会话（含 agent）带 `no_new_privs`，`sudo` 无法提权，跑不了 `systemctl restart` 等需 root 的操作；这类步骤一律在持有 sudo 的终端执行
 - 前后端联调纪律见第 3.3 条；每完成一块同步更新 `nju-lab-craft.md` §13 与本 HANDOFF，代码提交进 git（main 分支）
 
-## 8. 平台侧实验工作台 —— 🚧 反代形态已定案并实测；浏览器 / 真实部署待办（2026-09-28）
+## 8. 平台侧实验工作台 —— 🚧 反代形态定案（单 Host + cookie 分流）并实测；浏览器 / 真实部署待办（2026-09-28）
 
 ### 8.1 一句话
 
 给「本地装不上 DSH」的学生提供浏览器即可用的实验环境（一人一容器，单用户单会话）。
 **设计文档必读**：`docs/DESIGN-2026-09-28-platform-workspace.md`（含两条并行路径与全部取舍）。
 
-**当前状态（2026-09-28 二次更新）**：后端 + 容器 + **nginx 反代**已端到端实测通过
-（HTTP / 303 鉴权交换 / 静态资源 / 插件包 / RPC / **WebSocket 101** / SSE / 越权拦截）；
-反代**路径形态定案**：子路径 `/lab/ws/<key>/` 已**证伪**，改为「每人一个子域 authority」（§8.3 第 4 条）。
-**仍缺**：① 浏览器里跑通完整实验流程；② 前端入口页；③ 宿主机 nginx 真实部署
-（需先落实**泛子域 DNS + 泛证书**，见 §8.5 第 1 条）。
+**当前状态（2026-09-28 三次更新）**：后端 + 容器 + **nginx 反代**已端到端实测通过
+（`enter` 种 cookie → 页面 200 / 静态资源 / 10.9MB 插件包 / RPC / **WebSocket 101** / SSE /
+伪造 cookie-key 被拒 / 无会话流量原样回落 FoxCMS）。
+
+**反代形态定案（关键）**：原设计的朴素子路径 `/lab/ws/<key>/` **已证伪**（dsh 的运行时路径
+锚定 origin 根，§8.3 第 4 条）；而「独立域名/端口」在 medai 上**不可得**（学生只能走 80 端口、
+Host 只能是 `medai.nju.edu.cn`）→ 采用等价形态：
+
+> **页面认路径**（`/lab/ws/<wsKey>/…`）+ **dsh 写死的根路径认 cookie**
+> （`/api/**`、`/plugins/**`、`/open-in-app/**` 由会话 cookie `nju_ws` 认领容器，
+> **没有会话的流量原样回落 FoxCMS**）。cookie 由后端 `GET /lab/api/workspace/enter?k=<wsKey>` 种下。
+
+**仍缺**：① 浏览器里跑通完整实验流程；② 前端入口页；③ 宿主机 nginx 真实部署（§8.5 第 1、2 条）。
 
 ### 8.2 已完成
 
@@ -285,14 +293,14 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 |---|---|---|
 | 通用容器运行时 | `server/src/container-runtime/` | ✅ 复验行为**逐字节等价**（假 docker 对比 HEAD 与现状） |
 | 工作台镜像 | `server/workspace-image/` | ✅ 端到端（起容器 → dsh web → 200 + UI 主干加载） |
-| 工作台后端 | `server/src/workspace/` | ✅ 端到端（start → 16s 就绪 → 200 → stop）+ per-session authority（§8.3 第 4 条） |
-| nginx 反代 | `lab-nginx-snippet.conf` | ✅ **配置形态已实测**（真实后端+镜像，含 WebSocket 101/SSE/RPC/越权）；⚠️ **宿主机上尚未部署**（需泛子域 DNS/证书） |
+| 工作台后端 | `server/src/workspace/` | ✅ 端到端（start → 16s 就绪 → 200 → stop）+ per-session authority + `enter` 入口（§8.3 第 5 条） |
+| nginx 反代 | `lab-nginx-snippet.conf` | ✅ **配置形态已实测**（真实后端+镜像：enter 种 cookie → 页面/RPC/**WebSocket 101**/SSE/10.9MB 插件包/伪造凭据被拒/无会话回落 FoxCMS）；⚠️ **宿主机上尚未部署** |
 
 > 反代实测方式（可复现）：临时后端实例（`PORT=3000 npx ts-node -T src/main.ts`，
 > 带 `WORKSPACE_PUBLIC_BASE='http://{key}.ws-test.local:18080'`）+ 容器内 nginx
 > （`--resolve` 模拟子域）+ `curl`。测完的临时 nginx 与容器均已回收。
 
-### 8.3 五条实测结论（踩过，别再踩）
+### 8.3 六条实测结论（踩过，别再踩）
 
 1. **`--internal` 网络的容器不会建立端口发布** —— `docker run -p` **静默失效**（`docker port` 为空）。
    对外访问**只能走容器 IP**（宿主对 `br-xxxx` 的 `172.18.0.1/16` 有直连路由）。
@@ -306,14 +314,24 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
    WebSocket `wss://<origin>/api/remote.mux`、SSE `/plugins/events`、插件包 `/plugins/??…`。
    子路径 `/lab/ws/<key>/` 下页面**能开**（`sub_filter` 改写 HTML 生效），但这些绝对路径会打到
    宿主根 `/api`（njuserver 上是 dify → **502**）/404 → **功能全废**。
-   → 改为**每会话独占一个 authority**：`https://<wsKey>.<工作台域>/`（配置见 `lab-nginx-snippet.conf`；
-   前置条件：**泛子域 DNS + 泛证书**）。
+   → 「每会话独占一个 authority」（子域/独立端口）是最干净的通用解，但 medai 上不可得
+   （见第 6 条）；配置形态见 `lab-nginx-snippet.conf` 注释（形态 A / 形态 B 都写在里面）。
 5. **`Host` 必须传外部 authority，`wsKey` 必须大小写安全**（同上实测）：
    - nginx `proxy_set_header Host $http_host`（**不能传容器 IP**）：dsh 的 WebSocket 会校验
      `Origin` 与它看到的 `Host` 是否受信任 —— 传容器 IP 时 HTTP 全通、**WebSocket 一律 403**；
      同时后端要按 `WORKSPACE_PUBLIC_BASE` 的 `{key}` 把该 authority 传进容器的 `--trusted-host`。
    - `wsKey` 作为**子域**出现，而 URL 规范/浏览器/`new URL().host` 都会把 hostname 小写化：
      用 base64url 时 key 被改写 → `auth_request` 查不到会话 → **403**。现用 16 字节 hex。
+6. **单 Host（medai）下的定案形态：页面认路径 + 根路径认 cookie**（2026-09-28 实测）：
+   独立域名/端口不可得（学生只能走 80 端口、Host 只能是 medai），于是把会话标识**拆成两半** ——
+   页面 `/lab/ws/<wsKey>/…` 用**路径**里的 key；dsh 写死的 `/api/**`、`/plugins/**`、
+   `/open-in-app/**` 用**会话 cookie**（`nju_ws`，由后端 `GET /lab/api/workspace/enter?k=<wsKey>` 种下）
+   认领容器；**没有会话的流量回落原系统**（204 无 header → FoxCMS，dify/FoxCMS 完全不受影响）。
+   三个 nginx 坑（都实测踩过）：① `auth_request` 的 URI **不支持变量**（→ 让 auth 子请求
+   自己读 `$cookie_…`）；② **不能用 `if` 判断 auth 结果**（`if` 在 rewrite 阶段、
+   `auth_request_set` 在 access 阶段 → 恒为空，必须用 `map` 惰性求值）；③ `rewrite … break`
+   会**终止同一 location 里后续的 `set`**。
+   边界：会话 cookie 只有一个 ⇒ **同一浏览器同时只能进一个工作台会话**。
 
 ### 8.4 两条并行路径（2026-09-28 决定；详见设计文档 §2）
 
@@ -330,19 +348,19 @@ njuserver 的 QEMU vCPU 无 SSE4.2 → `sharp` 崩 → `dsh web` 起不来。
 
 ### 8.5 遗留清单（接手者按序看）
 
-1. **泛子域 DNS + 泛证书 —— 新的最高优先项，决定工作台能否上线**：反代形态要求每会话一个
-   authority（`<wsKey>.<工作台域>`，见 §8.3 第 4 条）。njuserver 的对外入口是校园网关按 **Host**
-   分发的 `medai.nju.edu.cn`（§2.1）——**子域能否被网关/校内 DNS 放行、证书怎么签须先确认**；
-   若不行，备选是换一台可自控 Host 与证书的机器承载工作台（与设计文档 §7「换机器」一并考虑）。
-2. **宿主机 nginx 未部署**（配置形态本身**已实测**，见 §8.2）：把 `lab-nginx-snippet.conf` 的工作台段
-   落到 `sites-enabled`（**独立 server 块 + `http{}` 里的两个 `map`**）。
-   ⚠️ 实测纠正：**不再需要** `proxy_redirect` / `sub_filter`（根路径语义天然正确），
-   但必须 `proxy_set_header Host $http_host`，否则 WebSocket 403。
+1. **宿主机 nginx 未部署（最高优先，配置形态已实测）**：把 `lab-nginx-snippet.conf` 的三段
+   合并进去 —— ① `http{}` 的 `map $http_upgrade`（若已有则合并）与回落用的内部 FoxCMS server
+   （`listen 127.0.0.1:8081` + `include snippets/medai-foxcms.conf`）；② 主 server 的
+   `/lab/ws/` + `/api/` + `/plugins/` + `/open-in-app/` + `/__ws-auth-{strict,fallback}`
+   以及 `/api/project/` 例外。`nginx -t` 无误后 reload。
+2. **独立域名/端口形态（形态 A）已确认不可得**（学生只能走 80 端口、Host 只能是 medai，
+   2026-09-28 使用方确认）→ 现用 §8.3 第 5 条的 cookie 分流形态；将来若拿到域名/端口可切回形态 A。
 3. **浏览器实测未做**：禁掉 `session-controller` 对实验流程（claim → 开发 → 自测 → 提交）的实际影响**未知**。
    **这是路径 A 能否上线的关键前提**——请在能开浏览器的机器上验证（本次只覆盖到 HTTP/WS/SSE 层，没跑 JS）。
 4. **前端入口页未做**：需要「进入实验环境」按钮（`web/src/pages/`），流程是
-   `POST /api/workspace/start` → 轮询 `GET /api/workspace/status` → 就绪后打开 **`publicBase`**
-   （已按 `{key}` 展开成 `https://<wsKey>.<域>`）+ `?token=…`；`directUrl` 只用于本机验证。
+   `POST /api/workspace/start` → 轮询 `GET /api/workspace/status` → 就绪后**导航到
+   `apiUrl('/api/workspace/enter?k=<wsKey>')`**（后端种 cookie + 302 到工作台首页；
+   不要直接打开容器 URL —— cookie 分流形态必须经这一步）。`directUrl` 只用于本机验证。
 5. **容器未加固**：目前以 **root** 跑。生产前应加非 root、cap-drop、只读根。
 6. **平台 API 可达性未在真实链路验证**：容器在隔离网络里，需配 `WORKSPACE_PLATFORM_API`，
    后端会把它指到宿主网关（`host-gateway`，已实现）；但 claim/submit 是否真的通**没测过**。

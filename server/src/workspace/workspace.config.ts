@@ -82,3 +82,15 @@ export const WORKSPACE_PUBLIC_BASE = process.env.WORKSPACE_PUBLIC_BASE || '';
 /** `WORKSPACE_PUBLIC_BASE` 里的会话键占位符 */
 export const WORKSPACE_PUBLIC_BASE_KEY_PLACEHOLDER = '{key}';
 
+
+/**
+ * 反代路径前缀（「cookie 分流」形态用）：必须与 nginx 的 location 前缀一致
+ * （`lab-nginx-snippet.conf`）。入口 `/api/workspace/enter` 会把浏览器跳到这里。
+ */
+export const WORKSPACE_PROXY_PATH = process.env.WORKSPACE_PROXY_PATH || '/lab/ws';
+
+/**
+ * 会话 cookie 名。必须与 nginx 里的 `$cookie_<name>` 一致 ——
+ * nginx 的变量名不允许 `-`，所以用下划线（`nju_ws` ↔ `$cookie_nju_ws`）。
+ */
+export const WORKSPACE_SESSION_COOKIE = 'nju_ws';

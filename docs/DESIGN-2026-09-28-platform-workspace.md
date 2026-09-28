@@ -6,13 +6,15 @@
 > 两条路**都以"容器内转发"为前提**（dsh 硬禁 `--host 0.0.0.0`，与 CPU 无关），该机制**已实测通过**（§4.4）。
 > 标 **[已实测]** 的结论均在本机验证过，标 **[待验证]** 的尚需验证。
 >
-> ⚠️ **2026-09-28 反代实测的重要更正**：早期版本设想的 `https://<域>/lab/ws/<session>/`
-> **子路径形态已被实测证伪**（§4.5）——浏览器里的 dsh 把运行时路径全部锚定在 **origin 根**
-> （`/api/…`、`/api/remote.mux`、`/plugins/events`、`/plugins/??…`），nginx 改不动这些运行时
-> 拼接。正确形态是**每个会话独占一个 authority**：`https://<wsKey>.<工作台域>/`（子域根路径），
-> 并且 nginx 必须把**外部 authority** 作为 `Host` 转给容器（否则 WebSocket 一律 403）。
-> 该形态已用真实镜像 + 真实后端 + nginx 反代端到端实测通过（HTTP/静态资源/插件包/SSE/WebSocket/
-> 越权拦截），**新增前置条件**：泛子域 DNS 解析 + 覆盖泛子域的证书（§4.5 末）。
+> ⚠️ **2026-09-28 反代实测的两次更正**：
+> ① 原设计的「朴素子路径」`https://<域>/lab/ws/<session>/` **被实测证伪**（§4.5.1）——
+>    浏览器里的 dsh 把运行时路径全锚定在 **origin 根**（`/api/…`、`/api/remote.mux`、
+>    `/plugins/events`、`/plugins/??…`），nginx 改不动这些运行时拼接。
+> ② 又因「只有一个域名、学生只能走 80」（§4.5.1 形态 A 的前置条件不可得，2026-09-28 确认），
+>    最终采用 **形态 B：路径认页面 + cookie 认根路径** —— `medai.nju.edu.cn/lab/ws/<wsKey>/`。
+>    **已端到端实测通过**：`enter`（种 cookie）→ 页面 200、RPC、**WebSocket 101**、SSE、
+>    10.9 MB 插件包、伪造 cookie/key 被拒，且**没有会话的流量原样回落 FoxCMS**（回归保护）。
+>    详见 §4.5.2；若将来拿到独立域名或端口，可切回更简单的**形态 A（独占 authority）**。
 >
 > 关联：`HANDOFF.md` §2.1 · `docs/OPS-2026-09-28-storage-expansion.md` · `nju-lab-craft.md`
 
@@ -316,7 +318,7 @@ docker run --network <internal> -p 127.0.0.1:21000:9090 ...
 nginx 只能改**响应体文本**（`sub_filter`）与**重定向头**（`proxy_redirect`），改不了运行时用
 `location.origin` 拼出来的字符串。实测对照（同一个 nginx，两种 server 形态）：
 
-| 客户端真实行为 | 子路径 `/lab/ws/<key>/` | 独占 authority `<key>.<域>/` |
+| 客户端真实行为 | 朴素子路径 `/lab/ws/<key>/` | 独占 authority `<key>.<域>/` |
 |---|---|---|
 | `GET …?token=…`（入口交换） | ✅ 303（改回带前缀） | ✅ 303（原生 `location: /`，无需改写） |
 | `GET` 带 cookie | ✅ 200，`sub_filter` 也成功改了 `<base href>` 与 `"/plugins` | ✅ 200（原生正确） |
@@ -324,21 +326,70 @@ nginx 只能改**响应体文本**（`sub_filter`）与**重定向头**（`proxy
 | `/plugins/events`（绝对路径） | ❌ 404 | ✅ 200 `text/event-stream` |
 | `wss://…/api/remote.mux` | ❌ 同一原因必失败 | ✅ 101 |
 
-**结论**：工作台必须**独占一个 authority** → `https://<wsKey>.<工作台域>/`。
-一人一子域；nginx 从 `Host` 取 `wsKey` → `auth_request` → `proxy_pass`（见 `lab-nginx-snippet.conf`）。
+**结论（两条路，都已实测）**：
 
-⚠️ **由此新增的部署前置条件（不落实则该形态上不了线）**：
+- **形态 A：独占 authority** —— `https://<wsKey>.<工作台域>/` 或 `http://<IP>:<端口>/`。
+  最干净：dsh 的根路径假设天然成立，nginx 一行不用改。需下面的前置条件。
+- **形态 B：单 Host + 路径 + cookie 分流** —— `medai.nju.edu.cn/lab/ws/<wsKey>/`。
+  在「只有一个域名、只有 80 端口」的约束下的可行解：**页面用路径认、dsh 写死的根路径用
+  cookie 认**，没有会话 cookie 的流量**原样回落**原系统。已实测通过，见 §4.5.2。
 
-1. **泛子域 DNS**：`*.<工作台域>` 解析到宿主。
-   ⚠️ njuserver 的对外入口是校园网关按 **Host** 分发的 `medai.nju.edu.cn`（见 `HANDOFF` §2.1），
-   子域能否被网关/校内 DNS 放行**须在真实链路上确认**；若不行，备选是换一台可自控
-   Host 与证书的机器承载工作台（与 §7 的"换机器"选项合并考虑）。
-2. **证书**：覆盖 `*.<工作台域>`。否则 `?token=` 会明文过链路（这是**唯一的**凭证）。
+**形态 A 的部署前置条件**（不满足就走形态 B）：
+
+1. **一个可用的 Host 或端口**：`*.<工作台域>` 泛解析，或单个子域，或一个可达端口。
+   ⚠️ njuserver 的对外入口是校园网关按 **Host** 分发的 `medai.nju.edu.cn`（`HANDOFF` §2.1），
+   且学生侧只能走 80（2026-09-28 确认）→ 该形态**当前不可得**，实际部署用形态 B。
+2. **证书**：覆盖该域。否则 `?token=` 会明文过链路（它是**唯一的**凭证）。
 3. 后端 `WORKSPACE_PUBLIC_BASE=https://{key}.<工作台域>`（`{key}` 必填，见 `workspace.config.ts`）。
 
 ⚠️ **wsKey 必须是大小写安全编码**（现为 16 字节 hex）：它作为**子域**出现，而 URL 规范与浏览器
 都会把 hostname 小写化（`new URL(...).host` 亦然）。用 base64url 时 key 会被改写，
 `auth_request` 拿小写 key 查不到会话 → 一律 403（实测踩过）。
+
+### 4.5.2 形态 B：单 Host + cookie 分流（medai 实际采用）**[已实测 2026-09-28]**
+
+前提：只有一个域名（`medai.nju.edu.cn`）、学生只能走 80（2026-09-28 由使用方确认）。
+思路是把**会话标识拆成两半**：
+
+| 请求 | 会话标识来自 | nginx 怎么做 |
+|---|---|---|
+| 页面与静态资源 `/lab/ws/<key>/…` | **URL 路径**里的 key | 去前缀 + `auth_request`（严格：伪造 key → 403） |
+| dsh 写死的根路径 `/api/**`、`/plugins/**`、`/open-in-app/**` | **会话 cookie**（`nju_ws`） | `auth_request`（回落：无/无效会话 → 204 无 header → 交给 FoxCMS） |
+
+cookie 由后端 `GET /api/workspace/enter?k=<wsKey>` 种下（302 到 `/lab/ws/<key>/?token=…`），
+前端「进入实验环境」直接导航到这个端点（见 `WorkspaceController.enter`）。
+
+实测结果（真实后端 + 真实工作台镜像 + 复刻 medai 骨架的 nginx）：
+
+| 场景 | 结果 |
+|---|---|
+| 无 cookie：`/api/project/list` | ✅ 仍归 FoxCMS（它的 api 子应用，精确前缀例外） |
+| 无 cookie：`/api/x`、`/plugins/*.js`、`/open-in-app/apps` | ✅ 原样回落 FoxCMS（回归保护） |
+| 无 cookie：`/lab/` | ✅ 现有平台 SPA 不受影响 |
+| `enter` → 页面 → 首页 | ✅ `302（种 cookie）→ 303 → 200`，`<base href>` 被改写为带前缀 |
+| 带 cookie：`/lab/ws/<key>/assets/*.js` | ✅ 200 |
+| 带 cookie：`POST /api/<endpoint>` | ✅ 到达 dsh（回 404 `not found`） |
+| 带 cookie：`/api/remote.mux`（WebSocket） | ✅ **101 Switching Protocols** |
+| 带 cookie：`/plugins/events`（SSE） | ✅ 200 `text/event-stream` |
+| 带 cookie：`/plugins/??…`（49 bundle 合并，10.9 MB） | ✅ 200 |
+| 带 cookie：`/api/project/list` | ✅ **仍归 FoxCMS**（更长前缀优先） |
+| 伪造 cookie：`/api/x` | ✅ 回落 FoxCMS（拿不到容器） |
+| 伪造 key：`/lab/ws/<伪key>/` | ✅ 403 |
+
+⚠️ **三个 nginx 细节必须记住**（都踩过、都由实测确认）：
+
+1. **`auth_request` 的 URI 不支持变量**（按字面量处理）→ 只能让 auth 子请求**自己再读一次**
+   会话标识。子请求能看到父请求的**头**（`$cookie_*` / `$http_*` ✅），
+   但 `$uri` 是子请求自己的（❌ 用 `map $uri` 取 key 必为空）。
+2. **不能用 `if` 判断 auth 结果**：`if` 在 rewrite 阶段，而 `auth_request_set` 在 access 阶段
+   → 判断恒为空。必须用 `map`（惰性求值，到 `proxy_pass` 才取值）做
+   「有会话 → 容器 / 无会话 → FoxCMS」。
+3. **`rewrite … break` 会终止同一 location 里后续的 rewrite 指令（含 `set`）**；
+   另外 cookie 名必须用**下划线**（`nju_ws` ↔ `$cookie_nju_ws`，nginx 变量名不允许 `-`）。
+
+**已知边界**：会话 cookie 只有一个 → 同一浏览器同时只能进一个工作台会话
+（一人一浏览器可接受；多人共用一台机器时后进者会顶掉前一个）。
+dsh 升级若新增别的**根路径前缀**，要在 nginx 补 location（当前只有 `/api`、`/plugins`、`/open-in-app`）。
 
 ### 4.6 鉴权（第一优先级，不可省）
 
@@ -429,10 +480,11 @@ nginx 只能改**响应体文本**（`sub_filter`）与**重定向头**（`proxy
 | 2 | `server/src/workspace/`（新建） | workspace 模块：起停容器、就绪探测、空闲回收、孤儿清理 | 中，可大量参考 `docker-evaluation-runner.ts` | ✅ 已完成并实测 |
 | 3 | `server/src/submissions/docker-evaluation-runner.ts` | **抽取**通用容器编排能力供两处复用（限额/网络/白名单/挂载） | 中，属重构 | ✅ 已完成（`server/src/container-runtime/`） |
 | 4 | `server/verify-image/egress-proxy/nginx.conf` | 白名单加上平台自身 API 地址 | 小 | ⏳ 待办（§8.5-5） |
-| 5 | 宿主 nginx | 工作台 **独立 server 块**（子域 + `auth_request` + 动态 `proxy_pass`） | 小 | ✅ 配置形态已实测（`lab-nginx-snippet.conf`）；**宿主机上尚未部署** |
-| 6 | `web/` 前端 | 新增「进入实验环境」入口页（启动/轮询/进入/结束） | 小 | ⏳ 待办（§8.5-3） |
+| 5 | 宿主 nginx（`cms.conf` + `snippets/`） | 形态 B：`/lab/ws/` 页面 location + `/api/`、`/plugins/`、`/open-in-app/` 三个 cookie 分流 location + 两个 internal auth + FoxCMS 回落内部 server | 中 | ✅ 配置形态已实测（`lab-nginx-snippet.conf`）；**宿主机上尚未部署** |
+| 6 | `web/` 前端 | 新增「进入实验环境」入口页（启动/轮询/进入/结束）——进入即导航到 `apiUrl('/api/workspace/enter?k=<wsKey>')` | 小 | ⏳ 待办（§8.5-3） |
 | 7 | `/etc/systemd/system/nju-lab.service` | 确认 `docker.sock` 访问权限（workspace 模块要调 docker） | 小 | ✅ 已具备 |
 | 8 | `server/src/workspace/workspace.service.ts` + `workspace.config.ts` | **per-session 对外 authority**：`WORKSPACE_PUBLIC_BASE` 支持 `{key}`，展开后自动进容器的 `--trusted-host`；`wsKey` 改 16 字节 hex（大小写安全） | 小 | ✅ 已完成（2026-09-28 反代实测导出，见 §4.5.1） |
+| 9 | `server/src/workspace/workspace.controller.ts` + `workspace.service.ts` | 反代入口 `GET /api/workspace/enter?k=<wsKey>`：种会话 cookie（`nju_ws`）+ 302 到工作台首页；`proxy-auth` 增加 `mode=fallback`（查不到会话 → 204 无 header，供 nginx 回落） | 小 | ✅ 已完成并实测（形态 B 必需，见 §4.5.2） |
 
 > 第 3 项是关键：**不要让工作台复制一份容器编排逻辑**，否则限额/白名单/隔离策略会在两处漂移。
 > 现有 `runContainer()`（`docker-evaluation-runner.ts:243`）已封装了限额、internal 网络、
@@ -487,10 +539,12 @@ nginx 只能改**响应体文本**（`sub_filter`）与**重定向头**（`proxy
    缺失的实际影响。**这是路径 A 能否真正上线的关键前提。**
    本次反代实测只覆盖 HTTP/WS/SSE 层与静态资源，**没有跑过 JS**（无浏览器）。
 2. 并发 15-30 个 **web** 进程（而非 headless）的真实内存/CPU——§5.1 的 web 数据只有空闲态
-3. ~~nginx 反代下的静态资源路径与 WebSocket 正确性~~ ✅ 已实测（§4.4）；
-   **但仍是"容器内 nginx 测试实例"**，宿主机（真实 `cms.conf` / 校园网关）上的部署与
-   泛子域 DNS/证书尚未做（§4.5.1 的前置条件）
+3. nginx 反代形态 ✅ 已实测（§4.4 / §4.5.2，含 cookie 分流与"无会话流量回落"回归）；
+   **仍未落地到宿主机**：需把 `lab-nginx-snippet.conf` 的三段（http{} 的 map + 内部 FoxCMS server、
+   主 server 的 location）合并进 `cms.conf` / `snippets/medai-*.conf`，`nginx -t` 无误后 reload
 4. ~~dsh web 的就绪探针~~ ✅ 已实现并实测（§4.7）
 5. 路径 B 完成后：`grep -o -E "sse4_2|popcnt" /proc/cpuinfo` 确认指令集到位，并复测 §2.1 的链条
 6. 路径 B 完成后：去掉禁插件 `--patch`，确认 web 恢复完整功能
-7. **泛子域 DNS + 泛证书**能否在目标环境落地（§4.5.1）——决定工作台挂在 njuserver 还是另找机器
+7. ~~泛子域 DNS + 泛证书~~：**已确认当前不可得**（学生只能走 80 端口 / `medai.nju.edu.cn`，
+   2026-09-28 由使用方确认）→ 实际采用 §4.5.2 的 **cookie 分流**形态（已实测）；
+   将来若拿到独立域名或端口，可切回更简单的形态 A（配置见 `lab-nginx-snippet.conf` 注释）
