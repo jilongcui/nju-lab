@@ -1,7 +1,7 @@
 # NJU-Lab 开发交接（Handoff）
 
 > 写给接手对话：本文档包含继续开发所需的全部上下文。先读本文件，再按需读 `nju-lab-craft.md`（系统设计总文档）。
-> 更新时间：2026-09-28
+> 更新时间：2026-09-28（工作台交接）
 
 ## 0. 一句话现状
 
@@ -11,14 +11,22 @@ NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已�
 
 **2026-09-28：教师端「课程报名审批」独立页并入课程详情「学生管理」页签**（纯前端整理，后端接口与数据模型未动）—— 报名申请与选课名单合成**一张统一表格**（每行一名学生，状态区分 待审批/已通过/已驳回/已入册，行内直接批准/驳回/移出），删除独立路由 `/teacher/courses/:courseId/applications` 与页面文件 `web/src/pages/teacher/CourseApplications.tsx`；「公开报名」页签（名额上限/申请开放时间等**课程设置**）保持不变，其「去处理报名申请」按钮改为切到「学生管理」页签。
 
+**2026-09-28：njuserver 存储扩容** —— 根分区 49G→**98G**（可用 9G→**60G**），新增 LVM 数据盘 `/data` = **957G**（1T 的 `sda` 整盘做 PV 加入 `ubuntu-vg`，`-l 95%FREE` + `mkfs.ext4 -m 1`）。此前"根分区仅剩 9G"是该机最高风险项（写满会拖垮同机的生产 MySQL），已解除；为后续「平台侧兜底实验工作台」预留空间。详见 §2.1 与 `docs/OPS-2026-09-28-storage-expansion.md`。
+
+**2026-09-28：平台侧实验工作台 —— 后端与容器已端到端实测，nginx 与浏览器待验** —— 给"本地装不上 DSH"的学生提供浏览器即可用的实验环境。已落地：**工作台镜像**（`server/workspace-image/`）、**工作台后端**（`server/src/workspace/`）、**通用容器运行时**（`server/src/container-runtime/`，与复验共用同一份隔离策略）。**前端入口页未做、nginx 反代未在真实环境验证、浏览器实测未做**。设计与遗留见 **§8**（新接手者必读）与 `docs/DESIGN-2026-09-28-platform-workspace.md`。
+
 ## 1. 仓库布局
 
 ```
 /home/ubuntu/nju-lab/
 ├── nju-lab-craft.md          # 系统设计总文档（含实现现状 §13）
 ├── HANDOFF.md                # 本文件
-├── docs/ACCEPTANCE-2026-09-21.md  # 端到端验收记录
+├── docs/                     # ACCEPTANCE-2026-09-21 / OPS-2026-09-28（存储扩容）/ DESIGN-2026-09-28（工作台设计）
 ├── server/                   # NestJS + TypeORM + MySQL 后端（端口 3100）
+│   ├── src/container-runtime/  # 通用容器运行时（复验与工作台共用；隔离策略唯一来源）
+│   ├── src/workspace/         # 平台侧实验工作台后端（见 §8）
+│   ├── verify-image/          # 复验镜像（headless bundle + run-eval.mjs）
+│   └── workspace-image/       # 工作台镜像（web-app bundle + entrypoint.mjs）
 ├── web/                      # Vite + React 18 + AntD v5 前端
 └── dsh/                      # DSH 本地侧构件
     ├── README.md             # dsh 目录总说明 + 快速开始
@@ -60,8 +68,9 @@ NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已�
 | 数据库 | 系统 MySQL 8.0（127.0.0.1:3306），库/用户 `nju_lab`（随机密码在 server/.env） |
 | 服务 | `systemctl` 单元 `nju-lab.service`（`~/nju-lab/nju-lab.service` 有副本）。**不要加 PrivateTmp/ProtectSystem**——runner 靠 `/tmp` 给容器 bind-mount，PrivateTmp 会导致挂载为空、复验全挂（2026-09-22 踩过） |
 | Docker | ubuntu 在 docker 组；docker.io 直连不通，走 `swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/library/<img>` 拉取后 tag 回原名（`nginx:alpine` 已就位）；**`nju-lab-verify:0.1.5-rc.2` 是生产的 `docker save/load` 拷贝**——异地重建会因 `node:22-slim` 漂浮 tag 拿到老基底导致 sharp 加载失败、复验全挂（Dockerfile 已改钉 `node:22.23.2-slim`，但跨机仍以 save/load 为准） |
+| 存储 | **2026-09-28 扩容**：根分区 49G→**98G**（可用 9G→**60G**）；新增 LVM 数据盘 `/data` = **957G**（1T 的 `sda` 整盘做 PV 加入 `ubuntu-vg`，`lvcreate -l 95%FREE`、`mkfs.ext4 -m 1`、fstab 用 UUID + `nofail`），VG 余量 51.2G。此前"根分区仅剩 9G"是最高风险项，已解除；清单见 `docs/OPS-2026-09-28-storage-expansion.md` |
 | 学生安装包 | 变体 kit（serverUrl 指向 `http://medai.nju.edu.cn/lab/api`）：`cd dsh/kit && PLATFORM_URL=http://medai.nju.edu.cn/lab ./build-kit.sh`，产物放 `/var/www/lab/kit/` |
-| 注意 | ① 该机 :80 上 dify 的 `/api`、`/agent` 等 502 是**部署前既有状态**（dify 未运行，与本次无关）；② 本机（lab.xiaohe.biz 这台）DNS 解析不到 medai.nju.edu.cn，公网验证须从校园网做；③ **该机 CPU 是 QEMU vCPU（无 SSE4.2/POPCNT，不达 x86-64-v2）**，sharp prebuilt 被拒会让 dsh 启动即崩——复验 profile 已禁用 `attachment-local`（见 verify-image profile 注释），若重装该机 VM 建议 CPU 改 host-passthrough；④ **校园网关 `219.219.115.199`**（medai 与 authservertest 解析到同一 IP、按 Host 分发；正式认证机是另一个 IP `219.219.115.211`）策略为"校内/VPN 直通、校外强制认证"；**`authservertest` 是网关配置里指的测试认证机（对 medai 返回"应用未注册"），不是我们的** —— 我们代码/配置里搜不到它，`.env` 的 `CAS_BASE_URL` 一直是正式机。判定 302 是谁发的：公网响应无 `Server:` 头（网关发的）、直连本机有 `Server: nginx/1.18.0` + `X-Powered-By: Express`（我们的） |
+| 注意 | ① 该机 :80 上 dify 的 `/api`、`/agent` 等 502 是**部署前既有状态**（dify 未运行，与本次无关）；② 本机（lab.xiaohe.biz 这台）DNS 解析不到 medai.nju.edu.cn，公网验证须从校园网做；③ **该机 CPU 是 QEMU vCPU（无 SSE4.2/POPCNT，不达 x86-64-v2）**，sharp prebuilt 被拒会让 dsh 启动即崩——复验 profile 已禁用 `attachment-local`（见 verify-image profile 注释），若重装该机 VM 建议 CPU 改 host-passthrough；④ **校园网关 `219.219.115.199`**（medai 与 authservertest 解析到同一 IP、按 Host 分发；正式认证机是另一个 IP `219.219.115.211`）策略为"校内/VPN 直通、校外强制认证"；**`authservertest` 是网关配置里指的测试认证机（对 medai 返回"应用未注册"），不是我们的** —— 我们代码/配置里搜不到它，`.env` 的 `CAS_BASE_URL` 一直是正式机。判定 302 是谁发的：公网响应无 `Server:` 头（网关发的）、直连本机有 `Server: nginx/1.18.0` + `X-Powered-By: Express`（我们的）；⑤ **该机不支持嵌套虚拟化**（无 `/dev/kvm`、无 kvm 模块，2026-09-28 实测）——**不能跑 KVM 虚拟机**，"每人一台 VM"在该机不可行，只能走容器；⑥ dify 遗留容器仍在运行（`docker-sandbox-1`/`db-1`/`redis-1`/`weaviate-1`/`ssrf_proxy-1`，Up 3 months），其中 **`docker-sandbox-1` 占约 8.2G 内存且 `--memory 0`（无限额）+ `restart=always`**，是内存侧唯一会突然挤爆的隐患，`~/dify` 另占磁盘 8.5G —— 处置前须确认学院无人使用 |
 
 
 常用验证：
@@ -92,7 +101,8 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 10. **复验安全姿态**（verify profile）：一次性容器 + 断网 + `approval=never` + 资源限额。容器是唯一信任边界（DSH 沙箱不挡网络与进程）。
 11. **给模型的引导**（system prompt 段、skill）由**插件注册**即可随 profile 生效：`ctx.systemPrompt.section()` + `ctx.skills.register()`（见 `nju-lab-client/src/host/guidance.ts`），不必改 profile 文件。磁盘 `SKILL.md` 路线要额外配 `customSkillDirs` / `bundledSkillDir`，**profile 目录不是默认 skill 发现根**，且 `bundledSkillDir` 按进程 cwd 解析。skill 来源优先级（越小越优先）：project 100/200 · runtime 250 · custom 300 · user 400/500 · bundled 600。
 12. **L2 测试要带 `DSH_BIN`**：`npm test` 在 PATH 上找不到 `dsh` 时，L2 用例是 **skip**（TAP `ok … # SKIP`）而不是失败，看起来全绿但什么都没验。另外 L2 启动 `dsh` 必须给临时 `cwd`，否则插件的默认 `workspaceDir`（`process.cwd()`）会把 `nju-lab/` 落盘目录写进仓库。
-13. **评估条件必须跨进程持久化**：`evalConfig` 不能只存插件闭包 —— DSH 每次启动都是新进程（headless 每条任务一个），重启后工具面会重新放开，等于"学生自测条件 ≠ 平台复验条件"。插件做法（`nju-lab-client/src/host/eval-state.ts`）：claim 时写 `<workspace>/nju-lab/pinned-eval-config.json`，`apply()` 启动时读回并**优先于配置里的默认值**；平台本次未下发条件时**清掉旧值**，避免上一个实验的限制被继承。文件损坏/形状不对只警告并忽略（不能因为状态文件起不来）。
+13. **容器隔离策略只有一份实现**：复验与工作台共用 `server/src/container-runtime/`（限额 / internal 网络 / SNI 白名单 / 挂载顺序都在 `buildRunArgs` 里定义一次）。**不要在业务模块里另写一套 docker 参数**——两处漂移就是安全配置漂移。
+14. **评估条件必须跨进程持久化**：`evalConfig` 不能只存插件闭包 —— DSH 每次启动都是新进程（headless 每条任务一个），重启后工具面会重新放开，等于"学生自测条件 ≠ 平台复验条件"。插件做法（`nju-lab-client/src/host/eval-state.ts`）：claim 时写 `<workspace>/nju-lab/pinned-eval-config.json`，`apply()` 启动时读回并**优先于配置里的默认值**；平台本次未下发条件时**清掉旧值**，避免上一个实验的限制被继承。文件损坏/形状不对只警告并忽略（不能因为状态文件起不来）。
 
 ## 4. 距端到端的缺口清单（按建议实施顺序）
 
@@ -255,3 +265,65 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 - ⚠️ 线上跑的是**正式版**（systemd → `node dist/main.js`，`NODE_ENV=production`）：改 `src` 不生效，必须 build + restart；开发版是 `start:dev`
 - ⚠️ 受限会话（含 agent）带 `no_new_privs`，`sudo` 无法提权，跑不了 `systemctl restart` 等需 root 的操作；这类步骤一律在持有 sudo 的终端执行
 - 前后端联调纪律见第 3.3 条；每完成一块同步更新 `nju-lab-craft.md` §13 与本 HANDOFF，代码提交进 git（main 分支）
+
+## 8. 平台侧实验工作台 —— 🚧 后端与容器已实测，nginx 与浏览器待验（2026-09-28）
+
+### 8.1 一句话
+
+给「本地装不上 DSH」的学生提供浏览器即可用的实验环境（一人一容器，单用户单会话）。
+**设计文档必读**：`docs/DESIGN-2026-09-28-platform-workspace.md`（含两条并行路径与全部取舍）。
+
+**当前状态：后端 + 容器侧端到端实测通过；nginx 反代与浏览器实测未做；前端入口页未做。**
+
+### 8.2 已完成
+
+| 组件 | 位置 | 验证程度 |
+|---|---|---|
+| 通用容器运行时 | `server/src/container-runtime/` | ✅ 复验行为**逐字节等价**（假 docker 对比 HEAD 与现状） |
+| 工作台镜像 | `server/workspace-image/` | ✅ 端到端（起容器 → dsh web → 200 + UI 主干加载） |
+| 工作台后端 | `server/src/workspace/` | ✅ 端到端（start → 16s 就绪 → 200 → stop） |
+| nginx 片段 | `lab-nginx-snippet.conf` **末段** | ⚠️ **未在真实 nginx 验证** |
+
+### 8.3 三条实测结论（踩过，别再踩）
+
+1. **`--internal` 网络的容器不会建立端口发布** —— `docker run -p` **静默失效**（`docker port` 为空）。
+   对外访问**只能走容器 IP**（宿主对 `br-xxxx` 的 `172.18.0.1/16` 有直连路由）。
+   设计文档 §4.5 早期写的是"端口映射"方案，**已被实测推翻并更正**。
+2. **dsh web 硬禁 `--host 0.0.0.0`**（理由："会把远程代码执行暴露到网络"）→ 容器内必须有一层 TCP 转发，
+   已实现在 `server/workspace-image/entrypoint.mjs`（纯 TCP 层，不解析 HTTP）。
+3. **dsh 的 browser-trust fence 只信任显式声明的 authority** —— 连它自己绑的 `127.0.0.1:<port>` 都不默认信任。
+   必须传 `--trusted-host`，否则**一律 401**。entrypoint 会自动把自己网卡的 `IP:PROXY_PORT` 加进信任列表。
+
+### 8.4 两条并行路径（2026-09-28 决定；详见设计文档 §2）
+
+njuserver 的 QEMU vCPU 无 SSE4.2 → `sharp` 崩 → `dsh web` 起不来。
+
+- **路径 A（已在用，零前置条件）**：profile 里禁 5 个插件
+  （`server/workspace-image/profile/nju-lab-workspace/cordis.patch.yml`）。
+  代价：**无 UI 文件上传 / 附件显示 / 交付物面板 / 会话控制器**。
+  ⚠️ **升级 dsh 后必须重新核对插件 id 与依赖关系**（`dsh --profile web --dump-config`）。
+  注意：`attachment-local` 是 `attachments`/`fileUploads` 服务的**提供者**，单禁它会让消费者 pending 而启动失败，
+  必须连消费者一起禁。
+- **路径 B（待办）**：请管理员把该 VM 的 CPU 模型改为 `host-passthrough`（**需关机重启**，见 §2.1 注意③）。
+  完成后删掉那段 patch 即恢复完整功能。
+
+### 8.5 遗留清单（接手者按序看）
+
+1. **nginx 反代未验证**（见 §8.2）：`proxy_redirect`（dsh 的 303 是 `location: /`）、`sub_filter`
+   （HTML 的 `<base href="/">`）、WebSocket 升级都要在真实环境调；`$connection_upgrade` 需在 `http{}` 里 `map` 定义。
+2. **浏览器实测未做**：禁掉 `session-controller` 对实验流程（claim → 开发 → 自测 → 提交）的实际影响**未知**。
+   **这是路径 A 能否上线的关键前提**——请在能开浏览器的机器上验证。
+3. **前端入口页未做**：需要「进入实验环境」按钮（`web/src/pages/`），流程是
+   `POST /api/workspace/start` → 轮询 `GET /api/workspace/status` → 就绪后打开 `directUrl`/反代 URL。
+4. **容器未加固**：目前以 **root** 跑。生产前应加非 root、cap-drop、只读根。
+5. **平台 API 可达性未在真实链路验证**：容器在隔离网络里，需配 `WORKSPACE_PLATFORM_API`，
+   后端会把它指到宿主网关（`host-gateway`，已实现）；但 claim/submit 是否真的通**没测过**。
+
+### 8.6 部署注意
+
+- **本机 docker.io 直连不通**，且华为云源只有 `node:22-slim` = **v22.18.0**（`HANDOFF` §2.1 记录过它会崩），
+  所以工作台镜像 **`FROM nju-lab-verify`**（本机唯一带正确 node v22.23.2 的镜像）。
+  若在有 docker.io 的机器上从零构建，见 `server/workspace-image/Dockerfile` 注释里的替代路径。
+- 构建 context **必须是仓库根**（要 copy `dsh/nju-lab-client`）；已加仓库根 `.dockerignore` 防止把 node_modules 发给 daemon。
+- **工作台镜像与复验镜像不要合并**：bundle / profile / 驱动三者全不同（见 `server/workspace-image/README.md` 对照表）。
+- 工作台配置项见 `server/.env.example` 末段（全部有默认值，可先不配）。
