@@ -205,6 +205,7 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 - 机房预装镜像
 - nju-lab-client 提交前自检（skillforge 规范检查）
 - SkillLibrary 参考技能库、章节自测题、成绩汇总
+- ~~章节在线幻灯片（reveal.js，按章节用大模型生成在线演示）~~ ✅ **已上线**（当前为 mock 生成器；**切 LLM 与效果优化见 §9**）
 
 ## 6. 课程目录、选课申请与工作台 —— ✅ 已完成（2026-09-24）
 
@@ -561,3 +562,93 @@ $ws_out_host`）：上游已把 Host 改对，所以它现在退化为恒等映�
 **附带修正的一处旧认识**：2026-09-29 07:29–09:43 那批「连不上」**不是网关的锅**，而是
 **后端 07:08 重启后 wsKey 重生成、浏览器里旧 cookie 全部失效**（`/wsbridge/ping` 403/21、
 `/api/remote.mux` 200/85 都是这个原因）。诊断时先看这两条状态码，别一上来就怀疑网关。
+
+## 9. 章节在线幻灯片（reveal.js）—— ✅ 已上线（2026-09-29）
+
+### 9.1 一句话现状
+
+教师可在章节编辑页进入「幻灯片」，**手动触发**用大模型按章节生成一份在线演示（reveal.js）；可改内容
+（**JSON / Markdown 双视图**）、**换模板并可视化调参**、全屏放映、跨章节切换；学生端章节页可「文档 ⇄ 幻灯片」
+切换。**当前线上跑的是 mock 生成器**（不调模型、不耗额度）——「切到真实 LLM」与「生成效果优化」都还没做，
+见 §9.3 / §9.4。
+
+### 9.2 已交付
+
+| 层 | 内容 |
+|---|---|
+| 后端 | `server/src/slides/`（13 个文件）：两阶段生成（先大纲、再分批扩写；**单批失败局部降级**为大纲骨架）、`SLIDES_GENERATOR=mock\|llm` 双轨、JSON ⇄ Markdown 投影与**合并保存**（页级高级设置不丢）、模板编译（调参 → CSS）、10 个 API |
+| 数据 | 迁移 `server/src/migrations/1790636383317-SlideDecks.ts`：`slide_decks`（**一章一 deck**；`basedOnChapterHash` 管"章节已变更"提示、`sourceHash` 管缓存命中）、`slide_templates`（只存调参 `design` + `baseTheme`，不存 CSS）——**已在生产库执行** |
+| 前端 | `web/src/slides/`（渲染层：SlideJson → **自包含 srcdoc 文档** + `SlideStage` iframe + `files.ts` 图片内联）、教师端 `/teacher/chapters/:chapterId/slides`、学生端章节页切换、章节编辑页「幻灯片」入口 |
+| 部署 | 前端已同步 `/var/www/lab`（走 `deploy/deploy-web-lab.sh`）；后端已 `npm run build` + 重启（新 dist 生效） |
+| 设计 | `docs/DESIGN-2026-09-29-chapter-slides.md`：已确认决策、数据模型、API 契约、安全矩阵、实测记录 |
+
+### 9.3 切到真实 LLM（待做，配置 + 重启即可）
+
+```bash
+# server/.env 追加两行
+SLIDES_GENERATOR=llm
+SLIDES_MODEL=deepseek-flash     # dsh/verify profile 记录的 DeepSeek 官方**实测可用**模型；另有 deepseek-v4-pro
+# DEEPSEEK_API_KEY 已在 .env（复用平台额度，不需要学生自带 key）
+# 回退 Moonshot：SLIDES_LLM_API_KEY_ENV=MOONSHOT_API_KEY、SLIDES_LLM_BASE_URL=https://api.moonshot.cn/v1、SLIDES_MODEL=kimi-k2.6
+```
+
+- 改完**必须重启后端**：`sudo systemctl restart nju-lab`。本会话没有 sudo（`no new privileges`），
+  可用 `kill <MainPID>` 让 systemd 按 `Restart=always` 自动拉起 —— 2026-09-29 就是这么重启的，
+  6 秒内恢复、`systemctl is-active` 为 active。
+- 出口可达性有既有依据：`server/src/container-runtime/container-runtime.ts` 的 `VERIFY_EGRESS_DOMAINS`
+  默认含 `api.deepseek.com,api.moonshot.cn`（复验容器走同两个域名）。
+- ⚠️ 切到 llm 后，旧的 mock deck 会因 `sourceHash`（含模型名）变化而提示「章节内容已变更 → 重新生成」，
+  **这是预期**，不是 bug。
+- ⚠️ 改 prompt 后**必须把 `slides.config.ts` 的 `SLIDES_PROMPT_VERSION` +1**，否则同 hash 命中旧缓存、
+  看不到新效果。
+
+### 9.4 生成效果优化（下一对话的起点）
+
+成效最好下手的地方（都在 `slides.generator.ts` 的 prompt 与 `slides.config.ts` 的限额）：
+
+- **两阶段 prompt**：大纲阶段目前只要求「标题 + 要点骨架」，可加"必须覆盖的知识点清单 / 每页信息密度约束 /
+  避免与上一页重复"；扩写阶段的 `notes`（讲者备注）现在只要 1–3 句，可要求更接近讲稿。
+- **长章节是效果瓶颈**：`SLIDES_SOURCE_MAX_CHARS`(12000) 之外的正文会被**截断**（`truncate()` 加了
+  「正文过长已截断」提示），可考虑"按小节分块生成再汇总"。
+- 限额：`SLIDES_MAX_SLIDES`(20)、`SLIDES_MAX_BULLETS`(8)、`SLIDES_MAX_CHARS`(400)、
+  `SLIDES_EXPAND_BATCH`(4)、`SLIDES_MAX_TOKENS`(4000) —— 直接影响单页质量与失败率。
+- **版式**：`web/src/slides/renderDeck.ts` 的 layout 渲染 + `template.schema.ts` 的 `designToCss` 是样式主战场；
+  当前 `two-col` / `code` / `quote` 排版较朴素，也还没做图片页（LLM 被明确要求**不要**生成 image 页）。
+- 回归手段：`MockDeckGenerator` 不烧额度，可用来验版式改动；prompt 改动请用真模型对比几份不同章节。
+
+### 9.5 踩坑（都实测过，别再踩）
+
+1. **marked@12 默认不安全**：会把 `<script>`、`<img onerror=…>`、`[x](javascript:…)` **原样输出** →
+   内容渲染必须走「marked → DOMParser → 白名单清理」（`web/src/slides/markdown.ts`）。
+2. **reveal 的 `exports` 不导出 `./dist/*`**：`reveal.js/dist/reveal.js?raw` 被 exports 拦掉；alias 指文件 + `?raw`
+   也不生效（Rollup 当 external → **构建直接失败**）→ 改用 vite **virtual 模块插件**（`vite.config.ts` 的
+   `revealRawPlugin`，读文件 + `JSON.stringify`，主题走白名单防穿越）。收益：主 bundle 只增 ~23KB，
+   reveal 本体 119KB / CSS 54KB / 主题 5–46KB 全是**按需懒加载** chunk。
+   ⚠️ 主题只用无内嵌字体的（`black` / `black-contrast` 各内嵌 564KB 字体，已在白名单外）。
+3. **放映浮层会挡住 iframe 内 reveal 的翻页控件**：表现为"**键盘能翻页、鼠标点左右没反应**"——键盘走
+   父窗口 `keydown` → `postMessage`，不经过鼠标命中测试，所以症状很具欺骗性。教训：**浮层容器一律
+   `pointerEvents:'none'`**，只有按钮本身可点（`SlideStage.tsx`）。
+4. **iframe 必须 `sandbox="allow-scripts"` 且不给 `allow-same-origin`**：reveal 的 reset.css 不会污染 antd，
+   文档处于 opaque origin 读不到平台 localStorage/token；代价是文档内**带不了 Authorization 头** →
+   平台图片（`file:<fileId>`）要在父窗口带鉴权取回内容、转 data URL 再内联（`files.ts`）。
+5. 前端产物部署仍受 **§2.2 的顺序铁律**约束（先 chunk 后 index.html），用 `deploy/deploy-web-lab.sh` 即可
+   （它已内置备份 / md5 / Content-Type 自检 / 失败回滚）。
+
+### 9.6 怎么验证（不烧额度的那部分）
+
+- **后端**：`SLIDES_GENERATOR=mock PORT=3199 npx ts-node -T src/main.ts` 起临时实例，跑
+  「建测试章节 → 生成 → 轮询 → JSON/Markdown 双视图保存 → 模板另存/调参/删除解绑 → 章节变更提示与 sync-hash
+  → 权限（匿名 401 / 学生 403 / 学生只读）→ 清理」。2026-09-29 用这套在**线上链路**（经 nginx）跑通 **32 项断言**，
+  测试数据全部清理（`slide_decks` / `slide_templates` 清零）。
+- **前端渲染层**：esbuild 把 `renderDeck.ts` 打包进 jsdom 跑断言（注入内容被清理、**文档内 `<script>` 仅剩内联 2 个**、
+  代码块转义、section 数、桥接脚本、data URL 图片、notes / 两栏 / 页脚 / 模板 CSS）。
+- **浏览器观感只能人工看**：环境里没有 Playwright/Chromium（`MemoryMax=800M` + docker.io 不通，
+  不建议装）——字体、缩放、动画这些必须人工确认。
+
+### 9.7 文件索引
+
+- 设计文档：`docs/DESIGN-2026-09-29-chapter-slides.md`
+- 后端：`server/src/slides/*`、迁移 `server/src/migrations/1790636383317-SlideDecks.ts`
+- 前端：`web/src/slides/*`（`renderDeck.ts` / `markdown.ts` / `revealAssets.ts` / `files.ts` / `SlideStage.tsx`）、
+  `web/src/pages/teacher/ChapterSlides.tsx`、`web/src/pages/student/ChapterRead.tsx`、`web/vite.config.ts`
+- 相关提交：`f1aa90b`（后端 + 迁移）、`f7aa0f0`（前端）、`412503b`（放映浮层/点击翻页修复）
