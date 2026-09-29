@@ -45,6 +45,8 @@ export default function SlideStage({
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  /** 放映浮层透明度：hover 只挂在按钮容器上（父容器 pointer-events: none 不会触发 hover） */
+  const [controlsOpacity, setControlsOpacity] = useState(0.35);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // 内容/模板/配置变化 → 重建文档（重建 iframe 的 srcdoc，状态最干净）
@@ -150,6 +152,8 @@ export default function SlideStage({
                 alignItems: 'center',
                 justifyContent: 'center',
                 zIndex: 2,
+                // 只是加载指示，绝不能拦鼠标
+                pointerEvents: 'none',
               }}
             >
               <Spin tip="正在加载幻灯片…" />
@@ -185,20 +189,23 @@ export default function SlideStage({
       <div
         style={{
           position: 'absolute',
+          top: 12,
           right: 16,
-          bottom: 12,
           display: 'flex',
           gap: 8,
-          opacity: 0.35,
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.opacity = '1';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.opacity = '0.35';
+          opacity: controlsOpacity,
+          transition: 'opacity 0.2s',
+          // ⚠️ 容器绝不拦鼠标：iframe 内 reveal 自己的翻页控件就在右下角，
+          // 浮层盖上去会表现为「键盘能翻页、点左右箭头没反应」（教师端反馈过）。
+          pointerEvents: 'none',
         }}
       >
-        <Space size={4}>
+        <Space
+          size={4}
+          style={{ pointerEvents: 'auto' }}
+          onMouseEnter={() => setControlsOpacity(1)}
+          onMouseLeave={() => setControlsOpacity(0.35)}
+        >
           <Button size="small" icon={<LeftOutlined />} onClick={() => post('prev')} />
           <Button size="small" icon={<RightOutlined />} onClick={() => post('next')} />
           <Button size="small" icon={<CloseOutlined />} onClick={onExitPresenting}>

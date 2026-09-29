@@ -185,6 +185,19 @@ function bridgeScript(config: Required<SlideDeckConfig>): string {
     else if (data.action === 'goto' && typeof data.index === 'number') Reveal.slide(data.index);
     else if (data.action === 'overview') Reveal.toggleOverview();
   });
+
+  // 点击左右区域翻页（像 PPT 的操作习惯）。
+  // 避开的三种情况：交互元素上、正在选中文本、以及 reveal 自己的控件区（.controls）。
+  document.addEventListener('click', function (event) {
+    if (event.defaultPrevented) return;
+    var target = event.target;
+    if (target && target.closest && target.closest('a, button, input, textarea, select, video, audio, .controls')) return;
+    var selection = window.getSelection && window.getSelection();
+    if (selection && !selection.isCollapsed) return;
+    var ratio = event.clientX / window.innerWidth;
+    if (ratio >= 0.75) Reveal.next();
+    else if (ratio <= 0.25) Reveal.prev();
+  });
   Reveal.on('ready', function (ev) { post({ type: 'ready', index: ev.indexh || 0, total: document.querySelectorAll('.slides > section').length }); });
   Reveal.on('slidechanged', function (ev) { post({ type: 'slidechanged', index: ev.indexh || 0 }); });
 })();`;
