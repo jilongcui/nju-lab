@@ -72,7 +72,7 @@ NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已�
 | 注意⑦ | **agent 会话（Reasonix）跑在"只读根 + 仅 workspace 可写"的沙箱里**：用受限会话自己的 shell 看 `/proc/mounts`，会看到 `/` 与 `/data` 都是 `ro`（还会多出一条 `udev … /home/ubuntu/.reasonix/.env devtmpfs ro`）——**那是沙箱的视图，不是宿主状态**（宿主一直是 `rw`，见 `mount` 实测）。**要判定宿主文件系统/权限，一律用 docker**（`docker run --rm -v /data:/d …`）或看服务日志。⚠️ 2026-09-29 曾据此误报"根分区被内核降级为只读"，实际是假象，已更正。另外 `/data` 属 `root:root`，后端以 `ubuntu` 跑，所以 **`/data/workspaces` 需要一次性建好并 chown 给 ubuntu**（已用 docker 完成） |
 | 存储 | **2026-09-28 扩容**：根分区 49G→**98G**（可用 9G→**60G**）；新增 LVM 数据盘 `/data` = **957G**（1T 的 `sda` 整盘做 PV 加入 `ubuntu-vg`，`lvcreate -l 95%FREE`、`mkfs.ext4 -m 1`、fstab 用 UUID + `nofail`），VG 余量 51.2G。此前"根分区仅剩 9G"是最高风险项，已解除；清单见 `docs/OPS-2026-09-28-storage-expansion.md` |
 | 学生安装包 | 变体 kit（serverUrl 指向 `http://medai.nju.edu.cn/lab/api`）：`cd dsh/kit && PLATFORM_URL=http://medai.nju.edu.cn/lab ./build-kit.sh`，产物放 `/var/www/lab/kit/` |
-| 注意 | ① 该机 :80 上 dify 的 `/api`、`/agent` 等 502 是**部署前既有状态**（dify 未运行，与本次无关）；② 本机（lab.xiaohe.biz 这台）DNS 解析不到 medai.nju.edu.cn，公网验证须从校园网做；③ **该机 CPU 是 QEMU vCPU（无 SSE4.2/POPCNT，不达 x86-64-v2）**，sharp prebuilt 被拒会让 dsh 启动即崩——复验 profile 已禁用 `attachment-local`（见 verify-image profile 注释），若重装该机 VM 建议 CPU 改 host-passthrough；④ **校园网关 `219.219.115.199`**（medai 与 authservertest 解析到同一 IP、按 Host 分发；正式认证机是另一个 IP `219.219.115.211`）策略为"校内/VPN 直通、校外强制认证"；**`authservertest` 是网关配置里指的测试认证机（对 medai 返回"应用未注册"），不是我们的** —— 我们代码/配置里搜不到它，`.env` 的 `CAS_BASE_URL` 一直是正式机。判定 302 是谁发的：公网响应无 `Server:` 头（网关发的）、直连本机有 `Server: nginx/1.18.0` + `X-Powered-By: Express`（我们的）；⑤ **该机不支持嵌套虚拟化**（无 `/dev/kvm`、无 kvm 模块，2026-09-28 实测）——**不能跑 KVM 虚拟机**，"每人一台 VM"在该机不可行，只能走容器；⑥ dify 遗留容器仍在运行（`docker-sandbox-1`/`db-1`/`redis-1`/`weaviate-1`/`ssrf_proxy-1`，Up 3 months），其中 **`docker-sandbox-1` 占约 8.2G 内存且 `--memory 0`（无限额）+ `restart=always`**，是内存侧唯一会突然挤爆的隐患，`~/dify` 另占磁盘 8.5G —— 处置前须确认学院无人使用 |
+| 注意 | ① 该机 :80 上 dify 的 `/api`、`/agent` 等 502 是**部署前既有状态**（dify 未运行，与本次无关）；② 本机（lab.xiaohe.biz 这台）DNS 解析不到 medai.nju.edu.cn，公网验证须从校园网做；③ ~~该机 CPU 是 QEMU vCPU（无 SSE4.2/POPCNT）~~ **【2026-09-29 复核：已不成立】** 实测 CPU 为 **INTEL XEON GOLD 6530**（`sse4_2` / `popcnt` / `avx2` 齐备），内存 31Gi，所以「sharp prebuilt 被拒 / 无法跑 Chromium 类工具」的前提**都不存在了**；镜像 `nju-lab-workspace:0.1.5-rc.2-no-sse42`（禁 5 个插件的旧版）仅作回滚保留。注意 `nju-lab.service` 的 `MemoryMax=800M` 是**后端服务**限额，与「跑浏览器做验证」是两件事，别混为一谈（此前混过）；④ **校园网关 `219.219.115.199`**（medai 与 authservertest 解析到同一 IP、按 Host 分发；正式认证机是另一个 IP `219.219.115.211`）策略为"校内/VPN 直通、校外强制认证"；**`authservertest` 是网关配置里指的测试认证机（对 medai 返回"应用未注册"），不是我们的** —— 我们代码/配置里搜不到它，`.env` 的 `CAS_BASE_URL` 一直是正式机。判定 302 是谁发的：公网响应无 `Server:` 头（网关发的）、直连本机有 `Server: nginx/1.18.0` + `X-Powered-By: Express`（我们的）；⑤ **该机不支持嵌套虚拟化**（无 `/dev/kvm`、无 kvm 模块，2026-09-28 实测）——**不能跑 KVM 虚拟机**，"每人一台 VM"在该机不可行，只能走容器；⑥ dify 遗留容器仍在运行（`docker-sandbox-1`/`db-1`/`redis-1`/`weaviate-1`/`ssrf_proxy-1`，Up 3 months），其中 **`docker-sandbox-1` 占约 8.2G 内存且 `--memory 0`（无限额）+ `restart=always`**，是内存侧唯一会突然挤爆的隐患，`~/dify` 另占磁盘 8.5G —— 处置前须确认学院无人使用 |
 
 
 常用验证：
@@ -642,8 +642,12 @@ SLIDES_MODEL=deepseek-flash     # dsh/verify profile 记录的 DeepSeek 官方**
   测试数据全部清理（`slide_decks` / `slide_templates` 清零）。
 - **前端渲染层**：esbuild 把 `renderDeck.ts` 打包进 jsdom 跑断言（注入内容被清理、**文档内 `<script>` 仅剩内联 2 个**、
   代码块转义、section 数、桥接脚本、data URL 图片、notes / 两栏 / 页脚 / 模板 CSS）。
-- **浏览器观感只能人工看**：环境里没有 Playwright/Chromium（`MemoryMax=800M` + docker.io 不通，
-  不建议装）——字体、缩放、动画这些必须人工确认。
+- **浏览器实测：条件已具备【2026-09-29 更正】**：此前写的「环境跑不了 Chromium」是**错误结论** ——
+  本机 CPU（Xeon 6530，sse4_2/popcnt/avx2 齐备）+ 31Gi 内存完全够用，`MemoryMax=800M` 只是**后端服务**限额。
+  本机**未预装** Playwright/Chromium（全盘 find / snap / dpkg / nvm 全局均无），但可自行安装：
+  `cd /tmp && npm i playwright && npx playwright install chromium`（Chromium 的系统依赖若缺，需 `install-deps`，
+  那一步要 sudo）。装好后可自动验证：登录 → 进入章节幻灯片 → 生成 → 放映 → **点击左右区域翻页** → 断言页码变化，
+  以及字体/缩放/动画这类此前「只能人工看」的部分。
 
 ### 9.7 文件索引
 

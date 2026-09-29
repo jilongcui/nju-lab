@@ -39,7 +39,7 @@
 | 章节内容 = Markdown（`text`，可空） | `server/src/courses/course.entity.ts:100` | 素材现成，无需解析 docx/pptx |
 | 平台已有 OpenAI 兼容 key：`DEEPSEEK_API_KEY`、`MOONSHOT_API_KEY` | `server/.env` | 模型接入零新增配置 |
 | **服务端目前没有直接调 LLM 的代码**（LLM judge 在复验容器里跑） | `workspace.config.ts:134`、`docker-evaluation-runner.ts` | 需新增一个 LLM 客户端层，并沿用 `EVALUATION_RUNNER=mock\|docker` 的可 mock 模式 |
-| 后端 `MemoryMax=800M`，CPU 为 QEMU vCPU（无 SSE4.2/POPCNT） | `nju-lab.service`、HANDOFF §2.1 注意③ | **任何需要 Chromium 的方案（Marp、Slidev、HTML→PDF）不可用** |
+| ~~后端 `MemoryMax=800M`，CPU 为 QEMU vCPU（无 SSE4.2/POPCNT）~~ **【2026-09-29 更正：前提不成立】** 实测 CPU 为 Xeon 6530（sse4_2/popcnt/avx2 齐备）、内存 31Gi，且 `MemoryMax=800M` 只是**后端服务**限额 | `nju-lab.service`、HANDOFF §2.1 注意③（已更正） | 需要 Chromium 的方案（Marp、Slidev、HTML→PDF、以及浏览器自动化验证）**并非不可用**；v1 仍选 pptxgenjs/reveal 是出于「依赖更轻、可控」的取舍，而不是环境限制 —— v2/v3 若要导出 pptx/PDF，可以把渲染放容器或直接本机跑 Chromium |
 | 前端无编辑器依赖，只有 `marked@12` | `web/package.json` | 编辑控件先用 `Input.TextArea` + 校验，别引入 Monaco |
 | 部署纪律：改 `/var/www/lab` 必须走 `deploy/deploy-web-lab.sh`（先 chunk 后 index.html） | HANDOFF §2.2 | **尽量不新增静态文件**，见 §4 |
 | 已挂载点：`teacher/chapters/:chapterId/edit`、`student/chapters/:chapterId` | `web/src/App.tsx:94,105` | 幻灯片就挂在这两处，不新开路由树 |
@@ -301,7 +301,7 @@ Markdown 视图的约定（受支持子集，刻意保持小）：
 
 - **v1**：§3–§12 全部；内置 4–5 套模板；模板"档 1"可视化调参；md/json 双视图；两阶段生成 + mock；教师放映 + 跨章节切换；学生端只读切换。
 - **v2**：模板"档 2"自由 CSS；同源静态 viewer（可分享独立链接）；多 deck 版本与历史；从章节正文"插入为页"；图片选择器（复用章节已上传图片）。
-- **v3**：pptx 导出（**届时再评估**：pptxgenjs 纯 JS 可行，但要注意导出的是"按模板生成的 pptx"，样式还原度低于在线演示）；公式与 Mermaid（渲染需 Chromium → 只能放容器里跑，见 §2）。
+- **v3**：pptx 导出（**届时再评估**：pptxgenjs 纯 JS 可行，但样式还原度低于在线演示；也可用 Chromium 走 HTML→PDF/PPTX）；公式与 Mermaid（渲染需 Chromium —— **本机条件已具备**，见 §2 的 2026-09-29 更正，不必再绕容器）。
 
 ## 15. 风险与取舍
 
