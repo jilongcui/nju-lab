@@ -50,7 +50,7 @@ NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已�
 | 后端启动 | **生产常驻：`systemctl start nju-lab`**（unit `/etc/systemd/system/nju-lab.service`，`node dist/main.js`，Restart=always，MemoryMax=800M；改代码后 `npm run build && sudo systemctl restart nju-lab`）；开发调试用 `npm run start:dev` |
 | 前端部署 | `cd web && npm run build && sudo rm -rf /var/www/nju-lab/dist && sudo cp -r dist /var/www/nju-lab/ && sudo chown -R www-data:www-data /var/www/nju-lab` |
 | 端口注意 | 本机 3000/5173 被其他项目占用，所以后端用 3100；服务器内存紧张（~1.4G 可用）、磁盘紧张（~10G） |
-| DSH 版本 | 锁定 `@deepseek-ai/dsh@0.1.7-rc.2`（rc 阶段官方明示破坏性变更，学期内不升级） |
+| DSH 版本 | 锁定 `@deepseek-ai/dsh@0.2.0-rc.2`（rc 阶段官方明示破坏性变更，学期内不升级） |
 
 ### 2.1 第二部署点：njuserver（`http://medai.nju.edu.cn/lab`，2026-09-22）
 

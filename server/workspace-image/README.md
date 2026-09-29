@@ -20,7 +20,7 @@
 build context 必须是**仓库根**（要 copy `dsh/nju-lab-client`）：
 
 ```bash
-docker build -f server/workspace-image/Dockerfile -t nju-lab-workspace:0.1.7-rc.2 .
+docker build -f server/workspace-image/Dockerfile -t nju-lab-workspace:0.2.0-rc.2 .
 ```
 
 ## 运行
@@ -28,7 +28,7 @@ docker build -f server/workspace-image/Dockerfile -t nju-lab-workspace:0.1.7-rc.
 ```bash
 docker run --rm -p 19090:9090 \
   -e WORKSPACE_TRUSTED_HOST=127.0.0.1:19090 \
-  nju-lab-workspace:0.1.7-rc.2
+  nju-lab-workspace:0.2.0-rc.2
 ```
 
 容器会打印：

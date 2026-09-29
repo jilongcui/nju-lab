@@ -16,7 +16,7 @@
 
 不需要 fork DSH，不需要自绘整机 GUI。DSH 的"everything is a plugin + profile 分层 patch"模型正好承载这件事。若要脱离 Web UI 做独立客户端（自绘 GUI/CLI），再走 SDK（`dsh --profile sdk` + stdio JSON-RPC），见 §5.4。
 
-**必须先接受的前提（✅ 已核实）**：DSH 处于 developer preview，npm 当前主线是 `0.1.7-rc.2`，官方明示**会有破坏性变更**。`nju-lab-craft.md` 里锚定的 `0.1.2-rc.1 / v0.1.3-alpha.1` 已落后，且文中的四个社区插件**在 npm 上不存在**（见 §9）。
+**必须先接受的前提（✅ 已核实）**：DSH 处于 developer preview，npm 当前主线是 `0.2.0-rc.2`，官方明示**会有破坏性变更**。`nju-lab-craft.md` 里锚定的 `0.1.2-rc.1 / v0.1.3-alpha.1` 已落后，且文中的四个社区插件**在 npm 上不存在**（见 §9）。
 
 ---
 
@@ -26,12 +26,12 @@
 |---|---|
 | 项目 | DeepSeek Harness（`dsh`），MIT，Cordis 插件框架，"everything is a plugin" |
 | 仓库 / 文档 | `github.com/deepseek-ai/deepseek-harness`（分支 `master`）；文档站 `deepseek-harness.github.io/deepseek-harness/` |
-| npm 主线 | `@deepseek-ai/dsh@0.1.7-rc.2`（包 > 100 个，多为 `0.0.1-rc.x`） |
+| npm 主线 | `@deepseek-ai/dsh@0.2.0-rc.2`（包 > 100 个，多为 `0.0.1-rc.x`） |
 | 启动器 | `dsh` CLI：`dsh <profile>` ≡ `dsh --profile <profile>`；`npx @deepseek-ai/dsh web` |
 | 内置 profile 模板 | `web`、`headless`、`sdk`、`sdk-minimal`、`acp` |
 | `desktop` | 保留名，CLI 拒绝 |
 
-**🧭 版本锁定策略**：本仓库/本文锁定 `0.1.7-rc.*` 线，学期内不升级；升级前须重跑 §9 的实证清单。
+**🧭 版本锁定策略**：本仓库/本文锁定 `0.2.0-rc.*` 线，学期内不升级；升级前须重跑 §9 的实证清单。
 
 ---
 
@@ -431,7 +431,7 @@ dsh --profile headless "run the skill against the standard dataset"
 
 | 风险 | 对策 |
 |---|---|
-| DSH rc 期破坏性变更 | 锁定 `0.1.5-rc.*`；平台服务与 DSH 解耦（本就解耦） |
+| DSH rc 期破坏性变更 | 锁定 `0.2.0-rc.*`；平台服务与 DSH 解耦（本就解耦） |
 | 学生 Skill 恶意代码 | 一次性**断网**容器复验；容器是唯一信任边界；静态检查 |
 | 评估不公平 | 版本化数据集 + 平台侧 profile 复验（学生改不了） |
 | 证据伪造 | session 持久化校验和 + 导出产物 + 平台独立复跑 + 审计事件交叉印证 |
@@ -443,7 +443,7 @@ dsh --profile headless "run the skill against the standard dataset"
 
 ```sh
 # 0. 装（锁定版本）
-npx @deepseek-ai/dsh@0.1.7-rc.2 web      # 冒烟：起 Web UI
+npx @deepseek-ai/dsh@0.2.0-rc.2 web      # 冒烟：起 Web UI
 
 # 1. 派生学生 profile
 dsh --profile nju-lab-student --from-default-profile web
@@ -479,5 +479,5 @@ dsh --profile nju-lab-verify "run standard dataset"
 
 - GitHub：`deepseek-ai/deepseek-harness`（`master`）— `README.md`、`docs/architecture.md`、`docs/agent-lifecycle.md`、`docs/config-catalog.md`、`docs/subsystems/{boot,client-modules,slots,approval,permission-presets,sandbox,tools,core,persistence,session}.md`、`docs/user/develop/basic/{index,tool,config}.md`、`docs/user/develop/framework/{service,events}.md`、`docs/user/guide/python-sdk.md`、`packages/boot/app-boot/README.md`、`packages/bundle/{headless,sdk-app,web-app}/README.md`、`apps/cli/README.md`。
 - 文档站：`https://deepseek-harness.github.io/deepseek-harness/`。
-- npm：`@deepseek-ai/dsh@0.1.7-rc.2`、`@deepseek-ai/dsh-web-app`、`@deepseek-ai/dsh-headless`、`@deepseek-ai/dsh-sdk-app`、`@deepseek-ai/dsh-cordis-{host,client}-runner`、`@deepseek-ai/dsh-session-log-export`、`@deepseek-ai/dsh-user-approval`、`@deepseek-ai/dsh-permission-presets`、`@deepseek-ai/dsh-sandbox` 等（registry.npmjs.org）。
+- npm：`@deepseek-ai/dsh@0.2.0-rc.2`、`@deepseek-ai/dsh-web-app`、`@deepseek-ai/dsh-headless`、`@deepseek-ai/dsh-sdk-app`、`@deepseek-ai/dsh-cordis-{host,client}-runner`、`@deepseek-ai/dsh-session-log-export`、`@deepseek-ai/dsh-user-approval`、`@deepseek-ai/dsh-permission-presets`、`@deepseek-ai/dsh-sandbox` 等（registry.npmjs.org）。
 - 社区插件搜索：`registry.npmjs.org/-/v1/search?text=dsh`。

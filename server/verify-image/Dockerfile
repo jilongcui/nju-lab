@@ -1,8 +1,8 @@
-# NJU-Lab 复验一次性容器镜像：dsh headless(锁定 0.1.7-rc.2) + nju-lab-verify
+# NJU-Lab 复验一次性容器镜像：dsh headless(锁定 0.2.0-rc.2) + nju-lab-verify
 # profile(approval=never) + 复验驱动 run-eval.mjs。
 #
 # 构建（在 server/verify-image/ 下）：
-#   docker build -t nju-lab-verify:0.1.7-rc.2 .
+#   docker build -t nju-lab-verify:0.2.0-rc.2 .
 #
 # 遗留（生产化）：网络白名单代理——当前容器以默认 bridge 网络运行，
 # 模型 API 出站与学生 Skill 出站未隔离；生产环境需加 egress 白名单代理

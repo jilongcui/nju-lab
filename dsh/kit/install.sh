@@ -3,7 +3,7 @@
 # 用法：解压安装包后  ./install.sh
 set -euo pipefail
 
-DSH_VERSION="0.1.7-rc.2"   # 学期内锁定，不升级
+DSH_VERSION="0.2.0-rc.2"   # 学期内锁定，不升级
 DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

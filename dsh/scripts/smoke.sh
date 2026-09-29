@@ -5,7 +5,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")/.." && pwd)"          # → dsh/
 PLUGIN_HOST="$HERE/nju-lab-client/src/host/index.ts"
-DSH="${DSH_BIN:-npx @deepseek-ai/dsh@0.1.7-rc.2}"
+DSH="${DSH_BIN:-npx @deepseek-ai/dsh@0.2.0-rc.2}"
 : "${DSH_HOME:=$HOME/.dsh}"; export DSH_HOME
 
 echo "DSH_HOME=$DSH_HOME"

@@ -29,7 +29,7 @@ const run = promisify(execFile)
 const PLUGIN_ENTRY = fileURLToPath(new URL('../lib/host/index.js', import.meta.url))
 const FINAL_TEXT = '已找到 2 个实验任务，其中 1 个已解锁。'
 const INSTALL_HINT =
-  'no dsh found — set DSH_BIN=/path/to/dsh, or install one: npm i -g @deepseek-ai/dsh@0.1.7-rc.2'
+  'no dsh found — set DSH_BIN=/path/to/dsh, or install one: npm i -g @deepseek-ai/dsh@0.2.0-rc.2'
 
 /**
  * 0.1.7 的 DeepSeek Messages 协议里，工具结果不再是 OpenAI 那种 `role: 'tool'` 的
