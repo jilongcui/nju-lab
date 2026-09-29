@@ -43,15 +43,15 @@ proxy_http_version 1.1;
 proxy_set_header Upgrade    $http_upgrade;
 proxy_set_header Connection $connection_upgrade;
 proxy_set_header Host       $http_host;     # ← 漏了它 WebSocket 一律 403（见下）
-proxy_read_timeout  3600s;                  # ← 否则空闲的 WS 会被掐（见下）
+proxy_read_timeout  3600s;                  # ← 可选，防御性（见下）
 proxy_send_timeout  3600s;
 ```
 
 | 行 | 必要性 | 现状（2026-09-29 实测） |
 |---|---|---|
 | `proxy_http_version 1.1` + `Upgrade` + `Connection` | **必须** | ✅ 已生效（抓包确认） |
-| `proxy_set_header Host $http_host` | **必须** | ✅ 已生效（2026-09-29 抓包复验：上游传出的 Host 已由内网 IP 变为 `medai.nju.edu.cn`） |
-| `proxy_read_timeout` / `proxy_send_timeout` | **建议** | ⚠️ **抓包看不出**（据我方反馈已加）；实际效果需在真实使用中观察——若闲置十几分钟后仍会断，说明这条没落到点上 |
+| `proxy_set_header Host $http_host` | **必须** | ✅ 已生效（抓包复验：上游传出的 Host 已由内网 IP 变为 `medai.nju.edu.cn`） |
+| `proxy_read_timeout` / `proxy_send_timeout` | **可选** | ✅ **不需要**：实测原生 WS 连接连续存活 4 分半无间断（远超默认 60s）—— 应用侧有服务端事件流/心跳，连接不会静默。加上只是防御性 |
 
 下面两节分别说明后两项。
 
@@ -158,13 +158,15 @@ location /api/ {
 `proxy_pass` 到我们服务器（而不是 `return 301 https://…`）时才需要改**；如果它只是
 跳转到 https，改它是多余的。
 
-**⚠️ 别忘了同一条 location 里的读超时**：`proxy_read_timeout` 的默认值是 **60s** —— WebSocket
-是**有静默期**的长连接（用户不操作时没有任何数据），60 秒一到网关就会把连接掐掉，表现是
-「能连上、但隔一会儿断一次」，看起来很像"配置没生效"，其实坏在超时。如果你们这条 location
-没单独设过它，请一并加上（我们这侧已经是 3600s）：
+**关于读超时（`proxy_read_timeout` / `proxy_send_timeout`）—— 加上更稳，但不加也没问题**：
+默认值是 **60s**，理论上「长连接空闲超过 60 秒」会被掐断。但**实测这个场景不会发生**：
+2026-09-29 原生 WebSocket 打通后，从上游 `122.131` 到本机的两条 WS 连接**连续存活 4 分半
+没有间断**（`ss -tn state established` 可查，而 nginx 的 `keepalive_timeout` 默认只有 65 秒，
+普通 HTTP 连接早就断了）—— 说明应用侧有**服务端主动的事件流/心跳**，连接根本不会静默到触发
+超时。所以这一项**不是必需的**：
 
 ```nginx
-proxy_read_timeout 3600s;
+proxy_read_timeout 3600s;      # 可选：防御性配置，避免将来应用侧改了心跳策略
 proxy_send_timeout 3600s;
 ```
 
@@ -213,7 +215,7 @@ http {
             proxy_set_header Upgrade    $http_upgrade;
             proxy_set_header Connection $connection_upgrade;
 
-            # 【新增 2】长连接静默期放宽（默认 60s 会掐掉空闲的 WS）
+            # 【可选】读超时 —— 实测不需要（应用侧有事件流/心跳，连接不会静默），加上只是防御
             proxy_read_timeout 3600s;
             proxy_send_timeout 3600s;
         }

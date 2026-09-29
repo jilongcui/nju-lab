@@ -551,6 +551,13 @@ WebSocket 101、SSE 200 正常。
 **本机 Host 兜底仍在**（`deploy/nginx/medai-workspace-http.conf:21` 的 `map $http_host
 $ws_out_host`）：上游已把 Host 改对，所以它现在退化为恒等映射 —— **保留作防回退的保险**。
 
+**读超时那条不需要额外配置（实测证伪，2026-09-29）**：`proxy_read_timeout` 默认 60s，
+理论上空闲会被掐；但**应用侧有服务端主动的事件流/心跳**，WS 连接不会静默到触发它 ——
+实测从上游 `122.131` 到本机的**两条 WS 连接连续存活 4 分半无间断**
+（`ss -tn state established` 可查；nginx 的 `keepalive_timeout` 默认只有 65 秒，普通 HTTP
+连接早就断了）。所以上游即使没配 `proxy_read_timeout`/`proxy_send_timeout` 也不影响使用；
+配了也只是防御性。**别再把它当成"待办/风险项"。**
+
 **附带修正的一处旧认识**：2026-09-29 07:29–09:43 那批「连不上」**不是网关的锅**，而是
 **后端 07:08 重启后 wsKey 重生成、浏览器里旧 cookie 全部失效**（`/wsbridge/ping` 403/21、
 `/api/remote.mux` 200/85 都是这个原因）。诊断时先看这两条状态码，别一上来就怀疑网关。

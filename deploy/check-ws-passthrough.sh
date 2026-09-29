@@ -23,8 +23,9 @@
 #   ✅ 上游透传的 `Host` 是不是对外域名（`10.28.128.56` 这类内网 IP 会让 WS 403）
 #   ❌ 端到端是否真的 101 —— 那需要有活跃工作台会话（重新走一次「进入实验环境」），
 #      然后 `grep -a -c " 101 " /var/log/nginx/access.log`，大于 0 即为通
-#   ❌ 上游的 proxy_read_timeout / proxy_send_timeout —— 超时是行为，不体现在请求头里，
-#      只能在真实使用中观察（闲置十几分钟不断才说明生效）
+#   ✅ 上游的 proxy_read_timeout / proxy_send_timeout —— 抓包看不出（超时是行为，不体现在
+#      请求头里），但**实测不需要**：应用侧有服务端事件流/心跳，WS 连接不会静默到触发它
+#      （2026-09-29 实测：原生 WS 连接连续存活 4 分半无间断，远超 nginx 默认的 60s）
 #
 # 用法：./deploy/check-ws-passthrough.sh
 # 依赖：sudo（tcpdump 抓包）、curl、tcpdump
@@ -102,6 +103,6 @@ echo
 echo "提示：上面只验证了「配置是否正确」。端到端 101 需要有人在校园网**重新**进一次"
 echo "      「进入实验环境」（旧标签页永远不行 —— 它的 cookie 是失效的旧 wsKey），然后："
 echo "        grep -a -c \" 101 \" /var/log/nginx/access.log"
-echo "      超时项（proxy_read_timeout / proxy_send_timeout）抓包看不出来，只能靠实际使用观察。"
+echo "      超时项抓包看不出来，但**实测不需要**（应用侧有事件流/心跳，连接不会静默）。"
 
 exit $rc
