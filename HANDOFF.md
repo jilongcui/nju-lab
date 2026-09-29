@@ -675,3 +675,61 @@ SLIDES_MODEL=deepseek-flash     # dsh/verify profile 记录的 DeepSeek 官方**
 - 前端：`web/src/slides/*`（`renderDeck.ts` / `markdown.ts` / `revealAssets.ts` / `files.ts` / `SlideStage.tsx`）、
   `web/src/pages/teacher/ChapterSlides.tsx`、`web/src/pages/student/ChapterRead.tsx`、`web/vite.config.ts`
 - 相关提交：`f1aa90b`（后端 + 迁移）、`f7aa0f0`（前端）、`412503b`（放映浮层/点击翻页修复）
+
+## 10. 调试与取证手段（2026-09-29 建立，别再用"读代码猜"）
+
+> §9.6 里也有一段浏览器验证的说明，**以本节为准**（那边留作上下文）。
+
+### 10.1 真实浏览器实测（首选）：Playwright + Chromium
+
+**用法**（脚本在仓库内，可复用、可传承）：
+
+```bash
+cd ~/nju-lab
+PLAYWRIGHT_BROWSERS_PATH=/home/ubuntu/.cache/ms-playwright \
+  node web/tools/verify-slides.mjs [chapterId]
+```
+
+**它验证什么**（章节幻灯片，**10 项断言**）：API 登录注入会话 → 进章节幻灯片 → 生成（mock）→ 放映 →
+鼠标点右/左区域翻页 → **右下角 reveal 控件箭头**（原遮挡 bug）→ 键盘 → **Esc 退出放映**（焦点在 iframe 内）
+→ 截图到 `web/tools/shots/`（已 gitignore）→ **自动删掉本次生成的 deck**。
+
+**环境（已就绪，换机器照抄）**
+- 主机 CPU `Xeon 6530`（`sse4_2`/`popcnt`/`avx2`）、内存 31Gi。后端 `MemoryMax=800M` 是**服务**限额，与跑浏览器无关。
+- 系统依赖（Ubuntu 22.04，缺了 Chromium 起不来）：
+  `sudo apt-get install -y libasound2 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 libcairo2 libcups2 libgbm1 libpango-1.0-0 libxdamage1 libxkbcommon0 fonts-liberation fonts-unifont fonts-noto-cjk fonts-wqy-zenhei`
+  （最后两个是**中文**字体；缺了截图全是豆腐块）
+- Playwright 是 `web/` 的 devDependency（**不进前端产物**）；Chromium 二进制在 `~/.cache/ms-playwright`。
+- ⚠️ **必须显式 `PLAYWRIGHT_BROWSERS_PATH`**：默认会落到 `/tmp/ms-playwright` —— 那里**会被清**，而且残留的
+  `__dirlock` 会让下一次 `npx playwright install` 直接失败（都踩过）。
+
+**四个已踩过的坑（省时间）**
+1. `name` 是**子串**匹配：`getByRole('button', { name: '登录' })` 会点到「统一认证登录」→ 页面直接被带去 CAS。
+   解：脚本改为**后端 API 登录** + 按 zustand persist 格式写 `localStorage['nju-lab-auth']`。
+2. `page.keyboard` 只作用于**主 frame**：要验「焦点在 iframe 内」的按键，得用
+   `frame.evaluate(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })))`。
+3. 演示 iframe 是 **opaque origin**（sandbox 不给 allow-same-origin）→ 读不到它的 DOM；改为在父页面
+   `addInitScript` 里监听 `message`、收集 `__deck` 事件（`ready`/`slidechanged` 带 `index`）来读页码。
+4. 截图**别写仓库外**：受限会话对仓库外是只读（`EROFS`）。放 `web/tools/shots/`（已 gitignore）。
+
+### 10.2 用截图找"瑕疵"（这次就是靠它发现的）
+
+- 放映态整页截图 + overview 截图（`O` 键或 `Esc` 触发总览，**一屏看全部页**）→ 版式问题一眼可见。
+- 2026-09-29 靠截图抓到的：① 要点过长过密（一页 5–6 条整句）② **内容溢出被裁**（第 3 页底部被切）
+  ③ 重复页（同标题连出两页）④ 放映态左下角用长标题的跨章节按钮压在幻灯片上。
+- 分工原则：**布局/观感 → 截图最快；交互（点击/键盘/焦点）→ 必须断言**，两者不能互相替代。
+
+### 10.3 不烧额度的后端端到端
+
+```bash
+cd server && SLIDES_GENERATOR=mock PORT=3199 npx ts-node -T src/main.ts
+```
+起临时实例（**别用 3100**，那是 systemd 的线上实例）→ 跑「建测试章节 → 生成 → 轮询 → 双视图保存 →
+模板 CRUD 与解绑 → 章节变更提示与 sync-hash → 权限（匿名 401 / 学生 403 / 学生只读）→ 清理」。
+2026-09-29 用这套在**线上链路**（经 nginx）跑通 **32 项断言**。
+
+### 10.4 前端渲染层断言（jsdom + esbuild，毫秒级）
+
+把 `renderDeck.ts` 打包进 jsdom 断言纯函数行为：内容里注入的 `<script>`/`onerror`/`javascript:` 被清理、
+**文档内 `<script>` 只剩内联的 2 个**、代码块转义、section 数、桥接脚本、data URL 图片、点击翻页阈值。
+**改渲染层后必跑**（不依赖浏览器、不依赖后端）。
