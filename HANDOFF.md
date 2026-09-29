@@ -50,7 +50,7 @@ NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已�
 | 后端启动 | **生产常驻：`systemctl start nju-lab`**（unit `/etc/systemd/system/nju-lab.service`，`node dist/main.js`，Restart=always，MemoryMax=800M；改代码后 `npm run build && sudo systemctl restart nju-lab`）；开发调试用 `npm run start:dev` |
 | 前端部署 | `cd web && npm run build && sudo rm -rf /var/www/nju-lab/dist && sudo cp -r dist /var/www/nju-lab/ && sudo chown -R www-data:www-data /var/www/nju-lab` |
 | 端口注意 | 本机 3000/5173 被其他项目占用，所以后端用 3100；服务器内存紧张（~1.4G 可用）、磁盘紧张（~10G） |
-| DSH 版本 | 锁定 `@deepseek-ai/dsh@0.1.5-rc.2`（rc 阶段官方明示破坏性变更，学期内不升级） |
+| DSH 版本 | 锁定 `@deepseek-ai/dsh@0.1.7-rc.2`（rc 阶段官方明示破坏性变更，学期内不升级） |
 
 ### 2.1 第二部署点：njuserver（`http://medai.nju.edu.cn/lab`，2026-09-22）
 
@@ -205,7 +205,7 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 - 机房预装镜像
 - nju-lab-client 提交前自检（skillforge 规范检查）
 - SkillLibrary 参考技能库、章节自测题、成绩汇总
-- ~~章节在线幻灯片（reveal.js，按章节用大模型生成在线演示）~~ ✅ **已上线**（当前为 mock 生成器；**切 LLM 与效果优化见 §9**）
+- ~~章节在线幻灯片（reveal.js，按章节用大模型生成在线演示）~~ ✅ **已上线**，LLM 生成已达「商业可用」验收线（deepseek-flash，prompt v3 + 版式系统升级 + 盲评通过，见 §9）
 
 ## 6. 课程目录、选课申请与工作台 —— ✅ 已完成（2026-09-24）
 
@@ -563,14 +563,16 @@ $ws_out_host`）：上游已把 Host 改对，所以它现在退化为恒等映�
 **后端 07:08 重启后 wsKey 重生成、浏览器里旧 cookie 全部失效**（`/wsbridge/ping` 403/21、
 `/api/remote.mux` 200/85 都是这个原因）。诊断时先看这两条状态码，别一上来就怀疑网关。
 
-## 9. 章节在线幻灯片（reveal.js）—— ✅ 已上线（2026-09-29）
+## 9. 章节在线幻灯片（reveal.js）—— ✅ 已上线，LLM 生成已达「商业可用」验收线（2026-09-29）
 
 ### 9.1 一句话现状
 
 教师可在章节编辑页进入「幻灯片」，**手动触发**用大模型按章节生成一份在线演示（reveal.js）；可改内容
 （**JSON / Markdown 双视图**）、**换模板并可视化调参**、全屏放映、跨章节切换；学生端章节页可「文档 ⇄ 幻灯片」
-切换。**当前线上跑的是 mock 生成器**（不调模型、不耗额度）——「切到真实 LLM」与「生成效果优化」都还没做，
-见 §9.3 / §9.4。
+切换。**生成已切真实 LLM（`deepseek-flash`）并做完效果优化**：prompt v3（密度硬约束/讲稿式 notes/版式选型）+
+4 种新版式（agenda/steps/stat/compare）+ 自适应防溢出 + 逐页截图盲评验收通过
+（`docs/REVIEW-slides-rubric.md`，对标商业产品 7 维评分）。
+**生成前必读 §9.4a**：deepseek-flash/v4-pro 是推理模型，预算含推理开销（已加 `reasoning_effort=low` 修复）。
 
 ### 9.2 已交付
 
@@ -582,47 +584,58 @@ $ws_out_host`）：上游已把 Host 改对，所以它现在退化为恒等映�
 | 部署 | 前端已同步 `/var/www/lab`（走 `deploy/deploy-web-lab.sh`）；后端已 `npm run build` + 重启（新 dist 生效） |
 | 设计 | `docs/DESIGN-2026-09-29-chapter-slides.md`：已确认决策、数据模型、API 契约、安全矩阵、实测记录 |
 
-### 9.3 切到真实 LLM（待做，配置 + 重启即可）
+### 9.3 切到真实 LLM —— ✅ 已完成（2026-09-29 下午）
 
-```bash
-# server/.env 追加两行
-SLIDES_GENERATOR=llm
-SLIDES_MODEL=deepseek-flash     # dsh/verify profile 记录的 DeepSeek 官方**实测可用**模型；另有 deepseek-v4-pro
-# DEEPSEEK_API_KEY 已在 .env（复用平台额度，不需要学生自带 key）
-# 回退 Moonshot：SLIDES_LLM_API_KEY_ENV=MOONSHOT_API_KEY、SLIDES_LLM_BASE_URL=https://api.moonshot.cn/v1、SLIDES_MODEL=kimi-k2.6
-```
+`server/.env` 已加 `SLIDES_GENERATOR=llm` + `SLIDES_MODEL=deepseek-flash`，线上即真实生成。
+**模型选型有盲评结论（§9.4b）**：flash 在结构完整性/覆盖/延迟（~1/3）/成本上全面优于 v4-pro，
+pro 仅个别措辞略细；分级配置口已留（`SLIDES_OUTLINE_MODEL` / `SLIDES_EXPAND_MODEL`）。
 
-- 改完**必须重启后端**：`sudo systemctl restart nju-lab`。本会话没有 sudo（`no new privileges`），
-  可用 `kill <MainPID>` 让 systemd 按 `Restart=always` 自动拉起 —— 2026-09-29 就是这么重启的，
-  6 秒内恢复、`systemctl is-active` 为 active。
-- 出口可达性有既有依据：`server/src/container-runtime/container-runtime.ts` 的 `VERIFY_EGRESS_DOMAINS`
-  默认含 `api.deepseek.com,api.moonshot.cn`（复验容器走同两个域名）。
+- 改 `.env` 后**必须重启后端**：`sudo systemctl restart nju-lab`；本会话没有 sudo（`no new privileges`），
+  可用 `kill <MainPID>` 让 systemd 按 `Restart=always` 自动拉起（6 秒内恢复）。
 - ⚠️ 切到 llm 后，旧的 mock deck 会因 `sourceHash`（含模型名）变化而提示「章节内容已变更 → 重新生成」，
   **这是预期**，不是 bug。
 - ⚠️ 改 prompt 后**必须把 `slides.config.ts` 的 `SLIDES_PROMPT_VERSION` +1**，否则同 hash 命中旧缓存、
-  看不到新效果。
+  看不到新效果。（v1 → v2 密度约束 → v3 新版式选型）
 
-### 9.4 生成效果优化（下一对话的起点）
+### 9.3a ⚠️ 推理模型预算坑（2026-09-29 实测，切片时第一个雷）
 
-成效最好下手的地方（都在 `slides.generator.ts` 的 prompt 与 `slides.config.ts` 的限额）：
+**deepseek-flash / deepseek-v4-pro 是推理模型**：`max_tokens` 预算是「推理 + 正文」**共用**的。
+实测 max_tokens=200 时 `reasoning_content` 把额度烧完、`content` 为空字符串 → 生成报"模型输出不是合法 JSON"。
+处置（都在代码里）：
+- `llm.client.ts` 请求带 `reasoning_effort`（默认 `low`，`SLIDES_LLM_REASONING_EFFORT` 可配）；
+  结构化 JSON 任务不需要长推理，low 的推理开销约 200–800 token。
+- 大纲 max_tokens 从 v1 的 `min(…,2000)` 提到给满 `SLIDES_MAX_TOKENS`（2000 对 20 页大纲太紧，实测截断）。
+- `parseJsonLoose` 新增**截断抢救**（回退到最后完整对象、补齐未闭合括号）；
+  大纲失败重试一次、扩写批失败/截断也重试一次（约 1/20 的批会碰到）；缺页用大纲骨架补齐。
+- 扩写产物**逐页校验**：单页不合法只丢该页（如 v4-pro 曾输出空栏 compare），不拖垮整批。
 
-- **两阶段 prompt**：大纲阶段目前只要求「标题 + 要点骨架」，可加"必须覆盖的知识点清单 / 每页信息密度约束 /
-  避免与上一页重复"；扩写阶段的 `notes`（讲者备注）现在只要 1–3 句，可要求更接近讲稿。
-- **长章节是效果瓶颈**：`SLIDES_SOURCE_MAX_CHARS`(12000) 之外的正文会被**截断**（`truncate()` 加了
-  「正文过长已截断」提示），可考虑"按小节分块生成再汇总"。
-- 限额：`SLIDES_MAX_SLIDES`(20)、`SLIDES_MAX_BULLETS`(8)、`SLIDES_MAX_CHARS`(400)、
-  `SLIDES_EXPAND_BATCH`(4)、`SLIDES_MAX_TOKENS`(4000) —— 直接影响单页质量与失败率。
-- **版式**：`web/src/slides/renderDeck.ts` 的 layout 渲染 + `template.schema.ts` 的 `designToCss` 是样式主战场；
-  当前 `two-col` / `code` / `quote` 排版较朴素，也还没做图片页（LLM 被明确要求**不要**生成 image 页）。
-- 回归手段：`MockDeckGenerator` 不烧额度，可用来验版式改动；prompt 改动请用真模型对比几份不同章节。
+### 9.4 生成效果优化 —— ✅ 已完成（2026-09-29 下午，设计文档 §16 有完整实录）
 
-**【2026-09-29 浏览器实测看到的观感问题（有截图，`~/pw-verify/shots/`）】**
-- **要点太长太密**：mock 直接把章节原句抽成要点，一页 5–6 条、每条 2–3 行。真实 LLM 会好一些，但 prompt 值得
-  显式约束「每条 ≤ 20 字、每页 ≤ 5 条、关键词式短语而非整句」。
-- **内容溢出被裁**：要点超过一页高度时底部被切掉（第 3 页可见）→ 排版侧应按内容量**自适应字号**
-  （估算总字数后调 `--deck-font-scale`）或硬性限条数。
-- **重复页**：「一个好的Prompt应该包含什么？」连出两页 → 生成侧去重（prompt 里加「不要重复已出现的标题/要点」）。
-- **放映态左下角跨章节按钮用长标题**，横跨底部、半透明压在幻灯片上 → 建议改图标 + tooltip。
+**评测闭环（以后改 prompt/版式都靠它）**：`web/tools/review-decks.mjs <标签>` 真实生成 →
+放映态逐页截图 + deck.json → 对照 `docs/REVIEW-slides-rubric.md` 7 维打分；
+渲染层改动跑 `web/tools/assert-render.mjs`（jsdom，19 项，毫秒级）。
+评测集 = 生产库 5 个真实章节（脚本里 `EVAL_CHAPTERS`）。
+
+已落地：
+- **prompt v2/v3**：密度硬约束（每条 ≤20 字、每页 3–5 条、电报体）、keyPoint 锚点、覆盖与去重规则、
+  讲稿式 notes（3–6 句、信息量比页面大）；v3 新增版式选型要求。
+- **程序化质检 `postProcessSlides`**：标题 ≤30 字/要点 ≤60 字截断（`SLIDES_TITLE_MAX_CHARS` /
+  `SLIDES_BULLET_MAX_CHARS`，只闸 LLM 产出）、页内重复要点去重、标题高相似页合并（bigram Jaccard ≥0.7）。
+- **版式系统**：新 layout `agenda/steps/stat/compare` + `kicker` 眉题（json 列，**无需迁移**）；
+  MD 投影双向约定（设计文档 §7）；渲染层编号目录/步骤连接线/超大数字/对比卡片；
+  **内容量自适应缩档**（`deck-fit-2/3`，防底部裁切的硬保证）；模板新增 `fontScale`/`cardStyle`
+  （调参抽屉有控件）；mock 生成器同步产出全部新版式（零成本回归路径）。
+- **放映态修正**：跨章节按钮改图标 + Tooltip；**`SlideStage` Spin 常驻 bug**（父组件行内 template 对象 →
+  等价输入反复触发重建态，iframe 不重载、ready 永不再发 → loading 点常驻；修法 `lastDocRef` 等价跳过，
+  回归断言在 verify-slides.mjs 第 8.5 项）。
+- 长章节（>`SLIDES_SOURCE_MAX_CHARS` 12000）分块生成**未做**（当前真实章节最长 3.6k 字打不到），
+  记入设计文档 §14 后续。
+
+### 9.4b 模型盲评结论（2026-09-29，rubric 文档有三轮评分表）
+
+flash-v3 vs pro-v3 五章对比：**flash 结构/覆盖更好**（pro 有一章只出 7 页且缺 end 页）、
+**延迟 ~1/3**（39–90s vs 105–226s）、tokens 相当；pro 仅个别措辞略细。
+**默认 `deepseek-flash`**；混合策略（大纲 pro+扩写 flash）用 `SLIDES_OUTLINE_MODEL`/`SLIDES_EXPAND_MODEL` 即可。
 
 ### 9.5 踩坑（都实测过，别再踩）
 

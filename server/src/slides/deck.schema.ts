@@ -12,7 +12,11 @@ import { randomUUID } from 'crypto';
 export const SLIDE_LAYOUTS = [
   'cover',
   'section',
+  'agenda',
   'bullets',
+  'steps',
+  'stat',
+  'compare',
   'two-col',
   'code',
   'quote',
@@ -22,12 +26,32 @@ export const SLIDE_LAYOUTS = [
 
 export type SlideLayout = (typeof SLIDE_LAYOUTS)[number];
 
+export interface SlideStat {
+  value: string;
+  label: string;
+  detail?: string;
+}
+
+export interface SlideCompare {
+  leftTitle?: string;
+  rightTitle?: string;
+  left: string[];
+  right: string[];
+}
+
 export interface SlideJson {
   id: string;
   layout: SlideLayout;
+  /** 眉题（封面/分节页上方的小字，如课程名） */
+  kicker?: string;
   title?: string;
   subtitle?: string;
   bullets?: string[];
+  /** steps：有序步骤（复用 bullets 承载，渲染为带序号的流程）——见 validateSlide */
+  /** stat：大数字（1–4 个），商业 deck 高频版式 */
+  stats?: SlideStat[];
+  /** compare：左右两栏带列标题的要点清单（比 two-col 的裸 Markdown 更结构化） */
+  compare?: SlideCompare;
   /** two-col：两栏内容，都是 Markdown 片段 */
   left?: string;
   right?: string;
@@ -147,6 +171,8 @@ export function validateSlide(raw: unknown, index: number, limits: SlideLimits):
     layout: layout as SlideLayout,
   };
 
+  const kicker = readString(raw.kicker, 30);
+  if (kicker) slide.kicker = kicker;
   const title = readString(raw.title, limits.maxChars);
   if (title) slide.title = title;
   const subtitle = readString(raw.subtitle, limits.maxChars);
@@ -154,6 +180,61 @@ export function validateSlide(raw: unknown, index: number, limits: SlideLimits):
 
   const bullets = readStringArray(raw.bullets, limits);
   if (bullets) slide.bullets = bullets;
+
+  if (raw.stats !== undefined && raw.stats !== null) {
+    if (!Array.isArray(raw.stats)) {
+      throw new DeckValidationError(`第 ${index + 1} 页的 stats 必须是数组`);
+    }
+    const stats: NonNullable<SlideJson['stats']> = [];
+    for (const item of raw.stats) {
+      if (!isRecord(item)) throw new DeckValidationError(`第 ${index + 1} 页的 stats 元素必须是对象`);
+      const value = readString(item.value, 16);
+      const statLabel = readString(item.label, 48);
+      if (!value || !statLabel) {
+        throw new DeckValidationError(`第 ${index + 1} 页的 stats 元素必须有 value 与 label`);
+      }
+      const stat: SlideStat = {
+        value,
+        label: statLabel,
+      };
+      const detail = readString(item.detail, 120);
+      if (detail) stat.detail = detail;
+      stats.push(stat);
+      if (stats.length >= 4) break;
+    }
+    if (stats.length) slide.stats = stats;
+  }
+
+  if (raw.compare !== undefined && raw.compare !== null) {
+    if (!isRecord(raw.compare)) {
+      throw new DeckValidationError(`第 ${index + 1} 页的 compare 必须是对象`);
+    }
+    const pickSide = (side: unknown): string[] => {
+      if (!Array.isArray(side)) return [];
+      const items: string[] = [];
+      for (const entry of side) {
+        if (typeof entry !== 'string') {
+          throw new DeckValidationError(`第 ${index + 1} 页的 compare 清单里出现了非字符串元素`);
+        }
+        const text = readString(entry, limits.maxChars);
+        if (text) items.push(text);
+        if (items.length >= limits.maxBullets) break;
+      }
+      return items;
+    };
+    const compare: NonNullable<SlideJson['compare']> = {
+      left: pickSide(raw.compare.left),
+      right: pickSide(raw.compare.right),
+    };
+    const leftTitle = readString(raw.compare.leftTitle, 30);
+    if (leftTitle) compare.leftTitle = leftTitle;
+    const rightTitle = readString(raw.compare.rightTitle, 30);
+    if (rightTitle) compare.rightTitle = rightTitle;
+    if (!compare.left.length && !compare.right.length) {
+      throw new DeckValidationError(`第 ${index + 1} 页的 compare 两栏都是空的`);
+    }
+    slide.compare = compare;
+  }
 
   const left = readString(raw.left, limits.maxChars * 4);
   if (left) slide.left = left;
@@ -228,11 +309,21 @@ export function validateSlide(raw: unknown, index: number, limits: SlideLimits):
     if (Object.keys(attrs).length) slide.attrs = attrs;
   }
 
+  // 版式与内容的最低匹配：agenda/steps 没要点、stat 没数字，渲染出来就是空页
+  if ((layout === 'agenda' || layout === 'steps') && !slide.bullets?.length) {
+    throw new DeckValidationError(`第 ${index + 1} 页（${layout}）没有条目`);
+  }
+  if (layout === 'stat' && !slide.stats?.length) {
+    throw new DeckValidationError(`第 ${index + 1} 页（stat）没有大数字`);
+  }
+
   // 每页至少要有点可展示的东西，否则渲染出来是空白页
   const hasContent =
     !!slide.title ||
     !!slide.subtitle ||
     !!slide.bullets?.length ||
+    !!slide.stats?.length ||
+    !!slide.compare ||
     !!slide.left ||
     !!slide.right ||
     !!slide.code ||

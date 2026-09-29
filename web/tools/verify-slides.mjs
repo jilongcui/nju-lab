@@ -135,6 +135,18 @@ try {
   const afterKey = await lastIndex();
   check('键盘 → 前进', afterKey === afterControls + 1, `${afterControls} → ${afterKey}`);
 
+  // 8.5) 翻页后不应有常驻 loading（2026-09-29 Spin 常驻 bug 回归：
+  // 父组件行内 template 对象 → 等价输入反复触发重建态，iframe 不重载、ready 永不再发）
+  await page.waitForTimeout(500);
+  const spinVisible = await page.evaluate(() =>
+    [...document.querySelectorAll('.ant-spin')].some((el) => {
+      const rect = el.getBoundingClientRect();
+      const style = getComputedStyle(el);
+      return rect.width > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+    }),
+  );
+  check('放映中翻页后无常驻 loading（Spin 回归）', !spinVisible);
+
   // 放映态截图（在 Esc 之前拍）
   await page.screenshot({ path: `${SHOTS_DIR}presenting.png` });
 

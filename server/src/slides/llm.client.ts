@@ -1,9 +1,11 @@
 import {
   SLIDES_LLM_API_KEY_ENV,
   SLIDES_LLM_BASE_URL,
+  SLIDES_LLM_REASONING_EFFORT,
   SLIDES_LLM_TIMEOUT_MS,
   SLIDES_MAX_TOKENS,
   SLIDES_MODEL,
+  SlidesReasoningEffort,
 } from './slides.config';
 
 /**
@@ -52,7 +54,14 @@ export function llmDiagnostics(): Record<string, string | boolean> {
 
 export async function chatJson(
   messages: ChatMessage[],
-  options: { maxTokens?: number; temperature?: number } = {},
+  options: {
+    maxTokens?: number;
+    temperature?: number;
+    /** 覆盖默认模型（分级策略：大纲/扩写可用不同模型） */
+    model?: string;
+    /** 覆盖默认推理强度（deepseek-flash/v4-pro 是推理模型，预算含推理开销） */
+    reasoningEffort?: SlidesReasoningEffort;
+  } = {},
 ): Promise<ChatResult> {
   const apiKey = configuredApiKey();
   if (!apiKey) {
@@ -60,6 +69,7 @@ export async function chatJson(
       `未配置 ${SLIDES_LLM_API_KEY_ENV}，无法调用模型；可改用 SLIDES_GENERATOR=mock`,
     );
   }
+  const model = options.model || SLIDES_MODEL;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SLIDES_LLM_TIMEOUT_MS);
@@ -72,10 +82,11 @@ export async function chatJson(
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: SLIDES_MODEL,
+        model,
         messages,
         max_tokens: options.maxTokens ?? SLIDES_MAX_TOKENS,
         temperature: options.temperature ?? 0.3,
+        reasoning_effort: options.reasoningEffort ?? SLIDES_LLM_REASONING_EFFORT,
         response_format: { type: 'json_object' },
       }),
       signal: controller.signal,
@@ -99,7 +110,7 @@ export async function chatJson(
     }
     return {
       content,
-      model: payload.model || SLIDES_MODEL,
+      model: payload.model || model,
       usage: payload.usage
         ? {
             promptTokens: payload.usage.prompt_tokens ?? 0,
@@ -137,9 +148,38 @@ export function parseJsonLoose(content: string): unknown {
       try {
         return JSON.parse(candidate.slice(start, end + 1));
       } catch {
-        /* 落到下面统一报错 */
+        /* 落到下面的截断抢救 */
       }
     }
+    const salvaged = salvageTruncatedJson(candidate);
+    if (salvaged !== null) return salvaged;
     throw new LlmError('模型输出不是合法 JSON');
+  }
+}
+
+/**
+ * 抢救被 max_tokens 截断的 JSON（推理模型的预算是「推理+正文」共用的，长输出总会偶发被截）。
+ * 做法：回退到最后一个完整对象边界，按未闭合括号补齐结尾 —— 拿到「少几页但合法」的 JSON，
+ * 比整批失败好（调用方会按大纲骨架补齐缺失页）。
+ */
+function salvageTruncatedJson(candidate: string): unknown | null {
+  const start = candidate.indexOf('{');
+  if (start < 0) return null;
+  let cut = candidate.length;
+  // 逐次回退到上一个 '}'，尝试补齐未闭合的 ] 与 }
+  for (;;) {
+    cut = candidate.lastIndexOf('}', cut - 1);
+    if (cut <= start) return null;
+    const fragment = candidate.slice(start, cut + 1);
+    const openBraces = (fragment.match(/\{/g) ?? []).length - (fragment.match(/\}/g) ?? []).length;
+    const openBrackets =
+      (fragment.match(/\[/g) ?? []).length - (fragment.match(/\]/g) ?? []).length;
+    if (openBraces < 0 || openBrackets < 0) continue;
+    const suffix = ']'.repeat(openBrackets) + '}'.repeat(openBraces);
+    try {
+      return JSON.parse(fragment + suffix);
+    } catch {
+      /* 这个边界不行，继续往前回退 */
+    }
   }
 }

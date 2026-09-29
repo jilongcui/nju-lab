@@ -39,7 +39,77 @@ const BASE_OVERRIDES = `
 .reveal .deck-caption { font-size: 0.5em; opacity: 0.7; margin-top: 0.4em; }
 .reveal pre { width: 100%; }
 .reveal pre code { max-height: 60vh; }
+
+/* 内容量自适应：过重页自动缩字号（防底部裁切的硬保证；生成侧另有密度约束） */
+.reveal .slides section.deck-fit-2 { font-size: 0.85em; }
+.reveal .slides section.deck-fit-3 { font-size: 0.72em; }
+
+/* 眉题（封面/分节/目录页上方的小字） */
+.reveal .deck-kicker { font-size: 0.42em; letter-spacing: 0.14em; color: var(--deck-accent, #888); font-weight: 600; margin: 0 0 0.9em; }
+
+/* 封面 */
+.reveal .deck-cover-rule { width: 2.6em; height: 0.14em; background: var(--deck-accent, #888); margin: 0.9em auto 0; border-radius: 2px; }
+
+/* 目录页（编号大事记风格） */
+.reveal .deck-agenda { counter-reset: deck-agenda; list-style: none; margin-left: 0 !important; }
+.reveal .deck-agenda li { counter-increment: deck-agenda; position: relative; padding-left: 2.2em; text-align: left; }
+.reveal .deck-agenda li::before { content: counter(deck-agenda, decimal-leading-zero); position: absolute; left: 0; top: 0.08em; color: var(--deck-accent, #888); font-weight: 700; font-size: 0.9em; }
+
+/* 步骤页（序号圆点 + 连接线） */
+.reveal .deck-steps { counter-reset: deck-steps; list-style: none; margin-left: 0 !important; }
+.reveal .deck-steps li { counter-increment: deck-steps; position: relative; padding-left: 2.4em; text-align: left; }
+.reveal .deck-steps li::before { content: counter(deck-steps); position: absolute; left: 0; top: 0.05em; width: 1.5em; height: 1.5em; border-radius: 50%; background: var(--deck-primary, #666); color: var(--deck-background, #fff); font-size: 0.62em; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.reveal .deck-steps li:not(:last-child)::after { content: ''; position: absolute; left: 0.73em; top: 1.7em; bottom: -0.5em; width: 2px; background: color-mix(in srgb, var(--deck-primary, #666) 30%, transparent); }
+
+/* 大数字页 */
+.reveal .deck-stats { display: flex; gap: 1em; justify-content: center; align-items: stretch; text-align: center; }
+.reveal .deck-stat { flex: 1 1 0; min-width: 0; padding: 0.8em 0.4em; }
+.reveal .deck-stat-value { font-size: 2.4em; font-weight: 800; color: var(--deck-primary, inherit); line-height: 1.05; }
+.reveal .deck-stat-label { font-size: 0.5em; margin-top: 0.5em; opacity: 0.85; }
+.reveal .deck-stat-detail { font-size: 0.42em; margin-top: 0.35em; opacity: 0.6; }
+
+/* 对比页（双栏带列标题） */
+.reveal .deck-compare { display: flex; gap: 1.2em; text-align: left; }
+.reveal .deck-compare-col { flex: 1 1 0; min-width: 0; }
+.reveal .deck-compare-head { font-size: 0.62em; font-weight: 700; color: var(--deck-accent, inherit); border-bottom: 2px solid var(--deck-accent, #888); padding-bottom: 0.3em; margin-bottom: 0.7em; }
+.reveal .deck-compare-col ul { margin-left: 1.1em; }
+
+/* 要点 marker 用强调色 */
+.reveal .deck-bullets li::marker { color: var(--deck-accent, inherit); }
 `;
+
+/**
+ * 内容量估算 → 自适应缩档（`deck-fit-2/3`）。
+ * 阈值按 reveal 1024×700 画布标定：标题约两行高，正文可用约 9–10 行；
+ * 超重的页宁可整体缩小也不能让底部被裁（2026-09-29 实测过"要点被切一半"）。
+ */
+function slideWeight(slide: SlideJson): number {
+  let weight = 0;
+  if (slide.title) weight += slide.title.length * 2;
+  if (slide.subtitle) weight += slide.subtitle.length;
+  for (const bullet of slide.bullets ?? []) weight += bullet.length + 14;
+  for (const stat of slide.stats ?? []) {
+    weight += stat.label.length + stat.value.length * 2 + (stat.detail?.length ?? 0) * 0.5 + 24;
+  }
+  if (slide.compare) {
+    weight += 40;
+    for (const item of [...slide.compare.left, ...slide.compare.right]) {
+      weight += item.length + 10;
+    }
+  }
+  if (slide.left) weight += slide.left.length * 0.6;
+  if (slide.right) weight += slide.right.length * 0.6;
+  if (slide.code) weight += slide.code.content.split('\n').length * 24;
+  if (slide.quote) weight += slide.quote.text.length * 1.1;
+  if (slide.image) weight += 200;
+  return weight;
+}
+
+function fitClassOf(weight: number): string {
+  if (weight > 760) return 'deck-fit-3';
+  if (weight > 480) return 'deck-fit-2';
+  return '';
+}
 
 export interface DeckRenderInput {
   slides: SlideJson[];
@@ -79,17 +149,51 @@ function renderLayoutBody(slide: SlideJson, input: DeckRenderInput): string {
   const subtitle = slide.subtitle
     ? `<h3 class="deck-accent">${renderInlineSafe(slide.subtitle)}</h3>`
     : '';
+  // 眉题只出现在"仪式型"页面（封面/分节/目录/结尾）；内容页不放，避免挤占正文高度
+  const kicker =
+    slide.kicker && ['cover', 'section', 'agenda', 'end'].includes(slide.layout)
+      ? `<p class="deck-kicker">${escapeHtml(slide.kicker)}</p>`
+      : '';
 
   switch (slide.layout) {
     case 'cover':
-      return `<h1>${renderInlineSafe(slide.title ?? '')}</h1>${subtitle}
+      return `${kicker}<h1>${renderInlineSafe(slide.title ?? '')}</h1>
+        <div class="deck-cover-rule"></div>${subtitle}
         ${slide.bullets?.length ? renderBullets(slide.bullets) : ''}`;
     case 'section':
-      return `<h2>${renderInlineSafe(slide.title ?? '')}</h2>${subtitle}
+      return `${kicker}<h2>${renderInlineSafe(slide.title ?? '')}</h2>${subtitle}
         ${slide.bullets?.length ? renderBullets(slide.bullets) : ''}`;
     case 'end':
-      return `<h2>${renderInlineSafe(slide.title ?? '')}</h2>
+      return `${kicker}<h2>${renderInlineSafe(slide.title ?? '')}</h2>
         ${slide.bullets?.length ? renderBullets(slide.bullets) : ''}`;
+    case 'agenda':
+      return `${kicker}${title}${renderOrdered(slide.bullets, 'deck-agenda')}`;
+    case 'steps':
+      return `${title}${renderOrdered(slide.bullets, 'deck-steps')}`;
+    case 'stat': {
+      const stats = (slide.stats ?? [])
+        .map(
+          (stat) => `<div class="deck-stat">
+            <div class="deck-stat-value">${escapeHtml(stat.value)}</div>
+            <div class="deck-stat-label">${renderInlineSafe(stat.label)}</div>
+            ${stat.detail ? `<div class="deck-stat-detail">${renderInlineSafe(stat.detail)}</div>` : ''}
+          </div>`,
+        )
+        .join('');
+      return `${title}<div class="deck-stats">${stats}</div>`;
+    }
+    case 'compare': {
+      const compare = slide.compare;
+      if (!compare) return title;
+      const column = (head: string | undefined, items: string[]) =>
+        `<div class="deck-compare-col">
+          ${head ? `<div class="deck-compare-head">${renderInlineSafe(head)}</div>` : ''}
+          ${renderBullets(items)}
+        </div>`;
+      return `${title}<div class="deck-compare">
+        ${column(compare.leftTitle, compare.left)}${column(compare.rightTitle, compare.right)}
+      </div>`;
+    }
     case 'bullets':
       return `${title}${slide.bullets?.length ? renderBullets(slide.bullets) : ''}`;
     case 'two-col':
@@ -123,7 +227,17 @@ function renderLayoutBody(slide: SlideJson, input: DeckRenderInput): string {
 }
 
 function renderBullets(bullets: string[]): string {
-  return `<ul>${bullets.map((item) => `<li>${renderInlineSafe(item)}</li>`).join('')}</ul>`;
+  return `<ul class="deck-bullets">${bullets
+    .map((item) => `<li>${renderInlineSafe(item)}</li>`)
+    .join('')}</ul>`;
+}
+
+/** 有序列表（agenda 目录 / steps 步骤）：CSS 负责序号样式，HTML 只要 ol + class */
+function renderOrdered(items: string[] | undefined, className: string): string {
+  if (!items?.length) return '';
+  return `<ol class="${className}">${items
+    .map((item) => `<li>${renderInlineSafe(item)}</li>`)
+    .join('')}</ol>`;
 }
 
 function renderSection(slide: SlideJson, input: DeckRenderInput): string {
@@ -141,8 +255,12 @@ function renderSection(slide: SlideJson, input: DeckRenderInput): string {
   if (slide.attrs?.transition) {
     attrs.push(`data-transition="${escapeAttribute(slide.attrs.transition)}"`);
   }
-  if (slide.attrs?.className) {
-    attrs.push(`class="${escapeAttribute(slide.attrs.className)}"`);
+  // 内容量自适应缩档（deck-fit-2/3）+ 教师的自定义 class 并存
+  const classNames = [slide.attrs?.className, fitClassOf(slideWeight(slide))]
+    .filter(Boolean)
+    .join(' ');
+  if (classNames) {
+    attrs.push(`class="${escapeAttribute(classNames)}"`);
   }
 
   const notes = slide.notes

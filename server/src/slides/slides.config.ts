@@ -35,10 +35,26 @@ export const SLIDES_LLM_API_KEY_ENV =
   process.env.SLIDES_LLM_API_KEY_ENV || 'DEEPSEEK_API_KEY';
 
 export const SLIDES_MODEL = process.env.SLIDES_MODEL || 'deepseek-flash';
+/** 分级用模型（可选）：大纲 / 扩写可以各用各的；缺省回落 SLIDES_MODEL */
+export const SLIDES_OUTLINE_MODEL = process.env.SLIDES_OUTLINE_MODEL || '';
+export const SLIDES_EXPAND_MODEL = process.env.SLIDES_EXPAND_MODEL || '';
+
+/**
+ * reasoning_effort：deepseek-flash / v4-pro 是**推理模型**，completion 预算是
+ * 「推理 + 正文」共用的 —— 2026-09-29 实测 max_tokens=200 全被 reasoning_content 烧完、
+ * content 为空。结构化 JSON 任务不需要长推理，默认 low（合法值见下，实测自官方 API）。
+ */
+const REASONING_EFFORTS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
+export type SlidesReasoningEffort = (typeof REASONING_EFFORTS)[number];
+export const SLIDES_LLM_REASONING_EFFORT: SlidesReasoningEffort = (
+  REASONING_EFFORTS as readonly string[]
+).includes(process.env.SLIDES_LLM_REASONING_EFFORT ?? '')
+  ? (process.env.SLIDES_LLM_REASONING_EFFORT as SlidesReasoningEffort)
+  : 'low';
 
 /** 单次生成的页数上限（提示词里也会写，这里是硬闸） */
 export const SLIDES_MAX_SLIDES = num('SLIDES_MAX_SLIDES', 20);
-/** 单次请求的 completion 上限 */
+/** 单次请求的 completion 上限（含推理开销，见上） */
 export const SLIDES_MAX_TOKENS = num('SLIDES_MAX_TOKENS', 4000);
 /** 扩写阶段每批页数 */
 export const SLIDES_EXPAND_BATCH = num('SLIDES_EXPAND_BATCH', 4);
@@ -48,14 +64,21 @@ export const SLIDES_GENERATE_PER_HOUR = num('SLIDES_GENERATE_PER_HOUR', 20);
 export const SLIDES_MAX_BULLETS = num('SLIDES_MAX_BULLETS', 8);
 export const SLIDES_MAX_CHARS = num('SLIDES_MAX_CHARS', 400);
 export const SLIDES_MAX_NOTES = num('SLIDES_MAX_NOTES', 1000);
+/** 生成器后置质检闸（只作用于 LLM 产出，教师手工编辑不受此限）：标题 / 单条要点字符 */
+export const SLIDES_TITLE_MAX_CHARS = num('SLIDES_TITLE_MAX_CHARS', 30);
+export const SLIDES_BULLET_MAX_CHARS = num('SLIDES_BULLET_MAX_CHARS', 60);
 /** 送入模型的章节正文字符上限（超长截断，避免单次请求过大） */
 export const SLIDES_SOURCE_MAX_CHARS = num('SLIDES_SOURCE_MAX_CHARS', 12000);
 /** 请求超时（毫秒） */
 export const SLIDES_LLM_TIMEOUT_MS = num('SLIDES_LLM_TIMEOUT_MS', 90_000);
 /**
  * 提示词版本 —— **改了 prompt 必须 +1**，否则 `sourceHash` 命中旧缓存、教师看不到新效果。
+ * v2（2026-09-29）：密度硬约束（≤20字/条、3–5条/页）、keyPoint 锚点、覆盖与去重规则、
+ * 讲稿式 notes；配套修复推理模型预算（reasoning_effort=low）与大纲 2000 token 截断。
+ * v3（2026-09-29）：版式系统升级 —— 新增 agenda/steps/stat/compare 与 kicker 眉题，
+ * 大纲要求按内容选型（版式多样），扩写给各版式的字段契约。
  */
-export const SLIDES_PROMPT_VERSION = 'v1';
+export const SLIDES_PROMPT_VERSION = 'v3';
 
 export const SLIDES_LIMITS = {
   maxSlides: SLIDES_MAX_SLIDES,

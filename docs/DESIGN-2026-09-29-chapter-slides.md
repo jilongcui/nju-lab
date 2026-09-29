@@ -141,16 +141,24 @@ export class SlideTemplate {
 ```
 
 ```ts
+// 【2026-09-29 下午 版式系统升级后】
+type SlideLayout =
+  | 'cover' | 'section' | 'agenda' | 'bullets' | 'steps' | 'stat'
+  | 'compare' | 'two-col' | 'code' | 'quote' | 'image' | 'end';
+
 type SlideJson = {
   id: string;
-  layout: 'cover'|'section'|'bullets'|'two-col'|'code'|'quote'|'image'|'end';
+  layout: SlideLayout;
+  kicker?: string;                 // 眉题（封面/分节/目录/结尾页上方小字，渲染层只在仪式型页面上屏）
   title?: string; subtitle?: string;
-  bullets?: string[];             // 支持一级要点（v1 不做嵌套列表）
-  left?: string; right?: string;  // two-col：两栏 Markdown
+  bullets?: string[];              // 一级要点；steps/agenda 也复用它（渲染为有序）
+  stats?: { value: string; label: string; detail?: string }[];  // stat：大数字 1–4 个
+  compare?: { leftTitle?: string; rightTitle?: string; left: string[]; right: string[] };
+  left?: string; right?: string;   // two-col：两栏 Markdown
   code?: { lang: string; content: string };
   quote?: { text: string; cite?: string };
   image?: { url: string; caption?: string };   // 只允许平台内图片/已上传附件
-  notes?: string;                 // 讲者备注 → <aside class="notes">
+  notes?: string;                  // 讲者备注 → <aside class="notes">
   attrs?: { background?: string; transition?: string; class?: string };
 };
 
@@ -197,11 +205,31 @@ type SlideConfig = {
 Markdown 视图的约定（受支持子集，刻意保持小）：
 ```md
 # 页标题
-<!-- .slide: layout=bullets -->
+<!-- .slide: layout=bullets kicker="课程名" -->
 - 要点一
 - 要点二
 
 <!-- .notes: 讲者备注 -->
+
+---
+
+<!-- .slide: layout=agenda -->
+1. 第一节
+2. 第二节
+
+---
+
+<!-- .slide: layout=stat -->
+- **75%** 掌握率：课后自测
+
+---
+
+<!-- .slide: layout=compare -->
+**左列标题**
+- 左要点
+<!-- .col -->
+**右列标题**
+- 右要点
 
 ---
 
@@ -211,6 +239,8 @@ Markdown 视图的约定（受支持子集，刻意保持小）：
 <!-- .col -->
 右侧内容（Markdown）
 ```
+- 【2026-09-29 下午新增】kicker 写在指令行；agenda/steps 用编号列表往返；stat 用 `- **值** 标签：说明`；
+  compare 用 `**列标题**` + `- 要点` + `<!-- .col -->`。
 - JSON → MD 是**确定性**的（每个 layout 有固定模板），所以"换视图"不会漂移。
 - MD → JSON 只解析上面的子集；解析失败给**行号 + 原因**，不静默丢弃。
 - **不承诺无损 round-trip**：JSON 里的 `attrs.class`、自定义 `background` 等高级字段在 MD 视图里没有等价写法 → 打开 MD 视图时保留并在保存时**合并回**（而不是整体覆盖），并在 UI 上提示"该页有 MD 视图不支持的高级设置，已在保存时保留"。
@@ -313,3 +343,57 @@ Markdown 视图的约定（受支持子集，刻意保持小）：
 | 平台内存红线 | 800M，且无 SSE4.2 | 纯前端渲染（iframe）+ 后端只做 JSON 与调用 API，**绝不引入 Chromium** |
 | 模板编辑的安全性 | 自定义 CSS 的外链/泄露 | 过滤规则 + opaque origin 沙箱（§11） |
 | 学生端信息泄露 | deck 可能含未发布内容 | 学生只在章节 `published` 时可见 deck（§11） |
+
+## 16. 效果优化实录（2026-09-29 下午，"商业可用"专项）
+
+> 目标：从「mock 演示版」到对标商业产品的可授课级别。评测闭环：
+> `web/tools/review-decks.mjs <标签>`（真实生成 → 放映态逐页截图 + deck.json）→
+> 对照 `docs/REVIEW-slides-rubric.md` 逐页打分。评测集 = 生产库 5 个真实章节。
+
+### 16.1 生成侧（`slides.generator.ts` / `slides.config.ts` / `llm.client.ts`）
+
+- **⚠️ deepseek-flash / v4-pro 是推理模型**：completion 预算与推理共用，`max_tokens` 太小会全被
+  `reasoning_content` 烧完、`content` 为空（实测 200 token 全灭）。已加 `reasoning_effort`
+  （默认 `low`，`SLIDES_LLM_REASONING_EFFORT` 可配，合法值 none|minimal|low|medium|high|xhigh|max）。
+- **大纲预算**：v1 的 `min(…,2000)` 对 20 页大纲太紧（实测截断 → 整份生成失败），改为给满
+  `SLIDES_MAX_TOKENS`；大纲失败重试一次；扩写批失败/截断也重试一次（约 1/20 的批会碰到）。
+- **截断抢救**：`parseJsonLoose` 新增 `salvageTruncatedJson` —— 回退到最后一个完整对象边界、
+  按未闭合括号补齐，拿到"少几页但合法"的 JSON，缺的页用大纲骨架补齐（不整批丢）。
+- **prompt v2 → v3**：密度硬约束（每条 ≤20 字、每页 3–5 条、电报体）、keyPoint 锚点
+  （大纲给每页定"要让学员记住什么"，扩写回传防漂移）、覆盖与去重规则、讲稿式 notes
+  （3–6 句、有过渡语、信息量比页面大）；v3 引入 agenda/steps/stat/compare 选型要求与 kicker。
+- **程序化质检 `postProcessSlides`**（不靠模型自觉）：标题 ≤`SLIDES_TITLE_MAX_CHARS`(30)、
+  要点 ≤`SLIDES_BULLET_MAX_CHARS`(60) 截断+warning；页内重复要点去重；
+  标题高相似（bigram Jaccard ≥0.7）的内容页合并。只作用于 LLM 产出，教师手工编辑不受此限。
+- **模型分级**：`SLIDES_OUTLINE_MODEL` / `SLIDES_EXPAND_MODEL`（缺省回落 `SLIDES_MODEL`），
+  `chatJson` 支持逐次覆盖 —— 「大纲 pro + 扩写 flash」的混合策略留口。
+
+### 16.2 版式系统（schema / 渲染 / 模板）
+
+- 新 layout：`agenda`（目录）、`steps`（有序步骤）、`stat`（大数字 1–4 个）、`compare`
+  （双栏带列标题清单）+ `kicker` 眉题；**json 列存储，无需迁移**。MD 投影双向约定见 §7。
+- 渲染层（`renderDeck.ts`）：新版式样式（编号目录/步骤圆点+连接线/超大数字/对比卡片）+
+  **内容量自适应缩档**（`slideWeight` 估算 → `deck-fit-2/3` 缩字号，防底部裁切的硬保证）+
+  封面眉题/装饰线、要点强调色 marker。
+- 模板（`template.schema.ts`）：新增 `fontScale`（compact 32px / standard 38px / large 44px）
+  与 `cardStyle`（none/soft 浅色底卡/outline 描边卡，color-mix 调主色透明度），
+  沿用窄字符集 + 枚举校验；5 套内置模板已配好默认值。教师端「模板调参」抽屉有对应控件。
+- Mock 生成器同步产出全部新版式 —— 版式回归的零成本路径（`assert-render.mjs` + 截图）。
+
+### 16.3 前端修正（同日）
+
+- `ChapterSlides.tsx`：放映态左下角跨章节按钮由长标题改为图标 + Tooltip（不再压内容）。
+- **`SlideStage` Spin 常驻 bug（实测抓到）**：父组件行内 `template={{…}}` 每次渲染新引用 →
+  等价输入反复触发"重建态"（`setReady(false)`），但 html 相同 iframe 不重载、
+  `ready` 事件永不再发 → loading 点永远停在放映页上。修法：构建产物与上一份比对，
+  等价即跳过（`lastDocRef`）。回归断言已加进 `verify-slides.mjs`（第 8.5 项）。
+
+### 16.4 评测与模型结论
+
+- flash-v1（旧 prompt+旧渲染）→ flash-v2-r2（v2 prompt+新渲染）→ flash-v3（新版式 prompt）
+  三轮评分见 `docs/REVIEW-slides-rubric.md`；v3 起 5 章全部零 warning、密度/去重/结构达标。
+- **flash vs v4-pro 盲评（已定版）**：flash 结构完整性/覆盖更好（pro 有一章仅 7 页且缺 end 页）、
+  延迟约 1/3（39–90s vs 105–226s）、tokens 相当；pro 仅个别措辞略细。
+  **默认 `deepseek-flash`**；`SLIDES_OUTLINE_MODEL`/`SLIDES_EXPAND_MODEL` 可随时切分级策略。
+- 回归工具：`web/tools/assert-render.mjs`（jsdom，19 项）、`verify-slides.mjs`（11 项浏览器断言）、
+  `review-decks.mjs`（评测素材，支持 `REVIEW_API` 指临时实例做异模型对比）。

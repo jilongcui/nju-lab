@@ -4,6 +4,7 @@ import {
   SlideJson,
   SlideLayout,
   SlideLimits,
+  SlideStat,
   newSlideId,
   validateSlides,
 } from './deck.schema';
@@ -18,8 +19,10 @@ import {
  *                        按页位次合并回，避免"用 MD 视图保存一次就悄悄丢掉 JSON 里的高级设置"
  *
  * 支持的子集（刻意保持小）：
- *   `<!-- .slide: layout=bullets -->` 设页属性；`# 标题` / `## 副标题`；`- 要点`；
- *   `<!-- .col -->` 分两栏；围栏代码块；`> 引用`（末行 `> — 出处` 作 cite）；`![caption](url)`；
+ *   `<!-- .slide: layout=bullets -->` 设页属性（可带 `kicker="…"`）；`# 标题` / `## 副标题`；`- 要点`；
+ *   agenda / steps 页用编号列表（`1. …`）；stat 页用 `- **大数字** 标签：说明`；
+ *   compare 页用 `**列标题**` + `- 要点`、`<!-- .col -->` 分两栏；
+ *   two-col 用 `<!-- .col -->` 分栏；围栏代码块；`> 引用`（末行 `> — 出处` 作 cite）；`![caption](url)`；
  *   `<!-- .notes: 讲者备注 -->`（换行写成字面 `\n`）；分页既认指令行也认独立一行的 `---`。
  */
 
@@ -28,9 +31,14 @@ const NOTES_DIRECTIVE = /^\s*<!--\s*\.notes\s*:\s*([\s\S]*?)\s*-->\s*$/;
 const COL_DIRECTIVE = /^\s*<!--\s*\.col\s*-->\s*$/;
 const PAGE_BREAK = /^\s*---\s*$/;
 const FENCE = /^\s*```(\w*)\s*$/;
+const NUMBERED_ITEM = /^\s*\d+\.\s+(.*)$/;
+const STAT_ITEM = /^\s*[-*]\s+\*\*([^*]+)\*\*\s+(.+)$/;
+const BOLD_LINE = /^\s*\*\*([^*]+)\*\*\s*$/;
 
 /** 允许承载 `- 要点` 的布局：这些页的正文就是要点列表；其余布局的正文有专属语义 */
-const BULLET_LAYOUTS: SlideLayout[] = ['cover', 'section', 'bullets', 'end'];
+const BULLET_LAYOUTS: SlideLayout[] = ['cover', 'section', 'agenda', 'bullets', 'steps', 'end'];
+/** 用编号列表往返的布局（`1. …` → bullets） */
+const NUMBERED_LAYOUTS: SlideLayout[] = ['agenda', 'steps'];
 
 function encodeNotes(notes: string): string {
   return notes.replace(/\r?\n/g, '\\n');
@@ -42,7 +50,7 @@ function decodeNotes(notes: string): string {
 
 function parseLayoutAttributes(
   line: string,
-): { layout?: SlideLayout; notes?: string } {
+): { layout?: SlideLayout; notes?: string; kicker?: string } {
   const directive = SLIDE_DIRECTIVE.exec(line);
   if (!directive || !directive[1]) return {};
   const attrs: Record<string, string> = {};
@@ -51,9 +59,10 @@ function parseLayoutAttributes(
   while ((match = re.exec(directive[1]))) {
     attrs[match[1]] = match[3] ?? match[4] ?? match[2];
   }
-  const result: { layout?: SlideLayout; notes?: string } = {};
+  const result: { layout?: SlideLayout; notes?: string; kicker?: string } = {};
   if (attrs.layout) result.layout = attrs.layout as SlideLayout;
   if (attrs.notes) result.notes = decodeNotes(attrs.notes);
+  if (attrs.kicker) result.kicker = attrs.kicker;
   return result;
 }
 
@@ -72,16 +81,33 @@ function collapseBlankLines(text: string): string {
 /** JSON → Markdown（确定性；往返不漂移） */
 export function toMarkdown(slides: SlideJson[]): string {
   const pages = slides.map((slide) => {
-    const lines: string[] = [`<!-- .slide: layout=${slide.layout} -->`];
+    const kickerAttr = slide.kicker ? ` kicker="${slide.kicker.replace(/"/g, "'")}"` : '';
+    const lines: string[] = [`<!-- .slide: layout=${slide.layout}${kickerAttr} -->`];
     if (slide.title) lines.push(`# ${slide.title}`);
     if (slide.subtitle) lines.push(`## ${slide.subtitle}`);
 
-    // bullets 在"要点型"布局（cover/section/bullets/end）都输出，保证这些页的要点也能往返
+    // bullets 在"要点型"布局都输出；agenda/steps 用编号列表（语义上是有序的）
     if (BULLET_LAYOUTS.includes(slide.layout)) {
-      for (const bullet of slide.bullets ?? []) lines.push(`- ${bullet}`);
+      const ordered = NUMBERED_LAYOUTS.includes(slide.layout);
+      slide.bullets?.forEach((bullet, index) => {
+        lines.push(ordered ? `${index + 1}. ${bullet}` : `- ${bullet}`);
+      });
     }
 
     switch (slide.layout) {
+      case 'stat':
+        for (const stat of slide.stats ?? []) {
+          lines.push(`- **${stat.value}** ${stat.label}${stat.detail ? `：${stat.detail}` : ''}`);
+        }
+        break;
+      case 'compare': {
+        if (slide.compare?.leftTitle) lines.push(`**${slide.compare.leftTitle}**`);
+        for (const item of slide.compare?.left ?? []) lines.push(`- ${item}`);
+        lines.push('', '<!-- .col -->', '');
+        if (slide.compare?.rightTitle) lines.push(`**${slide.compare.rightTitle}**`);
+        for (const item of slide.compare?.right ?? []) lines.push(`- ${item}`);
+        break;
+      }
       case 'two-col':
         lines.push('', slide.left ?? '', '', '<!-- .col -->', '', slide.right ?? '');
         break;
@@ -108,7 +134,7 @@ export function toMarkdown(slides: SlideJson[]): string {
         );
         break;
       default:
-        // cover / section / end：只有标题与副标题
+        // cover / section / agenda / steps / end：标题 + 要点已输出
         break;
     }
 
@@ -162,6 +188,7 @@ function detectLayout(lines: string[], fallback: SlideLayout): SlideLayout {
   if (body.some((l) => /^\s*>/.test(l))) return 'quote';
   if (body.some((l) => /^\s*!\[/.test(l))) return 'image';
   if (body.some((l) => /^\s*[-*]\s+/.test(l))) return 'bullets';
+  if (body.some((l) => NUMBERED_ITEM.test(l))) return 'bullets';
   return fallback;
 }
 
@@ -171,6 +198,7 @@ function parsePage(page: PageBlock, index: number, limits: SlideLimits): SlideJs
 
   let declaredLayout: SlideLayout | undefined;
   let notes: string | undefined;
+  let kicker: string | undefined;
   const body: string[] = [];
 
   for (const [offset, line] of page.lines.entries()) {
@@ -184,6 +212,7 @@ function parsePage(page: PageBlock, index: number, limits: SlideLimits): SlideJs
       const parsed = parseLayoutAttributes(line);
       declaredLayout = parsed.layout;
       if (parsed.notes) notes = parsed.notes;
+      if (parsed.kicker) kicker = parsed.kicker;
       continue;
     }
     body.push(line);
@@ -201,6 +230,7 @@ function parsePage(page: PageBlock, index: number, limits: SlideLimits): SlideJs
     declaredLayout ?? detectLayout(body, index === 0 ? 'cover' : 'section');
 
   const slide: SlideJson = { id: newSlideId(), layout };
+  if (kicker) slide.kicker = kicker;
 
   const titleLine = trimmed.find((l) => /^#\s+/.test(l));
   if (titleLine) slide.title = titleLine.replace(/^#\s+/, '').trim();
@@ -209,11 +239,14 @@ function parsePage(page: PageBlock, index: number, limits: SlideLimits): SlideJs
 
   const content = trimmed.filter((l) => !/^#{1,2}\s+/.test(l));
 
-  // 要点列表：只在"要点型"布局里解析（two-col/code/quote/image 的正文是别的语义）
+  // 要点列表：只在"要点型"布局里解析（two-col/code/quote/image/stat/compare 的正文是别的语义）
   if (BULLET_LAYOUTS.includes(layout)) {
+    const bulletRe = NUMBERED_LAYOUTS.includes(layout)
+      ? /^\s*(?:[-*]|\d+\.)\s+/
+      : /^\s*[-*]\s+/;
     const bullets = content
-      .filter((l) => /^\s*[-*]\s+/.test(l))
-      .map((l) => l.replace(/^\s*[-*]\s+/, '').trim())
+      .filter((l) => bulletRe.test(l))
+      .map((l) => l.replace(bulletRe, '').trim())
       .filter(Boolean);
     if (bullets.length > limits.maxBullets) {
       throw errorAt(
@@ -223,12 +256,72 @@ function parsePage(page: PageBlock, index: number, limits: SlideLimits): SlideJs
     }
     if (bullets.length) {
       slide.bullets = bullets.map((b) => b.slice(0, limits.maxChars));
-    } else if (layout === 'bullets') {
-      throw errorAt(page.startLine, 'bullets 页没有任何要点');
+    } else if (layout === 'bullets' || layout === 'agenda' || layout === 'steps') {
+      throw errorAt(page.startLine, `${layout} 页没有任何条目`);
     }
   }
 
   switch (layout) {
+    case 'stat': {
+      const stats: NonNullable<SlideJson['stats']> = [];
+      for (const line of content) {
+        const match = STAT_ITEM.exec(line);
+        if (!match) continue;
+        const value = match[1].trim();
+        const rest = match[2].trim();
+        const sep = rest.search(/[：:]/);
+        const stat: SlideStat = {
+          value,
+          label: (sep >= 0 ? rest.slice(0, sep) : rest).trim(),
+        };
+        if (sep >= 0) {
+          const detail = rest.slice(sep + 1).trim();
+          if (detail) stat.detail = detail;
+        }
+        stats.push(stat);
+      }
+      if (!stats.length) {
+        throw errorAt(page.startLine, 'stat 页缺少 `- **大数字** 标签` 条目');
+      }
+      slide.stats = stats;
+      break;
+    }
+    case 'compare': {
+      const columns: string[][] = [[]];
+      for (const line of content) {
+        if (COL_DIRECTIVE.test(line)) {
+          columns.push([]);
+          continue;
+        }
+        columns[columns.length - 1].push(line);
+      }
+      if (columns.length > 2) {
+        throw errorAt(page.startLine, 'compare 页只允许两栏（一个 `<!-- .col -->`）');
+      }
+      const parseColumn = (lines: string[]): { title?: string; items: string[] } => {
+        const items: string[] = [];
+        let columnTitle: string | undefined;
+        for (const line of lines) {
+          const bold = BOLD_LINE.exec(line);
+          if (bold && !columnTitle) {
+            columnTitle = bold[1].trim();
+            continue;
+          }
+          const item = /^\s*[-*]\s+(.*)$/.exec(line);
+          if (item && item[1].trim()) items.push(item[1].trim());
+        }
+        return { title: columnTitle, items };
+      };
+      const left = parseColumn(columns[0]);
+      const right = parseColumn(columns[1] ?? []);
+      if (!left.items.length && !right.items.length) {
+        throw errorAt(page.startLine, 'compare 页两栏都是空的');
+      }
+      slide.compare = { left: left.items, right: right.items };
+      if (left.title) slide.compare.leftTitle = left.title;
+      if (right.title) slide.compare.rightTitle = right.title;
+      break;
+    }
     case 'two-col': {
       const left: string[] = [];
       const right: string[] = [];
@@ -291,6 +384,8 @@ function parsePage(page: PageBlock, index: number, limits: SlideLimits): SlideJs
     !!slide.title ||
     !!slide.subtitle ||
     !!slide.bullets?.length ||
+    !!slide.stats?.length ||
+    !!slide.compare ||
     !!slide.left ||
     !!slide.right ||
     !!slide.code ||

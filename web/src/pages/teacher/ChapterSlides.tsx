@@ -61,7 +61,11 @@ const { Text, Paragraph } = Typography;
 const LAYOUT_LABEL: Record<string, string> = {
   cover: '封面',
   section: '分节',
+  agenda: '目录',
   bullets: '要点',
+  steps: '步骤',
+  stat: '数字',
+  compare: '对比',
   'two-col': '两栏',
   code: '代码',
   quote: '引文',
@@ -73,6 +77,18 @@ const DENSITY_OPTIONS = [
   { label: '紧凑', value: 'compact' },
   { label: '适中', value: 'cozy' },
   { label: '宽松', value: 'loose' },
+];
+
+const FONT_SCALE_OPTIONS = [
+  { label: '小字', value: 'compact' },
+  { label: '标准', value: 'standard' },
+  { label: '大字', value: 'large' },
+];
+
+const CARD_STYLE_OPTIONS = [
+  { label: '无', value: 'none' },
+  { label: '浅色底', value: 'soft' },
+  { label: '描边', value: 'outline' },
 ];
 
 /**
@@ -352,25 +368,35 @@ export default function ChapterSlides() {
     return (
       <>
         {stage}
-        <div style={{ position: 'fixed', left: 16, bottom: 12, zIndex: 1300, opacity: 0.5 }}>
-          <Space>
+        <div
+          style={{
+            position: 'fixed',
+            left: 16,
+            bottom: 12,
+            zIndex: 1300,
+            opacity: 0.5,
+            // 容器绝不拦鼠标（放映态浮层纪律，§9.5 坑 3），只有按钮本身可点
+            pointerEvents: 'none',
+          }}
+        >
+          <Space style={{ pointerEvents: 'auto' }}>
             {prevChapter && (
-              <Button
-                size="small"
-                icon={<ArrowLeftOutlined />}
-                onClick={() => navigate(`/teacher/chapters/${prevChapter.id}/slides`)}
-              >
-                {prevChapter.title}
-              </Button>
+              <Tooltip title={`上一章：${prevChapter.title}`}>
+                <Button
+                  size="small"
+                  icon={<ArrowLeftOutlined />}
+                  onClick={() => navigate(`/teacher/chapters/${prevChapter.id}/slides`)}
+                />
+              </Tooltip>
             )}
             {nextChapter && (
-              <Button
-                size="small"
-                onClick={() => navigate(`/teacher/chapters/${nextChapter.id}/slides`)}
-              >
-                {nextChapter.title}
-                <ArrowRightOutlined />
-              </Button>
+              <Tooltip title={`下一章：${nextChapter.title}`}>
+                <Button
+                  size="small"
+                  icon={<ArrowRightOutlined />}
+                  onClick={() => navigate(`/teacher/chapters/${nextChapter.id}/slides`)}
+                />
+              </Tooltip>
             )}
           </Space>
         </div>
@@ -729,6 +755,28 @@ export default function ChapterSlides() {
               value={design.density ?? 'cozy'}
               onChange={(value) =>
                 setDesign((d) => ({ ...d, density: value as SlideTemplateDesign['density'] }))
+              }
+            />
+          </div>
+          <div>
+            <Text>字号</Text>
+            <Segmented
+              style={{ marginTop: 4 }}
+              options={FONT_SCALE_OPTIONS}
+              value={design.fontScale ?? 'standard'}
+              onChange={(value) =>
+                setDesign((d) => ({ ...d, fontScale: value as SlideTemplateDesign['fontScale'] }))
+              }
+            />
+          </div>
+          <div>
+            <Text>要点卡片</Text>
+            <Segmented
+              style={{ marginTop: 4 }}
+              options={CARD_STYLE_OPTIONS}
+              value={design.cardStyle ?? 'none'}
+              onChange={(value) =>
+                setDesign((d) => ({ ...d, cardStyle: value as SlideTemplateDesign['cardStyle'] }))
               }
             />
           </div>

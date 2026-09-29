@@ -48,12 +48,13 @@ export default function SlideStage({
   /** 放映浮层透明度：hover 只挂在按钮容器上（父容器 pointer-events: none 不会触发 hover） */
   const [controlsOpacity, setControlsOpacity] = useState(0.35);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  /** 上一份构建产物：输入"等价但引用变了"（父组件行内对象）时不重建 —— 否则 Spin 会常驻
+   * （iframe 的 srcdoc 相同就不会重载，ready 事件不会再发，loading 态永远消不掉，2026-09-29 实测） */
+  const lastDocRef = useRef<string | null>(null);
 
   // 内容/模板/配置变化 → 重建文档（重建 iframe 的 srcdoc，状态最干净）
   useEffect(() => {
     let cancelled = false;
-    setReady(false);
-    setError(null);
     buildDeckHtml({
       slides,
       template,
@@ -63,7 +64,11 @@ export default function SlideStage({
       imageDataUrls,
     })
       .then((doc) => {
-        if (!cancelled) setHtml(doc);
+        if (cancelled || lastDocRef.current === doc) return;
+        lastDocRef.current = doc;
+        setReady(false);
+        setError(null);
+        setHtml(doc);
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err.message);

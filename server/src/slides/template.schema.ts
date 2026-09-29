@@ -22,6 +22,10 @@ export interface TemplateDesign {
   logoFileId?: string | null;
   radius?: number;
   density?: 'compact' | 'cozy' | 'loose';
+  /** 字号阶梯：整体基准字号（compact 32px / standard 38px / large 44px） */
+  fontScale?: 'compact' | 'standard' | 'large';
+  /** 要点/对比栏的卡片化处理：none 朴素列表 | soft 浅色底卡 | outline 描边卡 */
+  cardStyle?: 'none' | 'soft' | 'outline';
 }
 
 export interface BuiltinTemplateDef {
@@ -53,6 +57,8 @@ export const BUILTIN_TEMPLATES: BuiltinTemplateDef[] = [
       headingFontFamily: "'Helvetica Neue', Helvetica, 'PingFang SC', 'Microsoft YaHei', sans-serif",
       radius: 8,
       density: 'cozy',
+      fontScale: 'standard',
+      cardStyle: 'soft',
     },
     config: { transition: 'slide', slideNumber: 'c/t', progress: true },
   },
@@ -70,6 +76,8 @@ export const BUILTIN_TEMPLATES: BuiltinTemplateDef[] = [
       headingFontFamily: "'Songti SC', 'STSong', 'SimSun', serif",
       radius: 6,
       density: 'cozy',
+      fontScale: 'standard',
+      cardStyle: 'soft',
     },
     config: { transition: 'fade', slideNumber: 'c/t', progress: true },
   },
@@ -87,6 +95,8 @@ export const BUILTIN_TEMPLATES: BuiltinTemplateDef[] = [
       headingFontFamily: "'Georgia', 'Songti SC', 'STSong', serif",
       radius: 4,
       density: 'loose',
+      fontScale: 'standard',
+      cardStyle: 'none',
     },
     config: { transition: 'fade', slideNumber: 'c/t', progress: false },
   },
@@ -104,6 +114,8 @@ export const BUILTIN_TEMPLATES: BuiltinTemplateDef[] = [
       headingFontFamily: "'JetBrains Mono', 'Menlo', 'Consolas', 'Microsoft YaHei', monospace",
       radius: 8,
       density: 'cozy',
+      fontScale: 'standard',
+      cardStyle: 'outline',
     },
     config: { transition: 'none', slideNumber: 'c/t', progress: true },
   },
@@ -121,6 +133,8 @@ export const BUILTIN_TEMPLATES: BuiltinTemplateDef[] = [
       headingFontFamily: "'Helvetica Neue', Helvetica, 'PingFang SC', sans-serif",
       radius: 0,
       density: 'compact',
+      fontScale: 'compact',
+      cardStyle: 'none',
     },
     config: { transition: 'none', slideNumber: true, progress: false },
   },
@@ -171,6 +185,8 @@ const FONT_RE = /^[A-Za-z0-9 ,'"\-\u4e00-\u9fa5]{1,200}$/;
 /** 页脚文案：禁掉一切可能与 CSS/HTML 交互的字符 */
 const FOOTER_RE = /^[^<>{};\\"']{1,80}$/;
 const DENSITIES = ['compact', 'cozy', 'loose'] as const;
+const FONT_SCALES = ['compact', 'standard', 'large'] as const;
+const CARD_STYLES = ['none', 'soft', 'outline'] as const;
 
 export class TemplateValidationError extends Error {
   constructor(message: string) {
@@ -253,6 +269,20 @@ export function validateTemplateDesign(raw: unknown): TemplateDesign {
     design.density = input.density as TemplateDesign['density'];
   }
 
+  if (input.fontScale !== undefined && input.fontScale !== null) {
+    if (!FONT_SCALES.includes(input.fontScale as (typeof FONT_SCALES)[number])) {
+      throw new TemplateValidationError(`fontScale 只能是 ${FONT_SCALES.join(' / ')}`);
+    }
+    design.fontScale = input.fontScale as TemplateDesign['fontScale'];
+  }
+
+  if (input.cardStyle !== undefined && input.cardStyle !== null) {
+    if (!CARD_STYLES.includes(input.cardStyle as (typeof CARD_STYLES)[number])) {
+      throw new TemplateValidationError(`cardStyle 只能是 ${CARD_STYLES.join(' / ')}`);
+    }
+    design.cardStyle = input.cardStyle as TemplateDesign['cardStyle'];
+  }
+
   return design;
 }
 
@@ -262,6 +292,13 @@ const DENSITY_GAP: Record<NonNullable<TemplateDesign['density']>, string> = {
   compact: '0.35em',
   cozy: '0.55em',
   loose: '0.8em',
+};
+
+/** 字号阶梯 → reveal 基准字号（reveal.css 默认 40px，主题可能改写；模板规则在最后加载，同级优先级覆盖主题） */
+const FONT_SCALE_PX: Record<NonNullable<TemplateDesign['fontScale']>, string> = {
+  compact: '32px',
+  standard: '38px',
+  large: '44px',
 };
 
 /**
@@ -281,6 +318,8 @@ export function designToCss(design: TemplateDesign): string {
 
   const rules: string[] = [];
   rules.push('.reveal { font-family: var(--deck-font, inherit); color: var(--deck-text, inherit); }');
+  if (design.fontScale) rules.push(`.reveal { font-size: ${FONT_SCALE_PX[design.fontScale]}; }`);
+  if (design.background) rules.push('.reveal { background: var(--deck-background); }');
   rules.push(
     '.reveal h1, .reveal h2, .reveal h3, .reveal h4 { font-family: var(--deck-font-heading, inherit); color: var(--deck-primary, inherit); text-transform: none; }',
   );
@@ -293,6 +332,17 @@ export function designToCss(design: TemplateDesign): string {
     '.reveal .deck-footer { position: absolute; left: 24px; right: 24px; bottom: 14px; display: flex; align-items: center; justify-content: space-between; font-size: 0.42em; opacity: 0.65; }',
   );
   rules.push('.reveal .deck-footer img { height: 1.6em; width: auto; }');
+
+  // 卡片化（要点清单 / 对比栏共用）：soft = 浅色底卡，outline = 描边卡；none 不加规则
+  if (design.cardStyle === 'soft' || design.cardStyle === 'outline') {
+    const paint =
+      design.cardStyle === 'soft'
+        ? 'background: color-mix(in srgb, var(--deck-primary, #1677ff) 7%, transparent);'
+        : 'background: transparent; border: 1px solid color-mix(in srgb, var(--deck-primary, #1677ff) 28%, transparent);';
+    rules.push(
+      `.reveal .deck-bullets li, .reveal .deck-compare-col li { ${paint} border-radius: var(--deck-radius, 8px); padding: 0.3em 0.65em; margin-bottom: calc(var(--deck-gap, 0.55em) * 0.75); list-style: none; border-left: 3px solid var(--deck-accent, transparent); }`,
+    );
+  }
 
   return [`:root {\n${vars.join('\n')}\n}`, '', ...rules, ''].join('\n');
 }

@@ -1,16 +1,22 @@
 import {
   SlideJson,
+  SlideStat,
   extractSlidesFromModelJson,
   newSlideId,
   normalizeSlides,
+  validateSlide,
   validateSlides,
 } from './deck.schema';
 import { chatJson, parseJsonLoose } from './llm.client';
 import {
+  SLIDES_BULLET_MAX_CHARS,
   SLIDES_EXPAND_BATCH,
+  SLIDES_EXPAND_MODEL,
   SLIDES_LIMITS,
   SLIDES_MAX_TOKENS,
+  SLIDES_OUTLINE_MODEL,
   SLIDES_SOURCE_MAX_CHARS,
+  SLIDES_TITLE_MAX_CHARS,
   SlidesGeneratorMode,
 } from './slides.config';
 
@@ -160,11 +166,100 @@ function toBullets(items: string[], maxBullets: number, maxChars: number): strin
     .slice(0, maxBullets);
 }
 
+// ---------------------------------------------------------------- LLM 产出的程序化质检
+
+/** 只有这些页型参与「跨页重复」判定：cover/section/end 的重复是结构性的（脉络列分节标题是设计） */
+const DEDUPABLE_LAYOUTS = new Set(['bullets', 'two-col', 'quote']);
+
+function normalizeForDup(text: string): string {
+  return text.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
+}
+
+/** 中文友好的相似度：字符 bigram 的 Jaccard（整词切分对中文不可靠） */
+function bigrams(text: string): Set<string> {
+  const t = normalizeForDup(text);
+  const grams = new Set<string>();
+  if (t.length === 1) grams.add(t);
+  for (let i = 0; i < t.length - 1; i++) grams.add(t.slice(i, i + 2));
+  return grams;
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (!a.size && !b.size) return 1;
+  if (!a.size || !b.size) return 0;
+  let inter = 0;
+  for (const x of a) if (b.has(x)) inter++;
+  return inter / (a.size + b.size - inter);
+}
+
+/**
+ * LLM 产出的后置质检（prompt 是"建议"，这里是"闸"）：
+ *   1) 标题 / 要点长度硬截断（对齐 prompt 的密度约定；教师手工编辑不走这里，不受此限）
+ *   2) 页内重复要点去重
+ *   3) 跨页重复合并：标题高相似的内容页合并到先出现的那页（实测 LLM 会同标题连出两页）
+ * 所有动作都记 warning 给教师看，不静默改。
+ */
+export function postProcessSlides(slides: SlideJson[], warnings: string[]): SlideJson[] {
+  let truncatedTitles = 0;
+  let truncatedBullets = 0;
+  let droppedDupBullets = 0;
+
+  for (const slide of slides) {
+    if (slide.title && slide.title.length > SLIDES_TITLE_MAX_CHARS) {
+      slide.title = slide.title.slice(0, SLIDES_TITLE_MAX_CHARS);
+      truncatedTitles++;
+    }
+    if (slide.bullets?.length) {
+      const seen = new Set<string>();
+      const kept: string[] = [];
+      for (const raw of slide.bullets) {
+        let bullet = raw;
+        if (bullet.length > SLIDES_BULLET_MAX_CHARS) {
+          bullet = `${bullet.slice(0, SLIDES_BULLET_MAX_CHARS)}…`;
+          truncatedBullets++;
+        }
+        const key = normalizeForDup(bullet);
+        if (!key || seen.has(key)) {
+          droppedDupBullets++;
+          continue;
+        }
+        seen.add(key);
+        kept.push(bullet);
+      }
+      // 要点全被去重掉时至少留一条兜底：空要点页会在最终校验里被判"没有内容"而整份失败
+      slide.bullets = kept.length ? kept : [slide.bullets[0]];
+    }
+  }
+
+  const removed = new Set<number>();
+  const titleKeys = slides.map((slide) => bigrams(slide.title ?? ''));
+  for (let i = 0; i < slides.length; i++) {
+    if (removed.has(i) || !DEDUPABLE_LAYOUTS.has(slides[i].layout) || !slides[i].title) continue;
+    for (let j = i + 1; j < slides.length; j++) {
+      if (removed.has(j) || !DEDUPABLE_LAYOUTS.has(slides[j].layout) || !slides[j].title) continue;
+      if (jaccard(titleKeys[i], titleKeys[j]) < 0.7) continue;
+      const existing = new Set((slides[i].bullets ?? []).map(normalizeForDup));
+      const incoming = (slides[j].bullets ?? []).filter((b) => !existing.has(normalizeForDup(b)));
+      const merged = [...(slides[i].bullets ?? []), ...incoming].slice(0, SLIDES_LIMITS.maxBullets);
+      slides[i].bullets = merged.length ? merged : slides[i].bullets;
+      removed.add(j);
+      warnings.push(`第 ${j + 1} 页与第 ${i + 1} 页标题近乎重复（「${slides[j].title}」），已合并`);
+    }
+  }
+
+  if (truncatedTitles) warnings.push(`${truncatedTitles} 个标题超过 ${SLIDES_TITLE_MAX_CHARS} 字，已截断`);
+  if (truncatedBullets)
+    warnings.push(`${truncatedBullets} 条要点超过 ${SLIDES_BULLET_MAX_CHARS} 字，已截断`);
+  if (droppedDupBullets) warnings.push(`删除 ${droppedDupBullets} 条重复要点`);
+  return slides.filter((_, index) => !removed.has(index));
+}
+
 // ---------------------------------------------------------------- mock
 
 /**
  * 确定性 mock：直接按章节正文的二级标题分节，产出「封面 → 目录 → 各节 → 结尾」。
  * 不调用任何外部服务，用于开发、测试与演示（也是 mock 模式下的端到端验证路径）。
+ * 覆盖全部版式（agenda/steps/stat/compare…）：它是版式回归的**零成本**路径 —— 改渲染层后用它出图即可。
  */
 export class MockDeckGenerator implements DeckGenerator {
   readonly mode = 'mock' as const;
@@ -176,8 +271,9 @@ export class MockDeckGenerator implements DeckGenerator {
       {
         id: newSlideId(),
         layout: 'cover',
+        kicker: source.courseTitle,
         title: source.chapterTitle,
-        subtitle: source.courseTitle,
+        subtitle: '章节在线演示',
         notes: '开场：说明本章在课程中的位置与学习目标。',
       },
     ];
@@ -186,14 +282,84 @@ export class MockDeckGenerator implements DeckGenerator {
     if (outline.length) {
       slides.push({
         id: newSlideId(),
-        layout: 'bullets',
+        layout: 'agenda',
+        kicker: source.courseTitle,
         title: '本章脉络',
         bullets: toBullets(outline, maxBullets, maxChars),
         notes: '先总览，再逐节展开。',
       });
     }
 
+    // 关键数字页：只收正文里真实出现的数字（mock 不编造数据）
+    const numberStats: SlideStat[] = [];
     for (const section of sections) {
+      for (const bullet of section.bullets) {
+        const match = /(\d[\d.,]*\s*%)/.exec(bullet) ?? /(\d[\d.,]*)/.exec(bullet);
+        if (match && numberStats.length < 3) {
+          numberStats.push({
+            value: match[1].replace(/\s/g, ''),
+            label: bullet.slice(0, 24),
+          });
+        }
+      }
+    }
+    if (numberStats.length) {
+      slides.push({
+        id: newSlideId(),
+        layout: 'stat',
+        title: '关键数字',
+        stats: numberStats,
+        notes: '用数字建立直观感受，再展开细节。',
+      });
+    }
+
+    let sectionNo = 0;
+    for (const section of sections) {
+      sectionNo += 1;
+      const bullets = toBullets(section.bullets, maxBullets, maxChars);
+      const isCompare = /对比|区别|差异|vs/i.test(section.title) && bullets.length >= 2;
+      const isSteps = /步骤|流程|过程|如何|怎么/.test(section.title) && bullets.length >= 2;
+
+      if (section.title && sections.length > 1) {
+        slides.push({
+          id: newSlideId(),
+          layout: 'section',
+          kicker: `第 ${sectionNo} 节`,
+          title: section.title,
+          notes: `过渡到「${section.title}」。`,
+        });
+      }
+      if (isCompare) {
+        const half = Math.ceil(bullets.length / 2);
+        slides.push({
+          id: newSlideId(),
+          layout: 'compare',
+          title: section.title,
+          compare: {
+            leftTitle: '要点 A',
+            rightTitle: '要点 B',
+            left: bullets.slice(0, half),
+            right: bullets.slice(half),
+          },
+          notes: '左右对照讲解，突出差异点。',
+        });
+      } else if (isSteps) {
+        slides.push({
+          id: newSlideId(),
+          layout: 'steps',
+          title: section.title,
+          bullets,
+          notes: '按顺序演示，强调步骤之间的先后依赖。',
+        });
+      } else if (bullets.length) {
+        slides.push({
+          id: newSlideId(),
+          layout: 'bullets',
+          title: section.title || '内容要点',
+          bullets,
+          notes: section.title ? `讲解「${section.title}」，结合实验任务说明。` : undefined,
+        });
+      }
       if (section.code) {
         slides.push({
           id: newSlideId(),
@@ -201,17 +367,6 @@ export class MockDeckGenerator implements DeckGenerator {
           title: section.title || '示例代码',
           code: section.code,
           notes: '演示代码时逐行解释关键调用。',
-        });
-      }
-      // 只有代码、没有要点的小节不再单独出一页（否则会出现「标题重复成要点」的空页）
-      const bullets = toBullets(section.bullets, maxBullets, maxChars);
-      if (bullets.length) {
-        slides.push({
-          id: newSlideId(),
-          layout: 'bullets',
-          title: section.title || '内容要点',
-          bullets,
-          notes: section.title ? `讲解「${section.title}」，结合实验任务说明。` : undefined,
         });
       }
     }
@@ -243,6 +398,8 @@ export class MockDeckGenerator implements DeckGenerator {
 interface OutlineSlide {
   layout: string;
   title?: string;
+  /** 本页要让学员记住什么（大纲阶段的"锚"，扩写时回传给模型防漂移；不上屏） */
+  keyPoint?: string;
   bullets?: string[];
 }
 
@@ -253,9 +410,13 @@ interface OutlineResult {
 
 const LAYOUT_HINT = [
   'cover（封面，仅首页）',
-  'section（分节标题）',
+  'section（分节标题页）',
+  'agenda（目录/脉络页，编号条目，通常第 2 页）',
   'bullets（要点页，最常用）',
-  'two-col（两栏对比）',
+  'steps（有序步骤/流程页）',
+  'stat（大数字页，1–4 个关键数字）',
+  'compare（左右对比页，两栏带列标题的清单）',
+  'two-col（两栏自由文本，compare 不适用时才用）',
   'code（代码页）',
   'quote（引文页）',
   'image（图片页）',
@@ -269,13 +430,33 @@ export class LlmDeckGenerator implements DeckGenerator {
     const content = truncate(source.chapterContent || '（本章暂无正文）', SLIDES_SOURCE_MAX_CHARS);
     const warnings: string[] = [];
 
-    const outlineResponse = await chatJson(
-      [
-        { role: 'system', content: this.outlineSystemPrompt() },
-        { role: 'user', content: this.outlineUserPrompt(source, content) },
-      ],
-      { maxTokens: Math.min(SLIDES_MAX_TOKENS, 2000), temperature: 0.3 },
-    );
+    // 大纲失败 = 整份失败，所以重试一次（截断/偶发非 JSON 在推理模型上难免）；
+    // 预算直接给满：20 页大纲 + 推理开销，2000 token 的旧预算实测会被截断（2026-09-29）
+    let outlineResponse: Awaited<ReturnType<typeof chatJson>> | null = null;
+    let lastOutlineError: Error | null = null;
+    for (let attempt = 0; attempt < 2 && !outlineResponse; attempt++) {
+      try {
+        const response = await chatJson(
+          [
+            { role: 'system', content: this.outlineSystemPrompt() },
+            { role: 'user', content: this.outlineUserPrompt(source, content) },
+          ],
+          {
+            maxTokens: SLIDES_MAX_TOKENS,
+            temperature: 0.3,
+            model: SLIDES_OUTLINE_MODEL || undefined,
+          },
+        );
+        // 先解析再算成功：解析失败同样进重试
+        this.parseOutline(response.content);
+        outlineResponse = response;
+      } catch (error) {
+        lastOutlineError = error as Error;
+        if (attempt === 0) warnings.push(`大纲首次生成失败（${lastOutlineError.message}），已重试`);
+      }
+    }
+    if (!outlineResponse) throw lastOutlineError ?? new Error('大纲生成失败');
+
     const outline = this.parseOutline(outlineResponse.content);
     const model = outlineResponse.model;
     let promptTokens = outlineResponse.usage?.promptTokens ?? 0;
@@ -284,49 +465,71 @@ export class LlmDeckGenerator implements DeckGenerator {
     const expanded: SlideJson[] = [];
     for (let start = 0; start < outline.slides.length; start += SLIDES_EXPAND_BATCH) {
       const batch = outline.slides.slice(start, start + SLIDES_EXPAND_BATCH);
-      try {
-        const expandResponse = await chatJson(
-          [
-            { role: 'system', content: this.expandSystemPrompt() },
+      // 扩写失败/截断都允许重试一次（实测约 1/20 的批会碰到），取两次里页数多的那份
+      let batchSlides: SlideJson[] = [];
+      let lastError: Error | null = null;
+      for (let attempt = 0; attempt < 2 && batchSlides.length < batch.length; attempt++) {
+        try {
+          const expandResponse = await chatJson(
+            [
+              { role: 'system', content: this.expandSystemPrompt() },
+              {
+                role: 'user',
+                content: this.expandUserPrompt(source, content, batch),
+              },
+            ],
             {
-              role: 'user',
-              content: this.expandUserPrompt(source, content, batch),
+              maxTokens: SLIDES_MAX_TOKENS,
+              temperature: 0.4,
+              model: SLIDES_EXPAND_MODEL || undefined,
             },
-          ],
-          { maxTokens: SLIDES_MAX_TOKENS, temperature: 0.4 },
-        );
-        promptTokens += expandResponse.usage?.promptTokens ?? 0;
-        completionTokens += expandResponse.usage?.completionTokens ?? 0;
-        const parsed = extractSlidesFromModelJson(parseJsonLoose(expandResponse.content));
-        const slides = validateSlides(parsed, SLIDES_LIMITS);
-        expanded.push(...slides);
-      } catch (error) {
-        // 局部降级：这一批用大纲骨架兜底，不整份失败（成本已经花了，能救回的救回）
-        warnings.push(
-          `第 ${start + 1}–${start + batch.length} 页扩写失败，已用大纲兜底：${(error as Error).message}`,
-        );
-        batch.forEach((item, offset) => {
-          try {
-            expanded.push(
-              validateSlides(
-                [
-                  {
-                    layout: item.layout,
-                    title: item.title,
-                    bullets: item.bullets,
-                  },
-                ],
-                { ...SLIDES_LIMITS, maxSlides: 1 },
-              )[0],
-            );
-          } catch {
-            warnings.push(`第 ${start + offset + 1} 页大纲本身不合法，已跳过`);
+          );
+          promptTokens += expandResponse.usage?.promptTokens ?? 0;
+          completionTokens += expandResponse.usage?.completionTokens ?? 0;
+          const parsed = extractSlidesFromModelJson(parseJsonLoose(expandResponse.content));
+          const parsedArr = Array.isArray(parsed) ? parsed : [];
+          // 逐页校验：单页不合法只丢那一页（用大纲兜底），不拖垮整批
+          const slides: SlideJson[] = [];
+          for (let i = 0; i < Math.min(parsedArr.length, batch.length); i++) {
+            try {
+              slides.push(validateSlide(parsedArr[i], start + i, SLIDES_LIMITS));
+            } catch (pageError) {
+              warnings.push(
+                `第 ${start + i + 1} 页扩写产物不合法（${(pageError as Error).message}），已用大纲兜底`,
+              );
+              const skeleton = this.outlineSkeleton(batch[i]);
+              if (skeleton) slides.push(skeleton);
+              else warnings.push(`第 ${start + i + 1} 页大纲本身不合法，已跳过`);
+            }
           }
-        });
+          if (slides.length > batchSlides.length) batchSlides = slides;
+        } catch (error) {
+          lastError = error as Error;
+        }
       }
+      // 缺页补齐：重试后仍不够时，缺的页用大纲骨架兜底（不整批丢）
+      if (batchSlides.length < batch.length) {
+        if (batchSlides.length > 0) {
+          warnings.push(
+            `第 ${start + 1}–${start + batch.length} 页只扩写出 ${batchSlides.length} 页，其余用大纲兜底`,
+          );
+        } else {
+          warnings.push(
+            `第 ${start + 1}–${start + batch.length} 页扩写失败（重试仍未成功），已用大纲兜底：${lastError?.message ?? '未知错误'}`,
+          );
+        }
+        for (let offset = batchSlides.length; offset < batch.length; offset++) {
+          const skeleton = this.outlineSkeleton(batch[offset]);
+          if (skeleton) batchSlides.push(skeleton);
+          else warnings.push(`第 ${start + offset + 1} 页大纲本身不合法，已跳过`);
+        }
+      }
+      // 只取与大纲对齐的前 N 页（模型多吐的页不要，防止页序漂移）
+      expanded.push(...batchSlides.slice(0, batch.length));
     }
 
-    const slides = normalizeSlides(trimToLimit(expanded, SLIDES_LIMITS.maxSlides), SLIDES_LIMITS);
+    const cleaned = postProcessSlides(expanded, warnings);
+    const slides = normalizeSlides(trimToLimit(cleaned, SLIDES_LIMITS.maxSlides), SLIDES_LIMITS);
     return {
       deckTitle: outline.deckTitle || source.chapterTitle,
       slides,
@@ -340,14 +543,25 @@ export class LlmDeckGenerator implements DeckGenerator {
     return [
       '你是教学课件设计助手，为大学课程章节设计在线演示（reveal.js）大纲。',
       '只输出一个 JSON 对象，不要任何解释文字。JSON 结构：',
-      '{"deckTitle": string, "slides": [{"layout": string, "title": string, "bullets": string[]}]}',
+      '{"deckTitle": string, "slides": [{"layout": string, "kicker": string, "title": string, "keyPoint": string, "bullets": string[]}]}',
       `layout 只能取：${LAYOUT_HINT}。`,
-      '规则：',
-      `1) 第 1 页 layout=cover（标题用章节名）；第 2 页 layout=section 作本章脉络；最后一页 layout=end。`,
-      `2) 中间页以 bullets 为主，每页 3–6 条要点；涉及对比用 two-col，示例代码用 code，关键结论用 quote。`,
-      '2b) 不要生成 image 页（没有可用的图片素材，需要插图由教师自己加）。',
-      `3) 总页数不超过 ${SLIDES_LIMITS.maxSlides} 页（含首尾）。`,
-      '4) 全部用中文；标题不超过 20 字；bullets 每条不超过 40 字，不要出现 Markdown 标记。',
+      '',
+      '【页面结构】',
+      '1) 第 1 页必须 layout=cover（title 用章节名，kicker 用课程名）；第 2 页 layout=agenda 作「本章脉络」（bullets 列出各分节标题）；最后一页必须 layout=end 作小结——首尾页都不可省略。',
+      '2) 先通读正文，把必须讲清的知识点梳理成 2–4 个分节；每个分节用一页 layout=section 作分隔（kicker 用「第 N 节」），其下跟 1–3 页内容页；短章（分节只有 1–2 个）可省略分节页，把页数让给内容页。',
+      '3) 内容页按内容选型：一般要点用 bullets；有先后顺序的过程/操作步骤用 steps；正文里有 1–4 个有说服力的关键数字时用 stat；成对对比的概念用 compare；示例代码用 code；画龙点睛的结论用 quote。版式要多样，不要清一色 bullets。',
+      '4) 不要生成 image 页（没有可用的图片素材，需要插图由教师自己加）。',
+      `5) 总页数不超过 ${SLIDES_LIMITS.maxSlides} 页（含首尾）。`,
+      '',
+      '【信息密度——必须严格遵守】',
+      '6) 内容页 bullets 每页 3–5 条，每条不超过 20 字；用关键词或短语的「电报体」，禁止照抄正文整句。',
+      '7) 每页只讲一件事：keyPoint 用一句话写清「本页要让学员记住什么」（不超过 40 字；它只给后续扩写看，不上屏）。',
+      '',
+      '【覆盖与去重】',
+      '8) 分节与页面合起来必须覆盖正文的核心知识点，不遗漏；每个知识点只讲一次。',
+      '9) 页标题与要点在整份大纲里不得重复；前后页不得换个说法讲同一件事。',
+      '',
+      '10) 全部用中文；标题不超过 18 字；kicker 不超过 12 字；文字里不要出现 Markdown 标记（#、*、`）。',
     ].join('\n');
   }
 
@@ -369,14 +583,22 @@ export class LlmDeckGenerator implements DeckGenerator {
     return [
       '你是教学课件设计助手。给定若干页大纲，请把它们补全为可直接放映的幻灯片内容。',
       '只输出一个 JSON 对象，不要任何解释文字。JSON 结构：',
-      '{"slides": [{"layout": string, "title": string, "bullets": string[], "left": string, "right": string,',
-      '  "code": {"lang": string, "content": string}, "quote": {"text": string, "cite": string}, "notes": string}]}',
+      '{"slides": [{"layout": string, "kicker": string, "title": string, "bullets": string[],',
+      '  "stats": [{"value": string, "label": string, "detail": string}],',
+      '  "compare": {"leftTitle": string, "rightTitle": string, "left": string[], "right": string[]},',
+      '  "left": string, "right": string, "code": {"lang": string, "content": string},',
+      '  "quote": {"text": string, "cite": string}, "notes": string}]}',
       '规则：',
-      '1) 必须保持每页的 layout 与 title 不变，顺序也不能变。',
-      '2) bullets 页给 3–6 条要点，每条不超过 40 字，用陈述句；two-col 页用 left/right 两段纯文本。',
-      '3) code 页给出完整可读的代码（content 里不要带 ``` 围栏）。',
-      '4) 每页都要有 notes：写给教师的讲稿提示，1–3 句，不超过 100 字。',
-      '5) 全部用中文；输出里不要出现 Markdown 标记（#、*、`）。',
+      '1) 必须保持每页的 layout、kicker 与 title 不变，顺序也不能变；每页只讲清大纲里它自己的 keyPoint，不要贪多。',
+      '2) bullets 页给 3–5 条要点，每条不超过 20 字：关键词/短语式的电报体，禁止照抄正文整句；可用「关键词：半句短补充」的形态。',
+      '3) steps 页给 3–6 步，按先后顺序，每步不超过 20 字。',
+      '4) stat 页给 1–4 个大数字：value 必须是**正文里真实出现的数字**（不超过 8 字，禁止编造），label 不超过 12 字，detail 可选。',
+      '5) compare 页左右两栏各 2–5 条、每条不超过 20 字，列标题不超过 8 字，两栏要有可比性；',
+      '   compare 的 JSON 形如 {"leftTitle": "旧方法", "rightTitle": "新方法", "left": ["慢", "易错"], "right": ["快", "可靠"]}，left/right 必须是字符串数组、不得为空。',
+      '6) two-col 页用 left/right 两段对照文字（每段不超过 120 字，可用短句换行）；code 页给完整可读的代码（content 里不要带 ``` 围栏，不超过 20 行）；quote 页放一句关键结论（不超过 60 字）。',
+      '7) 每页都要有 notes —— 写给教师的**讲稿**：口语化、3–6 句、可以照读；开头一句承接上文，结尾一句自然过渡到下一页；讲稿信息量要比页面文字大（页面是骨架，讲稿是血肉）。',
+      '8) 不得重复其他页已经讲过的内容。',
+      '9) 全部用中文；页面文字里不要出现 Markdown 标记（#、*、`）。',
     ].join('\n');
   }
 
@@ -401,6 +623,22 @@ export class LlmDeckGenerator implements DeckGenerator {
     ].join('\n');
   }
 
+  /**
+   * 大纲骨架兜底页：compare/stat 这类需要结构化字段的版式在大纲里没有数据，
+   * 兜底时降级为 bullets 页（要点还在，比整页丢失好）
+   */
+  private outlineSkeleton(item: OutlineSlide): SlideJson | null {
+    const layout = item.layout === 'compare' || item.layout === 'stat' ? 'bullets' : item.layout;
+    try {
+      return validateSlides(
+        [{ layout, title: item.title, bullets: item.bullets }],
+        { ...SLIDES_LIMITS, maxSlides: 1 },
+      )[0];
+    } catch {
+      return null;
+    }
+  }
+
   private parseOutline(content: string): OutlineResult {
     const parsed = parseJsonLoose(content) as Partial<OutlineResult>;
     const rawSlides = extractSlidesFromModelJson(parsed);
@@ -412,6 +650,7 @@ export class LlmDeckGenerator implements DeckGenerator {
       return {
         layout: typeof item.layout === 'string' ? item.layout : 'bullets',
         title: typeof item.title === 'string' ? item.title : undefined,
+        keyPoint: typeof item.keyPoint === 'string' ? item.keyPoint : undefined,
         bullets: Array.isArray(item.bullets)
           ? item.bullets.filter((b): b is string => typeof b === 'string')
           : undefined,

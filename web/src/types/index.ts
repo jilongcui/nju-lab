@@ -453,7 +453,11 @@ export interface WorkspaceInfo {
 export type SlideLayout =
   | 'cover'
   | 'section'
+  | 'agenda'
   | 'bullets'
+  | 'steps'
+  | 'stat'
+  | 'compare'
   | 'two-col'
   | 'code'
   | 'quote'
@@ -461,12 +465,31 @@ export type SlideLayout =
   | 'end';
 
 /** deck 内容真源（与后端 server/src/slides/deck.schema.ts 一一对应） */
+export interface SlideStat {
+  value: string;
+  label: string;
+  detail?: string;
+}
+
+export interface SlideCompare {
+  leftTitle?: string;
+  rightTitle?: string;
+  left: string[];
+  right: string[];
+}
+
 export interface SlideJson {
   id: string;
   layout: SlideLayout;
+  /** 眉题（封面/分节页上方的小字，如课程名） */
+  kicker?: string;
   title?: string;
   subtitle?: string;
   bullets?: string[];
+  /** stat：大数字（1–4 个） */
+  stats?: SlideStat[];
+  /** compare：左右两栏带列标题的要点清单 */
+  compare?: SlideCompare;
   /** two-col：两栏 Markdown */
   left?: string;
   right?: string;
@@ -500,6 +523,10 @@ export interface SlideTemplateDesign {
   logoFileId?: string | null;
   radius?: number;
   density?: 'compact' | 'cozy' | 'loose';
+  /** 字号阶梯：整体基准字号 */
+  fontScale?: 'compact' | 'standard' | 'large';
+  /** 要点/对比栏的卡片化处理 */
+  cardStyle?: 'none' | 'soft' | 'outline';
 }
 
 export interface SlideTemplateView {
