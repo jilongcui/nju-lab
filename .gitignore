@@ -17,3 +17,6 @@ dsh/nju-lab-client/nju-lab/
 # 编辑器
 *.swp
 .DS_Store
+
+# 浏览器验证的截图产物（tools/verify-slides.mjs 生成）
+web/tools/shots/
