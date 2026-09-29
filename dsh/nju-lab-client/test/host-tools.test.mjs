@@ -40,11 +40,17 @@ function makeHarness() {
     },
     // 面板路由需要 connection 服务；这个 harness 只关心工具，给它一个空实现。
     connection: { fetch: { register: () => async () => {} } },
-    // settings 服务：只记录 installSection 的参数，测试再手动驱动 setSource。
+    // settings 服务：0.1.7 里插件只调 configure（关闭按 schema 自动生成的页面），
+    // 记录调用即可 —— 配置值本身由 volatile 引用承载，不经过这个服务。
     settings: {
-      installSection: (owner, ns, schema, entry, hooks) => {
-        sections.push({ owner, ns, schema, entry, hooks })
+      configure(presentation, owner) {
+        sections.push({ presentation, owner })
+        return () => {}
       },
+    },
+    effect(callback) {
+      callback()
+      return () => {}
     },
   }
   // 插件用 ctx.inject 声明可选依赖；照 cordis 语义：只在该服务存在时执行回调
@@ -55,7 +61,7 @@ function makeHarness() {
   }
   return {
     ctx,
-    /** installSection 收到的调用（含 setSource hooks），用来验证设置页接线。 */
+    /** settings.configure 收到的调用（页面策略），用来验证设置页接线。 */
     settingsSections: sections,
     tool(name) {
       const found = tools.find((entry) => entry.name === name)
@@ -338,22 +344,25 @@ describe('host half: platform auth', () => {
     })
   })
 
-  test('exposes Config as a settings section and honors the user layer', async () => {
-    await withClient({}, async ({ harness, platform }) => {
-      const [section] = harness.settingsSections
-      assert.ok(section, 'installSection was not called')
-      assert.equal(section.ns, 'nju-lab')
-      assert.equal(section.entry.token, platform.token, 'composition 层来自 patch 的值')
-
-      // 模拟学生在设置页填了 token：settings 把权威值换成用户层
-      section.hooks.setSource(() => ({ ...section.entry, token: 'token-from-settings' }))
-
-      // 插件必须立刻改用新值 —— 被拒的是"设置页填的"那个 token
-      await assert.rejects(
-        () => harness.tool('nju_lab_list_assignments').execute({}),
-        /平台拒绝了当前 token/,
-      )
-      assert.equal(platform.requests.at(-1).auth, 'Bearer token-from-settings')
+  test('turns off the auto-generated settings page (configure auto=false)', async () => {
+    await withClient({}, async ({ harness }) => {
+      const [policy] = harness.settingsSections
+      assert.ok(policy, 'settings.configure was not called')
+      assert.deepEqual(policy.presentation, { auto: false })
     })
+  })
+
+  test('reads settings through volatile refs (0.1.7 config model)', async () => {
+    // token 走 volatile 引用：host 每次请求都该读到引用里的最新值（'token-from-settings'）。
+    await withClient(
+      { config: { token: { get: () => 'token-from-settings' } } },
+      async ({ harness, platform }) => {
+        await assert.rejects(
+          () => harness.tool('nju_lab_list_assignments').execute({}),
+          /平台拒绝了当前 token/,
+        )
+        assert.equal(platform.requests.at(-1).auth, 'Bearer token-from-settings')
+      },
+    )
   })
 })

@@ -51,7 +51,7 @@ function makeHarness({ withPersistence = true } = {}) {
     },
     on: () => () => {},
     connection: { fetch: { register: () => async () => {} } },
-    settings: { installSection: () => {} },
+    settings: { configure: () => () => {} }, effect: (callback) => { callback(); return () => {} },
   }
   // 照 cordis 语义：只在该服务存在时执行回调（这个 harness 没有 systemPrompt /
   // skills，所以引导注册被跳过；withPersistence: false 时证据采集器也走不到）。

@@ -29,7 +29,24 @@ const run = promisify(execFile)
 const PLUGIN_ENTRY = fileURLToPath(new URL('../lib/host/index.js', import.meta.url))
 const FINAL_TEXT = '已找到 2 个实验任务，其中 1 个已解锁。'
 const INSTALL_HINT =
-  'no dsh found — set DSH_BIN=/path/to/dsh, or install one: npm i -g @deepseek-ai/dsh@0.1.5-rc.2'
+  'no dsh found — set DSH_BIN=/path/to/dsh, or install one: npm i -g @deepseek-ai/dsh@0.1.7-rc.2'
+
+/**
+ * 0.1.7 的 DeepSeek Messages 协议里，工具结果不再是 OpenAI 那种 `role: 'tool'` 的
+ * 独立 message，而是 user turn 的 content 里 `type: 'tool_result'` 的 block；
+ * system prompt 也移到请求体顶层的 `system` 字段。
+ */
+const hasToolResult = (call) =>
+  (call.body?.messages ?? []).some(
+    (m) => Array.isArray(m?.content) && m.content.some((b) => b?.type === 'tool_result'),
+  )
+/** 拼起某次请求里全部 tool_result block 的文本（用于断言 skill 正文回传）。 */
+const toolResultText = (call) =>
+  (call.body?.messages ?? [])
+    .flatMap((m) => (Array.isArray(m?.content) ? m.content : []))
+    .filter((b) => b?.type === 'tool_result')
+    .map((b) => JSON.stringify(b.content ?? ''))
+    .join('\n')
 
 /** 解析 dsh：`DSH_BIN` 优先，其次 PATH。 */
 function resolveDsh() {
@@ -113,9 +130,7 @@ test(
       assert.equal(listRequest.auth, `Bearer ${platform.token}`)
 
       // 4) 工具结果回传给模型，最终回答被打印
-      const followUp = llm.calls.find((call) =>
-        (call.body?.messages ?? []).some((m) => m.role === 'tool'),
-      )
+      const followUp = llm.calls.find((call) => hasToolResult(call))
       assert.ok(followUp, 'the tool result was never sent back to the model')
       assert.match(stdout, new RegExp(FINAL_TEXT))
     } finally {
@@ -385,10 +400,7 @@ test(
       // 1) 常驻引导真的进了 system prompt（不是只注册在注册表里）。
       // 断言用**只可能来自引导段**的句子 —— "nju_lab_submit" 这类工具名也可能出现
       // 在 DSH 渲染的工具说明段里，用它断言等于没测。
-      const systemText = messagesOf(first)
-        .filter((m) => m.role === 'system')
-        .map((m) => String(m.content ?? ''))
-        .join('\n')
+      const systemText = String(first.body?.system ?? '')
       assert.ok(
         systemText.includes('不要试图绕开'),
         `system prompt 应含引导段，实际前 400 字：${systemText.slice(0, 400)}`,
@@ -402,15 +414,10 @@ test(
       )
 
       // 3) 模型用 skill 工具加载后拿到完整正文。
-      const withToolResult = toolCalls.filter((call) =>
-        messagesOf(call).some((m) => m.role === 'tool'),
-      )
+      const withToolResult = toolCalls.filter((call) => hasToolResult(call))
       const last = withToolResult[withToolResult.length - 1]
       assert.ok(last, '应有一次带工具结果的模型请求（skill 加载）')
-      const toolText = messagesOf(last)
-        .filter((m) => m.role === 'tool')
-        .map((m) => String(m.content ?? ''))
-        .join('\n')
+      const toolText = toolResultText(last)
       assert.ok(
         toolText.includes('NJU-Lab 实验流程'),
         `skill 工具结果应是手册正文，实际前 300 字：${toolText.slice(0, 300)}`,

@@ -1,13 +1,13 @@
 import { useState, useSyncExternalStore } from 'react'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
+import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 
 /**
  * 设置页「插件配置」里的 nju-lab 卡片（serverUrl / token）。
  *
- * Host 半的 `installSection` 只把命名空间喂给设置域；命名空间没有卡片认领时
- * 设置页什么都不渲染（官方 ui-settings-plugins 的设计），所以卡片必须由
- * client 半自己注册到 `settings.plugin.item`（key = 命名空间）。官方内置卡片
- * 的辅助组件受 bundle 纯净度门禁限制不能跨包 import，这里自绘简化版。
+ * DSH 0.1.7 起设置节按 profile 条目 id（本插件 = `nju-lab-client`）自动投影，卡片
+ * 拿到的是该条目的 `ConfigForm`（`ctx.configForms.get(NAMESPACE)`），由 client 半
+ * 注册到 `settings.plugins.tab`。官方内置卡片的辅助组件受 bundle 纯净度门禁限制
+ * 不能跨包 import，这里自绘简化版。
  */
 
 export interface NjuLabSettings {
@@ -26,10 +26,10 @@ const inputStyle = {
 const hint = { color: 'var(--dsh-color-text-secondary, #888)', fontSize: 12, marginTop: 4 }
 const btn = { padding: '6px 16px', font: 'inherit', cursor: 'pointer' }
 
-export function SettingsCard({ scope }: { scope: SettingsScope<NjuLabSettings> }) {
+export function SettingsCard({ form }: { form: ConfigForm<NjuLabSettings> }) {
   const snap = useSyncExternalStore(
-    (listener) => scope.subscribe(listener),
-    () => scope.getSnapshot(),
+    (listener) => form.subscribe(listener),
+    () => form.getSnapshot(),
   )
   // null = 未编辑，跟随 snapshot；编辑后持有本地草稿
   const [urlDraft, setUrlDraft] = useState<string | null>(null)
@@ -48,12 +48,12 @@ export function SettingsCard({ scope }: { scope: SettingsScope<NjuLabSettings> }
     try {
       // 空串视为「清除回组装层」（serverUrl 回环境变量默认值，token 回未设置）
       if (urlDraft !== null) {
-        if (urlDraft === '') await scope.unset('serverUrl')
-        else await scope.set('serverUrl', urlDraft)
+        if (urlDraft === '') await form.unset('serverUrl')
+        else await form.set('serverUrl', urlDraft)
       }
       if (tokenDraft !== null) {
-        if (tokenDraft === '') await scope.unset('token')
-        else await scope.set('token', tokenDraft)
+        if (tokenDraft === '') await form.unset('token')
+        else await form.set('token', tokenDraft)
       }
       setUrlDraft(null)
       setTokenDraft(null)

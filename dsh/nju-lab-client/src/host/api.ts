@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, dirname } from 'node:path'
 
-import type { Config, EvalConfig } from './config.ts'
+import type { ResolvedConfig, EvalConfig } from './config.ts'
 
 /**
  * 平台文件信息。对应 server/src/files/files.service.ts 的 `StoredFileInfo`。
@@ -78,17 +78,17 @@ function rejectedTokenHint(path: string): string {
  * 响应 `{ code, data, message }`（`code = 0` 为成功）。
  */
 export class PlatformApi {
-  private readonly read: () => Config
+  private readonly read: () => ResolvedConfig
 
   /**
    * 传取值函数时，**每次请求都重新读** —— 用户在设置页改了 `serverUrl` / `token`
-   * 会立刻生效，不必重启 DSH（settings 服务用 thunk 表达"当前权威值"）。
+   * 会立刻生效，不必重启 DSH（volatile 字段的引用即时更新，thunk 每次取最新快照）。
    */
-  constructor(cfg: Config | (() => Config)) {
+  constructor(cfg: ResolvedConfig | (() => ResolvedConfig)) {
     this.read = typeof cfg === 'function' ? cfg : () => cfg
   }
 
-  private get cfg(): Config {
+  private get cfg(): ResolvedConfig {
     return this.read()
   }
 

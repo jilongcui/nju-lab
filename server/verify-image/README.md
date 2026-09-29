@@ -4,15 +4,15 @@
 
 ## 构成
 
-- `Dockerfile` → 镜像 `nju-lab-verify:0.1.5-rc.2`（node:22-slim + 锁定
-  `@deepseek-ai/dsh@0.1.5-rc.2` + zstd/unzip/python3 + 驱动 + profile，约 512MB）
+- `Dockerfile` → 镜像 `nju-lab-verify:0.1.7-rc.2`（node:22-slim + 锁定
+  `@deepseek-ai/dsh@0.1.7-rc.2` + zstd/unzip/python3 + 驱动 + profile，约 512MB）
 - `run-eval.mjs` — 复验驱动：解包 skill.zip/dataset.zip（resolveSkillRoot 语义）→
   逐 case 跑 baseline/treatment 两轮 dsh headless（approval=never + workspace-write）→
   LLM judge（默认，`--judge-mode exact` 可切）→ 输出单个结果 JSON
 - `profile/nju-lab-verify/` — 从 `dsh/profiles/` 同步（改 profile 后需重新同步 + 重建镜像）
 - `egress-proxy/nginx.conf` — 出栈白名单代理配置（见下）
 
-构建：`docker build -t nju-lab-verify:0.1.5-rc.2 .`
+构建：`docker build -t nju-lab-verify:0.1.7-rc.2 .`
 
 ## 出栈白名单隔离（SNI 代理）
 

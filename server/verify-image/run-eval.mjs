@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const DSH_BIN = join(HERE, 'node_modules', '.bin', 'dsh');
-const DSH_VERSION = '0.1.5-rc.2';
+const DSH_VERSION = '0.1.7-rc.2';
 const PROFILE = 'nju-lab-verify';
 const MODEL = process.env.VERIFY_MODEL || 'deepseek-flash';
 const BASE_URL = process.env.VERIFY_BASE_URL || 'https://api.deepseek.com';

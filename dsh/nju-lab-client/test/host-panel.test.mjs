@@ -45,7 +45,7 @@ function makeHarness() {
       },
     },
     // 插件会把 Config 装进 settings；这个 harness 不需要真的设置存储。
-    settings: { installSection: () => {} },
+    settings: { configure: () => () => {} }, effect: (callback) => { callback(); return () => {} },
   }
   // 插件用 ctx.inject 声明可选依赖；照 cordis 语义：只在该服务存在时执行回调
   // （所以这个 harness 没有 systemPrompt / skills 时，引导注册会被跳过）。

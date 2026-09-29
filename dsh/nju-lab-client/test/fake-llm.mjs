@@ -1,9 +1,21 @@
 /**
- * 假 LLM（OpenAI 兼容），让 L2 端到端测试在**无模型 key、确定性**的条件下跑通 DSH。
+ * 假 LLM（DSH 0.1.7 的 DeepSeek Messages 协议），让 L2 端到端测试在
+ * **无模型 key、确定性**的条件下跑通 DSH。
  *
- * DSH 通过 `POST /chat/completions`（SSE 流式）访问模型。本服务的行为：
- *   - 带 `tools` 的对话请求：首次返回一个工具调用，看到工具结果后返回最终文本
- *   - 不带 `tools` 的请求（会话标题生成等）：返回一段短文本
+ * `dsh-llm-deepseek`（0.1.7）走的是 **Anthropic Messages 风格**的流式协议：
+ *   - 请求体：`{ model, stream: true, messages, max_tokens, thinking, tools? }`
+ *     （`tools` 元素是 `{ name, description, input_schema }`；工具结果在 user turn
+ *     的 content 里，形如 `{ type: 'tool_result', tool_use_id }`）
+ *   - 响应：带 `type` 字段的 SSE 事件序列
+ *     `message_start` → `content_block_start` → `content_block_stop`
+ *     → `message_delta`(stop_reason) → `message_stop`
+ *
+ * 旧版（0.1.5）发的是 OpenAI 的 `chat.completion.chunk`，0.1.7 会直接报
+ * `DeepSeek Messages SSE event type mismatch` —— 改协议时务必同步这里。
+ *
+ * 本服务的行为：
+ *   - 带 `tools` 且还没出现工具结果的请求：回一个 `tool_use` block
+ *   - 其它请求（含会话标题生成）：回一段纯文本
  */
 import { createServer } from 'node:http'
 
@@ -14,7 +26,7 @@ async function readBody(req) {
 }
 
 /**
- * @param {{ toolName?: string, toolArguments?: string, finalText?: string }} [options]
+ * @param {{ toolName?: string, toolArguments?: string, finalText?: string, titleText?: string }} [options]
  * @returns {Promise<{ url: string, calls: Array<object>, close(): Promise<void> }>}
  */
 export async function startFakeLlm(options = {}) {
@@ -37,42 +49,35 @@ export async function startFakeLlm(options = {}) {
     calls.push({ url: req.url ?? '', body })
 
     const hasTools = Array.isArray(body.tools) && body.tools.length > 0
-    const sawToolResult = (body.messages ?? []).some((m) => m.role === 'tool')
+    // Messages 协议的工具结果：user turn 的 content 里带 `tool_result` block。
+    // （旧 OpenAI 协议是 `role: 'tool'` 的独立 message。）
+    const sawToolResult = (body.messages ?? []).some(
+      (m) => Array.isArray(m?.content) && m.content.some((block) => block?.type === 'tool_result'),
+    )
     const wantsToolCall = hasTools && !sawToolResult
-
-    const emit = (delta, finishReason) =>
-      res.write(
-        `data: ${JSON.stringify({
-          id: 'chatcmpl-fake',
-          object: 'chat.completion.chunk',
-          created: 0,
-          model: body.model ?? 'fake',
-          choices: [{ index: 0, delta, finish_reason: finishReason ?? null }],
-        })}\n\n`,
-      )
+    const text = hasTools ? finalText : titleText
 
     // 非流式请求也支持，方便单独用 curl 验证
     if (body.stream !== true) {
-      const message = wantsToolCall
-        ? {
-            role: 'assistant',
-            content: null,
-            tool_calls: [
-              { id: 'call_1', type: 'function', function: { name: toolName, arguments: toolArguments } },
-            ],
-          }
-        : { role: 'assistant', content: hasTools ? finalText : titleText }
       res.writeHead(200, { 'content-type': 'application/json' })
       res.end(
         JSON.stringify({
-          id: 'chatcmpl-fake',
-          object: 'chat.completion',
-          created: 0,
+          id: 'msg_fake',
+          type: 'message',
+          role: 'assistant',
           model: body.model ?? 'fake',
-          choices: [
-            { index: 0, message, finish_reason: wantsToolCall ? 'tool_calls' : 'stop' },
-          ],
-          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          content: wantsToolCall
+            ? [
+                {
+                  type: 'tool_use',
+                  id: 'call_1',
+                  name: toolName,
+                  input: JSON.parse(toolArguments),
+                },
+              ]
+            : [{ type: 'text', text }],
+          stop_reason: wantsToolCall ? 'tool_use' : 'end_turn',
+          usage: { input_tokens: 10, output_tokens: 5 },
         }),
       )
       return
@@ -84,25 +89,37 @@ export async function startFakeLlm(options = {}) {
       connection: 'keep-alive',
     })
 
+    // 只发 `data:` 行（不发 `event:`）：解析器的 frame.event 为 undefined 时跳过
+    // "事件名必须与 type 一致"的校验，事件类型完全由 data 里的 `type` 决定。
+    const send = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`)
+
+    send({
+      type: 'message_start',
+      message: { id: 'msg_fake', role: 'assistant', usage: { input_tokens: 10, output_tokens: 0 } },
+    })
     if (wantsToolCall) {
-      emit({
-        role: 'assistant',
-        content: null,
-        tool_calls: [
-          {
-            index: 0,
-            id: 'call_1',
-            type: 'function',
-            function: { name: toolName, arguments: toolArguments },
-          },
-        ],
+      send({
+        type: 'content_block_start',
+        index: 0,
+        content_block: {
+          type: 'tool_use',
+          id: 'call_1',
+          name: toolName,
+          input: JSON.parse(toolArguments),
+        },
       })
-      emit({}, 'tool_calls')
+      send({ type: 'content_block_stop', index: 0 })
+      send({ type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 5 } })
     } else {
-      emit({ role: 'assistant', content: hasTools ? finalText : titleText })
-      emit({}, 'stop')
+      send({
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'text', text },
+      })
+      send({ type: 'content_block_stop', index: 0 })
+      send({ type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 5 } })
     }
-    res.write('data: [DONE]\n\n')
+    send({ type: 'message_stop' })
     res.end()
   })
 

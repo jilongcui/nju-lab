@@ -8,7 +8,7 @@ import { resolve } from 'node:path'
 
 import { PlatformApi } from './api.ts'
 import { createActions } from './actions.ts'
-import { Config, type EvalConfig } from './config.ts'
+import { Config, resolveConfig, type EvalConfig, type ResolvedConfig } from './config.ts'
 import { loadPinnedEvalConfig } from './eval-state.ts'
 import { collectEvidence } from './evidence.ts'
 import { registerGuidance } from './guidance.ts'
@@ -29,15 +29,15 @@ export const name = 'nju-lab-client'
 export const inject = ['tools']
 export { Config }
 
-/** settings 命名空间（lowercase hyphenated identifier）。 */
-const SETTINGS_NS = 'nju-lab'
-
 /**
  * host 半入口：平台 API + 评估条件锁定 + 平台工具（+ 有 web server 时的面板路由）。
  *
- * 配置有两个来源，settings 层的用户值优先于 `cordis.patch.yml` 的 composition 层：
- *  1. composition：profile 的 patch（我们现在从 `NJU_LAB_SERVER_URL` / `NJU_LAB_TOKEN` 取）
- *  2. 用户设置：DSH 设置页里填的 `nju-lab` 节（`ctx.settings.installSection`）
+ * 配置有两个来源，用户设置层优先于 `cordis.patch.yml` 的 composition 层：
+ *  1. composition：profile 的 patch（从 `NJU_LAB_SERVER_URL` / `NJU_LAB_TOKEN` 取）
+ *  2. 用户设置：DSH 设置页里本插件的条目（profile 条目 id = `nju-lab-client`）
+ *
+ * DSH 0.1.7 起设置节不再由插件手动注册：DSH 按 profile 条目 id 自动投影 Config 里
+ * 标了 `.volatile()` 的字段（见 `config.ts`），用户改动即时写回 volatile 引用。
  *
  * client 半（UI）在 src/client/index.tsx，由 client-modules 服务按
  * package.json 的 dsh.client 声明单独扫描挂载。
@@ -57,20 +57,17 @@ export function apply(ctx: Context, config: Config): void {
     )
   }
 
-  /** 解析后的权威配置：settings 服务在场时由它接管，否则就是 composition 的 config。 */
-  let readConfig: () => Config = () => config
+  /** 权威配置：volatile 字段每次 `.get()` 取最新快照，用户改设置即时生效。 */
+  const readConfig = (): ResolvedConfig => resolveConfig(config)
 
   ctx.inject(['settings'], (settingsCtx) => {
-    // 把本插件的 Config schema 暴露成设置页可填的一节。用户层的值会覆盖 base；
-    // 未填时回落到 composition 层（即 patch 里的环境变量默认值）。
-    // owner 传外层 ctx（不是 settingsCtx）：它的 Unload 决定这一节的 fallback 何时停止。
-    settingsCtx.settings.installSection(ctx, SETTINGS_NS, Config, config, {
-      setSource: (source) => {
-        readConfig = source
-      },
-      // 读值走 `readConfig()`，每次都取最新，所以这里无需额外动作。
-      onChange: () => {},
-    })
+    // 本插件自带设置页面（client 半的 SettingsCard 注册到 `settings.plugins.tab`），
+    // 所以关掉按 schema 自动生成的页面，免得同一个条目出现两份。
+    // owner 传外层 ctx 的 fiber：策略随插件 fiber 卸载。
+    settingsCtx.effect(
+      () => settingsCtx.settings.configure({ auto: false }, ctx.fiber),
+      'nju-lab-client: settings page policy',
+    )
   })
 
   // 按会话工作区恢复钉定：材料与 pinned 文件跟随会话 cwd 之后，"启动时从进程目录
@@ -84,6 +81,9 @@ export function apply(ctx: Context, config: Config): void {
         console.log(`[nju-lab-client] 按会话工作区恢复评估条件（${cwd}）`)
       }
     })()
+    // 0.1.7 起 agent/created 监听器须返回 `Promise<undefined> | undefined`（明确的
+    // "异步启动过程"契约）；此处是 fire-and-forget，同步返回 undefined 即可。
+    return undefined
   })
 
   // 先装限制器：claim 之后要把它作用到已存在的 agent（`applyToLiveAgents`）。
@@ -139,5 +139,5 @@ export function apply(ctx: Context, config: Config): void {
     })
   })
 
-  console.log(`[nju-lab-client] host half loaded (serverUrl=${config.serverUrl})`)
+  console.log(`[nju-lab-client] host half loaded (serverUrl=${readConfig().serverUrl})`)
 }

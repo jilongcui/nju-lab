@@ -51,7 +51,7 @@ function makeHarness() {
         },
       },
     },
-    settings: { installSection: () => {} },
+    settings: { configure: () => () => {} }, effect: (callback) => { callback(); return () => {} },
   }
   // 照 cordis 语义：只在该服务存在时执行回调（这里没有 systemPrompt / skills）。
   ctx.inject = (deps, callback) => {

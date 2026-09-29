@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 // 触发 client 侧 Context 增强：slots（ui-renderer）、sidebarRightTabs（sidebar-right）、
-// settingsScope（ui-settings）。注意是 `./client` 子路径 —— 增强声明在 lib/types/client/ 下。
+// configForms（ui-settings）。注意是 `./client` 子路径 —— 增强声明在 lib/types/client/ 下。
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
@@ -17,10 +17,10 @@ export const name = 'nju-lab-client/client'
  *  - `slots`：注册 tab 内容（由 ui-renderer 提供）
  *  - `sidebarRightTabs`：注册 tab 类型（tab 两阶段注册的 stage one）
  *  - `sidebarRight`：导航控制器，自动打开本插件的 tab
- *  - `settingsScope`：设置卡片的命名空间读写（由 ui-settings 提供）
+ *  - `configForms`：设置卡片的命名空间读写（由 ui-settings 提供）
  *  - `sessions`：读当前选中会话 id（面板把它带给 host，让材料落到会话工作区）
  */
-export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight', 'settingsScope', 'sessions']
+export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight', 'configForms', 'sessions']
 
 /**
  * 本插件在右侧栏的 tab 身份。
@@ -30,7 +30,14 @@ export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight', 'settingsSco
  * 写法对照官方 dsh-client-ui-sidebar-files 的 `apply`。
  */
 const TAB_ID = 'nju-lab'
-const SETTINGS_NS = 'nju-lab'
+
+/**
+ * 设置命名空间 = 本插件 host 半在 profile 里的**条目 id**（`cordis.patch.yml` 的
+ * `id: nju-lab-client`）。DSH 0.1.7 起设置节以 profile 条目 id 标识（见 dsh-settings
+ * 的 `SettingsNamespace`），不再是可自定义的字符串。client 包不能依赖 host 包，
+ * 所以这里硬编码；改 profile 条目 id 时必须同步改这里。
+ */
+const SETTINGS_NAMESPACE = 'nju-lab-client'
 
 /** tab 标题座位（`sidebar.right.pane.tab.title`）的内容。 */
 function ClaimTitle() {
@@ -49,6 +56,7 @@ export function apply(ctx: Context): void {
         title: () => 'NJU-Lab',
         guide: [
           {
+            id: TAB_ID,
             order: 10,
             title: () => 'NJU-Lab 实验面板',
             description: () => '实验任务列表、领取、提交与钉定的评估条件',
@@ -80,15 +88,24 @@ export function apply(ctx: Context): void {
     'nju-lab-client: tab title',
   )
 
-  // 设置卡片：Host 半 installSection 只喂命名空间，卡片要 client 半自己注册。
-  // scope 的 disposer 挂在调用方（本插件）fiber 上，随插件卸载。
-  const scope = ctx.settingsScope.bind<NjuLabSettings>({ namespace: SETTINGS_NS })
+  // 设置卡片：0.1.7 里按 Host 条目的命名空间拿到 ConfigForm，注册进
+  // `settings.plugins.tab`（设置 →「插件配置」页的 tab）。`whileServed` 保证只在该
+  // 条目真被 Host 暴露时才注册 —— 没暴露就不会出现一个空 tab。
+  const form = ctx.configForms.get<NjuLabSettings>(SETTINGS_NAMESPACE)
   ctx.effect(
     () =>
-      ctx.slots.inject('settings.plugin.item', () =>
-        ctx.slots.register({ name: 'settings.plugin.item', key: SETTINGS_NS }, () => (
-          <SettingsCard scope={scope} />
-        )),
+      ctx.configForms.whileServed([SETTINGS_NAMESPACE], () =>
+        ctx.slots.inject('settings.plugins.tab', () =>
+          ctx.slots.register(
+            {
+              name: 'settings.plugins.tab',
+              id: SETTINGS_NAMESPACE,
+              order: 20,
+              label: 'NJU-Lab 平台',
+            },
+            () => <SettingsCard form={form} />,
+          ),
+        ),
       ),
     'nju-lab-client: settings card',
   )

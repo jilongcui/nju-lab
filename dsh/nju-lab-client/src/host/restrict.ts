@@ -115,6 +115,8 @@ export function registerToolRestriction(
   ctx.on('agent/created', ({ agent }) => {
     live.add(agent)
     applyTo(agent)
+    // 0.1.7 起该监听器须返回 `Promise<undefined> | undefined`；本处同步完成。
+    return undefined
   })
   ctx.on('agent/disposed', ({ agent }) => {
     live.delete(agent)

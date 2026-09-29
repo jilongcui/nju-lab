@@ -30,7 +30,7 @@ function makeHarness({ systemPrompt = true, skills = true } = {}) {
     tools: { register: () => () => {} },
     on: () => () => {},
     connection: { fetch: { register: () => async () => {} } },
-    settings: { installSection: () => {} },
+    settings: { configure: () => () => {} }, effect: (callback) => { callback(); return () => {} },
   }
   // section / register 都返回真正的注销函数（真 DSH 里它们是 cordis effect）。
   ctx.effect = (callback, label) => {

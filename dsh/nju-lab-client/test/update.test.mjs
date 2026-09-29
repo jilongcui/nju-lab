@@ -46,7 +46,7 @@ function makeHarness() {
         },
       },
     },
-    settings: { installSection: () => {} },
+    settings: { configure: () => () => {} }, effect: (callback) => { callback(); return () => {} },
   }
   ctx.inject = (deps, callback) => {
     if (deps.every((dep) => ctx[dep] !== undefined)) callback(ctx)
