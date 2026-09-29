@@ -186,6 +186,15 @@ function bridgeScript(config: Required<SlideDeckConfig>): string {
     else if (data.action === 'overview') Reveal.toggleOverview();
   });
 
+  // Esc 只有「退出放映」一个语义：阻止 reveal 把它当总览开关（那正是"按 Esc 退不出去、
+  // 反而变总览"的原因），并把意图回传父窗口 —— 因为焦点在 iframe 内时父窗口收不到 keydown。
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape' && event.key !== 'Esc') return;
+    event.preventDefault();
+    event.stopPropagation();
+    post({ type: 'exit-present' });
+  }, true);
+
   // 点击左右区域翻页（像 PPT 的操作习惯）。
   // 避开的三种情况：交互元素上、正在选中文本、以及 reveal 自己的控件区（.controls）。
   document.addEventListener('click', function (event) {

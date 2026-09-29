@@ -616,6 +616,14 @@ SLIDES_MODEL=deepseek-flash     # dsh/verify profile 记录的 DeepSeek 官方**
   当前 `two-col` / `code` / `quote` 排版较朴素，也还没做图片页（LLM 被明确要求**不要**生成 image 页）。
 - 回归手段：`MockDeckGenerator` 不烧额度，可用来验版式改动；prompt 改动请用真模型对比几份不同章节。
 
+**【2026-09-29 浏览器实测看到的观感问题（有截图，`~/pw-verify/shots/`）】**
+- **要点太长太密**：mock 直接把章节原句抽成要点，一页 5–6 条、每条 2–3 行。真实 LLM 会好一些，但 prompt 值得
+  显式约束「每条 ≤ 20 字、每页 ≤ 5 条、关键词式短语而非整句」。
+- **内容溢出被裁**：要点超过一页高度时底部被切掉（第 3 页可见）→ 排版侧应按内容量**自适应字号**
+  （估算总字数后调 `--deck-font-scale`）或硬性限条数。
+- **重复页**：「一个好的Prompt应该包含什么？」连出两页 → 生成侧去重（prompt 里加「不要重复已出现的标题/要点」）。
+- **放映态左下角跨章节按钮用长标题**，横跨底部、半透明压在幻灯片上 → 建议改图标 + tooltip。
+
 ### 9.5 踩坑（都实测过，别再踩）
 
 1. **marked@12 默认不安全**：会把 `<script>`、`<img onerror=…>`、`[x](javascript:…)` **原样输出** →
@@ -633,6 +641,10 @@ SLIDES_MODEL=deepseek-flash     # dsh/verify profile 记录的 DeepSeek 官方**
    平台图片（`file:<fileId>`）要在父窗口带鉴权取回内容、转 data URL 再内联（`files.ts`）。
 5. 前端产物部署仍受 **§2.2 的顺序铁律**约束（先 chunk 后 index.html），用 `deploy/deploy-web-lab.sh` 即可
    （它已内置备份 / md5 / Content-Type 自检 / 失败回滚）。
+6. **`Esc` 与 reveal 的 overview 冲突【2026-09-29 真实浏览器实测发现】**：用户点过幻灯片后**焦点在 iframe 内**，
+   父窗口收不到 `keydown` → 按 Esc **退不出放映**，反而是 iframe 内 reveal 进了总览（截图里那 9 页缩略排布就是证据）。
+   修法：桥接脚本在**捕获阶段**接管 `Esc`（`preventDefault` + `stopPropagation`）并 `postMessage` 回父窗口，
+   由父窗口决定是否退出放映（已修复并纳入验证脚本断言）。
 
 ### 9.6 怎么验证（不烧额度的那部分）
 
@@ -642,12 +654,19 @@ SLIDES_MODEL=deepseek-flash     # dsh/verify profile 记录的 DeepSeek 官方**
   测试数据全部清理（`slide_decks` / `slide_templates` 清零）。
 - **前端渲染层**：esbuild 把 `renderDeck.ts` 打包进 jsdom 跑断言（注入内容被清理、**文档内 `<script>` 仅剩内联 2 个**、
   代码块转义、section 数、桥接脚本、data URL 图片、notes / 两栏 / 页脚 / 模板 CSS）。
-- **浏览器实测：条件已具备【2026-09-29 更正】**：此前写的「环境跑不了 Chromium」是**错误结论** ——
-  本机 CPU（Xeon 6530，sse4_2/popcnt/avx2 齐备）+ 31Gi 内存完全够用，`MemoryMax=800M` 只是**后端服务**限额。
-  本机**未预装** Playwright/Chromium（全盘 find / snap / dpkg / nvm 全局均无），但可自行安装：
-  `cd /tmp && npm i playwright && npx playwright install chromium`（Chromium 的系统依赖若缺，需 `install-deps`，
-  那一步要 sudo）。装好后可自动验证：登录 → 进入章节幻灯片 → 生成 → 放映 → **点击左右区域翻页** → 断言页码变化，
-  以及字体/缩放/动画这类此前「只能人工看」的部分。
+- **浏览器实测：✅ 已跑通【2026-09-29】**（此前写的「环境跑不了 Chromium」是**错误结论**，条件全部就位）：
+  · 主机 CPU Xeon 6530（`sse4_2`/`popcnt`/`avx2` 齐备）、内存 31Gi；`MemoryMax=800M` 只是**后端服务**限额；
+  · 系统依赖已装（apt：`libasound2 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 libcairo2 libcups2 libgbm1
+    libpango-1.0-0 libxdamage1 libxkbcommon0` + `fonts-noto-cjk fonts-wqy-zenhei` 等中文字体）；
+  · Playwright 在 `~/pw-verify/`（仓库外）；Chromium **153.0.8010.12** 装在 `~/.cache/ms-playwright` ——
+    ⚠️ 要显式 `PLAYWRIGHT_BROWSERS_PATH=/home/ubuntu/.cache/ms-playwright`：默认会落到 `/tmp/ms-playwright`，
+    那里**会被清**（已踩过，还会留下 `__dirlock` 让下次安装直接失败）。
+  验证脚本 `~/pw-verify/verify-slides.mjs`（截图落 `~/pw-verify/shots/`）**10 项断言全绿**：
+  API 登录注入会话 → 进章节幻灯片 → 生成（mock）→ 放映 → **鼠标点右/左区域翻页** → **右下角 reveal 控件箭头**（原遮挡 bug）
+  → 键盘 → **Esc 退出放映**（焦点在 iframe 内也要有效）。
+  两个易踩的坑：① Playwright 的 `name` 是**子串**匹配，`name: '登录'` 会点到「统一认证登录」把页面带去 CAS
+  —— 脚本因此改为 API 登录 + 往 localStorage 写 `nju-lab-auth`；② `page.keyboard` 只作用于主 frame，
+  要验「焦点在 iframe 内」的按键必须用 `frame.evaluate` 派发。
 
 ### 9.7 文件索引
 

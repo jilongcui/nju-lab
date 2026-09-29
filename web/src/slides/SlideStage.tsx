@@ -82,12 +82,17 @@ export default function SlideStage({
         index?: number;
       };
       if (data.__deck !== true) return;
+      if (data.type === 'exit-present') {
+        // iframe 内按 Esc：由父窗口决定是否退出放映（非放映态则无事发生）
+        onExitPresenting?.();
+        return;
+      }
       if (data.type === 'ready') setReady(true);
       if (typeof data.index === 'number') onIndexChange?.(data.index);
     }
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [onIndexChange]);
+  }, [onIndexChange, onExitPresenting]);
 
   const post = useCallback((action: string, extra?: Record<string, unknown>) => {
     iframeRef.current?.contentWindow?.postMessage(
