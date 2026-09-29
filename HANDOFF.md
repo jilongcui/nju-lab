@@ -315,7 +315,9 @@ Host 只能是 `medai.nju.edu.cn`）→ 采用等价形态：
 > （`/api/**`、`/plugins/**`、`/open-in-app/**` 由会话 cookie `nju_ws` 认领容器，
 > **没有会话的流量原样回落 FoxCMS**）。cookie 由后端 `GET /lab/api/workspace/enter?k=<wsKey>` 种下。
 
-**仍缺**：① 浏览器里跑通完整实验流程；② 宿主机 nginx 真实部署（§8.5 第 1 条；前端入口页已完成）。
+**仍缺**：① 浏览器里跑通完整实验流程；② ~~宿主机 nginx 真实部署~~ ✅ **2026-09-29 核对：宿主机 nginx 片段已部署完毕**
+（`/etc/nginx/snippets/` 两份与仓库 `deploy/nginx/` 逐字节一致，`nginx.conf`/`cms.conf` 均已 include，见 §8.5 第 1 条；
+前端入口页已完成）→ 工作台侧遗留只剩 §8.5 第 1.5 条的**校园网关 WebSocket 透传**。
 ⏳ **网关不接受 WebSocket 的绕行方案（B）已就位**：容器内 WS→HTTPS 桥 + 页面适配，端到端实测通过，
 靠 `WORKSPACE_WS_BRIDGE` 一个开关即可切回原生 WS —— 见 §8.5 第 1.5 条与设计文档 §4.6.1。
 
@@ -332,7 +334,7 @@ sharp 恢复、路径 A 禁用段退役、工作台镜像已重建为**完整功
 | 工作台后端 | `server/src/workspace/` | ✅ 端到端（start → 16s 就绪 → 200 → stop）+ per-session authority + `enter` 入口（§8.3 第 5 条） |
 | 重启后的容器接管 | `workspace.service.ts` 的 `adoptOrReclaim()` | ✅ 实测：重启后端后容器仍在、`status=running`（`wsKey` 重生成），环境可继续用（设计文档 §4.7.1） |
 | 工作区持久卷 | `studentMounts()` | ✅ 实测：`<根>/<userId>` → `/work`、`…/dsh-sessions` → `$DSH_HOME/sessions`；删容器重建后文件仍在（设计文档 §4.8）。⚠️ 依赖 `<根>` 可写（默认 `/data/workspaces`） |
-| nginx 反代 | `lab-nginx-snippet.conf` | ✅ **配置形态已实测**（真实后端+镜像：enter 种 cookie → 页面/RPC/**WebSocket 101**/SSE/10.9MB 插件包/伪造凭据被拒/无会话回落 FoxCMS）；⚠️ **宿主机上尚未部署** |
+| nginx 反代 | `deploy/nginx/medai-workspace-{http,server}.conf`（带取舍说明版 `lab-nginx-snippet.conf`） | ✅ **配置形态已实测**（真实后端+镜像：enter 种 cookie → 页面/RPC/**WebSocket 101**/SSE/10.9MB 插件包/伪造凭据被拒/无会话回落 FoxCMS）；✅ **2026-09-29 已在宿主机部署并核对**（`/etc/nginx/snippets/` 两份与仓库逐字节一致，`nginx.conf`/`cms.conf` 均已 include） |
 
 > 反代实测方式（可复现）：临时后端实例（`PORT=3000 npx ts-node -T src/main.ts`，
 > 带 `WORKSPACE_PUBLIC_BASE='http://{key}.ws-test.local:18080'`）+ 容器内 nginx
@@ -408,15 +410,19 @@ WebSocket 101、SSE 200 正常。
 
 ### 8.5 遗留清单（接手者按序看）
 
-1. **宿主机 nginx 未部署（最高优先，配置形态已实测）**：直接用仓库里两个**可落地片段**——
-   `deploy/nginx/medai-workspace-http.conf`（`http{}` 级）与
-   `deploy/nginx/medai-workspace-server.conf`（主 server 内），
-   步骤：`sudo cp deploy/nginx/*.conf /etc/nginx/snippets/` → 在 `nginx.conf` 的 `http{}` 加
-   `include /etc/nginx/snippets/medai-workspace-http.conf;` → 在 `sites-enabled/cms.conf` 的 server 里加
-   `include /etc/nginx/snippets/medai-workspace-server.conf;` → `sudo nginx -t && sudo systemctl reload nginx`。
+1. ~~**宿主机 nginx 未部署（最高优先，配置形态已实测）**~~ ✅ **2026-09-29 核对：已部署完毕，本项关闭** ——
+   `/etc/nginx/snippets/` 下的 `medai-workspace-http.conf` / `medai-workspace-server.conf` 与仓库
+   `deploy/nginx/` 版本**逐字节一致**，且 `/etc/nginx/nginx.conf:12` 的 `http{}` 与
+   `/etc/nginx/sites-enabled/cms.conf:51` 均已 include。工作台侧唯一遗留即下面的第 1.5 条。
+   重做参考（只在换机器/重装时用）：`sudo cp deploy/nginx/*.conf /etc/nginx/snippets/` →
+   在 `nginx.conf` 的 `http{}` 加 `include /etc/nginx/snippets/medai-workspace-http.conf;` →
+   在 `sites-enabled/cms.conf` 的 server 里加 `include /etc/nginx/snippets/medai-workspace-server.conf;` →
+   `sudo nginx -t && sudo systemctl reload nginx`。
    （这两个片段已在容器里按**现网 cms.conf 的真实结构**拼装做过 `nginx -t` 校验，syntax ok。）
    完整取舍说明见 `lab-nginx-snippet.conf` 与设计文档 §4.5.2。
 1.5 **（2026-09-28 新增，最高优先）网关 WebSocket 透传**：见 §8.3 第 7 条 ——
+   📄 **可直接转发给网络中心的说明与配置：`docs/OPS-2026-09-29-gateway-websocket.md`**（2026-09-29 整理，
+   含现象/证据、网关 nginx 四步改法、验证方法，以及网关开好后我方关桥的步骤与顺序要求）。
    本机链路已实测 101，需网络中心在**校园网关**上开启 WS 升级透传
    （若网关是 nginx，**手工 4 步**：
    ① `http{}` 里加 `map $http_upgrade $connection_upgrade { default upgrade; '' close; }`；
@@ -434,6 +440,36 @@ WebSocket 101、SSE 200 正常。
      nginx 片段新增 `location ^~ /wsbridge/` + 页面注入一行 script
    · 已知边界：桥让**上行**帧变成"一帧一个 POST"（下行一条 SSE）；若网关连 SSE 长连接也掐，
      桥侧会话 linger 60s，客户端重连即可（会有短暂空窗）
+   **实测进展（2026-09-29，抓包）**：内网方向的链路只有一跳 ——
+   `客户端 → 219.219.122.131（反解 paper.nju.edu.cn）→ 10.28.128.56:80`；
+   校外那台 CAS 网关 **`219.219.115.199` 不在这条路上**（它对校外源一律 302 到
+   `authservertest`，从本机测也是 302）。抓包结果：`Upgrade: websocket` 与
+   `Connection: upgrade` **已透传成功** ✅，但 **`Host` 被写成 `10.28.128.56`** ❌
+   —— 上游 nginx 未显式设 `proxy_set_header Host`，用了默认的 `$proxy_host`。
+   按 §8.3 第 5 条，`Host` 不在 dsh 的 `--trusted-host` 里会让 **WebSocket 一律 403**
+   （HTTP 全通 = "页面能开、一直 connection lost"）。**上游已修复（2026-09-29 抓包复验：
+   上游传进来的 Host 已由 `10.28.128.56` 变为 `medai.nju.edu.cn`）**。复现命令与判读见
+   `docs/OPS-2026-09-29-gateway-websocket.md`「当前实测状态」。
+   **本机侧兜底已实现并部署（2026-09-29 10:27）**：新增 `map $http_host $ws_out_host`
+   （`deploy/nginx/medai-workspace-http.conf:21`），转发到容器的 5 处 `proxy_set_header Host`
+   从 `$http_host` 改为 `$ws_out_host` —— 非 `medai.nju.edu.cn` 的 Host 一律纠正回对外
+   authority。已用 `nginx -t` + 真实请求验证（上游传 `10.28.128.56` 时容器收到
+   `medai.nju.edu.cn`）。**部署**：`sudo cp deploy/nginx/*.conf /etc/nginx/snippets/ &&
+   sudo nginx -t && sudo systemctl reload nginx`（已执行，线上与仓库逐字节一致）。
+   **线上抓包复验通过**：同一请求经 122.131（`Host: 10.28.128.56`）→ 本机转发给容器时
+   已是 `Host: medai.nju.edu.cn` ✓。上游改对后此兜底退化为恒等映射。
+   ⚠️ 兜底只救工作台这条链路；上游把 Host 改写成内网 IP 是全局行为（生成链接/重定向/日志/
+   将来的子系统都受影响），所以**上游那行仍要补**。
+   ⏳ **截至 2026-09-29 10:28，端到端 101 仍未被实测**（`access.log` 里 `101` 计数 = 0，
+   且当时无活跃工作台容器）—— 需有人在内网真正进一次实验环境才算确认。
+   **判定方法（等实际使用时跑一次即可）**：
+   `grep -a "remote.mux" /var/log/nginx/access.log | tail -5` +
+   `grep -a -c " 101 " /var/log/nginx/access.log`。判读：
+   `101` → ✅ 原生 WebSocket 通了；
+   `404` + 9 字节 → 到了容器但没升级（升级头又在某一跳被剥掉）；
+   `200`/85 或 `403`/21 → 会话 cookie 失效（重新走一次「进入实验环境」；注意**后端重启会让
+   wsKey 重生成、浏览器里的旧 cookie 全部失效**，2026-09-29 07:08 那次重启后 07:29–09:43
+   的全部失败都是这个原因，不是网关）。
 2. **独立域名/端口形态（形态 A）已确认不可得**（学生只能走 80 端口、Host 只能是 medai，
    2026-09-28 使用方确认）→ 现用 §8.3 第 5 条的 cookie 分流形态；将来若拿到域名/端口可切回形态 A。
 3. **浏览器实测** —— 🟢 **2026-09-29：兜底环境在浏览器中已真正可用**：
@@ -475,7 +511,7 @@ WebSocket 101、SSE 200 正常。
   回滚点 `nju-lab-workspace:0.1.5-rc.2-no-sse42` = 旧的"路径 A"版（禁 5 个插件）——
   只在**目标机器无 SSE4.2/POPCNT** 时才用它，并配合恢复 `profile/.../cordis.patch.yml` 的禁用段。
 - **已完成的环境就位（2026-09-28）**：后端 `.env` 已加 `WORKSPACE_PUBLIC_BASE=http://medai.nju.edu.cn`；
-  前端产物已同步到 `/var/www/lab`（含「实验环境」入口页）。**只剩宿主机 nginx 未合并**（§8.5 第 1 条）。
+  前端产物已同步到 `/var/www/lab`（含「实验环境」入口页）。~~**只剩宿主机 nginx 未合并**~~ ✅ **2026-09-29 已合并并核对**（§8.5 第 1 条）。
 - 工作台配置项见 `server/.env.example` 末段（大部分有默认值，可先不配）。
 - 工作台的**持久卷根目录**由 `WORKSPACE_DATA_DIR` 配置（默认 `/data/workspaces`；留空 = 关闭持久化）。
   2026-09-29 已建好 `/data/workspaces`（属 `ubuntu`）并用 docker 验证：ubuntu 可建 `<userId>` 子目录、
