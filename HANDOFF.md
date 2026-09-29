@@ -293,7 +293,7 @@ curl -s http://127.0.0.1:3100/api/auth/login -X POST \
 - ⚠️ 受限会话（含 agent）带 `no_new_privs`，`sudo` 无法提权，跑不了 `systemctl restart` 等需 root 的操作；这类步骤一律在持有 sudo 的终端执行
 - 前后端联调纪律见第 3.3 条；每完成一块同步更新 `nju-lab-craft.md` §13 与本 HANDOFF，代码提交进 git（main 分支）
 
-## 8. 平台侧实验工作台 —— 🚧 反代形态定案（单 Host + cookie 分流）并实测；浏览器 / 真实部署待办（2026-09-28）
+## 8. 平台侧实验工作台 —— ✅ 已上线：原生 WebSocket 端到端打通（2026-09-29，见 §8.7）
 
 ### 8.1 一句话
 
@@ -420,7 +420,7 @@ WebSocket 101、SSE 200 正常。
    `sudo nginx -t && sudo systemctl reload nginx`。
    （这两个片段已在容器里按**现网 cms.conf 的真实结构**拼装做过 `nginx -t` 校验，syntax ok。）
    完整取舍说明见 `lab-nginx-snippet.conf` 与设计文档 §4.5.2。
-1.5 **（2026-09-28 新增，最高优先）网关 WebSocket 透传**：见 §8.3 第 7 条 ——
+1.5 **（2026-09-28 新增，最高优先）网关 WebSocket 透传** —— ✅ **已结案（2026-09-29，见 §8.7）**：见 §8.3 第 7 条 ——
    📄 **可直接转发给网络中心的说明与配置：`docs/OPS-2026-09-29-gateway-websocket.md`**（2026-09-29 整理，
    含现象/证据、网关 nginx 四步改法、验证方法，以及网关开好后我方关桥的步骤与顺序要求）。
    本机链路已实测 101，需网络中心在**校园网关**上开启 WS 升级透传
@@ -460,7 +460,8 @@ WebSocket 101、SSE 200 正常。
    已是 `Host: medai.nju.edu.cn` ✓。上游改对后此兜底退化为恒等映射。
    ⚠️ 兜底只救工作台这条链路；上游把 Host 改写成内网 IP 是全局行为（生成链接/重定向/日志/
    将来的子系统都受影响），所以**上游那行仍要补**。
-   ⏳ **截至 2026-09-29 10:28，端到端 101 仍未被实测**（`access.log` 里 `101` 计数 = 0，
+   ✅ **端到端 101 已实测通过（2026-09-29 11:39，见 §8.6）** —— 原判定方法保留在下面备查。
+   ⏳ ~~截至 2026-09-29 10:28，端到端 101 仍未被实测~~（`access.log` 里 `101` 计数 = 0，
    且当时无活跃工作台容器）—— 需有人在内网真正进一次实验环境才算确认。
    **判定方法（等实际使用时跑一次即可）**：
    `grep -a "remote.mux" /var/log/nginx/access.log | tail -5` +
@@ -521,3 +522,35 @@ WebSocket 101、SSE 200 正常。
   不配则 nginx 传外部 Host 时 WebSocket 会 403（§8.3 第 5 条）。
   本机/无域名时可用固定域（如 `http://ws-test.local:18080`，不含 `{key}`）——但此时**所有会话共享
   同一个 authority、cookie 会互串**，只适合单会话调试。
+
+### 8.7 ✅ 原生 WebSocket 端到端打通（2026-09-29）—— §8.5 第 1.5 条结案
+
+**结论**：浏览器 → 校园网关 → 上游反代 → 本机 nginx → 工作台容器，**原生 WebSocket 全链路
+已打通**，不再需要「WS→HTTPS 桥」。每一环都有实测证据：
+
+| 环节 | 状态 | 证据 |
+|---|---|---|
+| 上游反代（`219.219.122.131`，反解 `paper.nju.edu.cn`）透传 `Upgrade` / `Connection` | ✅ | 抓包，见 `deploy/check-ws-passthrough.sh` |
+| 上游透传 `Host` = `medai.nju.edu.cn` | ✅ | 同上（修复前传的是内网 IP `10.28.128.56`） |
+| 本机 nginx 转发 `Upgrade` + 纠正 `Host` | ✅ | `deploy/nginx/medai-workspace-{http,server}.conf` |
+| **端到端 `101`** | ✅ | `access.log`：`11:39:03 "GET /api/remote.mux HTTP/1.1" 101 52255` |
+
+**切换动作**：`server/.env` 加 `WORKSPACE_WS_BRIDGE=0` + `systemctl restart nju-lab`
+（2026-09-29 已做）→ 客户端请求 `/wsbridge/client.js` / `ping` 得 **403** → 适配脚本不再加载
+→ dsh 直接走原生 WebSocket。重启会让 wsKey 重生成，使用方需**重新进入**（容器由
+`adoptOrReclaim()` 接管，不会丢）。
+
+**⚠️ 一个曾经搞错的点**：**只要桥还开着，`101` 就永远不会出现** —— 桥的适配脚本会 hook 掉
+`new WebSocket()`，把 dsh 的 WS 全部接管走 `/wsbridge/poll`。所以「先看到 101 再关桥」这个
+顺序**不成立**，**关桥本身就是验证**：关掉后第一次进入就会看到 101；没通就回滚。
+
+**回滚**（万一本机/网关侧再出问题）：删掉 `.env` 里的 `WORKSPACE_WS_BRIDGE=0` 并重启后端即可
+回到桥模式 —— 桥的代码（`server/workspace-image/bridge.mjs`、`ws-bridge-client.js`）与 nginx 的
+`location ^~ /wsbridge/` 都保留着。
+
+**本机 Host 兜底仍在**（`deploy/nginx/medai-workspace-http.conf:21` 的 `map $http_host
+$ws_out_host`）：上游已把 Host 改对，所以它现在退化为恒等映射 —— **保留作防回退的保险**。
+
+**附带修正的一处旧认识**：2026-09-29 07:29–09:43 那批「连不上」**不是网关的锅**，而是
+**后端 07:08 重启后 wsKey 重生成、浏览器里旧 cookie 全部失效**（`/wsbridge/ping` 403/21、
+`/api/remote.mux` 200/85 都是这个原因）。诊断时先看这两条状态码，别一上来就怀疑网关。

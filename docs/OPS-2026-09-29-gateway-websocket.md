@@ -319,14 +319,19 @@ Connection: keep-alive      ← ⚠️ 多余，建议合并为一条
 **「上行 POST + 下行 1 秒短轮询」**（都是网关放行的普通 HTTPS），页面注入适配脚本自动接管。
 网关透传可用了，就把它关掉，回到原生 WebSocket（延迟更低、无 1 秒颗粒感）。
 
-**⚠️ 顺序：必须先确认网关改好、浏览器里 101 通了，再关桥。** 反过来做，
-网关还没透传而桥已被禁 → 工作台实时通道直接断（UI 能打开但不能交互）。
+**✅ 已于 2026-09-29 执行**（关闭后首次进入即拿到 `101`，`access.log` 可查）。
+
+**⚠️ 顺序问题（容易搞反）**：**只要桥还开着，客户端就不会发起原生 WebSocket，`101` 也就
+永远不会出现** —— 桥的适配脚本会 hook 掉 `new WebSocket()` 并接管 dsh 的 WS。所以不存在
+「先看到 101 再关桥」这种顺序：**关桥本身就是验证** —— 关掉后第一次进入就能看到 `101`；
+若拿不到（说明原生 WS 那侧还有问题），按下面反向操作回滚即可。
 
 ```bash
-# 位置：server/.env（该变量当前未出现 → 走默认值 1 = 开；定义见
+# 位置：server/.env（该变量原本未出现 → 走默认值 1 = 开；定义见
 #       server/src/workspace/workspace.config.ts:32）
 echo 'WORKSPACE_WS_BRIDGE=0' >> /home/ubuntu/nju-lab/server/.env
 sudo systemctl restart nju-lab
+# 回滚：sed -i '/WORKSPACE_WS_BRIDGE=0/d' server/.env && sudo systemctl restart nju-lab
 ```
 
 **为什么只需要这一步、不用动前端和 nginx**：
