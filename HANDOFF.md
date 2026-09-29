@@ -683,11 +683,13 @@ flash-v3 vs pro-v3 五章对比：**flash 结构/覆盖更好**（pro 有一章�
 
 ### 9.7 文件索引
 
-- 设计文档：`docs/DESIGN-2026-09-29-chapter-slides.md`
+- **功能指南（先读这个）**：`docs/SLIDES.md`；设计文档：`docs/DESIGN-2026-09-29-chapter-slides.md`（§16 效果优化实录）；评分清单：`docs/REVIEW-slides-rubric.md`
 - 后端：`server/src/slides/*`、迁移 `server/src/migrations/1790636383317-SlideDecks.ts`
 - 前端：`web/src/slides/*`（`renderDeck.ts` / `markdown.ts` / `revealAssets.ts` / `files.ts` / `SlideStage.tsx`）、
   `web/src/pages/teacher/ChapterSlides.tsx`、`web/src/pages/student/ChapterRead.tsx`、`web/vite.config.ts`
-- 相关提交：`f1aa90b`（后端 + 迁移）、`f7aa0f0`（前端）、`412503b`（放映浮层/点击翻页修复）
+- 工具：`web/tools/review-decks.mjs`（盲评截图）、`web/tools/assert-render.mjs`（jsdom 断言）、`web/tools/verify-slides.mjs`（浏览器断言）
+- 相关提交：`f1aa90b`（后端 + 迁移）、`f7aa0f0`（前端）、`412503b`（放映浮层/点击翻页修复）、
+  `3859b40`（切 LLM + prompt v3 + 版式系统升级 + 盲评定版）
 
 ## 10. 调试与取证手段（2026-09-29 建立，别再用"读代码猜"）
 
