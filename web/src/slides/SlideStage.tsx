@@ -207,15 +207,24 @@ export default function SlideStage({
               <Spin tip="正在加载幻灯片…" />
             </div>
           )}
-          <iframe
-            key={reloadKey}
-            ref={iframeRef}
-            title="幻灯片"
-            // ⚠️ 关键：只给 allow-scripts，**不给 allow-same-origin** → opaque origin
-            sandbox="allow-scripts"
-            srcDoc={html ?? ''}
-            style={{ width: '100%', height: '100%', border: 0, display: 'block' }}
-          />
+          {/*
+           * ⚠️ iframe 必须等 html 就绪再挂载（出生即带完整 srcdoc）：
+           * 若先挂空 srcdoc 再在毫秒级后更新（缓存命中时构建只需 ~1ms），
+           * 「初始空文档尚未就位」的 iframe 会把这次 srcdoc 更新吞掉 ——
+           * 永远停在空文档、ready 永远不来（2026-09-30 教师 Chrome 实测：
+           * 首次构建慢（要拉 chunk ~100ms）不踩、二次进入必踩，看门狗重挂载自愈）。
+           */}
+          {html ? (
+            <iframe
+              key={reloadKey}
+              ref={iframeRef}
+              title="幻灯片"
+              // ⚠️ 关键：只给 allow-scripts，**不给 allow-same-origin** → opaque origin
+              sandbox="allow-scripts"
+              srcDoc={html}
+              style={{ width: '100%', height: '100%', border: 0, display: 'block' }}
+            />
+          ) : null}
         </>
       )}
     </div>
