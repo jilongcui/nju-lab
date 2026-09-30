@@ -97,8 +97,11 @@ export const SLIDES_LLM_TIMEOUT_MS = num('SLIDES_LLM_TIMEOUT_MS', 300_000);
  * v6（2026-09-30）：仪式型页面规则 —— cover/section 不写 bullets（此前扩写会把大纲
  * 锚点要点原样 echo 上屏，单页重生成时尤其明显）；agenda 照大纲保留、end 给小结要点；
  * 大纲侧同步声明 cover/section 不必给 bullets；骨架兜底与单页重生成锚点同口径清理。
+ * v7（2026-09-30）：section 要点回归 —— 教师侧确认分节页要保留"本节导览"要点
+ * （2–4 条、改写成真正预告本节内容、不照抄 keyPoint 锚点），仅视觉弱化（deck-teaser）；
+ * v6 的"section 也不写"收得过紧，cover 维持不写。
  */
-export const SLIDES_PROMPT_VERSION = 'v6';
+export const SLIDES_PROMPT_VERSION = 'v7';
 
 export const SLIDES_LIMITS = {
   maxSlides: SLIDES_MAX_SLIDES,
