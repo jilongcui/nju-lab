@@ -15,6 +15,7 @@ import {
   SLIDES_LIMITS,
   SLIDES_MAX_TOKENS,
   SLIDES_OUTLINE_MODEL,
+  SLIDES_SECTION_TEASER_MAX,
   SLIDES_SOURCE_MAX_CHARS,
   SLIDES_TITLE_MAX_CHARS,
   SlidesGeneratorMode,
@@ -616,7 +617,7 @@ export class LlmDeckGenerator implements DeckGenerator {
           try {
             const slide = validateSlide(parsedArr[i], startIndex + i, SLIDES_LIMITS);
             this.assertImagesFromSource(slide, allowedImageRefs);
-            slides.push(slide);
+            slides.push(this.capSectionTeaser(slide, startIndex + i + 1, warnings));
           } catch (pageError) {
             // 先尝试降级挽救：模型常见失误是只漏了 compare/stat/image 结构化字段（或给了空
             // 占位），但 bullets/notes 其实写好了 —— 直接丢整页太亏，降级为要点页保住成稿
@@ -625,14 +626,14 @@ export class LlmDeckGenerator implements DeckGenerator {
               warnings.push(
                 `第 ${startIndex + i + 1} 页扩写产物不合法（${(pageError as Error).message}），已降级为要点页`,
               );
-              slides.push(degraded);
+              slides.push(this.capSectionTeaser(degraded, startIndex + i + 1, warnings));
               continue;
             }
             warnings.push(
               `第 ${startIndex + i + 1} 页扩写产物不合法（${(pageError as Error).message}），已用大纲兜底`,
             );
             const skeleton = this.outlineSkeleton(batch[i]);
-            if (skeleton) slides.push(skeleton);
+            if (skeleton) slides.push(this.capSectionTeaser(skeleton, startIndex + i + 1, warnings));
             else warnings.push(`第 ${startIndex + i + 1} 页大纲本身不合法，已跳过`);
           }
         }
@@ -654,7 +655,7 @@ export class LlmDeckGenerator implements DeckGenerator {
       }
       for (let offset = batchSlides.length; offset < batch.length; offset++) {
         const skeleton = this.outlineSkeleton(batch[offset]);
-        if (skeleton) batchSlides.push(skeleton);
+        if (skeleton) batchSlides.push(this.capSectionTeaser(skeleton, startIndex + offset + 1, warnings));
         else warnings.push(`第 ${startIndex + offset + 1} 页大纲本身不合法，已跳过`);
       }
     }
@@ -665,6 +666,18 @@ export class LlmDeckGenerator implements DeckGenerator {
       promptTokens,
       completionTokens,
     };
+  }
+
+  /**
+   * 分节页导览条数硬闸（SLIDES_SECTION_TEASER_MAX，默认 3）：prompt v8 约定 2–3 条，
+   * 但条数不靠模型自觉 —— 单页重生成只有一页上下文，扩写模型容易多写（实测写出 4 条）。
+   */
+  private capSectionTeaser(slide: SlideJson, pageNo: number, warnings: string[]): SlideJson {
+    if (slide.layout === 'section' && (slide.bullets?.length ?? 0) > SLIDES_SECTION_TEASER_MAX) {
+      slide.bullets = slide.bullets!.slice(0, SLIDES_SECTION_TEASER_MAX);
+      warnings.push(`第 ${pageNo} 页分节导览超过 ${SLIDES_SECTION_TEASER_MAX} 条，已保留前 ${SLIDES_SECTION_TEASER_MAX} 条`);
+    }
+    return slide;
   }
 
   /**

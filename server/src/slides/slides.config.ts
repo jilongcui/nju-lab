@@ -73,6 +73,11 @@ export const SLIDES_MAX_NOTES = num('SLIDES_MAX_NOTES', 1000);
 export const SLIDES_TITLE_MAX_CHARS = num('SLIDES_TITLE_MAX_CHARS', 30);
 export const SLIDES_BULLET_MAX_CHARS = num('SLIDES_BULLET_MAX_CHARS', 60);
 /**
+ * 分节页「本节导览」条数硬闸：prompt（v8 起）约定 2–3 条纯关键词，但条数不靠模型自觉
+ * （实测单页重生成时扩写模型会写出 4 条），超出在管线内截断。
+ */
+export const SLIDES_SECTION_TEASER_MAX = num('SLIDES_SECTION_TEASER_MAX', 3);
+/**
  * 送入模型的章节正文字符上限（超长截断，避免单次请求过大）。
  * 2026-09-30：随模型 500K token 上下文从 12000 放开到 300000 —— 按中文约 1 字 ≈ 1 token
  * 估算，给 prompt 与输出留足余量；此前长章节在 12000 字处被截断，幻灯片只覆盖前半部分。
