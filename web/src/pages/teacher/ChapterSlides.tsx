@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
@@ -30,12 +30,14 @@ import {
   DeleteOutlined,
   EditOutlined,
   FileImageOutlined,
+  PictureOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
   SaveOutlined,
   SyncOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
+import type { TextAreaRef } from 'antd/es/input/TextArea';
 import {
   createSlideTemplate,
   deleteChapterSlides,
@@ -63,6 +65,7 @@ import {
   SINGLE_IMAGE_LAYOUTS,
   applyImageActionToMarkdown,
   applyImageActionToSlides,
+  imageMarkdownSnippet,
   splitMarkdownPages,
 } from '../../slides/imageActions';
 import ImagePickerDrawer from '../../components/ImagePickerDrawer';
@@ -139,10 +142,12 @@ export default function ChapterSlides() {
   const [presenting, setPresenting] = useState(false);
   const [imageDataUrls, setImageDataUrls] = useState<Record<string, string>>({});
 
-  // 图片选择器：insert = 在当前页之后插入图片页；replace = 替换当前页的单图
+  // 图片选择器：insert = 在当前页之后插入图片页；replace = 替换当前页的单图；
+  // insert-cursor = 把图片引用插到 MD 文本光标处（凑网格页/给并排页补图都用它）
   const [picker, setPicker] = useState<
-    { kind: 'insert'; layout: SlideLayout } | { kind: 'replace' } | null
+    { kind: 'insert'; layout: SlideLayout } | { kind: 'replace' } | { kind: 'insert-cursor' } | null
   >(null);
+  const mdAreaRef = useRef<TextAreaRef>(null);
 
   useAuxiliaryPanel(
     '章节幻灯片',
@@ -292,7 +297,12 @@ export default function ChapterSlides() {
   const handlePickerConfirm = (images: StoredFileInfo[]) => {
     if (!picker) return;
     try {
-      if (mode === 'json') {
+      if (picker.kind === 'insert-cursor') {
+        // MD 视图专用：图片引用直接插到文本光标处（取不到光标就追加到末尾）
+        const area = mdAreaRef.current?.resizableTextArea?.textArea;
+        const pos = area?.selectionStart ?? mdText.length;
+        setMdText(mdText.slice(0, pos) + imageMarkdownSnippet(images) + mdText.slice(pos));
+      } else if (mode === 'json') {
         const slides = JSON.parse(jsonText) as SlideJson[];
         const action =
           picker.kind === 'insert'
@@ -663,6 +673,17 @@ export default function ChapterSlides() {
                       换图
                     </Button>
                   </Tooltip>
+                  {mode === 'markdown' && (
+                    <Tooltip title="把图片引用插到 MD 文本光标处（给并排页补图、凑多图网格都用它）">
+                      <Button
+                        size="small"
+                        icon={<PictureOutlined />}
+                        onClick={() => setPicker({ kind: 'insert-cursor' })}
+                      >
+                        插图到光标
+                      </Button>
+                    </Tooltip>
+                  )}
                 </Space>
               )}
               <Tabs
@@ -701,6 +722,7 @@ export default function ChapterSlides() {
                           <Text code>---</Text> 分页、<Text code>&lt;!-- .notes: … --&gt;</Text> 讲者备注
                         </Text>
                         <Input.TextArea
+                          ref={mdAreaRef}
                           value={mdText}
                           onChange={(e) => {
                             setMdText(e.target.value);
@@ -890,8 +912,17 @@ export default function ChapterSlides() {
 
       <ImagePickerDrawer
         open={!!picker}
-        multiple={picker?.kind === 'insert' && picker.layout === 'image-grid'}
-        title={picker?.kind === 'replace' ? '选择替换图片' : '选择图片'}
+        multiple={
+          picker?.kind === 'insert-cursor' ||
+          (picker?.kind === 'insert' && picker.layout === 'image-grid')
+        }
+        title={
+          picker?.kind === 'replace'
+            ? '选择替换图片'
+            : picker?.kind === 'insert-cursor'
+              ? '插图到光标处（可多选）'
+              : '选择图片'
+        }
         onClose={() => setPicker(null)}
         onConfirm={handlePickerConfirm}
       />

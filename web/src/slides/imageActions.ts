@@ -32,6 +32,14 @@ function altOf(info: StoredFileInfo): string {
   return info.originalName.replace(/\.[a-z0-9]+$/i, '').replace(/[[\]]/g, '');
 }
 
+/**
+ * 选中图片 → Markdown 图片行片段（每张一行，末尾带换行）。
+ * 供「光标处插入」场景共用：章节正文编辑、幻灯片 MD 视图。
+ */
+export function imageMarkdownSnippet(images: StoredFileInfo[]): string {
+  return `${images.map((info) => `![${altOf(info)}](file:${info.fileId})`).join('\n')}\n`;
+}
+
 function newId(): string {
   // 注意：crypto.randomUUID 只在安全上下文可用，http 裸部署环境会缺席
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto

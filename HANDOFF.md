@@ -670,9 +670,10 @@ flash-v3 vs pro-v3 五章对比：**flash 结构/覆盖更好**（pro 有一章�
   `image/%`）；`StoredFileInfo` 补 `mimeType`/`createdAt`（纯增量，无迁移）。选择器 =
   `web/src/components/ImagePickerDrawer.tsx`（上传 + 缩略图网格，缩略图走 §9.5-4 同款鉴权 data URL 管线）。
 - **教师端入口**：幻灯片编辑区工具条「插入图片页」（5 种版式）/「换图」（单图系页型；grid 页内换图 v1
-  用文本编辑）。落地函数在 `web/src/slides/imageActions.ts`：JSON 模式结构化 splice，MD 模式按
+  用文本编辑）/「插图到光标」（MD 视图，图片引用插到文本光标处，可多选）。落地函数在
+  `web/src/slides/imageActions.ts`：JSON 模式结构化 splice，MD 模式按
   server `splitPages` 同规则文本 splice；都只改编辑区文本，「保存内容」才生效。
-- **章节正文插图**：`ChapterEdit` 加「上传图片」（光标处插入 `![名称](file:<id>)`）；
+- **章节正文插图**：`ChapterEdit`「插入图片」打开图片库（浏览/多选/上传，选中图插到光标处）；
   `MarkdownView` 支持渲染 `file:` 图片（marked 输出后扫 `src="file:…"` → 鉴权取回 → data URL 替换，
   教师预览与学生阅读共用）。**这是 LLM 配图的素材来源**。
 - **LLM 条件配图（prompt v4）**：`extractChapterImages()` 从正文提取 `file:` 插图清单 → 注入大纲/扩写

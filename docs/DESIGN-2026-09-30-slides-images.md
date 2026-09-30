@@ -65,13 +65,14 @@
 
 ## 6. 教师端交互
 
-- **章节正文**（`ChapterEdit`）：「上传图片」按钮 → `POST /api/files` → 光标处插入
-  `![文件名去扩展名](file:<id>)`；`MarkdownView` 扫 marked 输出里的 `src="file:…"` →
-  鉴权取回 → data URL 替换（教师预览与学生阅读共用此组件，一次改动两端生效）。
-- **幻灯片编辑页**（`ChapterSlides`）：编辑区工具条「插入图片页」（5 种版式下拉）与「换图」
-  （当前页是单图系版式时可用；JSON 模式结构化判断，MD 模式看页块里有没有图片行）。
-- **图片选择器**（`ImagePickerDrawer`）：上传新图（传完自动选中）+ 本人图片缩略图网格
-  （分页 24/页；缩略图 objectURL 会话级缓存）；grid 插页时多选（2–4 张，按点选顺序）。
+- **章节正文**（`ChapterEdit`）：「插入图片」打开图片库（浏览/多选/上传），选中的图片以
+  `![文件名去扩展名](file:<id>)` 逐行插到**文本光标处**；`MarkdownView` 扫 marked 输出里的
+  `src="file:…"` → 鉴权取回 → data URL 替换（教师预览与学生阅读共用此组件，一次改动两端生效）。
+- **幻灯片编辑页**（`ChapterSlides`）：编辑区工具条「插入图片页」（5 种版式下拉）、「换图」
+  （当前页是单图系版式时可用；JSON 模式结构化判断，MD 模式看页块里有没有图片行）、
+  「插图到光标」（仅 MD 视图：图片引用插到文本光标处，多选可凑网格页/给并排页补图）。
+- **图片选择器**（`ImagePickerDrawer`，三处共用）：上传新图（传完自动选中）+ 本人图片缩略图网格
+  （分页 24/页；缩略图 objectURL 会话级缓存）；多选模式按点选顺序（grid 插页限 2–4 张）。
 - **落地**（`web/src/slides/imageActions.ts`，纯函数）：JSON 模式 parse → splice → stringify；
   MD 模式按与 server `splitPages` 同规则切页后文本 splice（重 join 分隔符统一为 `\n\n---\n\n`，
   与 `toMarkdown` 一致）。**都只改编辑区文本**，教师预览后点「保存内容」才生效

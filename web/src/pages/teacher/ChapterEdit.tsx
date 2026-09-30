@@ -10,20 +10,18 @@ import {
   Segmented,
   Skeleton,
   Space,
-  Upload,
 } from 'antd';
 import { PictureOutlined, PlayCircleOutlined, SaveOutlined } from '@ant-design/icons';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
-import { getChapter, saveChapter, uploadFile } from '../../api';
-import type { Chapter } from '../../types';
+import { getChapter, saveChapter } from '../../api';
+import type { Chapter, StoredFileInfo } from '../../types';
 import MarkdownView from '../../components/MarkdownView';
+import ImagePickerDrawer from '../../components/ImagePickerDrawer';
+import { imageMarkdownSnippet } from '../../slides/imageActions';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
 import { Typography } from 'antd';
 
 const { Paragraph } = Typography;
-
-/** 正文插图允许的图片类型（SVG 经 <img> 加载不执行脚本，安全） */
-const IMAGE_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml';
 
 export default function ChapterEdit() {
   const { chapterId = '' } = useParams();
@@ -32,7 +30,7 @@ export default function ChapterEdit() {
   const [chapter, setChapter] = useState<Chapter | null>(null);
   const [mode, setMode] = useState<'edit' | 'preview'>('edit');
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const contentAreaRef = useRef<TextAreaRef>(null);
   const [form] = Form.useForm();
   // 预览模式下渲染的是 MarkdownView，name="content" 的 Form.Item 会被卸载，
@@ -61,23 +59,17 @@ export default function ChapterEdit() {
     void load();
   }, [load]);
 
-  /** 上传正文插图并把 `![名称](file:<id>)` 插到光标处（取不到光标就追加到末尾） */
-  const handleImageUpload = async (file: File) => {
-    setUploading(true);
-    try {
-      const info = await uploadFile(file);
-      const alt = info.originalName.replace(/\.[a-z0-9]+$/i, '').replace(/[[\]]/g, '');
-      const snippet = `![${alt}](file:${info.fileId})\n`;
-      const current = (form.getFieldValue('content') as string | undefined) ?? '';
-      const area = contentAreaRef.current?.resizableTextArea?.textArea;
-      const pos = area?.selectionStart ?? current.length;
-      form.setFieldsValue({ content: current.slice(0, pos) + snippet + current.slice(pos) });
-      message.success('图片已上传并插入正文');
-    } catch {
-      message.error('图片上传失败，请重试');
-    } finally {
-      setUploading(false);
-    }
+  /** 图片库确认：把选中的图片（可多选，按点选顺序）以 `![名称](file:<id>)` 插到光标处 */
+  const insertImages = (images: StoredFileInfo[]) => {
+    if (!images.length) return;
+    const current = (form.getFieldValue('content') as string | undefined) ?? '';
+    const area = contentAreaRef.current?.resizableTextArea?.textArea;
+    const pos = area?.selectionStart ?? current.length;
+    form.setFieldsValue({
+      content: current.slice(0, pos) + imageMarkdownSnippet(images) + current.slice(pos),
+    });
+    message.success(images.length > 1 ? `已插入 ${images.length} 张图片` : '已插入图片');
+    setPickerOpen(false);
   };
 
   const handleSave = async () => {
@@ -138,23 +130,20 @@ export default function ChapterEdit() {
             label={
               <Space size="middle">
                 <span>章节内容（Markdown）</span>
-                <Upload
-                  accept={IMAGE_ACCEPT}
-                  showUploadList={false}
-                  customRequest={({ file }) => void handleImageUpload(file as File)}
-                  disabled={uploading}
+                <Button
+                  size="small"
+                  icon={<PictureOutlined />}
+                  onClick={() => setPickerOpen(true)}
                 >
-                  <Button size="small" icon={<PictureOutlined />} loading={uploading}>
-                    上传图片
-                  </Button>
-                </Upload>
+                  插入图片
+                </Button>
               </Space>
             }
           >
             <Input.TextArea
               ref={contentAreaRef}
               rows={18}
-              placeholder="支持 Markdown：标题、列表、代码块、图片（点上方「上传图片」插入）、链接……"
+              placeholder="支持 Markdown：标题、列表、代码块、图片（点上方「插入图片」从图片库选或上传）、链接……"
             />
           </Form.Item>
         ) : (
@@ -165,6 +154,14 @@ export default function ChapterEdit() {
           </Form.Item>
         )}
       </Form>
+
+      <ImagePickerDrawer
+        open={pickerOpen}
+        multiple
+        title="插入图片到正文（可多选，按点选顺序插入）"
+        onClose={() => setPickerOpen(false)}
+        onConfirm={insertImages}
+      />
     </Card>
   );
 }
