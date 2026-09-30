@@ -32,6 +32,7 @@ import {
   FileImageOutlined,
   PictureOutlined,
   PlayCircleOutlined,
+  RedoOutlined,
   ReloadOutlined,
   SaveOutlined,
   SyncOutlined,
@@ -48,6 +49,7 @@ import {
   getCourse,
   saveChapterSlides,
   syncChapterSlidesHash,
+  regenerateChapterSlidePage,
   updateSlideTemplate,
 } from '../../api';
 import type {
@@ -271,6 +273,21 @@ export default function ChapterSlides() {
       message.success(
         result.cached ? '内容未变，已复用现有幻灯片' : '已开始生成，稍候即可预览',
       );
+      await load(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** 单页重生成：只让 LLM 重写当前页（其余页与手工编辑都不动），同步等待一次调用 */
+  const handleRegeneratePage = async () => {
+    setBusy(true);
+    try {
+      const result = await regenerateChapterSlidePage(chapterId, currentIndex);
+      message.success(`第 ${currentIndex + 1} 页已重新生成`);
+      if (result.warnings?.length) {
+        message.warning(result.warnings.join('；'));
+      }
       await load(true);
     } finally {
       setBusy(false);
@@ -594,6 +611,17 @@ export default function ChapterSlides() {
             >
               放映
             </Button>
+            {deck?.status === 'ready' && canEdit && (
+              <Popconfirm
+                title={`用 LLM 重写第 ${currentIndex + 1} 页？`}
+                description="只重新生成当前页（消耗一次生成额度），其余页不动；该页上的手工修改会被覆盖。"
+                onConfirm={handleRegeneratePage}
+              >
+                <Button size="small" icon={<RedoOutlined />} loading={busy}>
+                  重生成当前页
+                </Button>
+              </Popconfirm>
+            )}
             <Button
               size="small"
               type="primary"

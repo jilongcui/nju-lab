@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   BadRequestException,
   ConflictException,
   ForbiddenException,
@@ -33,6 +34,7 @@ import {
 } from './slides.config';
 import {
   DeckSource,
+  OutlineSlide,
   createDeckGenerator,
   extractChapterImages,
 } from './slides.generator';
@@ -257,6 +259,76 @@ export class SlidesService {
       deck.error = message;
       await this.deckRepo.save(deck);
     }
+  }
+
+  // ------------------------------------------------------------ 单页重生成
+
+  /**
+   * 只重新生成某一页（同步，一次 LLM 调用，几秒到十几秒）：
+   * 把该页当「大纲」回传扩写管线，产物原位替换；其余页一律不动 —— 修坏页不必整份重跑、
+   * 也不会冲掉其他页的手工编辑。哈希语义不变：deck 的章节基准仍以整份生成时为准，
+   * 章节变了继续走 chapterChanged 提示，由教师决定整份重生成。
+   */
+  async regeneratePage(user: User, chapterId: string, index: number) {
+    const chapter = await this.loadChapter(chapterId);
+    const course = await this.coursesService.getOwnedCourse(user, chapter.courseId);
+    if (!chapter.content?.trim()) {
+      throw new BadRequestException('章节还没有正文内容，无法重新生成页面');
+    }
+    const deck = await this.deckRepo.findOne({ where: { chapterId } });
+    if (!deck?.slides?.length) {
+      throw new NotFoundException('该章节还没有幻灯片，请先生成');
+    }
+    if (deck.status === SlideDeckStatus.GENERATING) {
+      throw new ConflictException('该章节正在整份生成中，请稍候');
+    }
+    if (!Number.isInteger(index) || index < 0 || index >= deck.slides.length) {
+      throw new BadRequestException(`页码超出范围（共 ${deck.slides.length} 页）`);
+    }
+    // 与整份生成共用一个频次护栏（单页也是一次 LLM 调用）
+    this.assertRateLimit(course.id);
+
+    const current = deck.slides[index];
+    const outlineItem: OutlineSlide = {
+      layout: current.layout,
+      kicker: current.kicker,
+      title: current.title,
+      bullets: current.bullets,
+    };
+    const generator = createDeckGenerator(SLIDES_GENERATOR);
+    const result = await generator.expandBatch(
+      {
+        courseTitle: course.title,
+        chapterTitle: chapter.title,
+        chapterContent: chapter.content,
+        availableImages: extractChapterImages(chapter.content),
+      },
+      [outlineItem],
+      index,
+    );
+    this.recordGenerateAttempt(course.id);
+
+    const regenerated = result.slides[0];
+    if (!regenerated) {
+      throw new BadGatewayException(`第 ${index + 1} 页重新生成失败，请重试`);
+    }
+    const slides = [...deck.slides];
+    // 保留原页 id：缩略图/编辑态以 id 做 key，原位替换不应引起视图抖动
+    slides[index] = { ...regenerated, id: current.id };
+    deck.slides = slides;
+    deck.markdown = toMarkdown(slides);
+    deck.generatedBy = generator.mode;
+    deck.warnings = result.warnings.length ? result.warnings.join('\n') : null;
+    if (result.promptTokens + result.completionTokens > 0) {
+      deck.tokensUsed = (deck.tokensUsed ?? 0) + result.promptTokens + result.completionTokens;
+    }
+    deck.error = null;
+    deck.status = SlideDeckStatus.READY;
+    const saved = await this.deckRepo.save(deck);
+    this.logger.log(
+      `单页重生成完成 deck=${deck.id} 页码=${index + 1} 生成器=${generator.mode}`,
+    );
+    return { deck: this.toDeckView(saved), warnings: result.warnings };
   }
 
   // ------------------------------------------------------------ 编辑与保存

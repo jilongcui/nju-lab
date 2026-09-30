@@ -247,6 +247,14 @@ export const generateChapterSlides = (
     data,
   );
 
+/** 只重新生成某一页（同步：一次 LLM 调用，产物原位替换，其余页不动；0 基页码） */
+export const regenerateChapterSlidePage = (chapterId: string, index: number) =>
+  client.post<unknown, { deck: SlideDeckView; warnings: string[] }>(
+    `/chapters/${chapterId}/slides/regenerate-page`,
+    { index },
+    { timeout: 120000 },
+  );
+
 export const saveChapterSlides = (
   chapterId: string,
   data: {

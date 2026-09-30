@@ -2,11 +2,13 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
+  IsInt,
   IsNotEmpty,
   IsObject,
   IsOptional,
   IsString,
   MaxLength,
+  Min,
 } from 'class-validator';
 import { DeckConfig, SlideJson } from '../deck.schema';
 import { TemplateDesign } from '../template.schema';
@@ -28,6 +30,14 @@ export class GenerateDeckDto {
   @IsBoolean()
   @Type(() => Boolean)
   force?: boolean;
+}
+
+export class RegeneratePageDto {
+  /** 要重新生成的页码（0 基） */
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  index!: number;
 }
 
 export class SaveDeckDto {

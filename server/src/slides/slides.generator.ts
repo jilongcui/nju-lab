@@ -67,6 +67,8 @@ export interface GenerateOutcome {
 export interface DeckGenerator {
   readonly mode: SlidesGeneratorMode;
   generate(source: DeckSource): Promise<GenerateOutcome>;
+  /** 单批扩写（整份生成按批调用；「单页重生成」传 1 页）：页码从 startIndex 起算（0 基） */
+  expandBatch(source: DeckSource, batch: OutlineSlide[], startIndex?: number): Promise<ExpandBatchResult>;
 }
 
 // ---------------------------------------------------------------- 文本工具
@@ -420,12 +422,35 @@ export class MockDeckGenerator implements DeckGenerator {
       warnings: [],
     };
   }
+
+  /** mock 没有 LLM：把传入页原样校验回显（单页重生成在 mock 下等于"内容不变"，保持确定性） */
+  async expandBatch(
+    _source: DeckSource,
+    batch: OutlineSlide[],
+    startIndex = 0,
+  ): Promise<ExpandBatchResult> {
+    const slides: SlideJson[] = [];
+    const warnings: string[] = [];
+    batch.forEach((item, offset) => {
+      try {
+        slides.push(validateSlides([{ ...item }], { ...SLIDES_LIMITS, maxSlides: 1 })[0]);
+      } catch {
+        warnings.push(`第 ${startIndex + offset + 1} 页 mock 回显校验失败，已跳过`);
+      }
+    });
+    return { slides, warnings, promptTokens: 0, completionTokens: 0 };
+  }
 }
 
 // ---------------------------------------------------------------- llm
 
-interface OutlineSlide {
+/**
+ * 大纲形态的单页（扩写管线的输入）：既来自整份生成的大纲阶段，
+ * 也可以从现有 deck 抽出来做「单页重生成」—— 两种来源走同一套扩写/校验/兜底。
+ */
+export interface OutlineSlide {
   layout: string;
+  kicker?: string;
   title?: string;
   /** 本页要让学员记住什么（大纲阶段的"锚"，扩写时回传给模型防漂移；不上屏） */
   keyPoint?: string;
@@ -435,6 +460,14 @@ interface OutlineSlide {
 interface OutlineResult {
   deckTitle: string;
   slides: OutlineSlide[];
+}
+
+/** 单批扩写的结果（整份生成按批累加，单页重生成直接用） */
+export interface ExpandBatchResult {
+  slides: SlideJson[];
+  warnings: string[];
+  promptTokens: number;
+  completionTokens: number;
 }
 
 const LAYOUT_HINT = [
@@ -463,8 +496,6 @@ export class LlmDeckGenerator implements DeckGenerator {
     const content = truncate(source.chapterContent || '（本章暂无正文）', SLIDES_SOURCE_MAX_CHARS);
     const warnings: string[] = [];
     const availableImages = source.availableImages ?? [];
-    /** 防幻觉闸：模型只能引用清单内的 fileId，清单为空 = 不允许任何图片页 */
-    const allowedImageRefs = new Set(availableImages.map((img) => img.fileId));
 
     // 大纲失败 = 整份失败，所以重试一次（截断/偶发非 JSON 在推理模型上难免）；
     // 预算直接给满：20 页大纲 + 推理开销，2000 token 的旧预算实测会被截断（2026-09-29）
@@ -501,79 +532,11 @@ export class LlmDeckGenerator implements DeckGenerator {
     const expanded: SlideJson[] = [];
     for (let start = 0; start < outline.slides.length; start += SLIDES_EXPAND_BATCH) {
       const batch = outline.slides.slice(start, start + SLIDES_EXPAND_BATCH);
-      // 扩写失败/截断都允许重试一次（实测约 1/20 的批会碰到），取两次里页数多的那份
-      let batchSlides: SlideJson[] = [];
-      let lastError: Error | null = null;
-      for (let attempt = 0; attempt < 2 && batchSlides.length < batch.length; attempt++) {
-        try {
-          const expandResponse = await chatJson(
-            [
-              { role: 'system', content: this.expandSystemPrompt(availableImages.length) },
-              {
-                role: 'user',
-                content: this.expandUserPrompt(source, content, batch),
-              },
-            ],
-            {
-              maxTokens: SLIDES_MAX_TOKENS,
-              temperature: 0.4,
-              model: SLIDES_EXPAND_MODEL || undefined,
-            },
-          );
-          promptTokens += expandResponse.usage?.promptTokens ?? 0;
-          completionTokens += expandResponse.usage?.completionTokens ?? 0;
-          const parsed = extractSlidesFromModelJson(parseJsonLoose(expandResponse.content));
-          const parsedArr = Array.isArray(parsed) ? parsed : [];
-          // 逐页校验：单页不合法只丢那一页（用大纲兜底），不拖垮整批
-          const slides: SlideJson[] = [];
-          for (let i = 0; i < Math.min(parsedArr.length, batch.length); i++) {
-            try {
-              const slide = validateSlide(parsedArr[i], start + i, SLIDES_LIMITS);
-              this.assertImagesFromSource(slide, allowedImageRefs);
-              slides.push(slide);
-            } catch (pageError) {
-              // 先尝试降级挽救：模型常见失误是只漏了 compare/stat/image 结构化字段（或给了空
-              // 占位），但 bullets/notes 其实写好了 —— 直接丢整页太亏，降级为要点页保住成稿
-              const degraded = this.degradeExpandedToBullets(parsedArr[i], start + i);
-              if (degraded) {
-                warnings.push(
-                  `第 ${start + i + 1} 页扩写产物不合法（${(pageError as Error).message}），已降级为要点页`,
-                );
-                slides.push(degraded);
-                continue;
-              }
-              warnings.push(
-                `第 ${start + i + 1} 页扩写产物不合法（${(pageError as Error).message}），已用大纲兜底`,
-              );
-              const skeleton = this.outlineSkeleton(batch[i]);
-              if (skeleton) slides.push(skeleton);
-              else warnings.push(`第 ${start + i + 1} 页大纲本身不合法，已跳过`);
-            }
-          }
-          if (slides.length > batchSlides.length) batchSlides = slides;
-        } catch (error) {
-          lastError = error as Error;
-        }
-      }
-      // 缺页补齐：重试后仍不够时，缺的页用大纲骨架兜底（不整批丢）
-      if (batchSlides.length < batch.length) {
-        if (batchSlides.length > 0) {
-          warnings.push(
-            `第 ${start + 1}–${start + batch.length} 页只扩写出 ${batchSlides.length} 页，其余用大纲兜底`,
-          );
-        } else {
-          warnings.push(
-            `第 ${start + 1}–${start + batch.length} 页扩写失败（重试仍未成功），已用大纲兜底：${lastError?.message ?? '未知错误'}`,
-          );
-        }
-        for (let offset = batchSlides.length; offset < batch.length; offset++) {
-          const skeleton = this.outlineSkeleton(batch[offset]);
-          if (skeleton) batchSlides.push(skeleton);
-          else warnings.push(`第 ${start + offset + 1} 页大纲本身不合法，已跳过`);
-        }
-      }
-      // 只取与大纲对齐的前 N 页（模型多吐的页不要，防止页序漂移）
-      expanded.push(...batchSlides.slice(0, batch.length));
+      const result = await this.expandBatch(source, batch, start);
+      warnings.push(...result.warnings);
+      promptTokens += result.promptTokens;
+      completionTokens += result.completionTokens;
+      expanded.push(...result.slides);
     }
 
     const cleaned = postProcessSlides(expanded, warnings);
@@ -584,6 +547,104 @@ export class LlmDeckGenerator implements DeckGenerator {
       model,
       tokens: { promptTokens, completionTokens },
       warnings,
+    };
+  }
+
+  /**
+   * 单批扩写 —— 整份生成（按 4 页/批）与「单页重生成」（1 页/批）共用的管线：
+   * 一次重试、逐页校验、降级挽救（空占位/缺结构化字段 → 要点页）、大纲骨架兜底。
+   * `startIndex` 是这批页在整份 deck 里的起始页码（只用于 warning 里的「第 N 页」）。
+   */
+  async expandBatch(
+    source: DeckSource,
+    batch: OutlineSlide[],
+    startIndex = 0,
+  ): Promise<ExpandBatchResult> {
+    const content = truncate(source.chapterContent || '（本章暂无正文）', SLIDES_SOURCE_MAX_CHARS);
+    const warnings: string[] = [];
+    const availableImages = source.availableImages ?? [];
+    /** 防幻觉闸：模型只能引用清单内的 fileId，清单为空 = 不允许任何图片页 */
+    const allowedImageRefs = new Set(availableImages.map((img) => img.fileId));
+    let promptTokens = 0;
+    let completionTokens = 0;
+
+    // 扩写失败/截断都允许重试一次（实测约 1/20 的批会碰到），取两次里页数多的那份
+    let batchSlides: SlideJson[] = [];
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt < 2 && batchSlides.length < batch.length; attempt++) {
+      try {
+        const expandResponse = await chatJson(
+          [
+            { role: 'system', content: this.expandSystemPrompt(availableImages.length) },
+            {
+              role: 'user',
+              content: this.expandUserPrompt(source, content, batch),
+            },
+          ],
+          {
+            maxTokens: SLIDES_MAX_TOKENS,
+            temperature: 0.4,
+            model: SLIDES_EXPAND_MODEL || undefined,
+          },
+        );
+        promptTokens += expandResponse.usage?.promptTokens ?? 0;
+        completionTokens += expandResponse.usage?.completionTokens ?? 0;
+        const parsed = extractSlidesFromModelJson(parseJsonLoose(expandResponse.content));
+        const parsedArr = Array.isArray(parsed) ? parsed : [];
+        // 逐页校验：单页不合法只丢那一页（用大纲兜底），不拖垮整批
+        const slides: SlideJson[] = [];
+        for (let i = 0; i < Math.min(parsedArr.length, batch.length); i++) {
+          try {
+            const slide = validateSlide(parsedArr[i], startIndex + i, SLIDES_LIMITS);
+            this.assertImagesFromSource(slide, allowedImageRefs);
+            slides.push(slide);
+          } catch (pageError) {
+            // 先尝试降级挽救：模型常见失误是只漏了 compare/stat/image 结构化字段（或给了空
+            // 占位），但 bullets/notes 其实写好了 —— 直接丢整页太亏，降级为要点页保住成稿
+            const degraded = this.degradeExpandedToBullets(parsedArr[i], startIndex + i);
+            if (degraded) {
+              warnings.push(
+                `第 ${startIndex + i + 1} 页扩写产物不合法（${(pageError as Error).message}），已降级为要点页`,
+              );
+              slides.push(degraded);
+              continue;
+            }
+            warnings.push(
+              `第 ${startIndex + i + 1} 页扩写产物不合法（${(pageError as Error).message}），已用大纲兜底`,
+            );
+            const skeleton = this.outlineSkeleton(batch[i]);
+            if (skeleton) slides.push(skeleton);
+            else warnings.push(`第 ${startIndex + i + 1} 页大纲本身不合法，已跳过`);
+          }
+        }
+        if (slides.length > batchSlides.length) batchSlides = slides;
+      } catch (error) {
+        lastError = error as Error;
+      }
+    }
+    // 缺页补齐：重试后仍不够时，缺的页用大纲骨架兜底（不整批丢）
+    if (batchSlides.length < batch.length) {
+      if (batchSlides.length > 0) {
+        warnings.push(
+          `第 ${startIndex + 1}–${startIndex + batch.length} 页只扩写出 ${batchSlides.length} 页，其余用大纲兜底`,
+        );
+      } else {
+        warnings.push(
+          `第 ${startIndex + 1}–${startIndex + batch.length} 页扩写失败（重试仍未成功），已用大纲兜底：${lastError?.message ?? '未知错误'}`,
+        );
+      }
+      for (let offset = batchSlides.length; offset < batch.length; offset++) {
+        const skeleton = this.outlineSkeleton(batch[offset]);
+        if (skeleton) batchSlides.push(skeleton);
+        else warnings.push(`第 ${startIndex + offset + 1} 页大纲本身不合法，已跳过`);
+      }
+    }
+    // 只取与大纲对齐的前 N 页（模型多吐的页不要，防止页序漂移）
+    return {
+      slides: batchSlides.slice(0, batch.length),
+      warnings,
+      promptTokens,
+      completionTokens,
     };
   }
 
@@ -767,6 +828,7 @@ export class LlmDeckGenerator implements DeckGenerator {
       const item = (raw ?? {}) as OutlineSlide;
       return {
         layout: typeof item.layout === 'string' ? item.layout : 'bullets',
+        kicker: typeof item.kicker === 'string' ? item.kicker : undefined,
         title: typeof item.title === 'string' ? item.title : undefined,
         keyPoint: typeof item.keyPoint === 'string' ? item.keyPoint : undefined,
         bullets: Array.isArray(item.bullets)

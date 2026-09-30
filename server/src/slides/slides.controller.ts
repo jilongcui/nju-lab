@@ -11,7 +11,7 @@ import {
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { User, UserRole } from '../users/user.entity';
-import { GenerateDeckDto, SaveDeckDto } from './dto/slides.dto';
+import { GenerateDeckDto, RegeneratePageDto, SaveDeckDto } from './dto/slides.dto';
 import { SlidesService } from './slides.service';
 
 /**
@@ -41,6 +41,17 @@ export class ChapterSlidesController {
     @Body() dto: GenerateDeckDto,
   ) {
     return this.slidesService.generate(user, chapterId, dto);
+  }
+
+  /** 只重新生成某一页（同步：一次 LLM 调用，产物原位替换，其余页不动） */
+  @Post(':chapterId/slides/regenerate-page')
+  @Roles(UserRole.TEACHER)
+  regeneratePage(
+    @CurrentUser() user: User,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+    @Body() dto: RegeneratePageDto,
+  ) {
+    return this.slidesService.regeneratePage(user, chapterId, dto.index);
   }
 
   /** 保存内容（slides 或 markdown 二选一）、标题、模板、放映配置 */
