@@ -12,28 +12,34 @@ interface Props {
 
 /** marked 输出里平台图片引用的形态：<img src="file:<uuid>" …> */
 const FILE_SRC_RE = /src="(file:[0-9a-fA-F-]{36})"/g;
+/** 上屏 HTML 里图片引用的暂存形态（无 src 的 img 不发任何请求） */
+const FILE_REF_RE = /data-file-ref="(file:[0-9a-fA-F-]{36})"/g;
 
 /** 轻量 Markdown 渲染（marked），用于章节内容与项目信息预览 */
 export default function MarkdownView({ content, emptyText = '暂无内容' }: Props) {
   const rawHtml = useMemo(() => {
     if (!content?.trim()) return '';
-    return marked.parse(content, { async: false }) as string;
+    const parsed = marked.parse(content, { async: false }) as string;
+    // 先把 file: 引用的 src 摘下来存进 data-file-ref：原始 src 直接上屏会被浏览器当成
+    // file:// 本地文件拦截（Console 报 "Not allowed to load local resource"），
+    // 无 src 的 img 不发请求，alt 文本兜底展示（2026-09-30 学生端实测踩到）
+    return parsed.replace(FILE_SRC_RE, (_whole, ref: string) => `data-file-ref="${ref}"`);
   }, [content]);
 
   // 正文里的平台图片（file:<fileId>）浏览器直接请求会 401（无鉴权头）——
-  // 与幻灯片同一条管线：父页面带 JWT 取回 → data URL 替换，取不到就保留原样（alt 兜底）
+  // 与幻灯片同一条管线：父页面带 JWT 取回 → data URL 补 src；取不到保持无 src（alt 兜底，不再报错）
   const [html, setHtml] = useState(rawHtml);
   useEffect(() => {
     setHtml(rawHtml);
     const refs = Array.from(
-      new Set(Array.from(rawHtml.matchAll(FILE_SRC_RE), (m) => m[1])),
+      new Set(Array.from(rawHtml.matchAll(FILE_REF_RE), (m) => m[1])),
     );
     if (!refs.length) return;
     let cancelled = false;
     void fetchFileDataUrls(refs).then((dataUrls) => {
       if (cancelled) return;
       setHtml(
-        rawHtml.replace(FILE_SRC_RE, (whole, ref: string) =>
+        rawHtml.replace(FILE_REF_RE, (whole, ref: string) =>
           dataUrls[ref] ? `src="${dataUrls[ref]}"` : whole,
         ),
       );
