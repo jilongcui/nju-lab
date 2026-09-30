@@ -54,8 +54,13 @@ export const SLIDES_LLM_REASONING_EFFORT: SlidesReasoningEffort = (
 
 /** 单次生成的页数上限（提示词里也会写，这里是硬闸） */
 export const SLIDES_MAX_SLIDES = num('SLIDES_MAX_SLIDES', 20);
-/** 单次请求的 completion 上限（含推理开销，见上） */
-export const SLIDES_MAX_TOKENS = num('SLIDES_MAX_TOKENS', 4000);
+/**
+ * 单次请求的 completion 上限（含推理开销，见上）。
+ * 2026-09-30：模型上下文已支持 500K tokens，旧的 4000 预算会把大纲/扩写 JSON 截断
+ * （实测表现为「内容没生成完就结束了」—— salvage 抢救回少量页、其余走大纲骨架兜底），
+ * 默认放开到 32768；截断抢救与局部重试机制保留作兜底。
+ */
+export const SLIDES_MAX_TOKENS = num('SLIDES_MAX_TOKENS', 32768);
 /** 扩写阶段每批页数 */
 export const SLIDES_EXPAND_BATCH = num('SLIDES_EXPAND_BATCH', 4);
 /** 成本护栏：每课程每小时的生成次数上限（计数落 DB，不引 Redis） */
@@ -67,10 +72,17 @@ export const SLIDES_MAX_NOTES = num('SLIDES_MAX_NOTES', 1000);
 /** 生成器后置质检闸（只作用于 LLM 产出，教师手工编辑不受此限）：标题 / 单条要点字符 */
 export const SLIDES_TITLE_MAX_CHARS = num('SLIDES_TITLE_MAX_CHARS', 30);
 export const SLIDES_BULLET_MAX_CHARS = num('SLIDES_BULLET_MAX_CHARS', 60);
-/** 送入模型的章节正文字符上限（超长截断，避免单次请求过大） */
-export const SLIDES_SOURCE_MAX_CHARS = num('SLIDES_SOURCE_MAX_CHARS', 12000);
-/** 请求超时（毫秒） */
-export const SLIDES_LLM_TIMEOUT_MS = num('SLIDES_LLM_TIMEOUT_MS', 90_000);
+/**
+ * 送入模型的章节正文字符上限（超长截断，避免单次请求过大）。
+ * 2026-09-30：随模型 500K token 上下文从 12000 放开到 300000 —— 按中文约 1 字 ≈ 1 token
+ * 估算，给 prompt 与输出留足余量；此前长章节在 12000 字处被截断，幻灯片只覆盖前半部分。
+ */
+export const SLIDES_SOURCE_MAX_CHARS = num('SLIDES_SOURCE_MAX_CHARS', 300_000);
+/**
+ * 请求超时（毫秒）。token 预算放大后单次响应明显变长（大纲/扩写可达数万 token），
+ * 旧的 90s 会中途 abort，默认放宽到 5 分钟。
+ */
+export const SLIDES_LLM_TIMEOUT_MS = num('SLIDES_LLM_TIMEOUT_MS', 300_000);
 /**
  * 提示词版本 —— **改了 prompt 必须 +1**，否则 `sourceHash` 命中旧缓存、教师看不到新效果。
  * v2（2026-09-29）：密度硬约束（≤20字/条、3–5条/页）、keyPoint 锚点、覆盖与去重规则、
