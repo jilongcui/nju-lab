@@ -128,10 +128,12 @@ export default function AppLayout() {
   const menuItems = MENUS[role];
 
   const selectedKey = useMemo(() => {
-    // 课程详情页归属于「选课」菜单项
-    const pathname = location.pathname.startsWith('/course/')
-      ? '/browse'
-      : location.pathname;
+    // 路由归属：课程详情页（选课浏览）归「选课」；学生的章节学习页归「我的课程」；
+    // 教师的章节编辑/幻灯片页归「课程管理」——否则这些页会回落到菜单第一项「工作台」
+    let pathname = location.pathname;
+    if (pathname.startsWith('/course/')) pathname = '/browse';
+    else if (pathname.startsWith('/student/chapters/')) pathname = '/student/courses';
+    else if (pathname.startsWith('/teacher/chapters/')) pathname = '/teacher/courses';
     const hit = menuItems
       .map((m) => m.key)
       .filter((k) => pathname.startsWith(k))

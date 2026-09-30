@@ -45,6 +45,10 @@ export default function SlideStage({
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  /** 看门狗重载计数：改 key 强制 iframe 重挂载（srcdoc 不重载就不会回 ready 的那类浏览器竞态） */
+  const [reloadKey, setReloadKey] = useState(0);
+  /** 当前这份文档已自动重载的次数（封顶后转错误态，不再无限转圈） */
+  const reloadAttemptsRef = useRef(0);
   /** 放映浮层透明度：hover 只挂在按钮容器上（父容器 pointer-events: none 不会触发 hover） */
   const [controlsOpacity, setControlsOpacity] = useState(0.35);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -66,6 +70,7 @@ export default function SlideStage({
       .then((doc) => {
         if (cancelled || lastDocRef.current === doc) return;
         lastDocRef.current = doc;
+        reloadAttemptsRef.current = 0;
         setReady(false);
         setError(null);
         setHtml(doc);
@@ -77,6 +82,23 @@ export default function SlideStage({
       cancelled = true;
     };
   }, [slides, template, config, footerText, logoDataUrl, imageDataUrls]);
+
+  // 就绪看门狗：html 已下发但 iframe 迟迟不回 ready（个别环境下 srcdoc 不重载/脚本未跑的竞态，
+  // 表现为"转圈永不停"）—— 超时自动重挂载 iframe（换 key），重试 2 次仍不行就给出明确错误。
+  // srcdoc 全内联、加载是本地的，8s 足够宽裕；构建耗时发生在 html 下发之前，不在此计时内。
+  useEffect(() => {
+    if (!html || ready || error) return;
+    const timer = setTimeout(() => {
+      if (reloadAttemptsRef.current < 2) {
+        reloadAttemptsRef.current += 1;
+        console.warn(`[SlideStage] iframe 8s 未就绪，自动重载（第 ${reloadAttemptsRef.current} 次）`);
+        setReloadKey((key) => key + 1);
+      } else {
+        setError('幻灯片加载超时（已自动重试）。请切换视图或刷新页面重试。');
+      }
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [html, ready, error, reloadKey]);
 
   // 接收 iframe 回传（就绪 / 翻页）
   useEffect(() => {
@@ -170,6 +192,7 @@ export default function SlideStage({
             </div>
           )}
           <iframe
+            key={reloadKey}
             ref={iframeRef}
             title="幻灯片"
             // ⚠️ 关键：只给 allow-scripts，**不给 allow-same-origin** → opaque origin
