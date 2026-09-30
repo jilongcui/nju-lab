@@ -289,11 +289,14 @@ export class SlidesService {
     this.assertRateLimit(course.id);
 
     const current = deck.slides[index];
+    // cover/section 仪式型页面的 bullets 多为大纲锚点残留（扩写规则本就要求这类页不写要点），
+    // 不回传给模型，避免被原样 echo 上屏
+    const ceremonial = current.layout === 'cover' || current.layout === 'section';
     const outlineItem: OutlineSlide = {
       layout: current.layout,
       kicker: current.kicker,
       title: current.title,
-      bullets: current.bullets,
+      bullets: ceremonial ? undefined : current.bullets,
     };
     const generator = createDeckGenerator(SLIDES_GENERATOR);
     const result = await generator.expandBatch(

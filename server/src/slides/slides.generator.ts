@@ -681,7 +681,7 @@ export class LlmDeckGenerator implements DeckGenerator {
       `5) 总页数不超过 ${SLIDES_LIMITS.maxSlides} 页（含首尾）。`,
       '',
       '【信息密度——必须严格遵守】',
-      '6) 内容页 bullets 每页 3–5 条，每条不超过 20 字；用关键词或短语的「电报体」，禁止照抄正文整句。',
+      '6) 内容页 bullets 每页 3–5 条，每条不超过 20 字；用关键词或短语的「电报体」，禁止照抄正文整句。cover/section 仪式型页面不必给 bullets（它们只有标题与 kicker）。',
       '7) 每页只讲一件事：keyPoint 用一句话写清「本页要让学员记住什么」（不超过 40 字；它只给后续扩写看，不上屏）。',
       '',
       '【覆盖与去重】',
@@ -736,12 +736,13 @@ export class LlmDeckGenerator implements DeckGenerator {
       '5) compare 页左右两栏各 2–5 条、每条不超过 20 字，列标题不超过 8 字，两栏要有可比性；',
       '   compare 的 JSON 形如 {"leftTitle": "旧方法", "rightTitle": "新方法", "left": ["慢", "易错"], "right": ["快", "可靠"]}，left/right 必须是字符串数组、不得为空。',
       '6) two-col 页用 left/right 两段对照文字（每段不超过 120 字，可用短句换行）；code 页给完整可读的代码（content 里不要带 ``` 围栏，不超过 20 行）；quote 页放一句关键结论（不超过 60 字）。',
-      '7) 每页都要有 notes —— 写给教师的**讲稿**：口语化、3–6 句、可以照读；开头一句承接上文，结尾一句自然过渡到下一页；讲稿信息量要比页面文字大（页面是骨架，讲稿是血肉）。',
-      '8) 不得重复其他页已经讲过的内容。',
-      '9) 全部用中文；页面文字里不要出现 Markdown 标记（#、*、`）。',
+      '7) cover 与 section 是仪式型页面（封面=标题+副标题、分节=kicker+标题）：不要给它们写 bullets——大纲里带的要点只是给扩写看的锚，照抄上屏会显得空洞且与后面的内容页重复；这类页的承接与过渡全部写进 notes。agenda 页的编号条目照大纲保留（它就是目录本身），end 页给 2–4 条小结要点。',
+      '8) 每页都要有 notes —— 写给教师的**讲稿**：口语化、3–6 句、可以照读；开头一句承接上文，结尾一句自然过渡到下一页；讲稿信息量要比页面文字大（页面是骨架，讲稿是血肉）。',
+      '9) 不得重复其他页已经讲过的内容。',
+      '10) 全部用中文；页面文字里不要出现 Markdown 标记（#、*、`）。',
       ...(imageCount > 0
         ? [
-            '10) image / image-full / image-left / image-right 页：把 image.url 设为可用插图清单里**最贴合本页内容**的那个 fileId（照抄清单原文，禁止编造、禁止改写一个字符），caption 不超过 12 字；image-grid 页用 images 数组放 2–4 张同主题图片。image-left / image-right 页还要给 3–4 条 bullets 要点。',
+            '11) image / image-full / image-left / image-right 页：把 image.url 设为可用插图清单里**最贴合本页内容**的那个 fileId（照抄清单原文，禁止编造、禁止改写一个字符），caption 不超过 12 字；image-grid 页用 images 数组放 2–4 张同主题图片。image-left / image-right 页还要给 3–4 条 bullets 要点。',
           ]
         : []),
     ]
@@ -804,13 +805,22 @@ export class LlmDeckGenerator implements DeckGenerator {
 
   /**
    * 大纲骨架兜底页：compare/stat 这类需要结构化字段的版式在大纲里没有数据，
-   * 图片系版式在大纲里没有 fileId，兜底时一律降级为 bullets 页（要点还在，比整页丢失好）
+   * 图片系版式在大纲里没有 fileId，兜底时一律降级为 bullets 页（要点还在，比整页丢失好）。
+   * cover/section 仪式型页面不带要点（与扩写规则同口径：大纲要点只是锚，不上屏），
+   * kicker 按大纲保留（如「第 N 节」）。
    */
   private outlineSkeleton(item: OutlineSlide): SlideJson | null {
     const layout = SKELETON_DEGRADE_LAYOUTS.has(item.layout) ? 'bullets' : item.layout;
     try {
       return validateSlides(
-        [{ layout, title: item.title, bullets: item.bullets }],
+        [
+          {
+            layout,
+            kicker: item.kicker,
+            title: item.title,
+            bullets: layout === 'cover' || layout === 'section' ? undefined : item.bullets,
+          },
+        ],
         { ...SLIDES_LIMITS, maxSlides: 1 },
       )[0];
     } catch {

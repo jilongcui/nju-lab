@@ -37,6 +37,7 @@
    · bullets → 电报体成稿（≤20 字/条、3–5 条/页，禁止照抄整句）
    · stat/compare → 结构化字段（真实数字、两栏清单）
    · notes → 讲稿（3–6 句、有过渡语、信息量比页面大）
+   · cover/section 仪式型页面不写 bullets（承接与过渡全进 notes；要点只是锚，不上屏）
    约束：layout/title/keyPoint 不许改、页序不许变
         ▼
 ④ 程序化质检（不靠模型自觉）
@@ -140,7 +141,7 @@ MD 保存时按位次合并保留，不会被悄悄覆盖。
   4000→32768（旧预算会把大纲/扩写 JSON 截断，表现为「内容没生成完就结束了」）、
   `SLIDES_SOURCE_MAX_CHARS` 默认 12000→300000、`SLIDES_LLM_TIMEOUT_MS` 默认 90s→300s；
   截断抢救与失败重试保留作兜底。
-- **改 prompt 必须把 `SLIDES_PROMPT_VERSION` +1**（当前 v5：扩写禁止空占位字段），否则命中旧缓存看不到新效果。
+- **改 prompt 必须把 `SLIDES_PROMPT_VERSION` +1**（当前 v6：仪式型页面不写 bullets；v5 禁空占位字段），否则命中旧缓存看不到新效果。
 
 ## 7. 典型工作流
 

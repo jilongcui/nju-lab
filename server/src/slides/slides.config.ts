@@ -94,8 +94,11 @@ export const SLIDES_LLM_TIMEOUT_MS = num('SLIDES_LLM_TIMEOUT_MS', 300_000);
  * v5（2026-09-30）：扩写 prompt 禁止空占位字段（实测模型会把完整 schema 抄成空壳，
  * 如 "compare": {"left": [], "right": []} 挂在无关页上）；配套校验层对非 compare 页的
  * 空 compare 宽容丢弃，扩写失败页先降级为要点页再退回大纲骨架。
+ * v6（2026-09-30）：仪式型页面规则 —— cover/section 不写 bullets（此前扩写会把大纲
+ * 锚点要点原样 echo 上屏，单页重生成时尤其明显）；agenda 照大纲保留、end 给小结要点；
+ * 大纲侧同步声明 cover/section 不必给 bullets；骨架兜底与单页重生成锚点同口径清理。
  */
-export const SLIDES_PROMPT_VERSION = 'v5';
+export const SLIDES_PROMPT_VERSION = 'v6';
 
 export const SLIDES_LIMITS = {
   maxSlides: SLIDES_MAX_SLIDES,
