@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Space, Spin } from 'antd';
+import { Alert, Button, Space, Spin, theme } from 'antd';
 import { CloseOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
 import type { SlideDeckConfig, SlideJson } from '../types';
 import { buildDeckHtml } from './renderDeck';
@@ -51,6 +51,7 @@ export default function SlideStage({
   const reloadAttemptsRef = useRef(0);
   /** 放映浮层透明度：hover 只挂在按钮容器上（父容器 pointer-events: none 不会触发 hover） */
   const [controlsOpacity, setControlsOpacity] = useState(0.35);
+  const { token } = theme.useToken();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   /** 上一份构建产物：输入"等价但引用变了"（父组件行内对象）时不重建 —— 否则 Spin 会常驻
    * （iframe 的 srcdoc 相同就不会重载，ready 事件不会再发，loading 态永远消不掉，2026-09-29 实测） */
@@ -176,7 +177,9 @@ export default function SlideStage({
         position: 'relative',
         width: '100%',
         height: presenting ? '100%' : height,
-        background: '#000',
+        // 只有放映模式才用黑底（全屏黑边）；内嵌模式加载瞬间露出容器底色，
+        // 用跟随主题的浅色，避免「显示前短暂黑屏」（2026-09-30 教师反馈）
+        background: presenting ? '#000' : token.colorBgLayout,
         borderRadius: presenting ? 0 : 8,
         overflow: 'hidden',
       }}
