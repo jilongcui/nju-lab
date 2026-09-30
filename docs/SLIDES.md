@@ -53,6 +53,9 @@
 **健壮性**（都是实测踩过的坑）：deepseek-flash/v4-pro 是推理模型，`max_tokens` 与推理共用
 （已带 `reasoning_effort=low`）；JSON 截断有抢救（回退最后完整对象补齐括号）；
 大纲/扩写失败各自动重试一次；缺页用大纲骨架补齐，不整份失败。
+模型会把 prompt 里的完整 schema 抄成空壳占位（`"compare": {"left": [], "right": []}` 挂在无关页、
+`"image": null` 等，2026-09-30 实测一批 6 页被误杀）：校验层对**非 compare 页的空 compare 宽容丢弃**；
+扩写页其他结构化字段缺失时**先降级为要点页**（保住模型写好的 bullets/notes），救不回才退大纲骨架。
 
 ## 3. 版式（16 种 layout + kicker 眉题）
 
@@ -136,7 +139,7 @@ MD 保存时按位次合并保留，不会被悄悄覆盖。
   4000→32768（旧预算会把大纲/扩写 JSON 截断，表现为「内容没生成完就结束了」）、
   `SLIDES_SOURCE_MAX_CHARS` 默认 12000→300000、`SLIDES_LLM_TIMEOUT_MS` 默认 90s→300s；
   截断抢救与失败重试保留作兜底。
-- **改 prompt 必须把 `SLIDES_PROMPT_VERSION` +1**（当前 v4），否则命中旧缓存看不到新效果。
+- **改 prompt 必须把 `SLIDES_PROMPT_VERSION` +1**（当前 v5：扩写禁止空占位字段），否则命中旧缓存看不到新效果。
 
 ## 7. 典型工作流
 

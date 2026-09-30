@@ -91,8 +91,11 @@ export const SLIDES_LLM_TIMEOUT_MS = num('SLIDES_LLM_TIMEOUT_MS', 300_000);
  * 大纲要求按内容选型（版式多样），扩写给各版式的字段契约。
  * v4（2026-09-30）：图片版式 —— 新增 image-full/image-left/image-right/image-grid；
  * 正文含 `file:` 插图时允许模型选用图片版式（url 仅限清单内），无图时维持禁令。
+ * v5（2026-09-30）：扩写 prompt 禁止空占位字段（实测模型会把完整 schema 抄成空壳，
+ * 如 "compare": {"left": [], "right": []} 挂在无关页上）；配套校验层对非 compare 页的
+ * 空 compare 宽容丢弃，扩写失败页先降级为要点页再退回大纲骨架。
  */
-export const SLIDES_PROMPT_VERSION = 'v4';
+export const SLIDES_PROMPT_VERSION = 'v5';
 
 export const SLIDES_LIMITS = {
   maxSlides: SLIDES_MAX_SLIDES,

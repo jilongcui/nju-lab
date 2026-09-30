@@ -247,9 +247,15 @@ export function validateSlide(raw: unknown, index: number, limits: SlideLimits):
     const rightTitle = readString(raw.compare.rightTitle, 30);
     if (rightTitle) compare.rightTitle = rightTitle;
     if (!compare.left.length && !compare.right.length) {
-      throw new DeckValidationError(`第 ${index + 1} 页的 compare 两栏都是空的`);
+      // 模型常把 prompt 里的完整 schema 抄成空壳占位（"compare": {"left": [], "right": []}），
+      // 出现在 section/bullets 等无关页上 —— 空 compare 只有在本页就是 compare 版式时才算失败，
+      // 其余情况直接丢弃，不该拖垮整页（2026-09-30 实测一批 6 页被这种占位误杀）
+      if (slide.layout === 'compare') {
+        throw new DeckValidationError(`第 ${index + 1} 页的 compare 两栏都是空的`);
+      }
+    } else {
+      slide.compare = compare;
     }
-    slide.compare = compare;
   }
 
   const left = readString(raw.left, limits.maxChars * 4);

@@ -532,6 +532,16 @@ export class LlmDeckGenerator implements DeckGenerator {
               this.assertImagesFromSource(slide, allowedImageRefs);
               slides.push(slide);
             } catch (pageError) {
+              // 先尝试降级挽救：模型常见失误是只漏了 compare/stat/image 结构化字段（或给了空
+              // 占位），但 bullets/notes 其实写好了 —— 直接丢整页太亏，降级为要点页保住成稿
+              const degraded = this.degradeExpandedToBullets(parsedArr[i], start + i);
+              if (degraded) {
+                warnings.push(
+                  `第 ${start + i + 1} 页扩写产物不合法（${(pageError as Error).message}），已降级为要点页`,
+                );
+                slides.push(degraded);
+                continue;
+              }
               warnings.push(
                 `第 ${start + i + 1} 页扩写产物不合法（${(pageError as Error).message}），已用大纲兜底`,
               );
@@ -658,7 +668,7 @@ export class LlmDeckGenerator implements DeckGenerator {
         : '',
       '  "quote": {"text": string, "cite": string}, "notes": string}]}',
       '规则：',
-      '1) 必须保持每页的 layout、kicker 与 title 不变，顺序也不能变；每页只讲清大纲里它自己的 keyPoint，不要贪多。',
+      '1) 必须保持每页的 layout、kicker 与 title 不变，顺序也不能变；每页只讲清大纲里它自己的 keyPoint，不要贪多。只输出本页 layout 需要的字段：与本页版式无关的结构化字段（compare/stats/image/images/quote/code/left/right）一律不要写，禁止用 null、空数组或空对象占位。',
       '2) bullets 页给 3–5 条要点，每条不超过 20 字：关键词/短语式的电报体，禁止照抄正文整句；可用「关键词：半句短补充」的形态。',
       '3) steps 页给 3–6 步，按先后顺序，每步不超过 20 字。',
       '4) stat 页给 1–4 个大数字：value 必须是**正文里真实出现的数字**（不超过 8 字，禁止编造），label 不超过 12 字，detail 可选。',
@@ -710,6 +720,25 @@ export class LlmDeckGenerator implements DeckGenerator {
       '请输出补全后的 JSON。',
     );
     return lines.join('\n');
+  }
+
+  /**
+   * 扩写产物的降级挽救：强制改成 bullets 版式、摘掉全部结构化字段后重新校验。
+   * 能救回的是「要点与讲稿都写好了、只是结构化字段缺失/为空」的页（2026-09-30 实测：
+   * image-left 页 image 给 null、compare 页两栏空但 bullets 齐全）；连要点都没有的页救不回，返回 null。
+   */
+  private degradeExpandedToBullets(raw: unknown, index: number): SlideJson | null {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const clone: Record<string, unknown> = { ...(raw as Record<string, unknown>), layout: 'bullets' };
+    for (const key of ['compare', 'stats', 'image', 'images', 'quote', 'code', 'left', 'right']) {
+      delete clone[key];
+    }
+    try {
+      const slide = validateSlide(clone, index, SLIDES_LIMITS);
+      return slide.bullets?.length ? slide : null;
+    } catch {
+      return null;
+    }
   }
 
   /**
