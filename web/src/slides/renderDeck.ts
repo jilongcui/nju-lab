@@ -365,14 +365,22 @@ function bridgeScript(config: Required<SlideDeckConfig>): string {
     margin: 0.06,
   });
   return `(function () {
-  if (typeof Reveal === 'undefined') {
-    document.body.innerHTML = '<p style="font:16px sans-serif;padding:24px">幻灯片组件加载失败，请刷新重试。</p>';
-    return;
-  }
-  Reveal.initialize(${options});
   function post(payload) {
     try { parent.postMessage(Object.assign({ __deck: true }, payload), '*'); } catch (e) {}
   }
+  // 自检心跳与错误上报：父窗口据此区分「脚本没跑」（srcdoc 未加载）与「跑了但没 ready」
+  // （reveal 初始化卡住/失败）。只上报不干预 —— 个别异常（如 sandbox 下读 localStorage
+  // 的 SecurityError）并不致命，是否失败由父窗口的看门狗判定。
+  post({ type: 'boot' });
+  window.addEventListener('error', function (event) {
+    post({ type: 'deck-error', message: String((event && event.message) || 'unknown') });
+  });
+  if (typeof Reveal === 'undefined') {
+    document.body.innerHTML = '<p style="font:16px sans-serif;padding:24px">幻灯片组件加载失败，请刷新重试。</p>';
+    post({ type: 'deck-error', message: 'Reveal 未定义（核心脚本未执行）' });
+    return;
+  }
+  Reveal.initialize(${options});
   window.addEventListener('message', function (event) {
     var data = event.data || {};
     if (data.__deckAction !== true) return;

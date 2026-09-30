@@ -55,6 +55,10 @@ export default function SlideStage({
   /** 上一份构建产物：输入"等价但引用变了"（父组件行内对象）时不重建 —— 否则 Spin 会常驻
    * （iframe 的 srcdoc 相同就不会重载，ready 事件不会再发，loading 态永远消不掉，2026-09-29 实测） */
   const lastDocRef = useRef<string | null>(null);
+  /** 构建序号：每份被采纳的文档拼上唯一 HTML 注释 —— 即使 React 复用了 iframe 元素，
+   * srcdoc 字符串也必然变化 → 浏览器一定重载、ready 一定回传（"srcdoc 相同不重载"
+   * 这一类竞态在源头消除；等价去重仍由 lastDocRef 在拼序号之前完成） */
+  const buildSeqRef = useRef(0);
 
   // 内容/模板/配置变化 → 重建文档（重建 iframe 的 srcdoc，状态最干净）
   useEffect(() => {
@@ -71,9 +75,10 @@ export default function SlideStage({
         if (cancelled || lastDocRef.current === doc) return;
         lastDocRef.current = doc;
         reloadAttemptsRef.current = 0;
+        buildSeqRef.current += 1;
         setReady(false);
         setError(null);
-        setHtml(doc);
+        setHtml(`${doc}\n<!-- deck-build:${buildSeqRef.current} -->`);
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err.message);
@@ -112,6 +117,11 @@ export default function SlideStage({
       if (data.type === 'exit-present') {
         // iframe 内按 Esc：由父窗口决定是否退出放映（非放映态则无事发生）
         onExitPresenting?.();
+        return;
+      }
+      if (data.type === 'deck-error') {
+        // iframe 内脚本异常：仅记录（个别异常不致命，失败判定交给就绪看门狗）
+        console.warn('[SlideStage] iframe 内脚本异常：', (data as { message?: string }).message);
         return;
       }
       if (data.type === 'ready') setReady(true);
