@@ -43,7 +43,8 @@
 ④ 程序化质检（不靠模型自觉）
    · 逐页形状校验（不合法只丢该页、大纲骨架兜底）
    · postProcessSlides：标题≤30/要点≤60 截断、页内去重、
-     标题高相似页合并（bigram Jaccard≥0.7）
+     标题高相似页合并（bigram Jaccard≥0.7）、
+     分节页眉题强制顺序编号「第 N 节」（结构信息不靠模型编）
         ▼
 ⑤ 落库：SlideDeck.slides（JSON 唯一真源）+ markdown 投影 + 章节哈希
         ▼
@@ -65,7 +66,7 @@
 |---|---|---|
 | `cover` | 封面（仅首页） | kicker 眉题 + 标题 + 副标题 |
 | `agenda` | 目录/本章脉络（通常第 2 页） | 编号条目（bullets 承载） |
-| `section` | 分节标题页 | kicker「第 N 节」+ 标题 |
+| `section` | 分节标题页 | kicker「第 N 节」（质检统一编号）+ 标题；教师手工加的要点按弱化的"大纲提示"样式渲染（deck-teaser，LLM 不写） |
 | `bullets` | 要点页（最常用） | 3–5 条电报体要点，卡片化 |
 | `steps` | 有序步骤/流程 | 序号圆点 + 连接线（bullets 承载） |
 | `stat` | 大数字（1–4 个） | `{value, label, detail?}`，value 必须正文真实数字 |

@@ -315,6 +315,14 @@ export class SlidesService {
     if (!regenerated) {
       throw new BadGatewayException(`第 ${index + 1} 页重新生成失败，请重试`);
     }
+    // 分节页眉题强制为「第 N 节」（按它在整份 deck 里的分节序号算，不交给模型编——
+    // 模型看不到其他页，编出来的号会断档；与整份生成的 postProcess 编号同口径）
+    if (regenerated.layout === 'section') {
+      const sectionNo = deck.slides
+        .slice(0, index + 1)
+        .filter((slide) => slide.layout === 'section').length;
+      regenerated.kicker = `第 ${sectionNo} 节`;
+    }
     const slides = [...deck.slides];
     // 保留原页 id：缩略图/编辑态以 id 做 key，原位替换不应引起视图抖动
     slides[index] = { ...regenerated, id: current.id };

@@ -147,6 +147,8 @@ const slides = [
     ],
   },
   { id: 's15', layout: 'image', image: { url: MISSING_REF, caption: '已删除的图' } },
+  // 仪式型页面的弱化要点（教师手工加的"本节导览"）：应渲染成 deck-teaser，不是正文 deck-bullets
+  { id: 's16', layout: 'section', kicker: '第 1 节', title: '分节标题', bullets: ['导览一', '导览二'] },
 ];
 
 const html = await render(slides);
@@ -170,6 +172,11 @@ if (!html.startsWith('__ERROR__')) {
   check('大数字页 deck-stats / deck-stat-value', html.includes('deck-stats') && html.includes('deck-stat-value'));
   check('对比页 deck-compare / 列标题', html.includes('deck-compare') && html.includes('deck-compare-head'));
   check('要点列表带 deck-bullets class', html.includes('class="deck-bullets"'));
+  check(
+    '分节页要点弱化为 deck-teaser（非正文 deck-bullets）',
+    (sections[15]?.includes('class="deck-teaser"') ?? false) && !sections[15]?.includes('deck-bullets'),
+  );
+  check('分节页 kicker「第 N 节」上屏', sections[15]?.includes('deck-kicker') ?? false);
 
   // —— 图片版式 ——
   check('单图页 img.deck-image + 图注', html.includes('img class="deck-image"') && html.includes('示意图'));

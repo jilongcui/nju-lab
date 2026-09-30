@@ -228,6 +228,7 @@ function jaccard(a: Set<string>, b: Set<string>): number {
  *   1) 标题 / 要点长度硬截断（对齐 prompt 的密度约定；教师手工编辑不走这里，不受此限）
  *   2) 页内重复要点去重
  *   3) 跨页重复合并：标题高相似的内容页合并到先出现的那页（实测 LLM 会同标题连出两页）
+ *   4) 分节页眉题强制顺序编号「第 N 节」（结构信息，不靠模型自觉）
  * 所有动作都记 warning 给教师看，不静默改。
  */
 export function postProcessSlides(slides: SlideJson[], warnings: string[]): SlideJson[] {
@@ -282,7 +283,25 @@ export function postProcessSlides(slides: SlideJson[], warnings: string[]): Slid
   if (truncatedBullets)
     warnings.push(`${truncatedBullets} 条要点超过 ${SLIDES_BULLET_MAX_CHARS} 字，已截断`);
   if (droppedDupBullets) warnings.push(`删除 ${droppedDupBullets} 条重复要点`);
-  return slides.filter((_, index) => !removed.has(index));
+
+  const kept = slides.filter((_, index) => !removed.has(index));
+
+  // 分节页眉题按顺序强制编号：「第 N 节」是结构信息（大纲规则本就如此要求），
+  // 交给模型编号实测会断档（骨架页丢 kicker、模型自编号重复），合并去重后统一重排
+  let sectionNo = 0;
+  let renumbered = 0;
+  for (const slide of kept) {
+    if (slide.layout !== 'section') continue;
+    sectionNo += 1;
+    const wanted = `第 ${sectionNo} 节`;
+    if (slide.kicker !== wanted) {
+      slide.kicker = wanted;
+      renumbered += 1;
+    }
+  }
+  if (renumbered) warnings.push(`${renumbered} 个分节页的眉题已按顺序统一为「第 N 节」`);
+
+  return kept;
 }
 
 // ---------------------------------------------------------------- mock

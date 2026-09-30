@@ -98,6 +98,11 @@ const BASE_OVERRIDES = `
 
 /* 要点 marker 用强调色 */
 .reveal .deck-bullets li::marker { color: var(--deck-accent, inherit); }
+
+/* 仪式型页面（封面/分节）的弱化要点：只是大纲提示，小字、低存在、无卡片/无强调 marker */
+.reveal .deck-teaser { list-style: none; margin: 1.2em auto 0; padding: 0; font-size: 0.5em; line-height: 2; opacity: 0.68; font-weight: 400; }
+.reveal .deck-teaser li { margin: 0; padding: 0; background: none; border: none; box-shadow: none; }
+.reveal .deck-teaser li::before { content: '·'; color: var(--deck-accent, #888); margin-right: 0.5em; }
 `;
 
 /**
@@ -183,10 +188,10 @@ function renderLayoutBody(slide: SlideJson, input: DeckRenderInput): string {
     case 'cover':
       return `${kicker}<h1>${renderInlineSafe(slide.title ?? '')}</h1>
         <div class="deck-cover-rule"></div>${subtitle}
-        ${slide.bullets?.length ? renderBullets(slide.bullets) : ''}`;
+        ${slide.bullets?.length ? renderTeaser(slide.bullets) : ''}`;
     case 'section':
       return `${kicker}<h2>${renderInlineSafe(slide.title ?? '')}</h2>${subtitle}
-        ${slide.bullets?.length ? renderBullets(slide.bullets) : ''}`;
+        ${slide.bullets?.length ? renderTeaser(slide.bullets) : ''}`;
     case 'end':
       return `${kicker}<h2>${renderInlineSafe(slide.title ?? '')}</h2>
         ${slide.bullets?.length ? renderBullets(slide.bullets) : ''}`;
@@ -271,6 +276,17 @@ function renderLayoutBody(slide: SlideJson, input: DeckRenderInput): string {
 
 function renderBullets(bullets: string[]): string {
   return `<ul class="deck-bullets">${bullets
+    .map((item) => `<li>${renderInlineSafe(item)}</li>`)
+    .join('')}</ul>`;
+}
+
+/**
+ * 仪式型页面（封面/分节）上的弱化要点：LLM 已不给这类页写要点（prompt v6），
+ * 这里渲染的是教师手工加的"本节导览"——视觉上要做成大纲提示（小字、弱化、无卡片），
+ * 与内容页的正文要点明确区分。
+ */
+function renderTeaser(bullets: string[]): string {
+  return `<ul class="deck-teaser">${bullets
     .map((item) => `<li>${renderInlineSafe(item)}</li>`)
     .join('')}</ul>`;
 }
