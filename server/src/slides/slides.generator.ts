@@ -35,6 +35,24 @@ export interface DeckSource {
   courseTitle: string;
   chapterTitle: string;
   chapterContent: string;
+  /** 章节正文里出现的平台图片（`![cap](file:<id>)`），LLM 配图的唯一合法来源 */
+  availableImages?: { fileId: string; caption?: string }[];
+}
+
+/** 从章节正文提取可用的平台图片引用（去重，首次出现为准）；没有则返回空数组 = 不配图 */
+export function extractChapterImages(
+  content: string,
+): { fileId: string; caption?: string }[] {
+  const seen = new Set<string>();
+  const images: { fileId: string; caption?: string }[] = [];
+  const re = /!\[([^\]]*)\]\((file:[0-9a-fA-F-]{36})\)/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(content))) {
+    if (seen.has(match[2])) continue;
+    seen.add(match[2]);
+    images.push({ fileId: match[2], caption: match[1] || undefined });
+  }
+  return images;
 }
 
 export interface GenerateOutcome {
@@ -170,6 +188,17 @@ function toBullets(items: string[], maxBullets: number, maxChars: number): strin
 
 /** 只有这些页型参与「跨页重复」判定：cover/section/end 的重复是结构性的（脉络列分节标题是设计） */
 const DEDUPABLE_LAYOUTS = new Set(['bullets', 'two-col', 'quote']);
+
+/** 大纲骨架兜不住、需降级为 bullets 的版式：结构化字段（compare/stat）与图片引用在大纲阶段都没有数据 */
+const SKELETON_DEGRADE_LAYOUTS = new Set([
+  'compare',
+  'stat',
+  'image',
+  'image-full',
+  'image-left',
+  'image-right',
+  'image-grid',
+]);
 
 function normalizeForDup(text: string): string {
   return text.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
@@ -419,7 +448,11 @@ const LAYOUT_HINT = [
   'two-col（两栏自由文本，compare 不适用时才用）',
   'code（代码页）',
   'quote（引文页）',
-  'image（图片页）',
+  'image（图片页，单图居中）',
+  'image-full（全幅大图页，一张图撑满整页）',
+  'image-left（左图右文页，图配要点）',
+  'image-right（右图左文页，图配要点）',
+  'image-grid（多图网格页，2–4 张同类图片并列）',
   'end（结束页，仅末页）',
 ].join('、');
 
@@ -429,6 +462,9 @@ export class LlmDeckGenerator implements DeckGenerator {
   async generate(source: DeckSource): Promise<GenerateOutcome> {
     const content = truncate(source.chapterContent || '（本章暂无正文）', SLIDES_SOURCE_MAX_CHARS);
     const warnings: string[] = [];
+    const availableImages = source.availableImages ?? [];
+    /** 防幻觉闸：模型只能引用清单内的 fileId，清单为空 = 不允许任何图片页 */
+    const allowedImageRefs = new Set(availableImages.map((img) => img.fileId));
 
     // 大纲失败 = 整份失败，所以重试一次（截断/偶发非 JSON 在推理模型上难免）；
     // 预算直接给满：20 页大纲 + 推理开销，2000 token 的旧预算实测会被截断（2026-09-29）
@@ -438,7 +474,7 @@ export class LlmDeckGenerator implements DeckGenerator {
       try {
         const response = await chatJson(
           [
-            { role: 'system', content: this.outlineSystemPrompt() },
+            { role: 'system', content: this.outlineSystemPrompt(availableImages.length) },
             { role: 'user', content: this.outlineUserPrompt(source, content) },
           ],
           {
@@ -472,7 +508,7 @@ export class LlmDeckGenerator implements DeckGenerator {
         try {
           const expandResponse = await chatJson(
             [
-              { role: 'system', content: this.expandSystemPrompt() },
+              { role: 'system', content: this.expandSystemPrompt(availableImages.length) },
               {
                 role: 'user',
                 content: this.expandUserPrompt(source, content, batch),
@@ -492,7 +528,9 @@ export class LlmDeckGenerator implements DeckGenerator {
           const slides: SlideJson[] = [];
           for (let i = 0; i < Math.min(parsedArr.length, batch.length); i++) {
             try {
-              slides.push(validateSlide(parsedArr[i], start + i, SLIDES_LIMITS));
+              const slide = validateSlide(parsedArr[i], start + i, SLIDES_LIMITS);
+              this.assertImagesFromSource(slide, allowedImageRefs);
+              slides.push(slide);
             } catch (pageError) {
               warnings.push(
                 `第 ${start + i + 1} 页扩写产物不合法（${(pageError as Error).message}），已用大纲兜底`,
@@ -539,7 +577,23 @@ export class LlmDeckGenerator implements DeckGenerator {
     };
   }
 
-  private outlineSystemPrompt(): string {
+  /**
+   * 防幻觉闸：图片版式的 url 必须来自正文提取的可用清单（教师手工插图不经过生成器，不受此限）。
+   * 不合法就抛错 —— 走既有「丢该页、大纲骨架兜底」路径，比留一张编造的图好。
+   */
+  private assertImagesFromSource(slide: SlideJson, allowed: Set<string>): void {
+    const urls = [
+      slide.image?.url,
+      ...(slide.images ?? []).map((img) => img.url),
+    ].filter((url): url is string => !!url);
+    for (const url of urls) {
+      if (!allowed.has(url)) {
+        throw new Error(`图片引用不在正文可用清单内（${url}）`);
+      }
+    }
+  }
+
+  private outlineSystemPrompt(imageCount: number): string {
     return [
       '你是教学课件设计助手，为大学课程章节设计在线演示（reveal.js）大纲。',
       '只输出一个 JSON 对象，不要任何解释文字。JSON 结构：',
@@ -550,7 +604,9 @@ export class LlmDeckGenerator implements DeckGenerator {
       '1) 第 1 页必须 layout=cover（title 用章节名，kicker 用课程名）；第 2 页 layout=agenda 作「本章脉络」（bullets 列出各分节标题）；最后一页必须 layout=end 作小结——首尾页都不可省略。',
       '2) 先通读正文，把必须讲清的知识点梳理成 2–4 个分节；每个分节用一页 layout=section 作分隔（kicker 用「第 N 节」），其下跟 1–3 页内容页；短章（分节只有 1–2 个）可省略分节页，把页数让给内容页。',
       '3) 内容页按内容选型：一般要点用 bullets；有先后顺序的过程/操作步骤用 steps；正文里有 1–4 个有说服力的关键数字时用 stat；成对对比的概念用 compare；示例代码用 code；画龙点睛的结论用 quote。版式要多样，不要清一色 bullets。',
-      '4) 不要生成 image 页（没有可用的图片素材，需要插图由教师自己加）。',
+      imageCount > 0
+        ? `4) 正文里有 ${imageCount} 张可用插图（清单在用户消息里）。某页内容正好在讲解某张图时，为该页选 image / image-full / image-left / image-right / image-grid 版式：单图配要点用 image-left/image-right，一张图讲透一件事用 image 或 image-full，2–4 张同类图并列用 image-grid。一份 deck 图片页总数不超过 3 页，不为配图硬凑页；与图无关的页仍按规则 3 选型。`
+        : '4) 不要生成 image 页（没有可用的图片素材，需要插图由教师自己加）。',
       `5) 总页数不超过 ${SLIDES_LIMITS.maxSlides} 页（含首尾）。`,
       '',
       '【信息密度——必须严格遵守】',
@@ -566,7 +622,7 @@ export class LlmDeckGenerator implements DeckGenerator {
   }
 
   private outlineUserPrompt(source: DeckSource, content: string): string {
-    return [
+    const lines = [
       `课程：${source.courseTitle}`,
       `章节：${source.chapterTitle}`,
       '',
@@ -574,12 +630,22 @@ export class LlmDeckGenerator implements DeckGenerator {
       '"""',
       content,
       '"""',
-      '',
-      '请按上述规则输出 JSON 大纲。',
-    ].join('\n');
+    ];
+    const images = source.availableImages ?? [];
+    if (images.length) {
+      lines.push(
+        '',
+        '可用插图清单（fileId 与正文里的图注；图片版式只能从这里选）：',
+        ...images.map(
+          (img, index) => `${index + 1}. ${img.fileId}${img.caption ? `（${img.caption}）` : ''}`,
+        ),
+      );
+    }
+    lines.push('', '请按上述规则输出 JSON 大纲。');
+    return lines.join('\n');
   }
 
-  private expandSystemPrompt(): string {
+  private expandSystemPrompt(imageCount: number): string {
     return [
       '你是教学课件设计助手。给定若干页大纲，请把它们补全为可直接放映的幻灯片内容。',
       '只输出一个 JSON 对象，不要任何解释文字。JSON 结构：',
@@ -587,6 +653,9 @@ export class LlmDeckGenerator implements DeckGenerator {
       '  "stats": [{"value": string, "label": string, "detail": string}],',
       '  "compare": {"leftTitle": string, "rightTitle": string, "left": string[], "right": string[]},',
       '  "left": string, "right": string, "code": {"lang": string, "content": string},',
+      imageCount > 0
+        ? '  "image": {"url": string, "caption": string}, "images": [{"url": string, "caption": string}],'
+        : '',
       '  "quote": {"text": string, "cite": string}, "notes": string}]}',
       '规则：',
       '1) 必须保持每页的 layout、kicker 与 title 不变，顺序也不能变；每页只讲清大纲里它自己的 keyPoint，不要贪多。',
@@ -599,7 +668,14 @@ export class LlmDeckGenerator implements DeckGenerator {
       '7) 每页都要有 notes —— 写给教师的**讲稿**：口语化、3–6 句、可以照读；开头一句承接上文，结尾一句自然过渡到下一页；讲稿信息量要比页面文字大（页面是骨架，讲稿是血肉）。',
       '8) 不得重复其他页已经讲过的内容。',
       '9) 全部用中文；页面文字里不要出现 Markdown 标记（#、*、`）。',
-    ].join('\n');
+      ...(imageCount > 0
+        ? [
+            '10) image / image-full / image-left / image-right 页：把 image.url 设为可用插图清单里**最贴合本页内容**的那个 fileId（照抄清单原文，禁止编造、禁止改写一个字符），caption 不超过 12 字；image-grid 页用 images 数组放 2–4 张同主题图片。image-left / image-right 页还要给 3–4 条 bullets 要点。',
+          ]
+        : []),
+    ]
+      .filter((line) => line !== '')
+      .join('\n');
   }
 
   private expandUserPrompt(
@@ -607,7 +683,7 @@ export class LlmDeckGenerator implements DeckGenerator {
     content: string,
     batch: OutlineSlide[],
   ): string {
-    return [
+    const lines = [
       `课程：${source.courseTitle}`,
       `章节：${source.chapterTitle}`,
       '',
@@ -615,20 +691,33 @@ export class LlmDeckGenerator implements DeckGenerator {
       '"""',
       content,
       '"""',
+    ];
+    const images = source.availableImages ?? [];
+    if (images.length) {
+      lines.push(
+        '',
+        '可用插图清单（image.url / images.url 只能照抄这里的 fileId）：',
+        ...images.map(
+          (img, index) => `${index + 1}. ${img.fileId}${img.caption ? `（${img.caption}）` : ''}`,
+        ),
+      );
+    }
+    lines.push(
       '',
       '需要补全的页大纲（JSON）：',
       JSON.stringify({ slides: batch }, null, 2),
       '',
       '请输出补全后的 JSON。',
-    ].join('\n');
+    );
+    return lines.join('\n');
   }
 
   /**
    * 大纲骨架兜底页：compare/stat 这类需要结构化字段的版式在大纲里没有数据，
-   * 兜底时降级为 bullets 页（要点还在，比整页丢失好）
+   * 图片系版式在大纲里没有 fileId，兜底时一律降级为 bullets 页（要点还在，比整页丢失好）
    */
   private outlineSkeleton(item: OutlineSlide): SlideJson | null {
-    const layout = item.layout === 'compare' || item.layout === 'stat' ? 'bullets' : item.layout;
+    const layout = SKELETON_DEGRADE_LAYOUTS.has(item.layout) ? 'bullets' : item.layout;
     try {
       return validateSlides(
         [{ layout, title: item.title, bullets: item.bullets }],

@@ -31,7 +31,11 @@ import {
   SLIDES_MODEL,
   SLIDES_PROMPT_VERSION,
 } from './slides.config';
-import { DeckSource, createDeckGenerator } from './slides.generator';
+import {
+  DeckSource,
+  createDeckGenerator,
+  extractChapterImages,
+} from './slides.generator';
 import {
   BUILTIN_TEMPLATES,
   DEFAULT_TEMPLATE_ID,
@@ -212,10 +216,12 @@ export class SlidesService {
     this.recordGenerateAttempt(course.id);
 
     // 后台跑（Node 单进程；前端轮询 status 直到 ready/failed）
+    // availableImages：正文里的 `file:` 插图清单，LLM 配图的唯一合法来源（无图则生成器维持不配图的默认）
     void this.runGeneration(deck.id, {
       courseTitle: course.title,
       chapterTitle: chapter.title,
       chapterContent: chapter.content,
+      availableImages: extractChapterImages(chapter.content),
     });
 
     return { deck: this.toDeckView(deck), cached: false };

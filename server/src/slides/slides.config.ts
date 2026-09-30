@@ -77,8 +77,10 @@ export const SLIDES_LLM_TIMEOUT_MS = num('SLIDES_LLM_TIMEOUT_MS', 90_000);
  * 讲稿式 notes；配套修复推理模型预算（reasoning_effort=low）与大纲 2000 token 截断。
  * v3（2026-09-29）：版式系统升级 —— 新增 agenda/steps/stat/compare 与 kicker 眉题，
  * 大纲要求按内容选型（版式多样），扩写给各版式的字段契约。
+ * v4（2026-09-30）：图片版式 —— 新增 image-full/image-left/image-right/image-grid；
+ * 正文含 `file:` 插图时允许模型选用图片版式（url 仅限清单内），无图时维持禁令。
  */
-export const SLIDES_PROMPT_VERSION = 'v3';
+export const SLIDES_PROMPT_VERSION = 'v4';
 
 export const SLIDES_LIMITS = {
   maxSlides: SLIDES_MAX_SLIDES,

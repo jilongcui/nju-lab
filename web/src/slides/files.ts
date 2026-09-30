@@ -19,7 +19,7 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-/** 收集 deck 里所有 `file:` 引用（图片页 + 页背景 + 模板 logo） */
+/** 收集 deck 里所有 `file:` 引用（图片页/多图网格 + 页背景 + 模板 logo） */
 export function collectFileRefs(
   slides: SlideJson[],
   logoFileId?: string | null,
@@ -27,6 +27,9 @@ export function collectFileRefs(
   const refs = new Set<string>();
   for (const slide of slides) {
     if (slide.image?.url?.startsWith('file:')) refs.add(slide.image.url);
+    for (const img of slide.images ?? []) {
+      if (img.url?.startsWith('file:')) refs.add(img.url);
+    }
     if (slide.attrs?.background?.startsWith('file:')) refs.add(slide.attrs.background);
   }
   if (logoFileId) refs.add(`file:${logoFileId}`);

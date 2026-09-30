@@ -23,6 +23,7 @@ import {
  *   agenda / steps 页用编号列表（`1. …`）；stat 页用 `- **大数字** 标签：说明`；
  *   compare 页用 `**列标题**` + `- 要点`、`<!-- .col -->` 分两栏；
  *   two-col 用 `<!-- .col -->` 分栏；围栏代码块；`> 引用`（末行 `> — 出处` 作 cite）；`![caption](url)`；
+ *   image-grid 页把多张图写成多行 `![caption](url)`（≤4 张）；image-left / image-right 是图片行 + `- 要点`；
  *   `<!-- .notes: 讲者备注 -->`（换行写成字面 `\n`）；分页既认指令行也认独立一行的 `---`。
  */
 
@@ -35,8 +36,18 @@ const NUMBERED_ITEM = /^\s*\d+\.\s+(.*)$/;
 const STAT_ITEM = /^\s*[-*]\s+\*\*([^*]+)\*\*\s+(.+)$/;
 const BOLD_LINE = /^\s*\*\*([^*]+)\*\*\s*$/;
 
-/** 允许承载 `- 要点` 的布局：这些页的正文就是要点列表；其余布局的正文有专属语义 */
-const BULLET_LAYOUTS: SlideLayout[] = ['cover', 'section', 'agenda', 'bullets', 'steps', 'end'];
+/** 允许承载 `- 要点` 的布局：这些页的正文就是要点列表；其余布局的正文有专属语义。
+ *  image-left / image-right 是「图 + 要点」混合页，要点同样是正文语义的一部分（图片行走专属分支） */
+const BULLET_LAYOUTS: SlideLayout[] = [
+  'cover',
+  'section',
+  'agenda',
+  'bullets',
+  'steps',
+  'end',
+  'image-left',
+  'image-right',
+];
 /** 用编号列表往返的布局（`1. …` → bullets） */
 const NUMBERED_LAYOUTS: SlideLayout[] = ['agenda', 'steps'];
 
@@ -128,11 +139,21 @@ export function toMarkdown(slides: SlideJson[]): string {
         break;
       }
       case 'image':
+      case 'image-full':
+      case 'image-left':
+      case 'image-right':
         lines.push(
           '',
           slide.image ? `![${slide.image.caption ?? ''}](${slide.image.url})` : '',
         );
         break;
+      case 'image-grid': {
+        lines.push('');
+        for (const img of slide.images ?? []) {
+          lines.push(`![${img.caption ?? ''}](${img.url})`);
+        }
+        break;
+      }
       default:
         // cover / section / agenda / steps / end：标题 + 要点已输出
         break;
@@ -186,7 +207,10 @@ function detectLayout(lines: string[], fallback: SlideLayout): SlideLayout {
   if (body.some((l) => COL_DIRECTIVE.test(l))) return 'two-col';
   if (body.some((l) => FENCE.test(l))) return 'code';
   if (body.some((l) => /^\s*>/.test(l))) return 'quote';
-  if (body.some((l) => /^\s*!\[/.test(l))) return 'image';
+  // 无指令时按图片行数猜：多张 → 网格；单张 → 单图页（left/right 必须显式写指令，不猜）
+  const imageLines = body.filter((l) => /^\s*!\[/.test(l)).length;
+  if (imageLines >= 2) return 'image-grid';
+  if (imageLines === 1) return 'image';
   if (body.some((l) => /^\s*[-*]\s+/.test(l))) return 'bullets';
   if (body.some((l) => NUMBERED_ITEM.test(l))) return 'bullets';
   return fallback;
@@ -366,11 +390,32 @@ function parsePage(page: PageBlock, index: number, limits: SlideLimits): SlideJs
         : { text: quoteText };
       break;
     }
-    case 'image': {
+    case 'image':
+    case 'image-full':
+    case 'image-left':
+    case 'image-right': {
       const imageLine = content.find((l) => /^\s*!\[/.test(l));
       const match = imageLine && /!\[([^\]]*)\]\(([^)\s]+)/.exec(imageLine);
-      if (!match) throw errorAt(page.startLine, 'image 页缺少 ![](url) 图片');
+      if (!match) throw errorAt(page.startLine, `${layout} 页缺少 ![](url) 图片`);
       slide.image = { url: match[2], caption: match[1] || undefined };
+      break;
+    }
+    case 'image-grid': {
+      const images = content
+        .filter((l) => /^\s*!\[/.test(l))
+        .map((l) => /!\[([^\]]*)\]\(([^)\s]+)/.exec(l))
+        .filter((m): m is RegExpExecArray => !!m)
+        .map((m) => ({ url: m[2], caption: m[1] || undefined }));
+      if (!images.length) {
+        throw errorAt(page.startLine, 'image-grid 页缺少 ![](url) 图片');
+      }
+      if (images.length > 4) {
+        throw errorAt(
+          page.startLine,
+          `image-grid 页最多 4 张图（当前 ${images.length} 张）`,
+        );
+      }
+      slide.images = images;
       break;
     }
     default:
@@ -390,7 +435,8 @@ function parsePage(page: PageBlock, index: number, limits: SlideLimits): SlideJs
     !!slide.right ||
     !!slide.code ||
     !!slide.quote ||
-    !!slide.image;
+    !!slide.image ||
+    !!slide.images?.length;
   if (!hasContent) throw errorAt(page.startLine, '这一页没有任何内容');
 
   return slide;

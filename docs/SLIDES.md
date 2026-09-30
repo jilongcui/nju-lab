@@ -10,6 +10,8 @@
 
 - **一键生成**：以章节正文（Markdown）为素材，LLM 自动组织分节、挑选版式，产出 6–20 页演示稿；
 - **双视图编辑**：JSON 视图精修、Markdown 视图改写，改完即时预览、保存即生效（不花 token）；
+- **图片能力**：教师个人图片库（上传/复用，跨课程）+ 图片选择器插入/换图 + 5 种图片版式；
+  章节正文可上传插图，正文有图时 LLM 生成会自动选用图片版式（只引用正文出现过的图）；
 - **模板系统**：5 套内置模板（平台蓝/南大紫/学术白/深色高对比/极简黑白）+ 课程级自定义（可视化调参）；
 - **在线放映**：全屏、键盘/鼠标翻页、页码进度、讲者备注（notes 是可照读的讲稿）、跨章节不退出切换；
 - **跟随章节**：正文改了会提示「章节内容已变更」，教师决定重新生成或保留（绝不自动重新生成）。
@@ -52,7 +54,7 @@
 （已带 `reasoning_effort=low`）；JSON 截断有抢救（回退最后完整对象补齐括号）；
 大纲/扩写失败各自动重试一次；缺页用大纲骨架补齐，不整份失败。
 
-## 3. 版式（12 种 layout + kicker 眉题）
+## 3. 版式（16 种 layout + kicker 眉题）
 
 | layout | 用途 | 内容形态 |
 |---|---|---|
@@ -66,12 +68,18 @@
 | `two-col` | 两栏自由文本 | left/right 两段 Markdown |
 | `code` | 代码页 | `{lang, content}` ≤20 行 |
 | `quote` | 引文/关键结论 | `{text, cite?}` |
-| `image` | 图片页（暂限平台内文件） | `file:<fileId>` 引用 |
+| `image` | 单图页（暂限平台内文件） | `file:<fileId>` 引用 + 可选图注 |
+| `image-full` | 全幅大图页 | 一张图撑满整页（contain 不裁切） |
+| `image-left` | 左图右文页 | 图 + bullets 要点（图不可空，要点可空） |
+| `image-right` | 右图左文页 | 同上，图在右侧 |
+| `image-grid` | 多图网格页（1–4 张） | `images: [{url, caption?}]`，2 张两列 / 3 张三列 / 4 张 2×2 |
 | `end` | 小结/结尾（仅末页） | 标题 + 要点 |
 
 **生成侧的选型规则**（写在大纲 prompt 里，模型按此挑选）：一般要点 bullets；有先后顺序 steps；
-正文有 1–4 个有说服力的数字 stat；成对对比 compare（优先于 two-col）；示例 code；点睛结论 quote；
-不生成 image 页（没有素材，插图由教师自己加）。
+正文有 1–4 个有说服力的数字 stat；成对对比 compare（优先于 two-col）；示例 code；点睛结论 quote。
+**图片版式是条件放行**：正文含 `file:` 插图时（清单随 prompt 下发，fileId 与图注），模型可为讲图的页
+选 image 系版式（一份 deck ≤3 页，url 只能照抄清单，服务端另有防幻觉闸，清单外引用直接丢该页走
+大纲骨架兜底）；正文没有图时维持「不生成 image 页」。教师也可随时用「插入图片页 / 换图」手动插图。
 
 ## 4. JSON 与 Markdown 的关系（真源与投影）
 
@@ -92,7 +100,8 @@ normalizeSlides() 统一校验 → 落库，即时生效（零 token）
 
 **MD 视图能写**（刻意保持小的子集）：`# 标题`、`## 副标题`、`- 要点`、编号列表（agenda/steps）、
 `- **数字** 标签：说明`（stat）、`**列标题**` + `<!-- .col -->`（compare/two-col）、围栏代码块、
-`> 引用`、`![caption](file:...)`、`<!-- .notes: 讲者备注 -->`、`<!-- .slide: layout=xxx kicker="..." -->`、`---` 分页。
+`> 引用`、`![caption](file:...)`（image/image-full/image-left/image-right 单图行；
+image-grid 把多张图写成多行、≤4 张）、`<!-- .notes: 讲者备注 -->`、`<!-- .slide: layout=xxx kicker="..." -->`、`---` 分页。
 
 **MD 视图改不了**：页级高级设置（`attrs.background/transition/className`）——只在 JSON 视图改；
 MD 保存时按位次合并保留，不会被悄悄覆盖。
@@ -123,13 +132,14 @@ MD 保存时按位次合并保留，不会被悄悄覆盖。
 - **成本量级**：单章 ≈ 20–30k tokens / 40–90 秒（flash）。护栏：每课程每小时 20 次
   （`SLIDES_GENERATE_PER_HOUR`）+ 同内容缓存（`sourceHash = sha256(正文+模型+prompt版本)`，
   命中直接复用）+ `SLIDES_MAX_TOKENS` 单次上限。
-- **改 prompt 必须把 `SLIDES_PROMPT_VERSION` +1**（当前 v3），否则命中旧缓存看不到新效果。
+- **改 prompt 必须把 `SLIDES_PROMPT_VERSION` +1**（当前 v4），否则命中旧缓存看不到新效果。
 
 ## 7. 典型工作流
 
 1. 教师写好章节正文 → 章节编辑页点「幻灯片」→「生成」（可顺便选模板）；
 2. 等 1 分钟左右（异步生成，页面轮询状态）→ 得 6–20 页初稿；
-3. 微调：MD 视图改要点/加备注，JSON 视图精修；「模板调参」改观感；
+3. 微调：MD 视图改要点/加备注，JSON 视图精修；「插入图片页」5 种版式任选（图片库上传/复用），
+   单图页可一键「换图」；「模板调参」改观感；
 4. 放映授课：全屏翻页（←/→、空格、点左右区域、Esc 退出），教师看讲稿（notes）；
 5. 章节正文大改后：页面提示「章节内容已变更」→ 选「重新生成」或「保留现有 deck」。
 
@@ -141,7 +151,7 @@ MD 保存时按位次合并保留，不会被悄悄覆盖。
 |---|---|
 | `web/tools/review-decks.mjs <标签>` | 真实生成 + 放映态逐页截图 + deck.json（盲评素材；`REVIEW_API` 可指临时实例做异模型对比，`--shots-only` 只截图） |
 | `docs/REVIEW-slides-rubric.md` | 7 维评分清单与历史评分记录 |
-| `web/tools/assert-render.mjs` | jsdom 渲染断言 19 项（注入清理/新版式 DOM/防溢出缩档），毫秒级 |
+| `web/tools/assert-render.mjs` | jsdom 渲染断言 27 项（注入清理/版式 DOM/图片版式与占位回退/防溢出缩档），毫秒级 |
 | `web/tools/verify-slides.mjs` | 真实浏览器 11 项断言（翻页/控件/Esc/Spin 回归） |
 
 渲染层改动跑 assert-render + verify-slides；prompt 改动跑 review-decks 对比评测集
@@ -151,5 +161,6 @@ MD 保存时按位次合并保留，不会被悄悄覆盖。
 
 - 个别运行缺 end 页（大纲概率事件，重新生成可解）；steps 条目偶带“第一步”冗余字样；
 - 长章节（>12000 字）分块生成未做（当前真实章节最长 3.6k 字打不到）；
-- v2/v3 候选：图片选择器与 image 页素材、Mermaid/公式渲染、pptx/pdf 导出、自由 CSS 模板档
-  （见设计文档 §14 分期）。
+- image-grid 页内逐张换图没有图形化入口（在 JSON/MD 文本里改 `file:` 引用即可）；
+- LLM 配图只引用**正文里出现过的** `file:` 插图（防编造）；正文无图时不生成图片页；
+- v2/v3 候选：Mermaid/公式渲染、pptx/pdf 导出、自由 CSS 模板档（见设计文档 §14 分期）。

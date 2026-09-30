@@ -1,14 +1,29 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Button, Card, Empty, Form, Input, message, Segmented, Skeleton, Space } from 'antd';
-import { PlayCircleOutlined, SaveOutlined } from '@ant-design/icons';
-import { getChapter, saveChapter } from '../../api';
+import {
+  Button,
+  Card,
+  Empty,
+  Form,
+  Input,
+  message,
+  Segmented,
+  Skeleton,
+  Space,
+  Upload,
+} from 'antd';
+import { PictureOutlined, PlayCircleOutlined, SaveOutlined } from '@ant-design/icons';
+import type { TextAreaRef } from 'antd/es/input/TextArea';
+import { getChapter, saveChapter, uploadFile } from '../../api';
 import type { Chapter } from '../../types';
 import MarkdownView from '../../components/MarkdownView';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
 import { Typography } from 'antd';
 
 const { Paragraph } = Typography;
+
+/** 正文插图允许的图片类型（SVG 经 <img> 加载不执行脚本，安全） */
+const IMAGE_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml';
 
 export default function ChapterEdit() {
   const { chapterId = '' } = useParams();
@@ -17,6 +32,8 @@ export default function ChapterEdit() {
   const [chapter, setChapter] = useState<Chapter | null>(null);
   const [mode, setMode] = useState<'edit' | 'preview'>('edit');
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const contentAreaRef = useRef<TextAreaRef>(null);
   const [form] = Form.useForm();
   // 预览模式下渲染的是 MarkdownView，name="content" 的 Form.Item 会被卸载，
   // 字段随之注销；useWatch 默认只读「已注册字段」，此处必须 preserve 才能从 store 取值
@@ -43,6 +60,25 @@ export default function ChapterEdit() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** 上传正文插图并把 `![名称](file:<id>)` 插到光标处（取不到光标就追加到末尾） */
+  const handleImageUpload = async (file: File) => {
+    setUploading(true);
+    try {
+      const info = await uploadFile(file);
+      const alt = info.originalName.replace(/\.[a-z0-9]+$/i, '').replace(/[[\]]/g, '');
+      const snippet = `![${alt}](file:${info.fileId})\n`;
+      const current = (form.getFieldValue('content') as string | undefined) ?? '';
+      const area = contentAreaRef.current?.resizableTextArea?.textArea;
+      const pos = area?.selectionStart ?? current.length;
+      form.setFieldsValue({ content: current.slice(0, pos) + snippet + current.slice(pos) });
+      message.success('图片已上传并插入正文');
+    } catch {
+      message.error('图片上传失败，请重试');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleSave = async () => {
     await form.validateFields();
@@ -97,10 +133,28 @@ export default function ChapterEdit() {
           <Input />
         </Form.Item>
         {mode === 'edit' ? (
-          <Form.Item name="content" label="章节内容（Markdown）">
+          <Form.Item
+            name="content"
+            label={
+              <Space size="middle">
+                <span>章节内容（Markdown）</span>
+                <Upload
+                  accept={IMAGE_ACCEPT}
+                  showUploadList={false}
+                  customRequest={({ file }) => void handleImageUpload(file as File)}
+                  disabled={uploading}
+                >
+                  <Button size="small" icon={<PictureOutlined />} loading={uploading}>
+                    上传图片
+                  </Button>
+                </Upload>
+              </Space>
+            }
+          >
             <Input.TextArea
+              ref={contentAreaRef}
               rows={18}
-              placeholder="支持 Markdown：标题、列表、代码块、图片、链接……"
+              placeholder="支持 Markdown：标题、列表、代码块、图片（点上方「上传图片」插入）、链接……"
             />
           </Form.Item>
         ) : (

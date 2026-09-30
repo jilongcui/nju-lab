@@ -45,4 +45,6 @@ export interface StoredFileInfo {
   originalName: string;
   size: number;
   sha256: string;
+  mimeType: string;
+  createdAt: string;
 }

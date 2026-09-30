@@ -1,9 +1,11 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   Res,
   StreamableFile,
   UploadedFile,
@@ -36,6 +38,29 @@ export class FilesController {
   ) {
     const saved = await this.filesService.saveUploaded(user, file);
     return this.filesService.toInfo(saved);
+  }
+
+  /**
+   * GET /api/files?kind=image&limit=&offset= —— 列出本人上传的文件。
+   * kind=image 时只回 image/*（幻灯片/章节图片选择器用）；只列本人，不列他人。
+   */
+  @Get()
+  async list(
+    @CurrentUser() user: User,
+    @Query('kind') kind?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    if (kind && kind !== 'image') {
+      throw new BadRequestException('kind 只支持 image');
+    }
+    const take = Math.min(Math.max(parseInt(limit ?? '', 10) || 50, 1), 100);
+    const skip = Math.max(parseInt(offset ?? '', 10) || 0, 0);
+    return this.filesService.listByUploader(user.id, {
+      kind,
+      limit: take,
+      offset: skip,
+    });
   }
 
   /**

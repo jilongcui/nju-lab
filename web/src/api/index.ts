@@ -45,6 +45,10 @@ export const uploadFile = (file: File) => {
   });
 };
 
+/** 列出本人上传的文件（kind=image 时只回图片，供图片选择器用） */
+export const listFiles = (params: { kind?: 'image'; limit?: number; offset?: number }) =>
+  client.get<unknown, { items: StoredFileInfo[]; total: number }>('/files', { params });
+
 /** 经 axios（带 JWT）下载存储文件并触发浏览器保存 */
 export const downloadStoredFile = async (info: StoredFileInfo) => {
   const blob = await client.get<unknown, Blob>(apiUrl(info.url), {

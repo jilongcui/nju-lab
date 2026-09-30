@@ -8,6 +8,7 @@ import {
   ColorPicker,
   Divider,
   Drawer,
+  Dropdown,
   Empty,
   Input,
   Popconfirm,
@@ -28,6 +29,7 @@ import {
   ArrowRightOutlined,
   DeleteOutlined,
   EditOutlined,
+  FileImageOutlined,
   PlayCircleOutlined,
   ReloadOutlined,
   SaveOutlined,
@@ -50,10 +52,20 @@ import type {
   Chapter,
   ChapterSlidesResponse,
   SlideJson,
+  SlideLayout,
   SlideTemplateDesign,
+  StoredFileInfo,
 } from '../../types';
 import SlideStage from '../../slides/SlideStage';
 import { collectFileRefs, fetchFileDataUrls } from '../../slides/files';
+import {
+  IMAGE_LAYOUT_OPTIONS,
+  SINGLE_IMAGE_LAYOUTS,
+  applyImageActionToMarkdown,
+  applyImageActionToSlides,
+  splitMarkdownPages,
+} from '../../slides/imageActions';
+import ImagePickerDrawer from '../../components/ImagePickerDrawer';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
 
 const { Text, Paragraph } = Typography;
@@ -70,6 +82,10 @@ const LAYOUT_LABEL: Record<string, string> = {
   code: '代码',
   quote: '引文',
   image: '图片',
+  'image-full': '全幅图',
+  'image-left': '左图右文',
+  'image-right': '右图左文',
+  'image-grid': '多图',
   end: '结束',
 };
 
@@ -122,6 +138,11 @@ export default function ChapterSlides() {
   const [gotoIndex, setGotoIndex] = useState<number | undefined>(undefined);
   const [presenting, setPresenting] = useState(false);
   const [imageDataUrls, setImageDataUrls] = useState<Record<string, string>>({});
+
+  // 图片选择器：insert = 在当前页之后插入图片页；replace = 替换当前页的单图
+  const [picker, setPicker] = useState<
+    { kind: 'insert'; layout: SlideLayout } | { kind: 'replace' } | null
+  >(null);
 
   useAuxiliaryPanel(
     '章节幻灯片',
@@ -248,6 +269,49 @@ export default function ChapterSlides() {
       await load(true);
     } finally {
       setBusy(false);
+    }
+  };
+
+  /** 当前页（编辑区文本口径）是否是可换图的单图版式：JSON 模式结构化判断，MD 模式看页块里有没有图片行 */
+  const currentPageHasSingleImage = useMemo(() => {
+    if (!deck) return false;
+    if (mode === 'json') {
+      try {
+        const slides = JSON.parse(jsonText) as SlideJson[];
+        const slide = slides[currentIndex];
+        return !!slide && SINGLE_IMAGE_LAYOUTS.includes(slide.layout);
+      } catch {
+        return false;
+      }
+    }
+    const pages = splitMarkdownPages(mdText);
+    return /^\s*!\[/m.test(pages[currentIndex] ?? '');
+  }, [deck, mode, jsonText, mdText, currentIndex]);
+
+  /** 图片选择器确认：应用到当前编辑视图的文本里（「保存内容」后才真正生效） */
+  const handlePickerConfirm = (images: StoredFileInfo[]) => {
+    if (!picker) return;
+    try {
+      if (mode === 'json') {
+        const slides = JSON.parse(jsonText) as SlideJson[];
+        const action =
+          picker.kind === 'insert'
+            ? { kind: 'insert' as const, layout: picker.layout, afterIndex: currentIndex }
+            : { kind: 'replace' as const, index: currentIndex };
+        setJsonText(JSON.stringify(applyImageActionToSlides(slides, action, images), null, 2));
+      } else {
+        const action =
+          picker.kind === 'insert'
+            ? { kind: 'insert' as const, layout: picker.layout, afterIndex: currentIndex }
+            : { kind: 'replace' as const, index: currentIndex };
+        setMdText(applyImageActionToMarkdown(mdText, action, images));
+      }
+      setEditing(true);
+      message.success('已应用到编辑区，点「保存内容」后生效');
+    } catch (error) {
+      message.error(`应用失败：${(error as Error).message}`);
+    } finally {
+      setPicker(null);
     }
   };
 
@@ -574,6 +638,33 @@ export default function ChapterSlides() {
               </div>
             </Col>
             <Col span={8}>
+              {canEdit && (
+                <Space size={8} style={{ marginBottom: 8 }} wrap>
+                  <Dropdown
+                    menu={{
+                      items: IMAGE_LAYOUT_OPTIONS.map((opt) => ({
+                        key: opt.value,
+                        label: opt.label,
+                      })),
+                      onClick: ({ key }) =>
+                        setPicker({ kind: 'insert', layout: key as SlideLayout }),
+                    }}
+                  >
+                    <Button size="small" icon={<FileImageOutlined />}>
+                      插入图片页
+                    </Button>
+                  </Dropdown>
+                  <Tooltip title="替换当前页的图片（当前编辑区文本生效；多图页请直接在文本里改）">
+                    <Button
+                      size="small"
+                      disabled={!currentPageHasSingleImage}
+                      onClick={() => setPicker({ kind: 'replace' })}
+                    >
+                      换图
+                    </Button>
+                  </Tooltip>
+                </Space>
+              )}
               <Tabs
                 size="small"
                 activeKey={mode}
@@ -796,6 +887,14 @@ export default function ChapterSlides() {
           </Text>
         </Space>
       </Drawer>
+
+      <ImagePickerDrawer
+        open={!!picker}
+        multiple={picker?.kind === 'insert' && picker.layout === 'image-grid'}
+        title={picker?.kind === 'replace' ? '选择替换图片' : '选择图片'}
+        onClose={() => setPicker(null)}
+        onConfirm={handlePickerConfirm}
+      />
     </Space>
   );
 }

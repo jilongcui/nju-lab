@@ -1,4 +1,4 @@
-import type { SlideDeckConfig, SlideJson } from '../types';
+import type { SlideDeckConfig, SlideImage, SlideJson } from '../types';
 import {
   escapeAttribute,
   escapeHtml,
@@ -37,6 +37,28 @@ const BASE_OVERRIDES = `
 .reveal .deck-footer { pointer-events: none; }
 .reveal section img.deck-image { max-height: 55vh; width: auto; }
 .reveal .deck-caption { font-size: 0.5em; opacity: 0.7; margin-top: 0.4em; }
+
+/* 全幅大图页：图是主角，尽量撑满但不裁切（contain 保信息完整，教学图裁不得） */
+.reveal section img.deck-image-full { max-height: 72vh; max-width: 100%; width: auto; }
+
+/* 图文并排页（image-left / image-right）：图约 45%，文约 55%，垂直居中 */
+.reveal .deck-split { display: flex; gap: 1.2em; align-items: center; text-align: left; }
+.reveal .deck-split.deck-split-right { flex-direction: row-reverse; }
+.reveal .deck-split-media { flex: 0 1 45%; min-width: 0; text-align: center; }
+.reveal .deck-split-media img.deck-split-image { max-height: 58vh; max-width: 100%; width: auto; }
+.reveal .deck-split-body { flex: 1 1 55%; min-width: 0; }
+
+/* 多图网格页（image-grid）：2 张两列、3 张三列、4 张 2×2 */
+.reveal .deck-grid { display: grid; gap: 0.7em; align-items: center; justify-items: center; }
+.reveal .deck-grid.deck-grid-2 { grid-template-columns: repeat(2, 1fr); }
+.reveal .deck-grid.deck-grid-3 { grid-template-columns: repeat(3, 1fr); }
+.reveal .deck-grid.deck-grid-4 { grid-template-columns: repeat(2, 1fr); }
+.reveal .deck-grid-cell { min-width: 0; }
+.reveal .deck-grid-cell img.deck-grid-image { max-width: 100%; width: auto; }
+.reveal .deck-grid.deck-grid-2 img.deck-grid-image { max-height: 48vh; }
+.reveal .deck-grid.deck-grid-3 img.deck-grid-image,
+.reveal .deck-grid.deck-grid-4 img.deck-grid-image { max-height: 28vh; }
+.reveal .deck-grid-cell .deck-caption { margin-top: 0.2em; }
 .reveal pre { width: 100%; }
 .reveal pre code { max-height: 60vh; }
 
@@ -102,6 +124,8 @@ function slideWeight(slide: SlideJson): number {
   if (slide.code) weight += slide.code.content.split('\n').length * 24;
   if (slide.quote) weight += slide.quote.text.length * 1.1;
   if (slide.image) weight += 200;
+  // 多图网格按张数加权（4 张时比单图页更重，防网格把页撑爆）
+  if (slide.images?.length) weight += 60 + slide.images.length * 110;
   return weight;
 }
 
@@ -209,17 +233,36 @@ function renderLayoutBody(slide: SlideJson, input: DeckRenderInput): string {
     case 'quote':
       return `${title}<blockquote>${renderMarkdownSafe(slide.quote?.text)}</blockquote>
         ${slide.quote?.cite ? `<p class="deck-note">— ${escapeHtml(slide.quote.cite)}</p>` : ''}`;
-    case 'image': {
+    case 'image':
+    case 'image-full': {
       if (!slide.image) return title;
-      const src = resolveFileUrl(slide.image.url, input.imageDataUrls);
-      if (!src) {
-        // 取不到平台文件（例如已被删除）：显示占位说明，绝不外链
-        return `${title}<p class="deck-note">（图片不可用：${escapeHtml(slide.image.caption ?? '未找到文件')}）</p>`;
-      }
-      return `${title}<img class="deck-image" src="${escapeAttribute(src)}" alt="${escapeAttribute(
-        slide.image.caption ?? '',
-      )}" />
-      ${slide.image.caption ? `<p class="deck-caption">${escapeHtml(slide.image.caption)}</p>` : ''}`;
+      const imgClass = slide.layout === 'image-full' ? 'deck-image-full' : 'deck-image';
+      return `${title}${renderImageFigure(slide.image, input, imgClass)}`;
+    }
+    case 'image-left':
+    case 'image-right': {
+      if (!slide.image) return title;
+      const media = `<div class="deck-split-media">${renderImageFigure(
+        slide.image,
+        input,
+        'deck-split-image',
+      )}</div>`;
+      const body = `<div class="deck-split-body">${
+        slide.bullets?.length ? renderBullets(slide.bullets) : ''
+      }</div>`;
+      const cls = slide.layout === 'image-right' ? 'deck-split deck-split-right' : 'deck-split';
+      return `${title}<div class="${cls}">${media}${body}</div>`;
+    }
+    case 'image-grid': {
+      const images = slide.images ?? [];
+      if (!images.length) return title;
+      const cells = images
+        .map(
+          (img) =>
+            `<div class="deck-grid-cell">${renderImageFigure(img, input, 'deck-grid-image')}</div>`,
+        )
+        .join('');
+      return `${title}<div class="deck-grid deck-grid-${images.length}">${cells}</div>`;
     }
     default:
       return title;
@@ -230,6 +273,25 @@ function renderBullets(bullets: string[]): string {
   return `<ul class="deck-bullets">${bullets
     .map((item) => `<li>${renderInlineSafe(item)}</li>`)
     .join('')}</ul>`;
+}
+
+/**
+ * 渲染一张平台图片：统一走 imageDataUrls 预取结果；
+ * 取不到（例如文件已删除）时显示占位说明，绝不外链（iframe 是 opaque origin，外链也带不了鉴权）。
+ */
+function renderImageFigure(
+  image: SlideImage,
+  input: DeckRenderInput,
+  imgClass: string,
+): string {
+  const src = resolveFileUrl(image.url, input.imageDataUrls);
+  if (!src) {
+    return `<p class="deck-note">（图片不可用：${escapeHtml(image.caption ?? '未找到文件')}）</p>`;
+  }
+  return `<img class="${imgClass}" src="${escapeAttribute(src)}" alt="${escapeAttribute(
+    image.caption ?? '',
+  )}" />
+  ${image.caption ? `<p class="deck-caption">${escapeHtml(image.caption)}</p>` : ''}`;
 }
 
 /** 有序列表（agenda 目录 / steps 步骤）：CSS 负责序号样式，HTML 只要 ol + class */

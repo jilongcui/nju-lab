@@ -8,7 +8,7 @@ import { createHash } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
 import { createReadStream, ReadStream } from 'fs';
 import { extname, join, resolve } from 'path';
-import { Repository } from 'typeorm';
+import { Repository, FindOptionsWhere, Like } from 'typeorm';
 import { User } from '../users/user.entity';
 import { StoredFile, StoredFileInfo } from './stored-file.entity';
 
@@ -82,7 +82,27 @@ export class FilesService {
       originalName: file.originalName,
       size: file.size,
       sha256: file.sha256,
+      mimeType: file.mimeType,
+      createdAt: file.createdAt.toISOString(),
     };
+  }
+
+  /** GET /api/files —— 列出本人上传的文件（kind=image 时只回图片，供图片选择器用） */
+  async listByUploader(
+    uploaderId: string,
+    opts: { kind?: string; limit: number; offset: number },
+  ): Promise<{ items: StoredFileInfo[]; total: number }> {
+    const where: FindOptionsWhere<StoredFile> = { uploaderId };
+    if (opts.kind === 'image') {
+      where.mimeType = Like('image/%');
+    }
+    const [files, total] = await this.fileRepo.findAndCount({
+      where,
+      order: { createdAt: 'DESC' },
+      take: opts.limit,
+      skip: opts.offset,
+    });
+    return { items: files.map((f) => this.toInfo(f)), total };
   }
 
   /** 按 id 取对外信息；空 id 或文件不存在返回 null（用于项目模板/数据集等可空关联） */

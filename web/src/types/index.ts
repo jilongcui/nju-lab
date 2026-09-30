@@ -185,6 +185,8 @@ export interface StoredFileInfo {
   originalName: string;
   size: number;
   sha256: string;
+  mimeType: string;
+  createdAt: string;
 }
 
 export interface ExperimentProject {
@@ -462,6 +464,10 @@ export type SlideLayout =
   | 'code'
   | 'quote'
   | 'image'
+  | 'image-full'
+  | 'image-left'
+  | 'image-right'
+  | 'image-grid'
   | 'end';
 
 /** deck 内容真源（与后端 server/src/slides/deck.schema.ts 一一对应） */
@@ -476,6 +482,12 @@ export interface SlideCompare {
   rightTitle?: string;
   left: string[];
   right: string[];
+}
+
+/** 单张图片引用：只允许 `file:<fileId>`（平台内文件），渲染前由前端取内容转成 data URL */
+export interface SlideImage {
+  url: string;
+  caption?: string;
 }
 
 export interface SlideJson {
@@ -495,8 +507,10 @@ export interface SlideJson {
   right?: string;
   code?: { lang: string; content: string };
   quote?: { text: string; cite?: string };
-  /** 只允许 `file:<fileId>`（平台内文件），渲染前由前端取内容转成 data URL */
-  image?: { url: string; caption?: string };
+  /** image / image-full / image-left / image-right：单图（left/right 另配 bullets） */
+  image?: SlideImage;
+  /** image-grid：多图网格（1–4 张） */
+  images?: SlideImage[];
   notes?: string;
   attrs?: { background?: string; transition?: string; className?: string };
 }

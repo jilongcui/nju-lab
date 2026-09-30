@@ -572,6 +572,8 @@ $ws_out_host`）：上游已把 Host 改对，所以它现在退化为恒等映�
 切换。**生成已切真实 LLM（`deepseek-flash`）并做完效果优化**：prompt v3（密度硬约束/讲稿式 notes/版式选型）+
 4 种新版式（agenda/steps/stat/compare）+ 自适应防溢出 + 逐页截图盲评验收通过
 （`docs/REVIEW-slides-rubric.md`，对标商业产品 7 维评分）。
+**2026-09-30 图片能力升级（§9.5a）**：版式增至 16 种（5 种图片版式），教师图片库 + 选择器插页/换图，
+章节正文可上传插图，正文有图时 LLM 生成自动配图（prompt v4，服务端有防幻觉闸）。
 **生成前必读 §9.4a**：deepseek-flash/v4-pro 是推理模型，预算含推理开销（已加 `reasoning_effort=low` 修复）。
 
 ### 9.2 已交付
@@ -595,7 +597,7 @@ pro 仅个别措辞略细；分级配置口已留（`SLIDES_OUTLINE_MODEL` / `SL
 - ⚠️ 切到 llm 后，旧的 mock deck 会因 `sourceHash`（含模型名）变化而提示「章节内容已变更 → 重新生成」，
   **这是预期**，不是 bug。
 - ⚠️ 改 prompt 后**必须把 `slides.config.ts` 的 `SLIDES_PROMPT_VERSION` +1**，否则同 hash 命中旧缓存、
-  看不到新效果。（v1 → v2 密度约束 → v3 新版式选型）
+  看不到新效果。（v1 → v2 密度约束 → v3 新版式选型 → v4 图片版式，见 §9.6）
 
 ### 9.3a ⚠️ 推理模型预算坑（2026-09-29 实测，切片时第一个雷）
 
@@ -613,7 +615,7 @@ pro 仅个别措辞略细；分级配置口已留（`SLIDES_OUTLINE_MODEL` / `SL
 
 **评测闭环（以后改 prompt/版式都靠它）**：`web/tools/review-decks.mjs <标签>` 真实生成 →
 放映态逐页截图 + deck.json → 对照 `docs/REVIEW-slides-rubric.md` 7 维打分；
-渲染层改动跑 `web/tools/assert-render.mjs`（jsdom，19 项，毫秒级）。
+渲染层改动跑 `web/tools/assert-render.mjs`（jsdom，27 项，毫秒级）。
 评测集 = 生产库 5 个真实章节（脚本里 `EVAL_CHAPTERS`）。
 
 已落地：
@@ -659,6 +661,26 @@ flash-v3 vs pro-v3 五章对比：**flash 结构/覆盖更好**（pro 有一章�
    修法：桥接脚本在**捕获阶段**接管 `Esc`（`preventDefault` + `stopPropagation`）并 `postMessage` 回父窗口，
    由父窗口决定是否退出放映（已修复并纳入验证脚本断言）。
 
+### 9.5a 图片能力（2026-09-30，设计与决策见 `docs/DESIGN-2026-09-30-slides-images.md`）
+
+- **新版式 4 种**（版式总数 12→16）：`image-full`（全幅）、`image-left`/`image-right`（图文并排，图不可空、
+  要点可空）、`image-grid`（多图网格，`images[]` 1–4 张；2 张两列/3 张三列/4 张 2×2，超 4 张截断）。
+  schema/MD 投影/渲染/权重缩档全链路支持；MD 网格语法 = 多行 `![cap](file:…)`，无指令时 ≥2 图片行猜 grid。
+- **教师个人图片库**：新增 `GET /api/files?kind=image&limit&offset`（只列**本人**上传、mimeType 过滤
+  `image/%`）；`StoredFileInfo` 补 `mimeType`/`createdAt`（纯增量，无迁移）。选择器 =
+  `web/src/components/ImagePickerDrawer.tsx`（上传 + 缩略图网格，缩略图走 §9.5-4 同款鉴权 data URL 管线）。
+- **教师端入口**：幻灯片编辑区工具条「插入图片页」（5 种版式）/「换图」（单图系页型；grid 页内换图 v1
+  用文本编辑）。落地函数在 `web/src/slides/imageActions.ts`：JSON 模式结构化 splice，MD 模式按
+  server `splitPages` 同规则文本 splice；都只改编辑区文本，「保存内容」才生效。
+- **章节正文插图**：`ChapterEdit` 加「上传图片」（光标处插入 `![名称](file:<id>)`）；
+  `MarkdownView` 支持渲染 `file:` 图片（marked 输出后扫 `src="file:…"` → 鉴权取回 → data URL 替换，
+  教师预览与学生阅读共用）。**这是 LLM 配图的素材来源**。
+- **LLM 条件配图（prompt v4）**：`extractChapterImages()` 从正文提取 `file:` 插图清单 → 注入大纲/扩写
+  prompt；清单非空时允许 image 系版式（一份 deck ≤3 页），为空维持禁令。**防幻觉闸**在扩写逐页校验：
+  url ∉ 清单 → 丢该页走大纲骨架兜底（骨架把图片系版式降级为 bullets）。教师手工插图不过生成器，不受此限。
+- 回归：server/web `npm run build`、`node web/tools/assert-render.mjs`（27 项，含图片版式 DOM 与占位回退）、
+  MD 往返与 imageActions 均用临时脚本实测过（不留仓内）。
+
 ### 9.6 怎么验证（不烧额度的那部分）
 
 - **后端**：`SLIDES_GENERATOR=mock PORT=3199 npx ts-node -T src/main.ts` 起临时实例，跑
@@ -683,10 +705,14 @@ flash-v3 vs pro-v3 五章对比：**flash 结构/覆盖更好**（pro 有一章�
 
 ### 9.7 文件索引
 
-- **功能指南（先读这个）**：`docs/SLIDES.md`；设计文档：`docs/DESIGN-2026-09-29-chapter-slides.md`（§16 效果优化实录）；评分清单：`docs/REVIEW-slides-rubric.md`
-- 后端：`server/src/slides/*`、迁移 `server/src/migrations/1790636383317-SlideDecks.ts`
-- 前端：`web/src/slides/*`（`renderDeck.ts` / `markdown.ts` / `revealAssets.ts` / `files.ts` / `SlideStage.tsx`）、
-  `web/src/pages/teacher/ChapterSlides.tsx`、`web/src/pages/student/ChapterRead.tsx`、`web/vite.config.ts`
+- **功能指南（先读这个）**：`docs/SLIDES.md`；设计文档：`docs/DESIGN-2026-09-29-chapter-slides.md`（§16 效果优化实录）、
+  `docs/DESIGN-2026-09-30-slides-images.md`（图片能力）；评分清单：`docs/REVIEW-slides-rubric.md`
+- 后端：`server/src/slides/*`、迁移 `server/src/migrations/1790636383317-SlideDecks.ts`、
+  `server/src/files/*`（`GET /api/files` 图片库列表）
+- 前端：`web/src/slides/*`（`renderDeck.ts` / `markdown.ts` / `revealAssets.ts` / `files.ts` / `imageActions.ts` / `SlideStage.tsx`）、
+  `web/src/components/ImagePickerDrawer.tsx`、`web/src/components/MarkdownView.tsx`（`file:` 图片渲染）、
+  `web/src/pages/teacher/ChapterSlides.tsx`、`web/src/pages/teacher/ChapterEdit.tsx`（正文插图上传）、
+  `web/src/pages/student/ChapterRead.tsx`、`web/vite.config.ts`
 - 工具：`web/tools/review-decks.mjs`（盲评截图）、`web/tools/assert-render.mjs`（jsdom 断言）、`web/tools/verify-slides.mjs`（浏览器断言）
 - 相关提交：`f1aa90b`（后端 + 迁移）、`f7aa0f0`（前端）、`412503b`（放映浮层/点击翻页修复）、
   `3859b40`（切 LLM + prompt v3 + 版式系统升级 + 盲评定版）

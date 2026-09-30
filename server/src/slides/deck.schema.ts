@@ -21,6 +21,10 @@ export const SLIDE_LAYOUTS = [
   'code',
   'quote',
   'image',
+  'image-full',
+  'image-left',
+  'image-right',
+  'image-grid',
   'end',
 ] as const;
 
@@ -37,6 +41,12 @@ export interface SlideCompare {
   rightTitle?: string;
   left: string[];
   right: string[];
+}
+
+/** 单张图片引用：只允许平台内 `file:<fileId>`（见 validateSlide 的校验注释） */
+export interface SlideImage {
+  url: string;
+  caption?: string;
 }
 
 export interface SlideJson {
@@ -57,7 +67,10 @@ export interface SlideJson {
   right?: string;
   code?: { lang: string; content: string };
   quote?: { text: string; cite?: string };
-  image?: { url: string; caption?: string };
+  /** image / image-full / image-left / image-right：单图（left/right 另配 bullets 要点） */
+  image?: SlideImage;
+  /** image-grid：多图网格（1–4 张） */
+  images?: SlideImage[];
   /** 讲者备注 → reveal 的 <aside class="notes"> */
   notes?: string;
   /** 传给 reveal 的页级指令 */
@@ -114,6 +127,9 @@ export class DeckValidationError extends Error {
 }
 
 const LAYOUT_SET = new Set<string>(SLIDE_LAYOUTS);
+
+/** 平台文件引用（image.url / images[].url / attrs.background 共用）：只允许 `file:<uuid>` */
+const FILE_REF_RE = /^file:[0-9a-fA-F-]{36}$/;
 
 export function newSlideId(): string {
   return randomUUID();
@@ -272,13 +288,35 @@ export function validateSlide(raw: unknown, index: number, limits: SlideLimits):
     if (url) {
       // 只允许平台内文件引用（`file:<fileId>`）：外链图片会泄露访问者信息、也带来混合内容问题；
       // 渲染时由前端带鉴权取内容再内联成 data URL（演示 iframe 是 opaque origin，带不了 Authorization 头）
-      if (!/^file:[0-9a-fA-F-]{36}$/.test(url)) {
+      if (!FILE_REF_RE.test(url)) {
         throw new DeckValidationError(
           `第 ${index + 1} 页的 image.url 必须是平台文件引用（file:<fileId>）`,
         );
       }
       slide.image = { url, caption: readString(raw.image.caption, limits.maxChars) };
     }
+  }
+
+  if (raw.images !== undefined && raw.images !== null) {
+    if (!Array.isArray(raw.images)) {
+      throw new DeckValidationError(`第 ${index + 1} 页的 images 必须是数组`);
+    }
+    const images: SlideImage[] = [];
+    for (const item of raw.images) {
+      if (!isRecord(item)) {
+        throw new DeckValidationError(`第 ${index + 1} 页的 images 元素必须是对象`);
+      }
+      const url = readString(item.url, 2048);
+      if (!url) continue;
+      if (!FILE_REF_RE.test(url)) {
+        throw new DeckValidationError(
+          `第 ${index + 1} 页的 images.url 必须是平台文件引用（file:<fileId>）`,
+        );
+      }
+      images.push({ url, caption: readString(item.caption, limits.maxChars) });
+      if (images.length >= 4) break; // 网格最多 4 张，超出截断（与 stats 同款策略）
+    }
+    if (images.length) slide.images = images;
   }
 
   const notes = readString(raw.notes, limits.maxNotes);
@@ -316,6 +354,19 @@ export function validateSlide(raw: unknown, index: number, limits: SlideLimits):
   if (layout === 'stat' && !slide.stats?.length) {
     throw new DeckValidationError(`第 ${index + 1} 页（stat）没有大数字`);
   }
+  // 图片系新版式没图就是空页（image-left/right 的 bullets 可空，图不可空；
+  // 旧 image 版式保持宽松，不追加强校验以免误伤既有 deck）
+  if (
+    (layout === 'image-full' ||
+      layout === 'image-left' ||
+      layout === 'image-right') &&
+    !slide.image
+  ) {
+    throw new DeckValidationError(`第 ${index + 1} 页（${layout}）没有图片`);
+  }
+  if (layout === 'image-grid' && !slide.images?.length) {
+    throw new DeckValidationError(`第 ${index + 1} 页（image-grid）没有图片`);
+  }
 
   // 每页至少要有点可展示的东西，否则渲染出来是空白页
   const hasContent =
@@ -328,7 +379,8 @@ export function validateSlide(raw: unknown, index: number, limits: SlideLimits):
     !!slide.right ||
     !!slide.code ||
     !!slide.quote ||
-    !!slide.image;
+    !!slide.image ||
+    !!slide.images?.length;
   if (!hasContent) {
     throw new DeckValidationError(`第 ${index + 1} 页没有任何内容`);
   }

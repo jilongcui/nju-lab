@@ -2,10 +2,11 @@
  * 幻灯片渲染层断言（esbuild + jsdom，毫秒级，不依赖浏览器与后端，不烧额度）
  *
  * 用法：`node web/tools/assert-render.mjs`
- * 覆盖（HANDOFF §10.4 的固化 + 2026-09-29 版式系统升级后的新断言）：
+ * 覆盖（HANDOFF §10.4 的固化 + 2026-09-29 版式系统升级后的新断言 + 2026-09-30 图片版式）：
  *   · 注入清理：内容里的 <script> / onerror / javascript: 一律进不了最终文档；
  *     整份文档的 <script> 只剩内联的 2 个（reveal 本体 + 桥接脚本）
  *   · 新版式渲染：agenda / steps / stat / compare / kicker 的 DOM 结构
+ *   · 图片版式：image / image-full / image-left / image-right / image-grid 的 DOM 与占位回退
  *   · 自适应缩档：超重页必带 deck-fit-3、正常页不带 deck-fit
  *   · 代码块转义、notes、页数
  * 改渲染层（renderDeck.ts / markdown.ts / template.schema.ts 的 designToCss）后必跑。
@@ -61,9 +62,20 @@ const TEMPLATE = {
   css: ':root { --deck-primary: #1677ff; --deck-accent: #0958d9; --deck-radius: 8px; --deck-gap: 0.55em; }',
 };
 
+// 图片版式：file 引用统一走 imageDataUrls 预取（这里给一个假 data URL 模拟「已取到」）；
+// MISSING_REF 故意不给，验证「取不到 → 占位说明、绝不外链」的回退路径
+const IMG_REF = 'file:12345678-1234-1234-1234-1234567890ab';
+const MISSING_REF = 'file:00000000-1111-2222-3333-444444444444';
+const IMG_DATA_URL = 'data:image/png;base64,iVBORw0KGgo=';
+
 async function render(slides) {
   try {
-    return await buildDeckHtml({ slides, template: TEMPLATE, config: {} });
+    return await buildDeckHtml({
+      slides,
+      template: TEMPLATE,
+      config: {},
+      imageDataUrls: { [IMG_REF]: IMG_DATA_URL },
+    });
   } catch (error) {
     // virtual 模块缺失时退化为占位：直接替换掉加载逻辑不可行，故整体跳过
     return `__ERROR__${(error && error.message) || error}`;
@@ -107,6 +119,34 @@ const slides = [
     bullets: Array.from({ length: 8 }, (_, i) => `第${i + 1}条${'很长的要点'.repeat(20)}`),
   },
   { id: 's9', layout: 'bullets', kicker: '不该出现的眉题', title: '轻量页', bullets: ['短'] },
+  // —— 图片版式（新增页一律放末尾，别动上面既有页的位次，下方有按位断言） ——
+  { id: 's10', layout: 'image', title: '单图', image: { url: IMG_REF, caption: '示意图' } },
+  { id: 's11', layout: 'image-full', image: { url: IMG_REF } },
+  {
+    id: 's12',
+    layout: 'image-left',
+    title: '左图',
+    bullets: ['要点一'],
+    image: { url: IMG_REF },
+  },
+  {
+    id: 's13',
+    layout: 'image-right',
+    bullets: ['要点A'],
+    image: { url: IMG_REF },
+  },
+  {
+    id: 's14',
+    layout: 'image-grid',
+    title: '多图',
+    images: [
+      { url: IMG_REF, caption: '图1' },
+      { url: IMG_REF },
+      { url: IMG_REF },
+      { url: IMG_REF },
+    ],
+  },
+  { id: 's15', layout: 'image', image: { url: MISSING_REF, caption: '已删除的图' } },
 ];
 
 const html = await render(slides);
@@ -122,6 +162,7 @@ if (!html.startsWith('__ERROR__')) {
   check('javascript: 被清除', !html.includes('javascript:'));
 
   // —— 新版式 ——
+  const sections = html.split('<section').slice(1);
   check('封面：kicker 眉题', html.includes('deck-kicker'));
   check('封面：装饰线', html.includes('deck-cover-rule'));
   check('目录页 ol.deck-agenda', html.includes('class="deck-agenda"'));
@@ -130,8 +171,18 @@ if (!html.startsWith('__ERROR__')) {
   check('对比页 deck-compare / 列标题', html.includes('deck-compare') && html.includes('deck-compare-head'));
   check('要点列表带 deck-bullets class', html.includes('class="deck-bullets"'));
 
+  // —— 图片版式 ——
+  check('单图页 img.deck-image + 图注', html.includes('img class="deck-image"') && html.includes('示意图'));
+  check('全幅页 img.deck-image-full', html.includes('img class="deck-image-full"'));
+  check('左图右文页 deck-split（正向）', sections[11]?.includes('class="deck-split"') ?? false);
+  check('左图右文页 图与文两栏齐备', sections[11]?.includes('deck-split-media') && sections[11]?.includes('deck-split-body') ? true : false);
+  check('右图左文页 deck-split-right', sections[12]?.includes('deck-split-right') ?? false);
+  const gridCells = (html.match(/class="deck-grid-cell"/g) ?? []).length;
+  check('多图网格 deck-grid-4 + 4 格', html.includes('deck-grid deck-grid-4') && gridCells === 4, `格数 ${gridCells}`);
+  check('多图网格页超重缩档 deck-fit-2', sections[13]?.includes('deck-fit-2') ?? false);
+  check('取不到的图片显示占位（不外链）', html.includes('（图片不可用：已删除的图）'));
+
   // —— 自适应缩档 ——
-  const sections = html.split('<section').slice(1);
   check('页数正确', sections.length === slides.length, `${sections.length}/${slides.length}`);
   check('超重页带 deck-fit-3', sections[7]?.includes('deck-fit-3') ?? false);
   check('轻量页不带 deck-fit', !sections[8]?.includes('deck-fit-'));
