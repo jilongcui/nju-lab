@@ -37,8 +37,8 @@
    · bullets → 电报体成稿（≤20 字/条、3–5 条/页，禁止照抄整句）
    · stat/compare → 结构化字段（真实数字、两栏清单）
    · notes → 讲稿（3–6 句、有过渡语、信息量比页面大）
-   · cover 不写 bullets；section 给 2–4 条「本节导览」要点（预告本节内容、不照抄锚点，
-     deck-teaser 弱化渲染；承接与过渡仍进 notes）
+   · cover 不写 bullets；section 给 2–3 条「本节导览」要点（纯关键词 ≤12 字、点名本节
+     主题词，禁冒号补充结构，deck-teaser 弱化渲染；承接与过渡仍进 notes）
    约束：layout/title/keyPoint 不许改、页序不许变
         ▼
 ④ 程序化质检（不靠模型自觉）
@@ -67,7 +67,7 @@
 |---|---|---|
 | `cover` | 封面（仅首页） | kicker 眉题 + 标题 + 副标题 |
 | `agenda` | 目录/本章脉络（通常第 2 页） | 编号条目（bullets 承载） |
-| `section` | 分节标题页 | kicker「第 N 节」（质检统一编号）+ 标题 + 2–4 条「本节导览」要点（deck-teaser 弱化样式，与正文要点区分） |
+| `section` | 分节标题页 | kicker「第 N 节」（质检统一编号）+ 标题 + 2–3 条「本节导览」关键词（deck-teaser 弱化样式，与正文要点区分） |
 | `bullets` | 要点页（最常用） | 3–5 条电报体要点，卡片化 |
 | `steps` | 有序步骤/流程 | 序号圆点 + 连接线（bullets 承载） |
 | `stat` | 大数字（1–4 个） | `{value, label, detail?}`，value 必须正文真实数字 |
@@ -143,7 +143,7 @@ MD 保存时按位次合并保留，不会被悄悄覆盖。
   4000→32768（旧预算会把大纲/扩写 JSON 截断，表现为「内容没生成完就结束了」）、
   `SLIDES_SOURCE_MAX_CHARS` 默认 12000→300000、`SLIDES_LLM_TIMEOUT_MS` 默认 90s→300s；
   截断抢救与失败重试保留作兜底。
-- **改 prompt 必须把 `SLIDES_PROMPT_VERSION` +1**（当前 v7：section 保留 2–4 条「本节导览」要点、仅视觉弱化；cover 不写），否则命中旧缓存看不到新效果。
+- **改 prompt 必须把 `SLIDES_PROMPT_VERSION` +1**（当前 v8：section 导览为极简关键词 ≤12 字；cover 不写），否则命中旧缓存看不到新效果。
 
 ## 7. 典型工作流
 

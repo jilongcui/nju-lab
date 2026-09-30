@@ -100,8 +100,11 @@ export const SLIDES_LLM_TIMEOUT_MS = num('SLIDES_LLM_TIMEOUT_MS', 300_000);
  * v7（2026-09-30）：section 要点回归 —— 教师侧确认分节页要保留"本节导览"要点
  * （2–4 条、改写成真正预告本节内容、不照抄 keyPoint 锚点），仅视觉弱化（deck-teaser）；
  * v6 的"section 也不写"收得过紧，cover 维持不写。
+ * v8（2026-09-30）：section 导览要点收敛为极简关键词风 —— 2–3 条、每条 ≤12 字、
+ * 一行一个主题词、禁冒号补充结构（v7 的 2–4 条×20 字带补充说明，教师嫌啰嗦；
+ * 参照早期大纲锚点的简洁感，但要求真正点名本节主题词）。
  */
-export const SLIDES_PROMPT_VERSION = 'v7';
+export const SLIDES_PROMPT_VERSION = 'v8';
 
 export const SLIDES_LIMITS = {
   maxSlides: SLIDES_MAX_SLIDES,
