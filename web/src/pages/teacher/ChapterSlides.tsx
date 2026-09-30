@@ -599,7 +599,8 @@ export default function ChapterSlides() {
               type="primary"
               icon={<ThunderboltOutlined />}
               loading={busy}
-              onClick={() => handleGenerate(false)}
+              disabled={deck?.status === 'generating'}
+              onClick={() => handleGenerate(true)}
             >
               {deck ? '重新生成' : '生成幻灯片'}
             </Button>
