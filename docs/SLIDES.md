@@ -53,7 +53,7 @@
 ⑥ 渲染：SlideJson → 自包含 reveal.js 文档（iframe srcdoc 隔离）
    · 按 layout 渲染版式；内容超重 → deck-fit-2/3 自动缩档（防底部裁切）
    · 模板只管样式：调参 → designToCss 编译 CSS —— 换模板不用重新生成
-   · 就绪看门狗：iframe 8s 未回 ready 自动重挂载（换 key）×2，仍不行转明确错误
+   · 就绪看门狗：iframe 5s 未回 ready 自动重挂载（换 key）×2，仍不行转明确错误
      —— 杜绝「转圈永不停」类竞态（2026-09-30 学生端二次进入偶发）
 ```
 

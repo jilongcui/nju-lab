@@ -380,7 +380,18 @@ function bridgeScript(config: Required<SlideDeckConfig>): string {
     post({ type: 'deck-error', message: 'Reveal 未定义（核心脚本未执行）' });
     return;
   }
-  Reveal.initialize(${options});
+  var readyPosted = false;
+  function postReady(index) {
+    if (readyPosted) return;
+    readyPosted = true;
+    post({ type: 'ready', index: index || 0, total: document.querySelectorAll('.slides > section').length });
+  }
+  // 就绪信号双通道：initialize 的 Promise 与 ready 事件任一先到即报（个别环境下
+  // 事件通道会被延迟/吞掉，Promise 通道不受影响；2026-09-30 教师浏览器实测首载
+  // ready 事件 8s 未发、强制重挂载后秒回）
+  Reveal.initialize(${options}).then(function () {
+    postReady((Reveal.getIndices ? Reveal.getIndices() : {}).h || 0);
+  });
   window.addEventListener('message', function (event) {
     var data = event.data || {};
     if (data.__deckAction !== true) return;
@@ -411,7 +422,7 @@ function bridgeScript(config: Required<SlideDeckConfig>): string {
     if (ratio >= 0.75) Reveal.next();
     else if (ratio <= 0.25) Reveal.prev();
   });
-  Reveal.on('ready', function (ev) { post({ type: 'ready', index: ev.indexh || 0, total: document.querySelectorAll('.slides > section').length }); });
+  Reveal.on('ready', function (ev) { postReady(ev.indexh || 0); });
   Reveal.on('slidechanged', function (ev) { post({ type: 'slidechanged', index: ev.indexh || 0 }); });
 })();`;
 }

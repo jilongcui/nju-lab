@@ -59,6 +59,8 @@ export default function SlideStage({
    * srcdoc 字符串也必然变化 → 浏览器一定重载、ready 一定回传（"srcdoc 相同不重载"
    * 这一类竞态在源头消除；等价去重仍由 lastDocRef 在拼序号之前完成） */
   const buildSeqRef = useRef(0);
+  /** 当前文档下发的时间戳（就绪耗时日志用） */
+  const htmlSetAtRef = useRef(0);
 
   // 内容/模板/配置变化 → 重建文档（重建 iframe 的 srcdoc，状态最干净）
   useEffect(() => {
@@ -78,6 +80,7 @@ export default function SlideStage({
         buildSeqRef.current += 1;
         setReady(false);
         setError(null);
+        htmlSetAtRef.current = Date.now();
         setHtml(`${doc}\n<!-- deck-build:${buildSeqRef.current} -->`);
       })
       .catch((err: Error) => {
@@ -90,18 +93,18 @@ export default function SlideStage({
 
   // 就绪看门狗：html 已下发但 iframe 迟迟不回 ready（个别环境下 srcdoc 不重载/脚本未跑的竞态，
   // 表现为"转圈永不停"）—— 超时自动重挂载 iframe（换 key），重试 2 次仍不行就给出明确错误。
-  // srcdoc 全内联、加载是本地的，8s 足够宽裕；构建耗时发生在 html 下发之前，不在此计时内。
+  // srcdoc 全内联、加载是本地的，5s 足够宽裕；构建耗时发生在 html 下发之前，不在此计时内。
   useEffect(() => {
     if (!html || ready || error) return;
     const timer = setTimeout(() => {
       if (reloadAttemptsRef.current < 2) {
         reloadAttemptsRef.current += 1;
-        console.warn(`[SlideStage] iframe 8s 未就绪，自动重载（第 ${reloadAttemptsRef.current} 次）`);
+        console.warn(`[SlideStage] iframe 5s 未就绪，自动重载（第 ${reloadAttemptsRef.current} 次）`);
         setReloadKey((key) => key + 1);
       } else {
         setError('幻灯片加载超时（已自动重试）。请切换视图或刷新页面重试。');
       }
-    }, 8000);
+    }, 5000);
     return () => clearTimeout(timer);
   }, [html, ready, error, reloadKey]);
 
@@ -124,7 +127,10 @@ export default function SlideStage({
         console.warn('[SlideStage] iframe 内脚本异常：', (data as { message?: string }).message);
         return;
       }
-      if (data.type === 'ready') setReady(true);
+      if (data.type === 'ready') {
+        console.info(`[SlideStage] 已就绪（${Date.now() - htmlSetAtRef.current}ms）`);
+        setReady(true);
+      }
       if (typeof data.index === 'number') onIndexChange?.(data.index);
     }
     window.addEventListener('message', onMessage);
