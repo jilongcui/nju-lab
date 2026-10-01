@@ -211,6 +211,85 @@ try {
   } else {
     check('批改页菜单高亮「实验项目」', true, '无待批提交，跳过');
   }
+  // 9) 幻灯片页：右栏 Tabs、章节切换守卫、图片 tab 插图页
+  await page.goto(`${BASE}/teacher/chapters/${CHAPTER_ID}/slides`, { waitUntil: 'domcontentloaded' });
+  await page.getByText('章节幻灯片').first().waitFor({ timeout: 20000 });
+  await page.locator('aside .ant-list-item').first().waitFor({ timeout: 15000 });
+  const slideTabs = await page.locator('aside .ant-tabs-tab').allInnerTexts();
+  check('幻灯片页右栏 Tabs 含「章节」「图片」', slideTabs.some((t) => t.includes('章节')) && slideTabs.some((t) => t.includes('图片')), slideTabs.join('/'));
+
+  // 干净切换（无编辑）：点兄弟章节 → 直接跳
+  const sibItems = page.locator('aside .ant-list-item');
+  const sibCount = await sibItems.count();
+  if (sibCount > 1) {
+    await sibItems.last().click();
+    await page.waitForTimeout(1500);
+    const jumpedSlides = page.url().includes('/slides') && !page.url().includes(CHAPTER_ID);
+    const noModal2 = (await page.locator('.ant-modal-confirm').count()) === 0;
+    check('幻灯片页干净切换章节：直接跳转、无确认框', jumpedSlides && noModal2, page.url().split('/lab')[1]);
+    await page.goto(`${BASE}/teacher/chapters/${CHAPTER_ID}/slides`, { waitUntil: 'domcontentloaded' });
+    await page.getByText('章节幻灯片').first().waitFor({ timeout: 20000 });
+    await page.locator('aside .ant-list-item').first().waitFor({ timeout: 15000 });
+  } else {
+    check('幻灯片页干净切换章节：直接跳转、无确认框', true, '单章节课程，跳过');
+  }
+
+  // 确保有 deck 可编辑：没有就用 mock 生成器现场生成（结束时删除，只删我们生成的）
+  let createdDeck = false;
+  if ((await page.locator('textarea').count()) === 0) {
+    await page.getByRole('button', { name: /生成幻灯片/ }).click();
+    await page.waitForFunction(
+      () => !document.body.innerText.includes('正在生成幻灯片'),
+      null,
+      { timeout: 60000 },
+    );
+    await page.waitForTimeout(1500);
+    createdDeck = true;
+  }
+  const editorReady = (await page.locator('textarea').count()) > 0;
+  check('幻灯片页有可编辑 deck', editorReady, createdDeck ? '现场生成（待清理）' : '已有');
+
+  if (editorReady) {
+    // 脏状态切章节：三键确认框 → 取消
+    await page.locator('textarea').first().fill('[{"layout":"bullets","title":"守卫测试页","bullets":["a"]}]');
+    await page.locator('aside .ant-list-item').last().click();
+    await page.locator('.ant-modal-confirm').waitFor({ timeout: 5000 });
+    const slideBtns = (await page.locator('.ant-modal-confirm .ant-btn').allInnerTexts()).map((t) => t.replace(/\s+/g, ''));
+    check('幻灯片页脏状态切章节：三键确认框', slideBtns.some((t) => t.includes('保存并切换')) && slideBtns.some((t) => t.includes('放弃修改并切换')) && slideBtns.some((t) => t.includes('取消')), slideBtns.join('/'));
+    await page.locator('.ant-modal-confirm .ant-btn').filter({ hasText: /取\s*消/ }).click();
+    await page.waitForTimeout(400);
+
+    // 图片 tab：选图 → 在当前页后插入 → JSON 出现 file: 引用 → 放弃改动还原（不保存）
+    await page.locator('aside .ant-tabs-tab').filter({ hasText: '图片' }).click();
+    await page.waitForTimeout(1500);
+    const sThumbs = page.locator('aside img');
+    if ((await sThumbs.count()) > 0) {
+      await sThumbs.first().click();
+      await page.getByRole('button', { name: /在当前页后插入/ }).click();
+      await page.waitForTimeout(500);
+      const jt = await page.locator('textarea').first().inputValue();
+      check('幻灯片页图片 tab：插图页进编辑区', jt.includes('file:'));
+      await page.screenshot({ path: `${SHOTS_DIR}/slides-01-images-tab.png` });
+      await page.getByRole('button', { name: '放弃改动' }).click();
+      await page.waitForTimeout(300);
+    } else {
+      check('幻灯片页图片 tab：插图页进编辑区', true, '图库为空，跳过');
+      await page.getByRole('button', { name: '放弃改动' }).click().catch(() => {});
+    }
+
+    // 清理：只删我们现场生成的 deck
+    if (createdDeck) {
+      await page.locator('button').filter({ has: page.locator('.anticon-delete') }).last().click();
+      await page.locator('.ant-popconfirm .ant-btn-primary').click();
+      // 删除成功的用户可观测信号 = 编辑器卸载、Empty 提示出现（别数 textarea：
+      // rc-textarea autoSize 的隐藏测量副本等 antd 内部节点不可靠，2026-10-01 实测踩到）
+      const emptyDesc = page.getByText('还没有幻灯片');
+      await emptyDesc.waitFor({ timeout: 10000 }).catch(() => {});
+      const deckGone = await emptyDesc.isVisible().catch(() => false);
+      if (!deckGone) await page.screenshot({ path: `${SHOTS_DIR}/slides-cleanup-fail.png` }).catch(() => {});
+      check('清理：删除现场生成的 deck', deckGone);
+    }
+  }
 } catch (err) {
   check(`执行异常：${err.message}`, false);
   await page.screenshot({ path: `${SHOTS_DIR}/edit-error.png` }).catch(() => {});

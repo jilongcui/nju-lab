@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useBlocker, useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
+  App,
   Button,
   Card,
   Col,
@@ -11,6 +12,7 @@ import {
   Dropdown,
   Empty,
   Input,
+  List,
   Popconfirm,
   Row,
   Segmented,
@@ -23,6 +25,7 @@ import {
   Tooltip,
   Typography,
   message,
+  theme,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -71,6 +74,7 @@ import {
   splitMarkdownPages,
 } from '../../slides/imageActions';
 import ImagePickerDrawer from '../../components/ImagePickerDrawer';
+import ImageLibraryPanel from '../../components/ImageLibraryPanel';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
 
 const { Text, Paragraph } = Typography;
@@ -123,6 +127,8 @@ const CARD_STYLE_OPTIONS = [
 export default function ChapterSlides() {
   const { chapterId = '' } = useParams();
   const navigate = useNavigate();
+  const { modal } = App.useApp();
+  const { token } = theme.useToken();
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -150,27 +156,20 @@ export default function ChapterSlides() {
     { kind: 'insert'; layout: SlideLayout } | { kind: 'replace' } | { kind: 'insert-cursor' } | null
   >(null);
   const mdAreaRef = useRef<TextAreaRef>(null);
-
-  useAuxiliaryPanel(
-    '章节幻灯片',
-    <Space direction="vertical" size={8}>
-      <Paragraph type="secondary" style={{ margin: 0 }}>
-        由大模型按章节内容生成在线演示文稿（reveal.js）。生成后可直接在线放映，也可改内容（JSON /
-        Markdown）与模板。
-      </Paragraph>
-      <Paragraph type="secondary" style={{ margin: 0 }}>
-        放映时：<Text code>←/→</Text> 翻页、<Text code>空格</Text> 下一页、<Text code>O</Text> 总览、
-        <Text code>Esc</Text> 退出。
-      </Paragraph>
-      <Paragraph type="secondary" style={{ margin: 0 }}>
-        章节正文改动后只会**提示**，不会自动重新生成（避免覆盖手工编辑与浪费额度）。
-      </Paragraph>
-    </Space>,
-  );
+  const [auxTab, setAuxTab] = useState<'chapters' | 'images'>('chapters');
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
+  // 章节 tab/工具栏里「放弃修改并切换」与放映态的章节跳转要绕过路由守卫
+  const allowLeaveRef = useRef(false);
 
   const load = useCallback(
     async (silent = false) => {
-      if (!silent) setLoading(true);
+      if (!silent) {
+        setLoading(true);
+        // 整页重载（进入页面/切换章节）：编辑脏标记与守卫旁路一并复位
+        setEditing(false);
+        allowLeaveRef.current = false;
+      }
       try {
         const [slidesData, chapterData] = await Promise.all([
           getChapterSlides(chapterId),
@@ -342,10 +341,10 @@ export default function ChapterSlides() {
     }
   };
 
-  const handleSaveContent = async () => {
+  const handleSaveContent = async (): Promise<boolean> => {
     if (jsonError) {
       message.error(`JSON 有问题：${jsonError}`);
-      return;
+      return false;
     }
     setBusy(true);
     try {
@@ -358,6 +357,7 @@ export default function ChapterSlides() {
       message.success('已保存');
       setEditing(false);
       await load(true);
+      return true;
     } finally {
       setBusy(false);
     }
@@ -428,6 +428,178 @@ export default function ChapterSlides() {
     }
   };
 
+  /** 切章节（右栏列表 / 工具栏 ◀▶）：编辑区有未保存内容时给 保存并切换 / 放弃修改并切换 / 取消 */
+  const switchChapter = (target: Chapter) => {
+    if (target.id === chapterId) return;
+    const go = () => navigate(`/teacher/chapters/${target.id}/slides`);
+    if (!editingRef.current) {
+      go();
+      return;
+    }
+    let inst: ReturnType<typeof modal.confirm> | undefined;
+    inst = modal.confirm({
+      title: '当前幻灯片有未保存的修改',
+      content: `切换到「${target.title}」前要如何处理？`,
+      footer: (
+        <Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <Button onClick={() => inst?.destroy()}>取消</Button>
+          <Button
+            danger
+            onClick={() => {
+              allowLeaveRef.current = true;
+              inst?.destroy();
+              go();
+            }}
+          >
+            放弃修改并切换
+          </Button>
+          <Button
+            type="primary"
+            onClick={async () => {
+              try {
+                const saved = await handleSaveContent();
+                if (!saved) return; // JSON 有误：留在当前章节
+              } catch {
+                return; // 保存失败：留在当前章节
+              }
+              inst?.destroy();
+              go();
+            }}
+          >
+            保存并切换
+          </Button>
+        </Space>
+      ),
+    });
+  };
+
+  /** 右栏「图片」tab：选图后在当前页后插入图片页（1 张 → 图片版式，2–4 张 → 多图网格） */
+  const handleAuxInsertImages = (images: StoredFileInfo[]) => {
+    if (!images.length) return;
+    if (!deck) {
+      message.info('请先生成幻灯片，再插入图片页');
+      return;
+    }
+    try {
+      const layout: SlideLayout = images.length > 1 ? 'image-grid' : 'image';
+      if (mode === 'json') {
+        const slides = JSON.parse(jsonText) as SlideJson[];
+        setJsonText(
+          JSON.stringify(
+            applyImageActionToSlides(slides, { kind: 'insert', layout, afterIndex: currentIndex }, images),
+            null,
+            2,
+          ),
+        );
+      } else {
+        setMdText(applyImageActionToMarkdown(mdText, { kind: 'insert', layout, afterIndex: currentIndex }, images));
+      }
+      setEditing(true);
+      message.success('已在当前页后插入图片页，点「保存内容」后生效');
+    } catch (error) {
+      message.error(`应用失败：${(error as Error).message}`);
+    }
+  };
+
+  // 右栏辅助区：Tabs —— 章节（兄弟章节切换，带未保存检查）/ 图片（图库插图页）
+  useAuxiliaryPanel(
+    '章节幻灯片',
+    <Tabs
+      activeKey={auxTab}
+      onChange={(k) => setAuxTab(k as 'chapters' | 'images')}
+      items={[
+        {
+          key: 'chapters',
+          label: '章节',
+          children: (
+            <>
+              <Paragraph type="secondary" style={{ fontSize: 12 }}>
+                点选切换章节（留在幻灯片页）；切换前会检查是否有未保存的内容修改。
+              </Paragraph>
+              <List
+                size="small"
+                dataSource={siblings}
+                renderItem={(item) => {
+                  const current = item.id === chapterId;
+                  return (
+                    <List.Item
+                      onClick={() => switchChapter(item)}
+                      style={{
+                        cursor: current ? 'default' : 'pointer',
+                        padding: '6px 8px',
+                        borderRadius: 6,
+                        background: current ? token.colorPrimaryBg : undefined,
+                      }}
+                    >
+                      <Text
+                        ellipsis={{ tooltip: item.title }}
+                        strong={current}
+                        style={{ flex: 1, minWidth: 0 }}
+                      >
+                        {item.order}. {item.title}
+                      </Text>
+                      {current && <Tag color="processing">当前</Tag>}
+                    </List.Item>
+                  );
+                }}
+              />
+              <Paragraph type="secondary" style={{ fontSize: 12, marginTop: 8 }}>
+                放映时：<Text code>←/→</Text> 翻页、<Text code>空格</Text> 下一页、<Text code>O</Text> 总览、
+                <Text code>Esc</Text> 退出。章节正文改动后只会提示，不会自动重新生成。
+              </Paragraph>
+            </>
+          ),
+        },
+        {
+          key: 'images',
+          label: '图片',
+          children: (
+            <>
+              <Paragraph type="secondary" style={{ fontSize: 12 }}>
+                选图后在当前页后插入图片页；「换图」「插图到光标」「插入图片页（选版式）」用编辑区上方按钮。
+              </Paragraph>
+              <ImageLibraryPanel
+                active={auxTab === 'images'}
+                compact
+                multiple
+                confirmText="在当前页后插入"
+                onConfirm={handleAuxInsertImages}
+              />
+            </>
+          ),
+        },
+      ]}
+    />,
+  );
+
+  // 路由离开守卫：编辑区有未保存内容时拦截（菜单、面包屑、返回章节编辑、浏览器后退）。
+  // 章节 tab/工具栏的切换不走这里（allowLeaveRef 已单独确认过）。
+  const blocker = useBlocker(() => editingRef.current && !allowLeaveRef.current);
+  const guardOpenRef = useRef(false);
+  useEffect(() => {
+    if (blocker.state !== 'blocked') {
+      guardOpenRef.current = false;
+      return;
+    }
+    if (guardOpenRef.current) return;
+    guardOpenRef.current = true;
+    modal.confirm({
+      title: '当前幻灯片有未保存的修改',
+      content: '离开后这些修改将丢失，确定离开吗？',
+      okText: '放弃修改并离开',
+      okButtonProps: { danger: true },
+      cancelText: '继续编辑',
+      onOk: () => {
+        guardOpenRef.current = false;
+        blocker.proceed();
+      },
+      onCancel: () => {
+        guardOpenRef.current = false;
+        blocker.reset();
+      },
+    });
+  }, [blocker, modal]);
+
   if (loading) return <Skeleton active paragraph={{ rows: 10 }} />;
   if (!data || !chapter) return <Empty description="章节不存在" />;
 
@@ -476,7 +648,11 @@ export default function ChapterSlides() {
                 <Button
                   size="small"
                   icon={<ArrowLeftOutlined />}
-                  onClick={() => navigate(`/teacher/chapters/${prevChapter.id}/slides`)}
+                  onClick={() => {
+                    // 放映态不弹确认层（会被放映层盖住）：沿用直接切换，守卫走旁路
+                    allowLeaveRef.current = true;
+                    navigate(`/teacher/chapters/${prevChapter.id}/slides`);
+                  }}
                 />
               </Tooltip>
             )}
@@ -485,7 +661,10 @@ export default function ChapterSlides() {
                 <Button
                   size="small"
                   icon={<ArrowRightOutlined />}
-                  onClick={() => navigate(`/teacher/chapters/${nextChapter.id}/slides`)}
+                  onClick={() => {
+                    allowLeaveRef.current = true;
+                    navigate(`/teacher/chapters/${nextChapter.id}/slides`);
+                  }}
                 />
               </Tooltip>
             )}
@@ -582,19 +761,19 @@ export default function ChapterSlides() {
             <Button size="small" icon={<EditOutlined />} onClick={() => setDesignOpen(true)}>
               模板调参
             </Button>
-            <Tooltip title="上一章 / 下一章（保留放映态）">
+            <Tooltip title="上一章 / 下一章（未保存时会先询问）">
               <Space.Compact>
                 <Button
                   size="small"
                   disabled={!prevChapter}
-                  onClick={() => navigate(`/teacher/chapters/${prevChapter?.id}/slides`)}
+                  onClick={() => prevChapter && switchChapter(prevChapter)}
                 >
                   ◀
                 </Button>
                 <Button
                   size="small"
                   disabled={!nextChapter}
-                  onClick={() => navigate(`/teacher/chapters/${nextChapter?.id}/slides`)}
+                  onClick={() => nextChapter && switchChapter(nextChapter)}
                 >
                   ▶
                 </Button>
