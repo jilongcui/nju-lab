@@ -7,6 +7,7 @@ interface AuxiliaryState {
   title: string;
   content: ReactNode;
   toggleCollapsed: () => void;
+  setCollapsed: (collapsed: boolean) => void;
   setPanel: (title: string, content: ReactNode) => void;
 }
 
@@ -17,6 +18,7 @@ export const useAuxiliaryStore = create<AuxiliaryState>()(
       title: '辅助面板',
       content: null,
       toggleCollapsed: () => set((s) => ({ collapsed: !s.collapsed })),
+      setCollapsed: (collapsed) => set({ collapsed }),
       setPanel: (title, content) => set({ title, content }),
     }),
     {

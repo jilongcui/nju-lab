@@ -80,6 +80,20 @@ const MENUS = {
   ],
 };
 
+// 路由归属表：不以菜单 key 开头的页面，显式映射到所属主菜单（特殊前缀在前）。
+// 全量路由备查：
+//   /course/:slug → 选课；/teacher/chapters/*（编辑/幻灯片）→ 课程管理；
+//   /teacher/submissions/:id/grade（批改）→ 实验项目；
+//   /student/chapters/*（章节学习）、/student/projects/:id（实验详情）→ 我的课程；
+//   其余页面路径本身即以菜单 key 开头，走最长前缀匹配。
+const ROUTE_MENU_MAP: [prefix: string, menuKey: string][] = [
+  ['/course/', '/browse'],
+  ['/teacher/chapters/', '/teacher/courses'],
+  ['/teacher/submissions/', '/teacher/projects'],
+  ['/student/chapters/', '/student/courses'],
+  ['/student/projects/', '/student/courses'],
+];
+
 function ColorPalette() {
   const { colorPrimary, setColorPrimary } = useThemeStore();
   return (
@@ -128,12 +142,9 @@ export default function AppLayout() {
   const menuItems = MENUS[role];
 
   const selectedKey = useMemo(() => {
-    // 路由归属：课程详情页（选课浏览）归「选课」；学生的章节学习页归「我的课程」；
-    // 教师的章节编辑/幻灯片页归「课程管理」——否则这些页会回落到菜单第一项「工作台」
     let pathname = location.pathname;
-    if (pathname.startsWith('/course/')) pathname = '/browse';
-    else if (pathname.startsWith('/student/chapters/')) pathname = '/student/courses';
-    else if (pathname.startsWith('/teacher/chapters/')) pathname = '/teacher/courses';
+    const mapped = ROUTE_MENU_MAP.find(([prefix]) => pathname.startsWith(prefix));
+    if (mapped) pathname = mapped[1];
     const hit = menuItems
       .map((m) => m.key)
       .filter((k) => pathname.startsWith(k))

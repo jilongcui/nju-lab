@@ -1,0 +1,211 @@
+/*
+ * MarkdownView 渲染样式（章节正文 / 项目信息预览共用）。
+ * 配色全部走 antd cssVar 变量（main.tsx 开了 cssVar: true），自动跟随明暗主题与主题色；
+ * 仅 hljs 词法高亮颜色 antd 没有对应 token，亮/暗两套（.md-dark 由组件按 theme store 切换）。
+ */
+
+.markdown-view {
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--ant-color-text);
+  overflow-wrap: break-word;
+}
+
+/* ---------- 标题 ---------- */
+.markdown-view h1,
+.markdown-view h2,
+.markdown-view h3,
+.markdown-view h4,
+.markdown-view h5,
+.markdown-view h6 {
+  margin: 1.2em 0 0.6em;
+  line-height: 1.35;
+  font-weight: 600;
+}
+.markdown-view h1:first-child,
+.markdown-view h2:first-child,
+.markdown-view h3:first-child,
+.markdown-view h4:first-child,
+.markdown-view h5:first-child,
+.markdown-view h6:first-child {
+  margin-top: 0;
+}
+.markdown-view h1 { font-size: 1.6em; }
+.markdown-view h2 {
+  font-size: 1.35em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--ant-color-border-secondary);
+}
+.markdown-view h3 { font-size: 1.18em; }
+.markdown-view h4 { font-size: 1.05em; }
+
+/* ---------- 段落与列表 ---------- */
+.markdown-view p {
+  margin: 0.6em 0;
+}
+.markdown-view ul,
+.markdown-view ol {
+  margin: 0.6em 0;
+  padding-left: 1.8em;
+}
+.markdown-view li + li {
+  margin-top: 0.25em;
+}
+.markdown-view li > ul,
+.markdown-view li > ol {
+  margin: 0.25em 0;
+}
+.markdown-view li:has(> input[type='checkbox']:first-child) {
+  list-style: none;
+  margin-left: -1.4em;
+}
+.markdown-view input[type='checkbox'] {
+  margin-right: 0.4em;
+  vertical-align: -0.1em;
+}
+
+/* ---------- 表格 ---------- */
+.markdown-view table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin: 0.8em 0;
+  overflow-x: auto;
+  border-collapse: collapse;
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: var(--ant-border-radius);
+}
+.markdown-view th,
+.markdown-view td {
+  padding: 8px 14px;
+  border: 1px solid var(--ant-color-border-secondary);
+  text-align: left;
+  vertical-align: top;
+}
+.markdown-view th {
+  background: var(--ant-color-fill-quaternary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.markdown-view tbody tr:nth-child(even) {
+  background: var(--ant-color-fill-alter);
+}
+.markdown-view tbody tr:hover {
+  background: var(--ant-color-fill-tertiary);
+}
+
+/* ---------- 代码 ---------- */
+.markdown-view code {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, 'JetBrains Mono', monospace;
+  font-size: 0.88em;
+}
+/* 行内 code（pre 里的 code 在下方重置） */
+.markdown-view :not(pre) > code {
+  padding: 0.15em 0.4em;
+  border-radius: var(--ant-border-radius-sm);
+  background: var(--ant-color-fill-secondary);
+  border: 1px solid var(--ant-color-border-secondary);
+  white-space: break-spaces;
+}
+.markdown-view pre {
+  margin: 0.8em 0;
+  padding: 12px 16px;
+  border-radius: var(--ant-border-radius);
+  background: var(--ant-color-fill-quaternary);
+  border: 1px solid var(--ant-color-border-secondary);
+  overflow-x: auto;
+  line-height: 1.6;
+}
+.markdown-view pre code {
+  display: block;
+  padding: 0;
+  background: transparent;
+  border: none;
+  white-space: pre;
+}
+
+/* ---------- 引用 / 分割线 / 其他 ---------- */
+.markdown-view blockquote {
+  margin: 0.8em 0;
+  padding: 4px 16px;
+  border-left: 4px solid var(--ant-color-primary-border);
+  background: var(--ant-color-fill-quaternary);
+  border-radius: 0 var(--ant-border-radius) var(--ant-border-radius) 0;
+  color: var(--ant-color-text-secondary);
+}
+.markdown-view blockquote > p:first-child { margin-top: 0.4em; }
+.markdown-view blockquote > p:last-child { margin-bottom: 0.4em; }
+.markdown-view hr {
+  margin: 1.2em 0;
+  border: none;
+  border-top: 1px solid var(--ant-color-border-secondary);
+}
+.markdown-view img {
+  max-width: 100%;
+  border-radius: var(--ant-border-radius-sm);
+}
+.markdown-view a {
+  color: var(--ant-color-primary);
+}
+
+/* ---------- 语法高亮（GitHub 风格，亮色系） ---------- */
+.markdown-view .hljs-comment,
+.markdown-view .hljs-quote { color: #6a737d; font-style: italic; }
+.markdown-view .hljs-keyword,
+.markdown-view .hljs-selector-tag,
+.markdown-view .hljs-meta .hljs-keyword { color: #d73a49; }
+.markdown-view .hljs-string,
+.markdown-view .hljs-regexp,
+.markdown-view .hljs-addition { color: #032f62; }
+.markdown-view .hljs-number,
+.markdown-view .hljs-literal { color: #005cc5; }
+.markdown-view .hljs-title,
+.markdown-view .hljs-title.function_,
+.markdown-view .hljs-section { color: #6f42c1; }
+.markdown-view .hljs-title.class_,
+.markdown-view .hljs-type,
+.markdown-view .hljs-built_in { color: #e36209; }
+.markdown-view .hljs-attr,
+.markdown-view .hljs-attribute,
+.markdown-view .hljs-variable,
+.markdown-view .hljs-template-variable { color: #005cc5; }
+.markdown-view .hljs-name,
+.markdown-view .hljs-selector-id,
+.markdown-view .hljs-selector-class { color: #22863a; }
+.markdown-view .hljs-symbol,
+.markdown-view .hljs-bullet,
+.markdown-view .hljs-link { color: #005cc5; }
+.markdown-view .hljs-meta,
+.markdown-view .hljs-deletion { color: #b31d28; }
+.markdown-view .hljs-emphasis { font-style: italic; }
+.markdown-view .hljs-strong { font-weight: 600; }
+
+/* ---------- 语法高亮（GitHub Dark 风格，暗色系） ---------- */
+.markdown-view.md-dark .hljs-comment,
+.markdown-view.md-dark .hljs-quote { color: #8b949e; }
+.markdown-view.md-dark .hljs-keyword,
+.markdown-view.md-dark .hljs-selector-tag,
+.markdown-view.md-dark .hljs-meta .hljs-keyword { color: #ff7b72; }
+.markdown-view.md-dark .hljs-string,
+.markdown-view.md-dark .hljs-regexp,
+.markdown-view.md-dark .hljs-addition { color: #a5d6ff; }
+.markdown-view.md-dark .hljs-number,
+.markdown-view.md-dark .hljs-literal { color: #79c0ff; }
+.markdown-view.md-dark .hljs-title,
+.markdown-view.md-dark .hljs-title.function_,
+.markdown-view.md-dark .hljs-section { color: #d2a8ff; }
+.markdown-view.md-dark .hljs-title.class_,
+.markdown-view.md-dark .hljs-type,
+.markdown-view.md-dark .hljs-built_in { color: #ffa657; }
+.markdown-view.md-dark .hljs-attr,
+.markdown-view.md-dark .hljs-attribute,
+.markdown-view.md-dark .hljs-variable,
+.markdown-view.md-dark .hljs-template-variable { color: #79c0ff; }
+.markdown-view.md-dark .hljs-name,
+.markdown-view.md-dark .hljs-selector-id,
+.markdown-view.md-dark .hljs-selector-class { color: #7ee787; }
+.markdown-view.md-dark .hljs-symbol,
+.markdown-view.md-dark .hljs-bullet,
+.markdown-view.md-dark .hljs-link { color: #79c0ff; }
+.markdown-view.md-dark .hljs-meta,
+.markdown-view.md-dark .hljs-deletion { color: #ffa198; }

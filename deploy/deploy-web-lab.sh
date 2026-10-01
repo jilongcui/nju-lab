@@ -56,8 +56,9 @@ mkdir -p "$BACKUP"
 cp -r "$TARGET/assets" "$BACKUP/assets"
 cp "$TARGET/index.html" "$BACKUP/index.html"
 
-step "3/6 先写 assets/ 新 chunk（顺序铁律①）"
-for f in "$WEB"/dist/assets/*.js; do
+step "3/6 先写 assets/ 新 chunk（顺序铁律①；js 与 css 都要 —— 2026-10-01 起构建会产出 CSS chunk）"
+shopt -s nullglob
+for f in "$WEB"/dist/assets/*.js "$WEB"/dist/assets/*.css; do
   b="$(basename "$f")"
   if [ -e "$TARGET/assets/$b" ] && [ ! -w "$TARGET/assets/$b" ]; then rm -f "$TARGET/assets/$b"; fi
   cp -f "$f" "$TARGET/assets/$b"
@@ -65,7 +66,7 @@ for f in "$WEB"/dist/assets/*.js; do
 done
 
 step "4/6 校验 md5（本地 dist ↔ 线上）"
-for f in "$WEB"/dist/assets/*.js; do
+for f in "$WEB"/dist/assets/*.js "$WEB"/dist/assets/*.css; do
   b="$(basename "$f")"
   a="$(md5sum "$f" | cut -d' ' -f1)"
   c="$(md5sum "$TARGET/assets/$b" | cut -d' ' -f1)"

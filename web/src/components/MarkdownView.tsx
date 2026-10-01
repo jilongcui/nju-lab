@@ -1,9 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
 import { marked } from 'marked';
+import { markedHighlight } from 'marked-highlight';
+import hljs from 'highlight.js/lib/common';
 import { Typography } from 'antd';
 import { fetchFileDataUrls } from '../slides/files';
+import { useThemeStore } from '../stores/theme';
+import './MarkdownView.css';
 
 marked.setOptions({ gfm: true, breaks: true });
+// marked 12 已移除内置 highlight 选项，语法高亮走官方 marked-highlight 扩展；
+// 语言不在 common 集里时按纯文本处理（不高亮也不报错）
+marked.use(
+  markedHighlight({
+    langPrefix: 'hljs language-',
+    highlight(code, lang) {
+      const language = lang && hljs.getLanguage(lang) ? lang : 'plaintext';
+      return hljs.highlight(code, { language }).value;
+    },
+  }),
+);
 
 interface Props {
   content?: string;
@@ -15,8 +30,9 @@ const FILE_SRC_RE = /src="(file:[0-9a-fA-F-]{36})"/g;
 /** 上屏 HTML 里图片引用的暂存形态（无 src 的 img 不发任何请求） */
 const FILE_REF_RE = /data-file-ref="(file:[0-9a-fA-F-]{36})"/g;
 
-/** 轻量 Markdown 渲染（marked），用于章节内容与项目信息预览 */
+/** 轻量 Markdown 渲染（marked + hljs 高亮），用于章节内容与项目信息预览 */
 export default function MarkdownView({ content, emptyText = '暂无内容' }: Props) {
+  const dark = useThemeStore((s) => s.dark);
   const rawHtml = useMemo(() => {
     if (!content?.trim()) return '';
     const parsed = marked.parse(content, { async: false }) as string;
@@ -55,7 +71,7 @@ export default function MarkdownView({ content, emptyText = '暂无内容' }: Pr
   return (
     <Typography>
       {/* 内容由教师/系统录入；学生输入不进入此渲染路径 */}
-      <div dangerouslySetInnerHTML={{ __html: html }} />
+      <div className={dark ? 'markdown-view md-dark' : 'markdown-view'} dangerouslySetInnerHTML={{ __html: html }} />
     </Typography>
   );
 }
