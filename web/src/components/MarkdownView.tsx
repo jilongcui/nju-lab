@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { marked } from 'marked';
 import { markedHighlight } from 'marked-highlight';
+import markedKatex from 'marked-katex-extension';
 import hljs from 'highlight.js/lib/common';
 import { Typography } from 'antd';
 import { fetchFileDataUrls } from '../slides/files';
 import { useThemeStore } from '../stores/theme';
+import 'katex/dist/katex.min.css';
 import './MarkdownView.css';
 
 marked.setOptions({ gfm: true, breaks: true });
@@ -19,6 +21,8 @@ marked.use(
     },
   }),
 );
+// LaTeX 数学公式：$...$ 行内、$$...$$ 块级；解析失败回显原始 TeX（红色），不中断整篇渲染
+marked.use(markedKatex({ throwOnError: false }));
 
 interface Props {
   content?: string;

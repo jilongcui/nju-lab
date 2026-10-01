@@ -148,6 +148,17 @@
   color: var(--ant-color-primary);
 }
 
+/* ---------- 数学公式（KaTeX；颜色随 currentColor 自适应明暗） ---------- */
+.markdown-view .katex-display {
+  margin: 0.8em 0;
+  padding: 4px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.markdown-view .katex {
+  font-size: 1.06em;
+}
+
 /* ---------- 语法高亮（GitHub 风格，亮色系） ---------- */
 .markdown-view .hljs-comment,
 .markdown-view .hljs-quote { color: #6a737d; font-style: italic; }

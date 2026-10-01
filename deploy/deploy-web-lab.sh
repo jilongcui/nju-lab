@@ -56,23 +56,25 @@ mkdir -p "$BACKUP"
 cp -r "$TARGET/assets" "$BACKUP/assets"
 cp "$TARGET/index.html" "$BACKUP/index.html"
 
-step "3/6 先写 assets/ 新 chunk（顺序铁律①；js 与 css 都要 —— 2026-10-01 起构建会产出 CSS chunk）"
+step "3/6 先写 assets/ 新 chunk（顺序铁律①；js/css/字体全量 —— 2026-10-01 起构建产出 CSS 与 KaTeX 字体）"
 shopt -s nullglob
-for f in "$WEB"/dist/assets/*.js "$WEB"/dist/assets/*.css; do
+for f in "$WEB"/dist/assets/*; do
+  [ -f "$f" ] || continue
   b="$(basename "$f")"
   if [ -e "$TARGET/assets/$b" ] && [ ! -w "$TARGET/assets/$b" ]; then rm -f "$TARGET/assets/$b"; fi
   cp -f "$f" "$TARGET/assets/$b"
-  echo "   + assets/$b"
 done
+echo "   + $(ls "$WEB"/dist/assets | wc -l) 个文件已同步"
 
 step "4/6 校验 md5（本地 dist ↔ 线上）"
-for f in "$WEB"/dist/assets/*.js "$WEB"/dist/assets/*.css; do
+for f in "$WEB"/dist/assets/*; do
+  [ -f "$f" ] || continue
   b="$(basename "$f")"
   a="$(md5sum "$f" | cut -d' ' -f1)"
   c="$(md5sum "$TARGET/assets/$b" | cut -d' ' -f1)"
   [ "$a" = "$c" ] || die "md5 不一致：assets/$b（线上 $c ≠ 本地 $a）"
-  echo "   ok assets/$b  $a"
 done
+echo "   ok 全部 $(ls "$WEB"/dist/assets | wc -l) 个文件 md5 一致"
 
 rollback() {
   printf '\n↩️  回滚：只把 index.html 换回备份即可（旧 chunk 全程未删，回滚立即生效）\n'

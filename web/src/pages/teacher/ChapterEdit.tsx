@@ -309,7 +309,7 @@ export default function ChapterEdit() {
             <Input.TextArea
               ref={contentAreaRef}
               rows={18}
-              placeholder="支持 Markdown：标题、列表、代码块、图片（点上方「插入图片」从图片库选或上传）、链接……"
+              placeholder="支持 Markdown：标题、列表、代码块、数学公式（行内 $E=mc^2$、独立行 $$…$$）、图片（点上方「插入图片」从图片库选或上传）、链接……"
             />
           </Form.Item>
         ) : (

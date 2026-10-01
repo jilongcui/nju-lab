@@ -52,6 +52,10 @@ const MD_SAMPLE = [
   '```',
   '',
   '> 引用块：这是一段说明。',
+  '',
+  '行内公式 $E = mc^2$ 与块级公式：',
+  '',
+  '$$\\frac{a^2 + b^2}{2} \\geq \\sqrt{ab}$$',
 ].join('\n');
 
 try {
@@ -121,6 +125,18 @@ try {
     (el) => getComputedStyle(el).borderLeftWidth,
   );
   check('预览：引用块左边框', quoteBorder === '4px', quoteBorder);
+
+  const katexCount = await page.locator('.markdown-view .katex').count();
+  const katexDisplay = await page.locator('.markdown-view .katex-display').count();
+  const katexFont = await page.locator('.markdown-view .katex').first().evaluate(
+    (el) => getComputedStyle(el).fontFamily,
+  );
+  // 字体文件真实加载成功才算数（光声明 font-family 不够）
+  const fontLoaded = await page.evaluate(async () => {
+    await document.fonts.ready;
+    return document.fonts.check('16px "KaTeX_Main"');
+  });
+  check('预览：LaTeX 公式渲染（行内+块级+字体）', katexCount >= 2 && katexDisplay === 1 && katexFont.includes('KaTeX') && fontLoaded, `katex=${katexCount} display=${katexDisplay} font=${katexFont.split(',')[0]} loaded=${fontLoaded}`);
   await page.screenshot({ path: `${SHOTS_DIR}/edit-02-preview-light.png` });
 
   // 4) 暗色主题下的高亮配色
