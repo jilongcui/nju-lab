@@ -28,8 +28,11 @@ NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已�
 包内 `manifest.requires` 声明、驱动开跑前自检，缺失**明确失败**（不静默降级）；冻结清单在镜像 `/opt/verify/PYTHON-PACKAGES.txt`。
 复验产物新增 `package`（包声明摘要：输出文件名/题干与细则来源/依赖）与 `dependencyCheck` 快照，进 `Evaluation.dossierSnapshot` 等字段，供批改页追溯评测口径。
 新增示例包 `server/fixtures/sales-report/`（第二个任务类型：销售数据汇总，3 个 case，`requires.python=["pandas"]` 用来压测预装+自检链路，含教师自用参考实现与独立交叉校验）；面向教师的规范见 `docs/EXPERIMENT-PACKAGE-SPEC.md`。
-**实测（本机，2026-10-01）**：旧 CSV 包回落路径 1/1 通过；`sales-report` manifest 路径 1/1 通过（judge 用的是包内 `judge.md` 细则）。
-**未做（需操作人确认后执行）**：重建并切换 `nju-lab-workspace:0.2.0-rc.2-pkg2`（was `FROM nju-lab-verify:0.2.0-rc.2`）、`systemctl` 重启后端、njuserver 同步新镜像（跨机走 `docker save | load`）。
+**实测（本机，2026-10-01）**：旧 CSV 包回落路径 1/1 通过；`sales-report` manifest 路径 1/1 通过（judge 用的是包内 `judge.md` 细则）；pkg2 的 ML 依赖：`torch 2.14.1+cpu`（`cuda=None`）/`sklearn 1.9.1`/`statsmodels 0.15.0`/`matplotlib 3.11.2` 的 import + matmul + 训练一步均 OK，声明这四者的包依赖自检通过。
+
+**2026-10-01：本次改动已部署到生产（就是这台机器）** —— `server/` `npm run build` → `kill $(systemctl show nju-lab -p MainPID --value)`（`Restart=always` + `RestartSec=5` 拉起，旧 PID 1116643 → 新 PID 3555145）→ 冒烟通过：`POST 127.0.0.1:3100/api/auth/login` **201**；经 nginx `Host: medai.nju.edu.cn` 的 `/lab/` **200**、`/lab/api/auth/login` **201**；编译产物确认运行中的服务使用 `nju-lab-verify:0.2.0-rc.2-pkg2` 与 `nju-lab-workspace:0.2.0-rc.2-pkg2`（`pkg1` 镜像保留作回滚点）。前端产物未动（本次只改 `server/`），无需重新部署。
+
+> **⚠️ 环境澄清（2026-10-01 实测，纠正 §2 与 §2.1 的并列叙述）**：**njuserver 就是这台机器本身** —— `/data` 957G（`ubuntu--vg-lab--data`）、Node 在 `~/opt/node24`、静态产物 `/var/www/lab`、服务单元 `WorkingDirectory=/home/ubuntu/nju-lab/server`、**系统 MySQL**（无 mysql 容器）、nginx 唯一站配置 `sites-enabled/cms.conf`（`server_name medai.nju.edu.cn`，`/lab` 由 `snippets/medai-lab.conf` 提供；`lab.xiaohe.biz` 只是落到同一台 nginx 的另一 Host）。因此**不存在需要跨机 `docker save | load` 的第二部署点**；本机沙箱里也没有 `ssh njuserver` 的凭据与 config 条目（`~/.ssh/config` 无该 Host、`known_hosts` 无记录、该机只接受密码认证）。§2 中「docker `nju-lab-mysql` / `sites-enabled/lab.conf` / 根分区仅剩 10G」等描述**与当前实测不符**，勿据此判断现状。**待办影响**：学生工作台的旧容器（`nju-lab-workspace:0.1.5-rc.2`）会在这名学生下次进入时被 reclaim 重建为 pkg2，其会话上下文丢失。
 **顺带发现（既有问题，未修）**：驱动 `extractUsage()` 统计的 token 明显偏低（一个 case 两轮仅 ~400 input），旧镜像 `0.2.0-rc.2` 复跑结果相同 → 与本次改造无关；因 `tokenCost < 30_000` 参与 `autoScoreSuggestion`，建议后续单独排查 session 日志的 usage 帧匹配。
 
 ## 1. 仓库布局
