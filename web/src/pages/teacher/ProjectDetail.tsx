@@ -437,7 +437,7 @@ export default function ProjectDetail() {
           >
             <Select
               style={{ width: 360 }}
-              options={chapters.map((c) => ({ label: `${c.order}. ${c.title}`, value: c.id }))}
+              options={chapters.map((c, i) => ({ label: `${i + 1}. ${c.title}`, value: c.id }))}
             />
           </Form.Item>
           <Form.Item name="objectives" label="实验目标">

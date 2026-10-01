@@ -69,6 +69,20 @@ NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已�
 **顺带修坑**：教师页保存项目会抹掉 `evalConfig.judgeMode` / `maxCases`（表单不编辑这两项、PATCH 又是整体替换）——
 现在提交时从 `project.evalConfig` 原样带回；前端 `EvalConfig` 类型补齐这两项。前端已按 ④ 的流程重新构建部署
 （4 个引用资源 200 + 正确 MIME，index.html md5 与 `web/dist` 一致）。
+
+⑦ **章节编号统一按「位置」（修复"展示与 order 不同步"）**：原先三处渲染是**两种口径** ——
+教师端课程详情（`teacher/CourseDetail.tsx`）与学生端（`student/CourseDetail.tsx`）用 `idx + 1`（位置），
+而**公开课程目录页**（`courses/CourseDetail.tsx`）用 `ch.order`。于是 `order` 重复/跳号时同一章节在不同页面编号不同：
+实例 课程「人工智能基础概论」`order=[1,2,3,3,4,…,12]` 共 13 个章节，目录页会把第 4 个章节显示成「第 3 章」。
+现统一为位置编号：目录页改 `idx + 1`（并显式按 order 排序）、教师端侧栏 `ChapterEdit` / `ChapterSlides` 的
+`{item.order}.` 改 `{index + 1}.`、教师页「所属章节」下拉同理；新建章节表单的「排序号」补了说明
+（"只决定先后顺序；页面上的『第 N 章』按实际位置自动编号"）。
+**`order` 的语义保持"仅排序依据"**，分配规则与数据均未改 —— 因此它**仍可能重复**。
+
+⚠️ **仍未修（已知风险）**：新建章节的 `order = count + 1`（后端）/ `chapters.length + 1`（前端），
+**删章后再新建会撞号**（那两个重复的 order=3 就是这么来的）；而解锁规则用
+`chapter.order < ownChapter.order` 判定"前置章节"，order 相同时两章互为"之后" → 领取条件可能算错。
+若要修：改成 `max(order) + 1` 并给教师提供重排/上下移，或把前置判定改成"按 order 排序后的位置比较"。
 **顺带发现（既有问题，未修）**：驱动 `extractUsage()` 统计的 token 明显偏低（一个 case 两轮仅 ~400 input），旧镜像 `0.2.0-rc.2` 复跑结果相同 → 与本次改造无关；因 `tokenCost < 30_000` 参与 `autoScoreSuggestion`，建议后续单独排查 session 日志的 usage 帧匹配。
 
 ## 1. 仓库布局

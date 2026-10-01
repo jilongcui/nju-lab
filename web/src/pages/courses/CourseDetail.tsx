@@ -237,11 +237,13 @@ export default function CourseDetail() {
           <Empty description="课程尚未发布章节" />
         ) : (
           <List
-            dataSource={course.chapters}
-            renderItem={(ch) => (
+            dataSource={[...course.chapters].sort((a, b) => a.order - b.order)}
+            renderItem={(ch, idx) => (
               <List.Item>
                 <Space>
-                  <Text type="secondary">第 {ch.order} 章</Text>
+                  {/* 章号统一按「位置」编号，与教师端/学生端课程详情一致；
+                      数据库 order 只作排序依据（可能重复/跳号，不用于展示） */}
+                  <Text type="secondary">第 {idx + 1} 章</Text>
                   <Text>{ch.title}</Text>
                 </Space>
               </List.Item>

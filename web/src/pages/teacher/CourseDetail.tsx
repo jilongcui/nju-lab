@@ -774,7 +774,12 @@ export default function CourseDetail() {
           <Form.Item name="title" label="章节标题" rules={[{ required: true, message: '请输入章节标题' }]}>
             <Input placeholder="如：Skill 工程入门" maxLength={128} />
           </Form.Item>
-          <Form.Item name="order" label="排序号" initialValue={chapters.length + 1}>
+          <Form.Item
+            name="order"
+            label="排序号"
+            initialValue={chapters.length + 1}
+            extra="只决定章节先后顺序（越小越靠前）；页面上的「第 N 章」按实际位置自动编号，与本值无关"
+          >
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
         </Form>

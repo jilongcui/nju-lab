@@ -519,7 +519,7 @@ export default function ChapterSlides() {
               <List
                 size="small"
                 dataSource={siblings}
-                renderItem={(item) => {
+                renderItem={(item, index) => {
                   const current = item.id === chapterId;
                   return (
                     <List.Item
@@ -536,7 +536,7 @@ export default function ChapterSlides() {
                         strong={current}
                         style={{ flex: 1, minWidth: 0 }}
                       >
-                        {item.order}. {item.title}
+                        {index + 1}. {item.title}
                       </Text>
                       {current && <Tag color="processing">当前</Tag>}
                     </List.Item>
