@@ -15,12 +15,18 @@ import { EvaluationRunner, EvaluationRunResult } from './evaluation-runner';
 import { Submission } from './submission.entity';
 
 /** 复验容器镜像（构建见 server/verify-image/Dockerfile） */
-const VERIFY_IMAGE = process.env.VERIFY_IMAGE || 'nju-lab-verify:0.2.0-rc.2';
+const VERIFY_IMAGE = process.env.VERIFY_IMAGE || 'nju-lab-verify:0.2.0-rc.2-pkg1';
 /** 整体时长限额兜底（毫秒）；project.evalConfig.timeoutSeconds 优先 */
 const VERIFY_TIMEOUT_MS = Number(process.env.VERIFY_TIMEOUT_MS || 600_000);
-/** 成本控制：最多跑几个 case；0 = 全部。evalConfig.maxCases 优先 */
-const VERIFY_MAX_CASES = Number(process.env.VERIFY_MAX_CASES || 0);
-const VERIFY_JUDGE_MODE = process.env.VERIFY_JUDGE_MODE || 'llm';
+/**
+ * 成本控制：最多跑几个 case。**未配置（undefined）时不下发 CLI 参数** ——
+ * 由数据集包 manifest.maxCases / 驱动内置默认决定；evalConfig.maxCases 优先级最高。
+ */
+const VERIFY_MAX_CASES = process.env.VERIFY_MAX_CASES
+  ? Number(process.env.VERIFY_MAX_CASES)
+  : undefined;
+/** 判分模式：同上，未配置则交给数据集包 manifest.judgeMode（再回落 llm）。 */
+const VERIFY_JUDGE_MODE = process.env.VERIFY_JUDGE_MODE || undefined;
 
 interface JudgeVerdict {
   pass: boolean;
@@ -57,10 +63,28 @@ interface DriverResult {
   profile: string;
   model: Record<string, unknown>;
   judge: { mode: string; model: string | null };
+  /** 数据集包声明摘要（包驱动：输出文件名 / 题干与细则来源 / 依赖），可追溯本次评测口径 */
+  package?: DriverPackage | null;
+  dependencyCheck?: { ok: boolean; missing: string[]; declared: Record<string, string[]> } | null;
   skillFileHashes: Record<string, string> | null;
   skillInfo?: { boundariesDocumented: boolean; pitfallsRecorded: number } | null;
   cases: { case: string; rounds: Record<string, RoundResult> }[];
   summary: { baseline: DriverSummary; treatment?: DriverSummary };
+}
+
+/** 数据集包（实验材料）的声明摘要，由驱动 inspectPackage() 产出 */
+interface DriverPackage {
+  source: 'builtin' | 'manifest';
+  name: string | null;
+  title: string | null;
+  outputFile: string;
+  inputs: string[] | null;
+  judgeMode: string | null;
+  maxCases: number;
+  requires: Record<string, string[]>;
+  taskPromptSource: string;
+  judgeRulesSource: string;
+  cases: { name: string; inputs: string[]; expected: string }[];
 }
 
 /**
@@ -140,9 +164,10 @@ export class DockerEvaluationRunner implements EvaluationRunner {
         '--skill', '/inputs/skill.zip',
         '--dataset', '/inputs/dataset.zip',
         '--out', '/outputs/result.json',
-        '--judge-mode', judgeMode,
+        // 未显式配置判分模式时不传：让数据集包的 manifest.judgeMode 生效（包驱动）
+        ...(judgeMode ? ['--judge-mode', judgeMode] : []),
         '--timeout-ms', String(Math.min(300_000, timeoutMs)),
-        ...(maxCases > 0 ? ['--max-cases', String(maxCases)] : []),
+        ...(maxCases && maxCases > 0 ? ['--max-cases', String(maxCases)] : []),
       ],
       timeoutMs,
     });
@@ -233,6 +258,7 @@ export class DockerEvaluationRunner implements EvaluationRunner {
         runner: `evaluation-runner:${this.name}`,
         dataset: project.testDatasetFileId,
         evalConfig: project.evalConfig,
+        package: result.package ?? null,
         model: result.model,
         judge: result.judge,
         cases: roundDetail('baseline'),
@@ -242,6 +268,7 @@ export class DockerEvaluationRunner implements EvaluationRunner {
         runner: `evaluation-runner:${this.name}`,
         dataset: project.testDatasetFileId,
         evalConfig: project.evalConfig,
+        package: result.package ?? null,
         model: result.model,
         judge: result.judge,
         cases: roundDetail('treatment'),
@@ -254,6 +281,9 @@ export class DockerEvaluationRunner implements EvaluationRunner {
         dshVersion: result.dshVersion,
         profile: result.profile,
         startedAt: result.startedAt,
+        /** 本次复验用的实验包声明与依赖自检（包驱动的可追溯口径） */
+        experimentPackage: result.package ?? null,
+        dependencyCheck: result.dependencyCheck ?? null,
         invocationCount: result.cases.length * 2,
         measuredOutcomes: {
           success: treatment.passCount,

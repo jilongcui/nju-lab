@@ -16,6 +16,22 @@ NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已�
 **2026-09-28：平台侧实验工作台 —— 后端与容器已端到端实测，nginx 与浏览器待验** —— 给"本地装不上 DSH"的学生提供浏览器即可用的实验环境。已落地：**工作台镜像**（`server/workspace-image/`）、**工作台后端**（`server/src/workspace/`）、**通用容器运行时**（`server/src/container-runtime/`，与复验共用同一份隔离策略）。~~前端入口页未做、nginx 反代未在真实环境验证、浏览器实测未做~~ —— **均已完成**
 （2026-09-28/29：入口页、nginx 片段落地、浏览器中 claim 与对话交互验证通过；剩「提交 → 复验」）。设计与遗留见 **§8**（新接手者必读）与 `docs/DESIGN-2026-09-28-platform-workspace.md`。
 
+**2026-10-01：复验改「包驱动」+ 镜像预装教学依赖集 —— 新增实验类型不再改代码、不再重建镜像** ——
+原先「任务是什么」写死在 `server/verify-image/run-eval.mjs`（题干、CSV 清洗规则、judge prompt、`input.csv`/`output.csv` 文件名），
+于是每加一个实验类型都要改驱动 + 重建镜像 + 部署。现改为**题目与判据随数据集包走**：数据集 ZIP 根可放
+`manifest.json`（`outputFile`/`inputs`/`judgeMode`/`maxCases`/`requires`）、`task.md`（题干，**baseline 轮的唯一事实源**）、
+`judge.md`（评分细则，填进平台固定的判分外壳）；三者皆无时**逐字回落**内置 CSV 清洗语义（老包与在跑实验零影响，已回归验证）。
+优先级：命令行（项目 `evalConfig`）> 包内 manifest > 内置默认 —— 故 `DockerEvaluationRunner` **未显式配置时不再下发**
+`--judge-mode`/`--max-cases`。驱动新增 `--check`：只解析与校验包（结构 + 依赖），不跑模型、不烧 token，供上传前自检。
+运行时依赖（容器无外网、镜像层只读，装包只能在构建期）改为「**镜像预装教学依赖集 + 包内声明自检**」：
+新镜像 `nju-lab-verify:0.2.0-rc.2-pkg1` 预装 pandas/numpy/openpyxl/python-dateutil/requests/beautifulsoup4/lxml/PyYAML/tabulate/pytest + `jq`，
+包内 `manifest.requires` 声明、驱动开跑前自检，缺失**明确失败**（不静默降级）；冻结清单在镜像 `/opt/verify/PYTHON-PACKAGES.txt`。
+复验产物新增 `package`（包声明摘要：输出文件名/题干与细则来源/依赖）与 `dependencyCheck` 快照，进 `Evaluation.dossierSnapshot` 等字段，供批改页追溯评测口径。
+新增示例包 `server/fixtures/sales-report/`（第二个任务类型：销售数据汇总，3 个 case，`requires.python=["pandas"]` 用来压测预装+自检链路，含教师自用参考实现与独立交叉校验）；面向教师的规范见 `docs/EXPERIMENT-PACKAGE-SPEC.md`。
+**实测（本机，2026-10-01）**：旧 CSV 包回落路径 1/1 通过；`sales-report` manifest 路径 1/1 通过（judge 用的是包内 `judge.md` 细则）。
+**未做（需操作人确认后执行）**：重建并切换 `nju-lab-workspace:0.2.0-rc.2-pkg1`（was `FROM nju-lab-verify:0.2.0-rc.2`）、`systemctl` 重启后端、njuserver 同步新镜像（跨机走 `docker save | load`）。
+**顺带发现（既有问题，未修）**：驱动 `extractUsage()` 统计的 token 明显偏低（一个 case 两轮仅 ~400 input），旧镜像 `0.2.0-rc.2` 复跑结果相同 → 与本次改造无关；因 `tokenCost < 30_000` 参与 `autoScoreSuggestion`，建议后续单独排查 session 日志的 usage 帧匹配。
+
 ## 1. 仓库布局
 
 ```

@@ -1,0 +1,10 @@
+{
+  "total_revenue": 40.01,
+  "by_region": {
+    "华东": 20.0,
+    "华北": 20.0,
+    "华南": 0.01
+  },
+  "top_product": "Alpha",
+  "row_count": 3
+}

@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "name": "sales-report",
+  "title": "销售数据汇总报告",
+  "outputFile": "output.json",
+  "inputs": ["input.csv"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "requires": { "python": ["pandas"] }
+}

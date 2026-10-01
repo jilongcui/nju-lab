@@ -1,17 +1,26 @@
 #!/usr/bin/env node
 // NJU-Lab 复验驱动（生产版，运行于 nju-lab-verify 一次性容器内）。
 //
-// 输入：skill.zip|dir + dataset.zip|dir + 评判配置 → 逐 case 跑 baseline/treatment
-// 两轮 dsh headless（approval=never / workspace-write），按 judge-mode 评分，
-// 输出单个结构化结果 JSON。
+// 输入：skill.zip|dir + dataset.zip|dir → 逐 case 跑 baseline/treatment 两轮
+// dsh headless（approval=never / workspace-write），按 judge-mode 评分，输出单个
+// 结构化结果 JSON。
+//
+// **任务知识随数据集包走（包驱动）** —— 数据集 ZIP 根目录可放三个可选文件：
+//   manifest.json  机器读的结构声明（输出文件名 / 输入文件 / judgeMode / 依赖）
+//   task.md        任务提示（被测 agent 看到的题干；baseline 轮的唯一事实源）
+//   judge.md       评分细则（LLM judge 的判据）
+// 三者都不放 → **逐字回落内置的「CSV 数据清洗」行为**（历史数据集与在跑实验零影响）。
+// 由此：新增实验类型只需重新上传数据集包，裁判程序与镜像都不动 ——
+// 题目与评分细则由教师的包决定，执行与公平性由平台钉死。
 //
 // 用法：
 //   node run-eval.mjs --skill <zip|dir> --dataset <zip|dir> --out <result.json>
-//     [--judge-mode llm|exact]          默认 llm（LLM judge，平台钉死 prompt/模型）
+//     [--judge-mode llm|exact]          默认取包内 manifest.judgeMode，再回落 llm
 //     [--cases case01,case02 | --max-cases N]   默认全部 case
 //     [--timeout-ms N]                  每轮 dsh 运行上限，默认 300000
 //     [--dsh-home DIR]                  默认 $DSH_HOME 或 /tmp/dsh-home
 //     [--profile-src DIR]               nju-lab-verify profile 源目录
+//     [--check]                         只解析与校验包（结构 + 依赖），不跑模型、不烧 token
 //
 // 模型配置（环境变量）：DEEPSEEK_API_KEY（官方，优先）或 MOONSHOT_API_KEY（OpenAI 兼容回退）；
 //   VERIFY_MODEL（默认 deepseek-flash）、VERIFY_BASE_URL（默认 https://api.deepseek.com）、
@@ -19,16 +28,13 @@
 // DeepSeek 官方实测（2026-09-21，GET /models + chat/completions）：
 //   可用模型 deepseek-flash / deepseek-v4-pro；
 //   reasoning_effort 合法值 none|minimal|low|medium|high|xhigh|max。
-//
-// 遗留（生产化）：网络白名单代理——当前容器网络不隔离，模型 API 与学生 Skill
-// 的任意出站请求混在同一网络面，需在容器编排层加 egress 白名单代理。
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
@@ -39,6 +45,9 @@ const MODEL = process.env.VERIFY_MODEL || 'deepseek-flash';
 const BASE_URL = process.env.VERIFY_BASE_URL || 'https://api.deepseek.com';
 const JUDGE_MODEL = process.env.VERIFY_JUDGE_MODEL || MODEL;
 const API_KEY = process.env.DEEPSEEK_API_KEY || process.env.MOONSHOT_API_KEY;
+
+// ---------- 内置回落：CSV 数据清洗 ----------
+// 数据集包没放 task.md / judge.md 时用这一套，保证历史数据集行为逐字不变。
 
 // 评判规则：来自标准数据集 README，judge prompt 与 baseline 任务共用同一份事实源。
 const CLEAN_RULES = `Cleaning rules:
@@ -58,6 +67,27 @@ const JUDGE_PROMPT = `你是一个严格的 CSV 数据清洗结果评判器。�
 
 只输出一个 JSON 对象，不要输出其他内容：{"pass": true|false, "score": 0~1, "rationale": "中文一句话说明判定依据，不通过时指出具体差异"}`;
 
+const BUILTIN_BASELINE_TASK = `Clean the dirty CSV file input.csv and write the cleaned result to output.csv in the current directory.\n${CLEAN_RULES}\nFinally make sure output.csv exists. Reply briefly.`;
+const BUILTIN_TREATMENT_TASK = `A skill is provided in ./skill (start from skill/SKILL.md). Use it to clean the dirty CSV file input.csv and write the cleaned result to output.csv in the current directory. You may inspect, fix, and run the skill's scripts. Finally make sure output.csv exists.`;
+
+/**
+ * 包内含 judge.md 时的判分 prompt 外壳。
+ * 平台统一的只有「输出形状 + 差异容忍口径」，判据正文由教师的 judge.md 提供 ——
+ * 教师定评分口径，平台保证结果可解析、可比较、口径一致。
+ */
+function judgeShell(rules) {
+  return `你是一个严格执行教师给定评分细则的评判器。给定评分细则、期望产出与实际产出，判断实际产出是否达到要求。
+
+判定原则（平台统一，教师细则不得与之冲突）：
+- 行尾空白、行末换行符数量、CRLF/LF 换行符差异不扣分；其余差异（键名、字段值、行数、行序、格式与取值）都要扣分。
+- pass = 达到细则要求；score 0~1 表示达成程度（1=完全达成，0=完全不符）。
+
+只输出一个 JSON 对象，不要输出其他内容：{"pass": true|false, "score": 0~1, "rationale": "中文一句话说明判定依据，不通过时指出具体差异"}
+
+教师评分细则：
+${rules}`;
+}
+
 function fail(message) {
   console.error(`run-eval: ${message}`);
   process.exit(2);
@@ -65,7 +95,7 @@ function fail(message) {
 
 function parseArgs(argv) {
   const opts = {
-    judgeMode: 'llm', cases: null, maxCases: 0, out: null,
+    judgeMode: null, cases: null, maxCases: 0, out: null, check: false,
     timeoutMs: 300_000, dshHome: process.env.DSH_HOME || '/tmp/dsh-home',
     profileSrc: null,
   };
@@ -80,13 +110,14 @@ function parseArgs(argv) {
     else if (a === '--timeout-ms') opts.timeoutMs = Number(argv[++i]);
     else if (a === '--dsh-home') opts.dshHome = resolve(argv[++i]);
     else if (a === '--profile-src') opts.profileSrc = resolve(argv[++i]);
+    else if (a === '--check') opts.check = true;
     else if (a === '--help' || a === '-h') {
-      console.log('usage: node run-eval.mjs --skill <zip|dir> --dataset <zip|dir> [--out f] [--judge-mode llm|exact] [--cases a,b|--max-cases n] [--timeout-ms n] [--dsh-home dir] [--profile-src dir]');
+      console.log('usage: node run-eval.mjs --skill <zip|dir> --dataset <zip|dir> [--out f] [--judge-mode llm|exact] [--cases a,b|--max-cases n] [--timeout-ms n] [--dsh-home dir] [--profile-src dir] [--check]');
       process.exit(0);
     } else fail(`unknown arg: ${a}`);
   }
   if (!opts.dataset) fail('--dataset is required');
-  if (!['llm', 'exact'].includes(opts.judgeMode)) fail('--judge-mode must be llm or exact');
+  if (opts.judgeMode !== null && !['llm', 'exact'].includes(opts.judgeMode)) fail('--judge-mode must be llm or exact');
   return opts;
 }
 
@@ -103,6 +134,10 @@ function unpack(path, kind) {
   const r = spawnSync('unzip', ['-q', path, '-d', dest], { encoding: 'utf8' });
   if (r.status !== 0) fail(`unzip ${kind} failed: ${r.stderr || r.stdout}`);
   return dest;
+}
+
+function cleanup() {
+  for (const d of cleanupDirs) spawnSync('rm', ['-rf', d]);
 }
 
 /**
@@ -122,8 +157,188 @@ function resolveDatasetRoot(dir) {
   if (existsSync(join(dir, 'cases'))) return dir;
   const entries = readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory());
   const withCases = entries.filter((e) => existsSync(join(dir, e.name, 'cases')));
-  if (withCases.length === 1) return join(dir, withCases[0].name);
+  if (withCases.length === 1) return join(withCases[0].name);
   fail(`invalid dataset package: no unique cases/ layer under ${dir}`);
+}
+
+// ---------- 数据集的包声明（manifest.json / task.md / judge.md） ----------
+
+const EXPECTED_RE = /^expected(\..+)?$/i;
+
+/**
+ * 读数据集包的声明。三者皆无 → 全部回落内置「CSV 数据清洗」语义。
+ * 缺某个字段只在字段级回落，不做静默猜测以外的处理。
+ */
+function readDatasetSpec(datasetRoot) {
+  const spec = {
+    name: null,
+    title: null,
+    outputFile: 'output.csv',
+    inputs: null,
+    judgeMode: null,
+    maxCases: 0,
+    requires: { python: [], commands: [] },
+    taskPrompt: null,
+    judgeRules: null,
+    source: 'builtin',
+    files: { manifest: false, task: false, judge: false },
+  };
+
+  const manifestPath = join(datasetRoot, 'manifest.json');
+  if (existsSync(manifestPath)) {
+    spec.files.manifest = true;
+    spec.source = 'manifest';
+    let raw;
+    try {
+      raw = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    } catch (e) {
+      fail(`dataset/manifest.json 不是合法 JSON: ${e.message}`);
+    }
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+      fail('dataset/manifest.json 必须是 JSON 对象');
+    }
+    if (raw.schemaVersion !== undefined && raw.schemaVersion !== 1) {
+      fail(`dataset/manifest.json 的 schemaVersion=${raw.schemaVersion} 不被本驱动支持（当前支持 1）`);
+    }
+    if (raw.name !== undefined) spec.name = String(raw.name);
+    if (raw.title !== undefined) spec.title = String(raw.title);
+    if (raw.outputFile !== undefined) {
+      const v = String(raw.outputFile).replace(/^\.\//, '');
+      if (!v || v.startsWith('/') || v.split('/').includes('..')) {
+        fail(`dataset/manifest.json 的 outputFile 非法（须是工作目录内的相对路径）: ${raw.outputFile}`);
+      }
+      spec.outputFile = v;
+    }
+    if (raw.inputs !== undefined) {
+      if (!Array.isArray(raw.inputs) || raw.inputs.some((x) => typeof x !== 'string')) {
+        fail('dataset/manifest.json 的 inputs 必须是字符串数组（相对 case 目录的路径）');
+      }
+      spec.inputs = raw.inputs;
+    }
+    if (raw.judgeMode !== undefined) {
+      if (!['llm', 'exact'].includes(raw.judgeMode)) {
+        fail(`dataset/manifest.json 的 judgeMode 只能是 llm 或 exact: ${raw.judgeMode}`);
+      }
+      spec.judgeMode = raw.judgeMode;
+    }
+    if (raw.maxCases !== undefined) spec.maxCases = Number(raw.maxCases) || 0;
+    if (raw.requires !== undefined) {
+      const req = raw.requires ?? {};
+      if (typeof req !== 'object' || Array.isArray(req)) {
+        fail('dataset/manifest.json 的 requires 必须是对象，如 {"python": ["pandas"], "commands": ["jq"]}');
+      }
+      spec.requires = {
+        python: Array.isArray(req.python) ? req.python.map(String) : [],
+        commands: Array.isArray(req.commands) ? req.commands.map(String) : [],
+      };
+    }
+  }
+
+  const taskPath = join(datasetRoot, 'task.md');
+  if (existsSync(taskPath)) {
+    spec.files.task = true;
+    spec.taskPrompt = readFileSync(taskPath, 'utf8').trim();
+    if (!spec.taskPrompt) fail('dataset/task.md 是空的：题干不能为空');
+  }
+  const judgePath = join(datasetRoot, 'judge.md');
+  if (existsSync(judgePath)) {
+    spec.files.judge = true;
+    spec.judgeRules = readFileSync(judgePath, 'utf8').trim();
+    if (!spec.judgeRules) fail('dataset/judge.md 是空的：评分细则不能为空');
+  }
+
+  return spec;
+}
+
+/**
+ * 依赖自检：包声明要用的 Python 模块 / 命令必须在镜像里存在，缺了就明确失败（不静默）。
+ *
+ * `requires.python` 按 **import 名**校验（`yaml` / `bs4` / `dateutil`），同时认常见的
+ * pip 包名（`PyYAML` / `beautifulsoup4` / `python-dateutil` / `Pillow` / `scikit-learn`）——
+ * 教师写声明时不必区分这两套命名，否则会误报"依赖缺失"。
+ */
+const PY_MODULE_ALIASES = {
+  pyyaml: 'yaml',
+  'beautifulsoup4': 'bs4',
+  'python-dateutil': 'dateutil',
+  pillow: 'PIL',
+  'scikit-learn': 'sklearn',
+  'opencv-python': 'cv2',
+  'python-docx': 'docx',
+  'python-pptx': 'pptx',
+};
+
+function checkRequires(spec) {
+  const missing = [];
+  const py = spec.requires?.python ?? [];
+  const cmds = spec.requires?.commands ?? [];
+  for (const raw of py) {
+    // 允许写 "pandas>=2.0"：只取包名做存在性校验（版本约束靠镜像预装集保证）
+    const base = String(raw).split(/[<>=!~\s\[]/)[0].trim();
+    if (!base) continue;
+    const mod = PY_MODULE_ALIASES[base.toLowerCase()] ?? base;
+    const r = spawnSync('python3', ['-c', `import importlib.util,sys;sys.exit(0 if importlib.util.find_spec(${JSON.stringify(mod)}) else 1)`], { encoding: 'utf8' });
+    if (r.status !== 0) missing.push(`python:${base}${mod === base ? '' : ` (import ${mod})`}`);
+  }
+  for (const raw of cmds) {
+    const c = String(raw).trim();
+    if (!c) continue;
+    const r = spawnSync('sh', ['-c', `command -v ${c}`], { encoding: 'utf8' });
+    if (r.status !== 0) missing.push(`command:${c}`);
+  }
+  return { ok: missing.length === 0, missing, declared: { python: py, commands: cmds } };
+}
+
+/** case 输入文件：manifest.inputs 优先，否则 case 目录下除 expected.* 之外的全部条目。 */
+function caseInputs(caseDir, spec) {
+  if (spec.inputs?.length) {
+    return spec.inputs.map((rel) => {
+      const abs = join(caseDir, rel);
+      if (!existsSync(abs)) {
+        fail(`case 声明的输入不存在：${abs}（manifest.inputs 写的是相对 case 目录的路径）`);
+      }
+      return { rel, abs };
+    });
+  }
+  return readdirSync(caseDir, { withFileTypes: true })
+    .filter((e) => !EXPECTED_RE.test(e.name))
+    .map((e) => ({ rel: e.name, abs: join(caseDir, e.name) }));
+}
+
+/** case 期望产出：expected.<outputFile 的扩展名>，或目录下唯一的 expected.* 。 */
+function caseExpected(caseDir, spec) {
+  const cands = readdirSync(caseDir).filter((f) => EXPECTED_RE.test(f));
+  if (cands.length === 0) {
+    fail(`case 缺少期望产出文件（expected.*）：${caseDir}`);
+  }
+  const wantName = `expected${extname(spec.outputFile)}`.toLowerCase();
+  const exact = cands.find((f) => f.toLowerCase() === wantName);
+  const picked = exact ?? (cands.length === 1 ? cands[0] : null);
+  if (!picked) {
+    fail(`case 有多个候选期望产出且无法断定（outputFile=${spec.outputFile}）：${caseDir} → ${cands.join(', ')}`);
+  }
+  return { name: picked, path: join(caseDir, picked) };
+}
+
+/** 任务提示：包内 task.md（占位符替换 + 兜底补产出要求），否则内置 CSV 题干。 */
+function buildTaskPrompt({ spec, treatment, inputs, outputFile }) {
+  if (!spec.taskPrompt) {
+    return treatment ? BUILTIN_TREATMENT_TASK : BUILTIN_BASELINE_TASK;
+  }
+  const firstInput = inputs[0]?.rel ?? '输入文件';
+  let text = spec.taskPrompt
+    .replace(/\{\{\s*input\s*\}\}/g, firstInput)
+    .replace(/\{\{\s*inputs\s*\}\}/g, inputs.map((i) => i.rel).join(', '))
+    .replace(/\{\{\s*output\s*\}\}/g, outputFile)
+    .replace(/\{\{\s*skill\s*\}\}/g, './skill');
+  // 题干里没提到产出文件名时补一句：baseline 轮没有 Skill 兜底，漏了它任务不可完成。
+  if (!text.includes(outputFile)) {
+    text += `\n\n产出要求：把结果写到当前目录的 ${outputFile}，完成后确认该文件存在。`;
+  }
+  if (treatment) {
+    text += `\n\n一个 Skill 已提供在 ./skill（从 skill/SKILL.md 开始读）。优先使用它完成任务：可以检查、修正并运行其中的脚本。`;
+  }
+  return text;
 }
 
 /** Skill 根下全部文件的 sha256 登记（相对路径 -> hex），供服务端完整性对照。 */
@@ -186,7 +401,8 @@ function ensureProfile(opts) {
   if (model || effort) writeFileSync(patchFile, yml);
 }
 
-function normalizeCsv(text) {
+/** 文本归一：换行统一 LF、去尾部空白、末尾补一个换行（exact 模式与内容比对用）。 */
+function normalizeText(text) {
   return text.replace(/\r\n/g, '\n').replace(/\s+$/, '') + '\n';
 }
 
@@ -221,11 +437,13 @@ function extractUsage(dshHome, sinceMs) {
   return { tokens, sessionId };
 }
 
-function runRound({ opts, caseName, round, workdir }) {
-  const treatment = round === 'treatment';
-  const task = treatment
-    ? `A skill is provided in ./skill (start from skill/SKILL.md). Use it to clean the dirty CSV file input.csv and write the cleaned result to output.csv in the current directory. You may inspect, fix, and run the skill's scripts. Finally make sure output.csv exists.`
-    : `Clean the dirty CSV file input.csv and write the cleaned result to output.csv in the current directory.\n${CLEAN_RULES}\nFinally make sure output.csv exists. Reply briefly.`;
+function runRound({ opts, spec, inputs, round, workdir }) {
+  const task = buildTaskPrompt({
+    spec,
+    treatment: round === 'treatment',
+    inputs,
+    outputFile: spec.outputFile,
+  });
 
   const startedAt = Date.now();
   const proc = spawnSync(DSH_BIN, ['--profile', PROFILE, task], {
@@ -239,8 +457,8 @@ function runRound({ opts, caseName, round, workdir }) {
   writeFileSync(join(workdir, 'stdout.txt'), proc.stdout ?? '');
   writeFileSync(join(workdir, 'stderr.txt'), proc.stderr ?? '');
 
-  const outputPath = join(workdir, 'output.csv');
-  const outputCsv = existsSync(outputPath) ? readFileSync(outputPath, 'utf8') : null;
+  const outputPath = join(workdir, spec.outputFile);
+  const outputText = existsSync(outputPath) ? readFileSync(outputPath, 'utf8') : null;
   const { tokens, sessionId } = extractUsage(opts.dshHome, startedAt);
   return {
     round,
@@ -249,7 +467,7 @@ function runRound({ opts, caseName, round, workdir }) {
     durationMs,
     tokens,
     sessionId,
-    outputCsv,
+    outputText,
     finalText: (proc.stdout ?? '').trim().slice(0, 500),
     error: proc.error ? String(proc.error.message ?? proc.error) : null,
   };
@@ -257,18 +475,21 @@ function runRound({ opts, caseName, round, workdir }) {
 
 // ---------- judge ----------
 
-async function judgeWithLlm({ expectedCsv, actualCsv }) {
+async function judgeWithLlm({ spec, expected, expectedName, actual }) {
   if (!API_KEY) throw new Error('DEEPSEEK_API_KEY or MOONSHOT_API_KEY is required for llm judge');
+  const useBuiltin = !spec.judgeRules;
   const body = {
     model: JUDGE_MODEL,
     // kimi-k2.6 只允许 temperature=1（400 invalid temperature），不传用默认
     max_tokens: 1024,
     reasoning_effort: 'low',
     messages: [
-      { role: 'system', content: JUDGE_PROMPT },
+      { role: 'system', content: useBuiltin ? JUDGE_PROMPT : judgeShell(spec.judgeRules) },
       {
         role: 'user',
-        content: `清洗规则：\n${CLEAN_RULES}\n\nexpected.csv：\n${expectedCsv}\n\noutput.csv：\n${actualCsv ?? '(未生成)'}`,
+        content: useBuiltin
+          ? `清洗规则：\n${CLEAN_RULES}\n\nexpected.csv：\n${expected}\n\noutput.csv：\n${actual ?? '(未生成)'}`
+          : `期望产出（${expectedName}）：\n${expected}\n\n实际产出（${spec.outputFile}）：\n${actual ?? '(未生成)'}`,
       },
     ],
   };
@@ -304,48 +525,115 @@ async function judgeWithLlm({ expectedCsv, actualCsv }) {
   throw lastError;
 }
 
-function judgeExact({ expectedCsv, actualCsv }) {
-  if (actualCsv === null) {
-    return { pass: false, score: 0, rationale: '未生成 output.csv', judgeTokens: { input: 0, output: 0 } };
+function judgeExact({ spec, expected, expectedName, actual }) {
+  if (actual === null) {
+    return { pass: false, score: 0, rationale: `未生成 ${spec.outputFile}`, judgeTokens: { input: 0, output: 0 } };
   }
-  const pass = normalizeCsv(actualCsv) === normalizeCsv(expectedCsv);
+  const pass = normalizeText(actual) === normalizeText(expected);
   return {
     pass,
     score: pass ? 1 : 0,
-    rationale: pass ? '与 expected.csv 完全一致（exact 模式）' : '与 expected.csv 不一致（exact 模式）',
+    rationale: pass
+      ? `与 ${expectedName} 完全一致（exact 模式）`
+      : `与 ${expectedName} 不一致（exact 模式）`,
     judgeTokens: { input: 0, output: 0 },
   };
 }
 
-async function judge(opts, expectedCsv, actualCsv) {
-  const args = { expectedCsv, actualCsv };
-  return opts.judgeMode === 'llm' ? judgeWithLlm(args) : judgeExact(args);
+function judge(mode, args) {
+  return mode === 'llm' ? judgeWithLlm(args) : judgeExact(args);
 }
 
 // ---------- 主流程 ----------
 
+function listCases(datasetRoot, opts, spec) {
+  const casesDir = join(datasetRoot, 'cases');
+  let names = readdirSync(casesDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory()).map((d) => d.name).sort();
+  if (opts.cases) names = names.filter((c) => opts.cases.includes(c));
+  const max = opts.maxCases > 0 ? opts.maxCases : (spec.maxCases > 0 ? spec.maxCases : 0);
+  if (max > 0) names = names.slice(0, max);
+  if (names.length === 0) fail('no cases to run');
+  return names;
+}
+
+/** 包结构自检摘要（--check 的输出，也是复验结果里的可追溯快照）。 */
+function inspectPackage({ datasetRoot, spec, skillRoot, caseNames }) {
+  return {
+    datasetRoot,
+    source: spec.source,
+    name: spec.name,
+    title: spec.title,
+    outputFile: spec.outputFile,
+    inputs: spec.inputs,
+    judgeMode: spec.judgeMode,
+    maxCases: spec.maxCases,
+    requires: spec.requires,
+    declaredFiles: spec.files,
+    taskPromptSource: spec.taskPrompt ? 'dataset/task.md' : 'builtin(csv-cleaner)',
+    judgeRulesSource: spec.judgeRules ? 'dataset/judge.md' : 'builtin(csv-cleaner)',
+    cases: caseNames.map((name) => {
+      const caseDir = join(datasetRoot, 'cases', name);
+      return {
+        name,
+        inputs: caseInputs(caseDir, spec).map((i) => i.rel),
+        expected: caseExpected(caseDir, spec).name,
+      };
+    }),
+    skill: skillRoot
+      ? { root: skillRoot, files: Object.keys(hashTree(skillRoot)), info: scanSkillMd(skillRoot) }
+      : null,
+  };
+}
+
 async function main() {
   const opts = parseArgs(process.argv);
-  ensureProfile(opts);
 
   const datasetRoot = resolveDatasetRoot(unpack(opts.dataset, 'dataset'));
+  const spec = readDatasetSpec(datasetRoot);
   const skillRoot = opts.skill ? resolveSkillRoot(unpack(opts.skill, 'skill')) : null;
-  const skillFileHashes = skillRoot ? hashTree(skillRoot) : null;
+  const caseNames = listCases(datasetRoot, opts, spec);
+  // 判分模式优先级：命令行（平台项目配置）> 包内 manifest > 内置 llm
+  const judgeMode = opts.judgeMode ?? spec.judgeMode ?? 'llm';
+  const judgeModel = judgeMode === 'llm' ? JUDGE_MODEL : null;
 
-  let caseNames = readdirSync(join(datasetRoot, 'cases'), { withFileTypes: true })
-    .filter((d) => d.isDirectory()).map((d) => d.name).sort();
-  if (opts.cases) caseNames = caseNames.filter((c) => opts.cases.includes(c));
-  if (opts.maxCases > 0) caseNames = caseNames.slice(0, opts.maxCases);
-  if (caseNames.length === 0) fail('no cases to run');
+  const deps = checkRequires(spec);
+  const pkg = inspectPackage({ datasetRoot, spec, skillRoot, caseNames });
+
+  if (opts.check) {
+    console.log(JSON.stringify({
+      check: 'ok',
+      dshVersion: DSH_VERSION,
+      profile: PROFILE,
+      judge: { mode: judgeMode, model: judgeModel },
+      package: pkg,
+      dependencyCheck: deps,
+    }, null, 2));
+    cleanup();
+    if (!deps.ok) {
+      fail(`依赖自检未通过：${deps.missing.join(', ')}（镜像预装集里没有这些；需在镜像里补装后重建）`);
+    }
+    return;
+  }
+
+  // 依赖缺失直接失败：不做「跑到一半才发现脚本跑不起来」的静默降级。
+  if (!deps.ok) {
+    fail(`实验包声明的依赖在复验镜像中缺失：${deps.missing.join(', ')}（镜像预装集见 server/verify-image/README.md）`);
+  }
+
+  ensureProfile(opts);
+  const skillFileHashes = skillRoot ? hashTree(skillRoot) : null;
 
   const runRoot = mkdtempSync(join(tmpdir(), 'nju-verify-runs-'));
   const result = {
-    evalVersion: 'docker-1',
+    evalVersion: 'docker-2',
     startedAt: new Date().toISOString(),
     dshVersion: DSH_VERSION,
     profile: PROFILE,
     model: { provider: 'deepseek-official', baseURL: BASE_URL, model: MODEL, reasoningEffort: 'low', maxTokens: 8192 },
-    judge: { mode: opts.judgeMode, model: opts.judgeMode === 'llm' ? JUDGE_MODEL : null },
+    judge: { mode: judgeMode, model: judgeModel },
+    package: pkg,
+    dependencyCheck: deps,
     skillFileHashes,
     skillInfo: skillRoot ? scanSkillMd(skillRoot) : null,
     cases: [],
@@ -353,21 +641,32 @@ async function main() {
 
   for (const caseName of caseNames) {
     const caseDir = join(datasetRoot, 'cases', caseName);
-    const expectedCsv = readFileSync(join(caseDir, 'expected.csv'), 'utf8');
+    const inputs = caseInputs(caseDir, spec);
+    const expected = caseExpected(caseDir, spec);
+    const expectedText = readFileSync(expected.path, 'utf8');
     const entry = { case: caseName, rounds: {} };
     for (const round of ['baseline', 'treatment']) {
       if (round === 'treatment' && !skillRoot) continue;
       const workdir = join(runRoot, caseName, round);
       mkdirSync(workdir, { recursive: true });
-      cpSync(join(caseDir, 'input.csv'), join(workdir, 'input.csv'));
+      for (const inp of inputs) {
+        const dest = join(workdir, inp.rel);
+        mkdirSync(dirname(dest), { recursive: true });
+        cpSync(inp.abs, dest, { recursive: true });
+      }
       if (round === 'treatment') cpSync(skillRoot, join(workdir, 'skill'), { recursive: true });
       console.error(`[run] ${caseName}/${round} ...`);
-      const r = runRound({ opts, caseName, round, workdir });
-      const j = await judge(opts, expectedCsv, r.outputCsv);
+      const r = runRound({ opts, spec, inputs, round, workdir });
+      const j = await judge(judgeMode, {
+        spec,
+        expected: expectedText,
+        expectedName: expected.name,
+        actual: r.outputText,
+      });
       r.judge = { pass: j.pass, score: j.score, rationale: j.rationale };
       r.tokens.input += j.judgeTokens.input;
       r.tokens.output += j.judgeTokens.output;
-      delete r.outputCsv; // 结果 JSON 不带全量输出，只带判定（输出留在容器内 workdir）
+      delete r.outputText; // 结果 JSON 不带全量输出，只带判定（输出留在容器内 workdir）
       entry.rounds[round] = r;
       console.error(`[done] ${caseName}/${round}: pass=${j.pass} score=${j.score} exit=${r.exitCode} in=${r.tokens.input} out=${r.tokens.output} ${r.durationMs}ms`);
     }

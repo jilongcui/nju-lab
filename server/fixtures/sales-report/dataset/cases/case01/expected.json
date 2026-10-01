@@ -1,0 +1,10 @@
+{
+  "total_revenue": 152.6,
+  "by_region": {
+    "华东": 112.2,
+    "华北": 20.5,
+    "华南": 19.9
+  },
+  "top_product": "Widget",
+  "row_count": 5
+}

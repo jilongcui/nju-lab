@@ -4,15 +4,68 @@
 
 ## 构成
 
-- `Dockerfile` → 镜像 `nju-lab-verify:0.2.0-rc.2`（node:22-slim + 锁定
-  `@deepseek-ai/dsh@0.2.0-rc.2` + zstd/unzip/python3 + 驱动 + profile，约 512MB）
-- `run-eval.mjs` — 复验驱动：解包 skill.zip/dataset.zip（resolveSkillRoot 语义）→
-  逐 case 跑 baseline/treatment 两轮 dsh headless（approval=never + workspace-write）→
-  LLM judge（默认，`--judge-mode exact` 可切）→ 输出单个结果 JSON
+- `Dockerfile` → 镜像 `nju-lab-verify:0.2.0-rc.2-pkg1`（node:22-slim + 锁定
+  `@deepseek-ai/dsh@0.2.0-rc.2` + zstd/unzip/**jq**/python3 + 驱动 + profile
+  + **预装教学依赖集**，见下）
+- `run-eval.mjs` — 复验驱动（**包驱动**）：解包 skill.zip/dataset.zip（resolveSkillRoot /
+  resolveDatasetRoot 语义）→ 读数据集包的 `manifest.json` / `task.md` / `judge.md`
+  → 依赖自检 → 逐 case 跑 baseline/treatment 两轮 dsh headless
+  （approval=never + workspace-write）→ LLM judge（默认，`--judge-mode exact` 可切）
+  → 输出单个结果 JSON。包内无声明时**逐字回落**内置「CSV 数据清洗」语义。
+  `--check` 只解析与校验包（结构 + 依赖），不跑模型、不烧 token。
 - `profile/nju-lab-verify/` — 从 `dsh/profiles/` 同步（改 profile 后需重新同步 + 重建镜像）
 - `egress-proxy/nginx.conf` — 出栈白名单代理配置（见下）
 
-构建：`docker build -t nju-lab-verify:0.2.0-rc.2 .`
+构建：`docker build -t nju-lab-verify:0.2.0-rc.2-pkg1 .`
+（本机 `node:22.23.2-slim` 是等效基底，见 UPGRADE-playbook §4.4；跨机部署走 `docker save | load`）
+
+## 包驱动：题目与判据随数据集包走
+
+**为什么**：任务类型的知识原先写死在驱动代码里，于是「加一个实验类型 = 改驱动 + 重建镜像 +
+部署」；现在搬到数据集包，加类型只需重新上传数据集包（平台零动作）。
+
+| 文件（数据集 ZIP 根，全部可选） | 作用 |
+|---|---|
+| `manifest.json` | `outputFile` / `inputs` / `judgeMode` / `maxCases` / `requires` |
+| `task.md` | 题干：baseline 轮的唯一事实源；支持 `{{input}}`/`{{inputs}}`/`{{output}}`/`{{skill}}` |
+| `judge.md` | 评分细则，填进平台固定的判分外壳（外壳只钉 JSON 形状与差异容忍口径） |
+
+优先级：命令行（项目 `evalConfig`）> 包内 manifest > 内置默认。
+无以上三文件 → `source=builtin`，行为与改造前逐字一致（`server/fixtures/dataset/` 实测通过）。
+
+面向教师的完整规范见 **`docs/EXPERIMENT-PACKAGE-SPEC.md`**。
+
+## 预装依赖集（为什么必须预装）
+
+复验容器在 `--internal` 网络里、**无外网**（只放行模型 API 的 SNI 白名单），镜像层只读 ——
+容器内 `pip install` 不可能成功。所以：**依赖烘进镜像，包内 `manifest.requires` 声明，
+驱动开跑前自检**，缺失就明确失败（不静默降级）。
+
+当前预装（`PYTHON-PACKAGES.txt` 冻结清单在镜像 `/opt/verify/`）：
+
+```
+pandas numpy openpyxl python-dateutil requests beautifulsoup4 lxml PyYAML tabulate pytest
+系统命令：python3(含标准库) jq unzip zstd
+```
+
+包内 `requires.python` 按 **import 名**校验，同时认常见 pip 包名（`PyYAML`→`yaml`、
+`beautifulsoup4`→`bs4`、`python-dateutil`→`dateutil`、`Pillow`→`PIL`、`scikit-learn`→`sklearn` …）。
+
+加库 = 改 `Dockerfile` 的「预装依赖集」+ 重建镜像（一学期一两次）；**不要**指望容器联网装包。
+
+## 本地验证（不烧 token）
+
+```sh
+# 结构 + 依赖自检（宿主有 docker 即可）
+docker run --rm -v "$PWD/server/fixtures/sales-report:/p:ro" \
+  nju-lab-verify:0.2.0-rc.2-pkg1 --check --skill /p/template.zip --dataset /p/dataset.zip
+
+# 端到端（要 key，走默认 bridge 网络即可；平台内由 container-runtime 提供 internal + 代理）
+docker run --rm -e DEEPSEEK_API_KEY=<key> \
+  -v "$PWD/server/fixtures/sales-report:/p:ro" -v /tmp/out:/outputs \
+  nju-lab-verify:0.2.0-rc.2-pkg1 \
+  --skill /p/template.zip --dataset /p/dataset.zip --out /outputs/result.json --max-cases 1
+```
 
 ## 出栈白名单隔离（SNI 代理）
 
