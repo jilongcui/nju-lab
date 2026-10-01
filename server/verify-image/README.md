@@ -4,7 +4,7 @@
 
 ## 构成
 
-- `Dockerfile` → 镜像 `nju-lab-verify:0.2.0-rc.2-pkg1`（node:22-slim + 锁定
+- `Dockerfile` → 镜像 `nju-lab-verify:0.2.0-rc.2-pkg2`（node:22-slim + 锁定
   `@deepseek-ai/dsh@0.2.0-rc.2` + zstd/unzip/**jq**/python3 + 驱动 + profile
   + **预装教学依赖集**，见下）
 - `run-eval.mjs` — 复验驱动（**包驱动**）：解包 skill.zip/dataset.zip（resolveSkillRoot /
@@ -16,7 +16,7 @@
 - `profile/nju-lab-verify/` — 从 `dsh/profiles/` 同步（改 profile 后需重新同步 + 重建镜像）
 - `egress-proxy/nginx.conf` — 出栈白名单代理配置（见下）
 
-构建：`docker build -t nju-lab-verify:0.2.0-rc.2-pkg1 .`
+构建：`docker build -t nju-lab-verify:0.2.0-rc.2-pkg2 .`
 （本机 `node:22.23.2-slim` 是等效基底，见 UPGRADE-playbook §4.4；跨机部署走 `docker save | load`）
 
 ## 包驱动：题目与判据随数据集包走
@@ -45,8 +45,14 @@
 
 ```
 pandas numpy openpyxl python-dateutil requests beautifulsoup4 lxml PyYAML tabulate pytest
+scikit-learn scipy statsmodels matplotlib
+torch==2.14.1+cpu        ← CPU 版：PyPI 上 linux wheel 是 CUDA 版（+nvidia-*/triton，数 GB），
+                           不可用；官方 download.pytorch.org 本机不通 → 走镜像站 CPU 索引
 系统命令：python3(含标准库) jq unzip zstd
 ```
+
+⚠️ 体积与资源：`torch` 约 800MB，本镜像约 **2.3GB**；ML 实验建议把 `VERIFY_DOCKER_MEMORY`
+从默认 `1g` 调到 `2g`（njuserver 内存充足；本机内存紧张，慎调）。
 
 包内 `requires.python` 按 **import 名**校验，同时认常见 pip 包名（`PyYAML`→`yaml`、
 `beautifulsoup4`→`bs4`、`python-dateutil`→`dateutil`、`Pillow`→`PIL`、`scikit-learn`→`sklearn` …）。
@@ -58,12 +64,12 @@ pandas numpy openpyxl python-dateutil requests beautifulsoup4 lxml PyYAML tabula
 ```sh
 # 结构 + 依赖自检（宿主有 docker 即可）
 docker run --rm -v "$PWD/server/fixtures/sales-report:/p:ro" \
-  nju-lab-verify:0.2.0-rc.2-pkg1 --check --skill /p/template.zip --dataset /p/dataset.zip
+  nju-lab-verify:0.2.0-rc.2-pkg2 --check --skill /p/template.zip --dataset /p/dataset.zip
 
 # 端到端（要 key，走默认 bridge 网络即可；平台内由 container-runtime 提供 internal + 代理）
 docker run --rm -e DEEPSEEK_API_KEY=<key> \
   -v "$PWD/server/fixtures/sales-report:/p:ro" -v /tmp/out:/outputs \
-  nju-lab-verify:0.2.0-rc.2-pkg1 \
+  nju-lab-verify:0.2.0-rc.2-pkg2 \
   --skill /p/template.zip --dataset /p/dataset.zip --out /outputs/result.json --max-cases 1
 ```
 

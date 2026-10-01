@@ -113,18 +113,25 @@ dataset/
 - 自检通过 → 正常复验，结果 JSON 里带 `dependencyCheck`。
 - 自检失败 → **直接失败并明确报错**（不会跑到一半才发现脚本 ImportError）。
 
-当前镜像 `nju-lab-verify:0.2.0-rc.2-pkg1` 的预装集（`python3` + 系统命令）：
+当前镜像 `nju-lab-verify:0.2.0-rc.2-pkg2` 的预装集（`python3` + 系统命令）：
 
 | 类别 | 内容 |
 |---|---|
 | 表格/数值 | `pandas` `numpy` `openpyxl` `python-dateutil` |
 | 文本/网页/配置 | `requests` `beautifulsoup4` `lxml` `PyYAML` |
+| 传统机器学习 | `scikit-learn`（含 `scipy`）`statsmodels` |
+| 深度学习 | `torch`（**CPU 版** `2.14.1+cpu` —— 平台无 GPU，镜像里不含 CUDA） |
+| 出图 | `matplotlib` |
 | 测试与展示 | `pytest` `tabulate` |
 | 系统命令 | `python3`（含标准库）`jq` `unzip` `zstd` |
 | 其他 | Node 22 + dsh（平台运行时，勿依赖） |
 
+⚠️ **ML 类实验要留意资源**：`torch` 装完约 800MB，镜像整体 ~2.3GB；容器默认
+`VERIFY_DOCKER_MEMORY=1g / cpus=1`（见 `server/.env.example`），CPU 上跑训练会慢且可能 OOM ——
+建议 ML 实验把该值调到 `2g`（njuserver 内存充足；本机内存紧张，慎调）。
+
 需要新库 → 找平台维护者改 `server/verify-image/Dockerfile` 的「预装依赖集」并重建镜像
-（一学期一两次，可接受）；**不要**指望容器联网装包。
+（一学期一两次，可接受）；**不要**指望容器联网装包（容器在 `--internal` 网络里没有外网）。
 
 ## 5. 不写 manifest 会怎样
 
@@ -153,7 +160,7 @@ rm -f template.zip dataset.zip
 (cd dataset  && zip -qr ../dataset.zip .)
 
 # 1) 上传前自检（不跑模型、不烧 token）：结构 + 依赖
-docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg1 \
+docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg2 \
   --check --skill /p/template.zip --dataset /p/dataset.zip
 
 # 2) 上传拿 fileId（教师 token）

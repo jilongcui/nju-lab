@@ -41,7 +41,7 @@ curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN
 ## 上传前自检（不烧 token）
 
 ```sh
-docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg1 \
+docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg2 \
   --check --skill /p/template.zip --dataset /p/dataset.zip
 ```
 
@@ -59,7 +59,7 @@ docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg1 \
 ```sh
 docker run --rm --env-file /tmp/verify.env \
   -v "$PWD/server/fixtures/sales-report:/p:ro" -v "$PWD/.verify-scratch/out:/outputs" \
-  nju-lab-verify:0.2.0-rc.2-pkg1 \
+  nju-lab-verify:0.2.0-rc.2-pkg2 \
   --skill /p/template.zip --dataset /p/dataset.zip --out /outputs/sales.json --max-cases 1
 ```
 

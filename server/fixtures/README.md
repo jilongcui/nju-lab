@@ -57,7 +57,7 @@ curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN
 
 ```sh
 docker run --rm -v "$PWD/server/fixtures/sales-report:/p:ro" \
-  nju-lab-verify:0.2.0-rc.2-pkg1 --check --skill /p/template.zip --dataset /p/dataset.zip
+  nju-lab-verify:0.2.0-rc.2-pkg2 --check --skill /p/template.zip --dataset /p/dataset.zip
 ```
 
 注意：数据集 `expected.*` 是评分基准，修改任一 case 即视为新版本，注意已在进行中的实验不要中途换数据。

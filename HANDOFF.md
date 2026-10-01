@@ -24,12 +24,12 @@ NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已�
 优先级：命令行（项目 `evalConfig`）> 包内 manifest > 内置默认 —— 故 `DockerEvaluationRunner` **未显式配置时不再下发**
 `--judge-mode`/`--max-cases`。驱动新增 `--check`：只解析与校验包（结构 + 依赖），不跑模型、不烧 token，供上传前自检。
 运行时依赖（容器无外网、镜像层只读，装包只能在构建期）改为「**镜像预装教学依赖集 + 包内声明自检**」：
-新镜像 `nju-lab-verify:0.2.0-rc.2-pkg1` 预装 pandas/numpy/openpyxl/python-dateutil/requests/beautifulsoup4/lxml/PyYAML/tabulate/pytest + `jq`，
+新镜像 `nju-lab-verify:0.2.0-rc.2-pkg2` 预装 pandas/numpy/openpyxl/python-dateutil/requests/beautifulsoup4/lxml/PyYAML/tabulate/pytest + `jq`。**pkg2 追加 ML 依赖集**：scikit-learn（含 scipy）/statsmodels/matplotlib + **torch 2.14.1+cpu（CPU 版）** —— PyPI 上 linux 的 torch wheel 是 CUDA 版（wheel 554MB + `nvidia-*`/`triton`，装完数 GB，容器内存限额扛不住），官方 `download.pytorch.org` 本机不通，故走镜像站 CPU 索引（`mirror.sjtu.edu.cn/pytorch-wheels/cpu/`，`+cpu` 本地版本号只有它有 → 与 PyPI 并挂也不会误装 CUDA 版）；代价是 **verify 镜像 ~2.3GB**（torch 目录 773MB），ML 实验建议把 `VERIFY_DOCKER_MEMORY` 从 1g 调到 2g。
 包内 `manifest.requires` 声明、驱动开跑前自检，缺失**明确失败**（不静默降级）；冻结清单在镜像 `/opt/verify/PYTHON-PACKAGES.txt`。
 复验产物新增 `package`（包声明摘要：输出文件名/题干与细则来源/依赖）与 `dependencyCheck` 快照，进 `Evaluation.dossierSnapshot` 等字段，供批改页追溯评测口径。
 新增示例包 `server/fixtures/sales-report/`（第二个任务类型：销售数据汇总，3 个 case，`requires.python=["pandas"]` 用来压测预装+自检链路，含教师自用参考实现与独立交叉校验）；面向教师的规范见 `docs/EXPERIMENT-PACKAGE-SPEC.md`。
 **实测（本机，2026-10-01）**：旧 CSV 包回落路径 1/1 通过；`sales-report` manifest 路径 1/1 通过（judge 用的是包内 `judge.md` 细则）。
-**未做（需操作人确认后执行）**：重建并切换 `nju-lab-workspace:0.2.0-rc.2-pkg1`（was `FROM nju-lab-verify:0.2.0-rc.2`）、`systemctl` 重启后端、njuserver 同步新镜像（跨机走 `docker save | load`）。
+**未做（需操作人确认后执行）**：重建并切换 `nju-lab-workspace:0.2.0-rc.2-pkg2`（was `FROM nju-lab-verify:0.2.0-rc.2`）、`systemctl` 重启后端、njuserver 同步新镜像（跨机走 `docker save | load`）。
 **顺带发现（既有问题，未修）**：驱动 `extractUsage()` 统计的 token 明显偏低（一个 case 两轮仅 ~400 input），旧镜像 `0.2.0-rc.2` 复跑结果相同 → 与本次改造无关；因 `tokenCost < 30_000` 参与 `autoScoreSuggestion`，建议后续单独排查 session 日志的 usage 帧匹配。
 
 ## 1. 仓库布局

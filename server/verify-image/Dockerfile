@@ -2,7 +2,7 @@
 # profile(approval=never) + 复验驱动 run-eval.mjs + 预装教学依赖集。
 #
 # 构建（在 server/verify-image/ 下）：
-#   docker build -t nju-lab-verify:0.2.0-rc.2-pkg1 .
+#   docker build -t nju-lab-verify:0.2.0-rc.2-pkg2 .
 #
 # 「包驱动」的两半（见 run-eval.mjs 头部注释与 docs/EXPERIMENT-PACKAGE-SPEC.md）：
 #   1) 题目与评分口径随**数据集包**走（manifest.json / task.md / judge.md）——
@@ -29,15 +29,26 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # ---- 预装依赖集（教学常用集）----
-# 覆盖三类最常见的实验：表格数据处理（pandas/numpy/openpyxl）、文本与网页处理
-# （requests/beautifulsoup4/lxml/PyYAML）、脚本自测（pytest）。
+# 覆盖：表格数据处理（pandas/numpy/openpyxl）、文本与网页处理（requests/bs4/lxml/PyYAML）、
+# 脚本自测（pytest）、传统机器学习（scikit-learn/scipy/statsmodels）、
+# 深度学习与出图（pytorch CPU 版 / matplotlib）。
 # 基线镜像里的 Debian 有 PEP668 保护，故显式 --break-system-packages；
-# pandas/numpy 钉主版本上限，避免下次重建镜像时被大版本跳跃打乱学生脚本行为。
-# 冻结清单（含解析到的精确版本）留在镜像里，供驱动/运维排查与回归对照。
+# 主版本钉上限，避免下次重建镜像时被大版本跳跃打乱学生脚本行为。
 WORKDIR /opt/verify
 RUN pip3 install --no-cache-dir --break-system-packages \
       'pandas<4' 'numpy<3' 'openpyxl<4' 'python-dateutil<3' \
       'requests<3' 'beautifulsoup4<5' 'lxml<7' 'PyYAML<7' 'tabulate<1' 'pytest<10' \
+      'scikit-learn<2' 'matplotlib<4' 'statsmodels<1'
+
+# torch 单独一步，**只能用 CPU 版**：PyPI 上 linux 的 torch wheel 是 CUDA 版
+# （wheel 554MB + nvidia-*/triton 依赖，装完数 GB，复验容器的内存限额也扛不住），
+# 而 PyTorch 官方 CPU 源 download.pytorch.org 在本机不可达 → 走镜像站的 CPU 索引。
+# `+cpu` 本地版本号只有该索引有，所以同时挂 PyPI 也**不会**误装 CUDA 版；
+# 版本钉到具体 +cpu 版本，保证跨机重建拿到同一份运行时（升级时改这里 + 重建）。
+RUN pip3 install --no-cache-dir --break-system-packages \
+      --index-url https://pypi.org/simple \
+      --extra-index-url https://mirror.sjtu.edu.cn/pytorch-wheels/cpu/ \
+      'torch==2.14.1+cpu' \
  && python3 -m pip freeze > PYTHON-PACKAGES.txt \
  && rm -rf /root/.cache/pip
 
