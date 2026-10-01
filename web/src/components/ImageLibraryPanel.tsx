@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Empty, message, Space, Spin, Upload } from 'antd';
+import { Button, Empty, message, Space, Spin, Tooltip, Upload } from 'antd';
 import { CheckOutlined, UploadOutlined } from '@ant-design/icons';
 import { listFiles, uploadFile } from '../api';
 import client from '../api/client';
 import type { StoredFileInfo } from '../types';
+import ImageEditModal from './ImageEditModal';
 
 /** 幻灯片/章节插图允许的图片类型（SVG 经 <img> 加载不执行脚本，安全） */
 const IMAGE_ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml';
+/** 上传前可进编辑器（canvas 导出）的类型；GIF 会丢动画、SVG 会被栅格化，这两类直接传原图 */
+const EDITABLE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 const PAGE_SIZE = 24;
 /** 多图网格版式的上限（与 server deck.schema 一致） */
 const MAX_GRID_IMAGES = 4;
@@ -58,6 +61,7 @@ export default function ImageLibraryPanel({
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const [editFile, setEditFile] = useState<File | null>(null);
   // 缩略图异步填充完成后 bump 一下触发重渲染（缓存本体是模块级 Map）
   const [, setThumbTick] = useState(0);
 
@@ -107,6 +111,15 @@ export default function ImageLibraryPanel({
     });
   };
 
+  /** 选文件后的入口：位图先进编辑器（裁剪/旋转/尺寸），GIF/SVG 直接传原图 */
+  const handlePickFile = (file: File) => {
+    if (EDITABLE_TYPES.includes(file.type)) {
+      setEditFile(file);
+    } else {
+      void handleUpload(file);
+    }
+  };
+
   const handleUpload = async (file: File) => {
     setUploading(true);
     try {
@@ -139,16 +152,18 @@ export default function ImageLibraryPanel({
   return (
     <Space direction="vertical" size={12} style={{ width: '100%' }}>
       <Space style={{ display: 'flex', justifyContent: 'space-between' }}>
-        <Upload
-          accept={IMAGE_ACCEPT}
-          showUploadList={false}
-          customRequest={({ file }) => void handleUpload(file as File)}
-          disabled={uploading}
-        >
-          <Button icon={<UploadOutlined />} loading={uploading} size={compact ? 'small' : 'middle'}>
-            上传图片
-          </Button>
-        </Upload>
+        <Tooltip title="PNG/JPG/WebP 上传前可裁剪、旋转、调尺寸；GIF/SVG 直接传原图">
+          <Upload
+            accept={IMAGE_ACCEPT}
+            showUploadList={false}
+            customRequest={({ file }) => handlePickFile(file as File)}
+            disabled={uploading}
+          >
+            <Button icon={<UploadOutlined />} loading={uploading} size={compact ? 'small' : 'middle'}>
+              上传图片
+            </Button>
+          </Upload>
+        </Tooltip>
         <span style={{ fontSize: 12, opacity: 0.65 }}>
           {multiple ? '多选，按点选顺序排列（2–4 张）' : '点选一张图片'}
         </span>
@@ -258,6 +273,15 @@ export default function ImageLibraryPanel({
           {selected.length ? `（已选 ${selected.length} 张）` : ''}
         </Button>
       </Space>
+
+      <ImageEditModal
+        file={editFile}
+        onCancel={() => setEditFile(null)}
+        onConfirm={(edited) => {
+          setEditFile(null);
+          void handleUpload(edited);
+        }}
+      />
     </Space>
   );
 }

@@ -290,6 +290,104 @@ try {
       check('清理：删除现场生成的 deck', deckGone);
     }
   }
+  // 10) 图片上传编辑器：裁剪/旋转/输出尺寸（POST /api/files 一律拦截回 mock，不污染生产图库）
+  const uploadedBodies = [];
+  await page.route(/\/api\/files/, async (route) => {
+    const req = route.request();
+    if (req.method() !== 'POST') return route.continue();
+    uploadedBodies.push(req.postDataBuffer());
+    return route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        code: 0,
+        data: {
+          fileId: '00000000-0000-0000-0000-000000000000',
+          url: '/api/files/00000000-0000-0000-0000-000000000000',
+          originalName: 'verify-upload.png',
+          size: 1234,
+          sha256: 'verify',
+          mimeType: 'image/png',
+          createdAt: new Date().toISOString(),
+        },
+      }),
+    });
+  });
+
+  await page.goto(`${BASE}/teacher/chapters/${CHAPTER_ID}/edit`, { waitUntil: 'domcontentloaded' });
+  await page.getByText('章节内容（Markdown）').waitFor({ timeout: 20000 });
+  await page.getByRole('button', { name: '插入图片' }).click();
+  await page.waitForTimeout(1000);
+
+  // 页面内造一张 200x100 PNG（红底白字），避免依赖 fixture 文件
+  const pngBytes = await page.evaluate(async () => {
+    const c = document.createElement('canvas');
+    c.width = 200;
+    c.height = 100;
+    const x = c.getContext('2d');
+    x.fillStyle = '#e74c3c';
+    x.fillRect(0, 0, 200, 100);
+    x.fillStyle = '#ffffff';
+    x.font = '48px sans-serif';
+    x.fillText('T', 88, 68);
+    const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+    return Array.from(new Uint8Array(await blob.arrayBuffer()));
+  });
+  await page.locator('aside input[type="file"]').setInputFiles({
+    name: 'verify-upload.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(pngBytes),
+  });
+
+  // 编辑器弹出：裁剪器 + 旋转/尺寸控件
+  await page.locator('.ant-modal').filter({ hasText: '编辑图片' }).waitFor({ timeout: 5000 });
+  const cropperVisible = await page.locator('.reactEasyCrop_Container').isVisible();
+  check('上传弹出图片编辑器（裁剪器可见）', cropperVisible);
+  await page.waitForTimeout(800); // 等 onCropComplete 初始化输出尺寸
+  await page.screenshot({ path: `${SHOTS_DIR}/edit-05-image-editor.png` });
+  const sizeInputs = page.locator('.ant-modal .ant-input-number input');
+  const initW = await sizeInputs.nth(0).inputValue();
+  const initH = await sizeInputs.nth(1).inputValue();
+  check('输出尺寸默认跟随裁剪框（原图 200x100）', initW === '200' && initH === '100', `${initW}x${initH}`);
+
+  // 右转 90° → 输出尺寸应变 100x200
+  await page.locator('.ant-modal .anticon-rotate-right').click();
+  await page.waitForFunction(
+    () => {
+      const inputs = document.querySelectorAll('.ant-modal .ant-input-number input');
+      return inputs[0]?.value === '100' && inputs[1]?.value === '200';
+    },
+    null,
+    { timeout: 5000 },
+  );
+  check('旋转 90° 后输出尺寸联动', true, '100x200');
+
+  // 手改宽=50（锁定比例 → 高自动 100），确认上传 → 拦截到的 PNG 应为 50x100
+  await sizeInputs.nth(0).fill('50');
+  await page.waitForTimeout(300);
+  const linkedH = await sizeInputs.nth(1).inputValue();
+  await page.locator('.ant-modal-footer .ant-btn-primary').click();
+  await page.waitForTimeout(1500);
+  const pngSig = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+  const body = uploadedBodies[0];
+  const at = body ? body.indexOf(pngSig) : -1;
+  const gotW = at >= 0 ? body.readUInt32BE(at + 16) : 0;
+  const gotH = at >= 0 ? body.readUInt32BE(at + 20) : 0;
+  check('编辑后上传：旋转+缩放烘培进文件', linkedH === '100' && gotW === 50 && gotH === 100, `锁定高=${linkedH} 实际=${gotW}x${gotH}`);
+
+  const newItem = page.locator('aside').getByText('verify-upload.png');
+  check('新图出现在图库并被选中', (await newItem.count()) >= 1);
+
+  // GIF/SVG 不进编辑器：直接传原图（选 SVG 验证）
+  await page.locator('aside input[type="file"]').setInputFiles({
+    name: 'verify-direct.svg',
+    mimeType: 'image/svg+xml',
+    buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>'),
+  });
+  await page.waitForTimeout(1000);
+  const editorOpened = await page.locator('.ant-modal').filter({ hasText: '编辑图片' }).isVisible().catch(() => false);
+  check('SVG 跳过编辑器直接上传', !editorOpened && uploadedBodies.length === 2, `编辑器${editorOpened ? '弹出' : '未弹出'} POST=${uploadedBodies.length}`);
+  await page.unroute(/\/api\/files/).catch(() => {});
 } catch (err) {
   check(`执行异常：${err.message}`, false);
   await page.screenshot({ path: `${SHOTS_DIR}/edit-error.png` }).catch(() => {});
