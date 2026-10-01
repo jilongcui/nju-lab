@@ -83,6 +83,18 @@ NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已�
 **删章后再新建会撞号**（那两个重复的 order=3 就是这么来的）；而解锁规则用
 `chapter.order < ownChapter.order` 判定"前置章节"，order 相同时两章互为"之后" → 领取条件可能算错。
 若要修：改成 `max(order) + 1` 并给教师提供重排/上下移，或把前置判定改成"按 order 排序后的位置比较"。
+
+⑧ **已按方法 1 修掉 ⑦ 的隐患：order 分配改 `max(order) + 1` + 新增重排接口** ——
+- 后端 `upsertChapter` 新建章节不再用 `count + 1`（删章后会与已有 order 撞号），改用 `MAX(order) + 1`；
+- 新增 `POST /api/courses/:id/chapters/reorder`（`ReorderChaptersDto { chapterIds: string[] }`）：
+  按传入顺序把 `order` 重写为 `1..N`，**必须传该课程全部章节 id**（漏传 / 重复 / 不属于本课程 → 400），
+  顺带把历史遗留的重复/跳号 order 规范化；
+- 教师端章节行新增**上移 / 下移**按钮（交换位置后整体重排）；新建章节「排序号」默认值改为 `max(order) + 1`；
+- **数据已规范化**：5 门课各 reorder 一次 —— 「人工智能基础概论」`order` 从 `[1,2,3,3,4,…,12]` → `1..13`，其余本就是 `1..2`；
+- **实测**：规范化后 order 连续；漏传章节 → `400 章节列表不完整：本课程有 13 个章节，收到 1 个`；
+  在测试课程新建章节 `order = max + 1 = 3`（临时章节已删）；
+- 后端重启 + 前端重新构建部署（4 个引用资源 200 + MIME 正确 + index.html md5 一致）。
+  → ⑦ 里"order 重复会让解锁规则判定错乱"的风险随之解除（order 不再有重复值）。
 **顺带发现（既有问题，未修）**：驱动 `extractUsage()` 统计的 token 明显偏低（一个 case 两轮仅 ~400 input），旧镜像 `0.2.0-rc.2` 复跑结果相同 → 与本次改造无关；因 `tokenCost < 30_000` 参与 `autoScoreSuggestion`，建议后续单独排查 session 日志的 usage 帧匹配。
 
 ## 1. 仓库布局

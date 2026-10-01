@@ -237,11 +237,19 @@ export class CoursesService {
       });
       return this.chapterRepo.save(chapter);
     }
-    const count = await this.chapterRepo.count({ where: { courseId } });
+    // 用 max(order) + 1 而不是 count + 1：删过章节后 count 会小于现有最大 order，
+    // 再按 count 加一就会与已有章节**撞号**（曾导致同一课程出现两个 order=3，
+    // 而解锁规则用 order 比较前置章节 → 两章互为"之后"，学生领取条件算错）
+    const maxRow = await this.chapterRepo
+      .createQueryBuilder('chapter')
+      .select('MAX(chapter.order)', 'max')
+      .where('chapter.courseId = :courseId', { courseId })
+      .getRawOne<{ max: number | null }>();
+    const nextOrder = Number(maxRow?.max ?? 0) + 1;
     const chapter = this.chapterRepo.create({
       courseId,
       title: dto.title,
-      order: dto.order ?? count + 1,
+      order: dto.order ?? nextOrder,
       content: dto.content ?? null,
       exampleSkills: dto.exampleSkills ?? null,
       status: dto.status ?? ChapterStatus.DRAFT,
@@ -249,8 +257,45 @@ export class CoursesService {
     return this.chapterRepo.save(chapter);
   }
 
-  async listChapters(user: User, courseId: string) {
-    const course = await this.courseRepo.findOne({ where: { id: courseId } });
+  /**
+   * 重排章节顺序：按传入 id 的顺序把 `order` 重写为 `1..N`（顺带把重复/跳号的 order 规范化）。
+   * 必须传该课程的**全部**章节 id —— 漏传 / 重复 / 不属于本课程都会被拒，
+   * 避免"静默把某章挤到末尾"这种悄悄改序。
+   */
+  async reorderChapters(user: User, courseId: string, chapterIds: string[]) {
+    await this.getOwnedCourse(user, courseId);
+    const chapters = await this.chapterRepo.find({ where: { courseId } });
+    const byId = new Map(chapters.map((c) => [c.id, c]));
+    if (chapterIds.length !== chapters.length) {
+      throw new BadRequestException(
+        `章节列表不完整：本课程有 ${chapters.length} 个章节，收到 ${chapterIds.length} 个`,
+      );
+    }
+    const seen = new Set<string>();
+    chapterIds.forEach((id) => {
+      if (!byId.has(id)) {
+        throw new BadRequestException(`章节不属于该课程：${id}`);
+      }
+      if (seen.has(id)) {
+        throw new BadRequestException(`章节 id 重复：${id}`);
+      }
+      seen.add(id);
+    });
+    const ordered = chapterIds.map((id, index) => {
+      const chapter = byId.get(id)!;
+      chapter.order = index + 1;
+      return chapter;
+    });
+    await this.chapterRepo.save(ordered);
+    return ordered.map((c) => ({
+      id: c.id,
+      title: c.title,
+      order: c.order,
+      status: c.status,
+    }));
+  }
+
+  async listChapters(user: User, courseId: string) {    const course = await this.courseRepo.findOne({ where: { id: courseId } });
     if (!course) {
       throw new NotFoundException('课程不存在');
     }

@@ -139,6 +139,12 @@ export const saveChapter = (courseId: string, data: Partial<Chapter>) =>
   client.post<unknown, Chapter>(`/courses/${courseId}/chapters`, data);
 export const getChapter = (id: string) => client.get<unknown, Chapter>(`/chapters/${id}`);
 export const deleteChapter = (id: string) => client.delete<unknown, null>(`/chapters/${id}`);
+/**
+ * 重排章节：按传入 id 的顺序把 `order` 重写为 1..N（教师端上移/下移、整理序号）。
+ * 必须传该课程的**全部**章节 id，漏传会被后端拒绝。
+ */
+export const reorderChapters = (courseId: string, chapterIds: string[]) =>
+  client.post<unknown, Chapter[]>(`/courses/${courseId}/chapters/reorder`, { chapterIds });
 
 // ---------- 实验项目 ----------
 export const listProjects = () =>

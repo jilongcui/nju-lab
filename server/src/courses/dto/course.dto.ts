@@ -100,6 +100,18 @@ export class UpsertChapterDto {
   status?: ChapterStatus;
 }
 
+/**
+ * 章节重排：按数组顺序把 `order` 重写为 `1..N`。
+ * 必须传该课程的**全部**章节 id —— 漏传会被拒，避免"静默把某章挤到末尾"。
+ * 顺带用于把历史遗留的重复/跳号 order 规范化（见 HANDOFF ⑦）。
+ */
+export class ReorderChaptersDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsUUID('4', { each: true })
+  chapterIds: string[];
+}
+
 export class EnrollStudentsDto {
   @IsArray()
   @ArrayNotEmpty()

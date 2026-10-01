@@ -28,6 +28,8 @@ import {
   Typography,
 } from 'antd';
 import {
+  ArrowDownOutlined,
+  ArrowUpOutlined,
   DeleteOutlined,
   DownCircleOutlined,
   EditOutlined,
@@ -49,6 +51,7 @@ import {
   listStudents,
   rejectApplication,
   removeEnrollment,
+  reorderChapters,
   saveChapter,
   updateCourse,
 } from '../../api';
@@ -216,6 +219,20 @@ export default function CourseDetail() {
   const handleDeleteChapter = async (ch: Chapter) => {
     await deleteChapter(ch.id);
     message.success('章节已删除');
+    await load();
+  };
+
+  /**
+   * 上移 / 下移章节：交换位置后整体重排（后端把 order 重写为 1..N）。
+   * 顺带把历史遗留的重复/跳号 order 规范化。
+   */
+  const handleMoveChapter = async (ch: Chapter, dir: -1 | 1) => {
+    const idx = chapters.findIndex((c) => c.id === ch.id);
+    const target = idx + dir;
+    if (idx < 0 || target < 0 || target >= chapters.length) return;
+    const ids = chapters.map((c) => c.id);
+    [ids[idx], ids[target]] = [ids[target], ids[idx]];
+    await reorderChapters(courseId, ids);
     await load();
   };
 
@@ -413,6 +430,24 @@ export default function CourseDetail() {
               renderItem={(ch, idx) => (
                 <List.Item
                   actions={[
+                    <Button
+                      key="up"
+                      size="small"
+                      type="link"
+                      icon={<ArrowUpOutlined />}
+                      title="上移（重排后 order 会重写为 1..N）"
+                      disabled={idx === 0}
+                      onClick={() => void handleMoveChapter(ch, -1)}
+                    />,
+                    <Button
+                      key="down"
+                      size="small"
+                      type="link"
+                      icon={<ArrowDownOutlined />}
+                      title="下移（重排后 order 会重写为 1..N）"
+                      disabled={idx === chapters.length - 1}
+                      onClick={() => void handleMoveChapter(ch, 1)}
+                    />,
                     <Link key="edit" to={`/teacher/chapters/${ch.id}/edit`}>
                       <EditOutlined /> 编辑内容
                     </Link>,
@@ -777,8 +812,8 @@ export default function CourseDetail() {
           <Form.Item
             name="order"
             label="排序号"
-            initialValue={chapters.length + 1}
-            extra="只决定章节先后顺序（越小越靠前）；页面上的「第 N 章」按实际位置自动编号，与本值无关"
+            initialValue={chapters.reduce((m, c) => Math.max(m, c.order), 0) + 1}
+            extra="只决定章节先后顺序（越小越靠前）；页面上的「第 N 章」按实际位置自动编号，与本值无关。用章节行的上移/下移可自动重排为连续序号"
           >
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>

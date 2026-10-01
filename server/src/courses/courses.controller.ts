@@ -15,6 +15,7 @@ import { CoursesService } from './courses.service';
 import {
   CreateCourseDto,
   EnrollStudentsDto,
+  ReorderChaptersDto,
   UpdateCourseDto,
   UpsertChapterDto,
 } from './dto/course.dto';
@@ -74,6 +75,17 @@ export class CoursesController {
   @Get(':id/chapters')
   listChapters(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.coursesService.listChapters(user, id);
+  }
+
+  /** 重排章节：按传入 id 顺序把 order 重写为 1..N（教师端上移/下移、整理序号） */
+  @Post(':id/chapters/reorder')
+  @Roles(UserRole.TEACHER)
+  reorderChapters(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReorderChaptersDto,
+  ) {
+    return this.coursesService.reorderChapters(user, id, dto.chapterIds);
   }
 
   @Post(':id/enrollments')
