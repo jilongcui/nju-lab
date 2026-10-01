@@ -122,6 +122,14 @@ export class UpdateProjectDto {
   @MaxLength(128)
   title?: string;
 
+  /**
+   * 移动实验项目到同一课程内的其它章节（"挂错章节"的纠正路径）。
+   * 跨课程移动不允许 —— 那会牵连解锁规则与课程归属，属于另一件事。
+   */
+  @IsOptional()
+  @IsUUID()
+  chapterId?: string;
+
   @IsOptional()
   @IsString()
   objectives?: string;

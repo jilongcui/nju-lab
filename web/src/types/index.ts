@@ -167,6 +167,10 @@ export interface EvalConfig {
   reasoningEffort?: string;
   tools?: string[];
   timeoutSeconds?: number;
+  /** 复验评判模式（llm | exact）：通常由数据集包 manifest 声明，这里只做平台级覆盖 */
+  judgeMode?: 'llm' | 'exact';
+  /** 成本控制：最多跑几个 case（0 或缺省 = 全部） */
+  maxCases?: number;
 }
 
 export interface RubricItem {

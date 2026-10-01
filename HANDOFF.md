@@ -57,6 +57,18 @@ NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已�
 `deploy/deploy-web-lab.sh` 的 2–5 步（备份 → **先写 assets** → md5 校验 → **最后切 index.html**），
 再按脚本第 6 步逐个探测线上 index.html 引用的资源（4 个全为 200 + `application/javascript`/`text/css`），
 线上 index.html md5 与 `web/dist` 一致。后端随之重启（PID 3555145 → 3572017）。
+
+⑤ **ml-basics 已绑定并把项目归位**：上传 `template.zip`（fileId `7de02091-2fcd-4585-96d2-7d5959300aae`）与
+`dataset.zip`（fileId `e5e5ccf5-885a-441e-b84d-395d995267b3`），PATCH 到项目「机器学习基础模型构建与运行」
+（`509af0d0-0242-4262-abda-3f300728be20`）；同时该项目从课程「人工智能基础概论」的 order=1「什么是人工智能」
+**移到 order=2「什么是机器学习」**（原先挂错章节）。
+
+⑥ **新增「移动实验项目到其它章节」能力**（原先 `UpdateProjectDto` 没有 `chapterId`，只能进 DB 改）：
+`UpdateProjectDto.chapterId`（可选 UUID）+ `ProjectsService.assertChapterInCourse`（章节须存在且属**同一课程**，
+跨课程 → 400，已实测）；教师页编辑弹窗新增「所属章节」下拉（选项取自 `GET /courses/:id` 的 `chapters`）。
+**顺带修坑**：教师页保存项目会抹掉 `evalConfig.judgeMode` / `maxCases`（表单不编辑这两项、PATCH 又是整体替换）——
+现在提交时从 `project.evalConfig` 原样带回；前端 `EvalConfig` 类型补齐这两项。前端已按 ④ 的流程重新构建部署
+（4 个引用资源 200 + 正确 MIME，index.html md5 与 `web/dist` 一致）。
 **顺带发现（既有问题，未修）**：驱动 `extractUsage()` 统计的 token 明显偏低（一个 case 两轮仅 ~400 input），旧镜像 `0.2.0-rc.2` 复跑结果相同 → 与本次改造无关；因 `tokenCost < 30_000` 参与 `autoScoreSuggestion`，建议后续单独排查 session 日志的 usage 帧匹配。
 
 ## 1. 仓库布局

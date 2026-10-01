@@ -26,6 +26,7 @@ import {
   deleteProject,
   downloadGradesCsv,
   downloadStoredFile,
+  getCourse,
   getProject,
   getProjectDashboard,
   listProjectSubmissions,
@@ -33,7 +34,7 @@ import {
   updateProject,
   uploadFile,
 } from '../../api';
-import type { ExperimentProject, ProjectDashboard, ProjectSubmissionRow, RubricItem, StoredFileInfo } from '../../types';
+import type { Chapter, ExperimentProject, ProjectDashboard, ProjectSubmissionRow, RubricItem, StoredFileInfo } from '../../types';
 import StatusTag from '../../components/StatusTag';
 import MarkdownView from '../../components/MarkdownView';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
@@ -115,6 +116,8 @@ export default function ProjectDetail() {
   const [saving, setSaving] = useState(false);
   const [templateFile, setTemplateFile] = useState<StoredFileInfo | null>(null);
   const [datasetFile, setDatasetFile] = useState<StoredFileInfo | null>(null);
+  /** 所属章节候选（同课程内的章节）—— 用于纠正"实验挂错章节" */
+  const [chapters, setChapters] = useState<Chapter[]>([]);
   const [form] = Form.useForm();
 
   useAuxiliaryPanel(
@@ -149,12 +152,21 @@ export default function ProjectDetail() {
     void load();
   }, [load]);
 
+  // 章节候选：只在课程变化时拉一次（getCourse 返回的 chapters 已带 order/title）
+  useEffect(() => {
+    if (!project?.courseId) return;
+    void getCourse(project.courseId)
+      .then((c) => setChapters([...(c.chapters ?? [])].sort((a, b) => a.order - b.order)))
+      .catch(() => setChapters([]));
+  }, [project?.courseId]);
+
   const openEdit = () => {
     if (!project) return;
     setTemplateFile(project.skillTemplate ?? null);
     setDatasetFile(project.testDataset ?? null);
     form.setFieldsValue({
       title: project.title,
+      chapterId: project.chapterId,
       objectives: project.objectives,
       background: project.background,
       description: project.description,
@@ -178,6 +190,8 @@ export default function ProjectDetail() {
       // 后端 PATCH 为整体替换，必须提交完整字段集
       await updateProject(projectId, {
         title: values.title,
+        // 所属章节：允许纠正"实验挂错章节"（后端校验限同一课程内）
+        chapterId: values.chapterId,
         objectives: values.objectives ?? null,
         background: values.background ?? null,
         description: values.description ?? null,
@@ -190,6 +204,10 @@ export default function ProjectDetail() {
           reasoningEffort: values.evalEffort,
           tools: values.evalTools ?? [],
           timeoutSeconds: values.evalTimeout,
+          // 下面两项不在本表单里编辑，但要原样带回去 —— 否则每次保存都会把它们抹掉
+          // （平台侧可用它们做成本控制；缺省时由数据集包的 manifest 决定）
+          ...(project?.evalConfig?.judgeMode ? { judgeMode: project.evalConfig.judgeMode } : {}),
+          ...(project?.evalConfig?.maxCases ? { maxCases: project.evalConfig.maxCases } : {}),
         },
         rubric: (values.rubric ?? []) as RubricItem[],
         unlockRule: { type: values.unlockType ?? 'default' },
@@ -411,6 +429,16 @@ export default function ProjectDetail() {
         <Form form={form} layout="vertical">
           <Form.Item name="title" label="实验标题" rules={[{ required: true, message: '请输入标题' }]}>
             <Input />
+          </Form.Item>
+          <Form.Item
+            name="chapterId"
+            label="所属章节"
+            extra="用于纠正「实验挂错章节」：只可在本课程内移动。默认解锁规则按新章节重新判定（需完成它之前的全部已发布章节）"
+          >
+            <Select
+              style={{ width: 360 }}
+              options={chapters.map((c) => ({ label: `${c.order}. ${c.title}`, value: c.id }))}
+            />
           </Form.Item>
           <Form.Item name="objectives" label="实验目标">
             <Input.TextArea rows={3} />

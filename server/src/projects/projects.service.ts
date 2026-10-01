@@ -156,6 +156,9 @@ export class ProjectsService {
     await this.assertFileExists(rest.skillTemplateFileId, 'Skill 模板');
     await this.assertFileExists(rest.testDatasetFileId, '测试数据集');
     this.assertEvalConfig(rest.evalConfig);
+    if (rest.chapterId) {
+      await this.assertChapterInCourse(rest.chapterId, project.courseId);
+    }
     // class-transformer 会把 DTO 未提交的字段补成 undefined，须剔除，
     // 否则部分字段的 PATCH 会把实体其他字段在内存中抹成 undefined（DB 无恙但响应缺字段）
     for (const key of Object.keys(rest) as (keyof typeof rest)[]) {
@@ -506,6 +509,20 @@ export class ProjectsService {
       throw new BadRequestException(
         `推理档位不合法：${String(effort)}（只允许 ${EFFORT_WHITELIST.join(' / ')}，留空用 provider 默认）`,
       );
+    }
+  }
+
+  /**
+   * 校验目标章节存在且属于同一课程 —— 移动实验项目（`PATCH chapterId`）用。
+   * 课程归属本身已由 `assertCourseOwner` 把关，这里只补章节与课程的从属关系。
+   */
+  private async assertChapterInCourse(chapterId: string, courseId: string) {
+    const chapter = await this.chapterRepo.findOne({ where: { id: chapterId } });
+    if (!chapter) {
+      throw new NotFoundException(`章节不存在（chapterId: ${chapterId}）`);
+    }
+    if (chapter.courseId !== courseId) {
+      throw new BadRequestException('实验项目只能移到同一课程内的其它章节');
     }
   }
 
