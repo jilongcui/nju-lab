@@ -25,6 +25,9 @@ import {
   UnlockRule,
 } from './project.entity';
 
+/** 推理档位白名单（详见 assertEvalConfig 的注释） */
+const EFFORT_WHITELIST = ['off', 'low', 'high', 'max'];
+
 @Injectable()
 export class ProjectsService {
   constructor(
@@ -93,6 +96,7 @@ export class ProjectsService {
     await this.assertCourseOwner(teacher, chapter.courseId);
     await this.assertFileExists(dto.skillTemplateFileId, 'Skill 模板');
     await this.assertFileExists(dto.testDatasetFileId, '测试数据集');
+    this.assertEvalConfig(dto.evalConfig);
     const project = this.projectRepo.create({
       courseId: chapter.courseId,
       chapterId: chapter.id,
@@ -151,6 +155,7 @@ export class ProjectsService {
     const { deadline, ...rest } = dto;
     await this.assertFileExists(rest.skillTemplateFileId, 'Skill 模板');
     await this.assertFileExists(rest.testDatasetFileId, '测试数据集');
+    this.assertEvalConfig(rest.evalConfig);
     // class-transformer 会把 DTO 未提交的字段补成 undefined，须剔除，
     // 否则部分字段的 PATCH 会把实体其他字段在内存中抹成 undefined（DB 无恙但响应缺字段）
     for (const key of Object.keys(rest) as (keyof typeof rest)[]) {
@@ -479,6 +484,29 @@ export class ProjectsService {
     await this.filesService.getFile(fileId).catch(() => {
       throw new BadRequestException(`${label}文件不存在（fileId: ${fileId}）`);
     });
+  }
+
+  /**
+   * 推理档位白名单 —— 与 dsh `dsh-llm-deepseek` **实际接受**的集合对齐
+   * （2026-10-01 在 pkg2 镜像内实测：off / low / high / max 均可跑通复验）。
+   *
+   * 其他取值会在学生 claim 之后的**每个请求**上、于网络 I/O 之前抛
+   * `UNSUPPORTED_REASONING_EFFORT`，等于让整个实验不可做 —— 故在写入入口拦下。
+   * 注意这与 DeepSeek 官方 API 的 `reasoning_effort`（none|minimal|medium|xhigh…）不是一回事。
+   */
+  private assertEvalConfig(evalConfig: unknown) {
+    if (evalConfig == null || typeof evalConfig !== 'object') {
+      return;
+    }
+    const effort = (evalConfig as { reasoningEffort?: unknown }).reasoningEffort;
+    if (effort === undefined || effort === null || effort === '') {
+      return;
+    }
+    if (typeof effort !== 'string' || !EFFORT_WHITELIST.includes(effort)) {
+      throw new BadRequestException(
+        `推理档位不合法：${String(effort)}（只允许 ${EFFORT_WHITELIST.join(' / ')}，留空用 provider 默认）`,
+      );
+    }
   }
 
   private async assertCourseOwner(user: User, courseId: string) {

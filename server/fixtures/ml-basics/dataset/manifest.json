@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "name": "ml-basics",
+  "title": "机器学习基础模型构建与运行",
+  "outputFile": "output.json",
+  "inputs": ["input.csv", "params.json"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "requires": { "python": ["sklearn", "pandas", "numpy"] }
+}

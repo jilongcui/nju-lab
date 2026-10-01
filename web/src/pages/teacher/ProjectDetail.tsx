@@ -40,8 +40,19 @@ import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
 
 const { Title, Text, Paragraph } = Typography;
 
-// DeepSeek 官方实测（2026-09-21）：reasoning_effort 合法值 none|minimal|low|medium|high|xhigh|max
-const EFFORT_OPTIONS = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map((v) => ({ label: v, value: v }));
+/**
+ * 推理档位可选值 —— 必须与 dsh `dsh-llm-deepseek` **实际接受**的集合一致。
+ *
+ * 2026-10-01 在 pkg2 镜像内实测：`off` / `low` / `high` / `max` 均可跑通复验；
+ * 其余取值会在学生 claim 之后**每个请求**上、于网络 I/O 之前抛
+ * `UNSUPPORTED_REASONING_EFFORT`（源码里是 `["low","high","max"].includes(effort) ||
+ * thinking === "disabled" && effort === "off"` 的判定）。
+ *
+ * ⚠️ 这**不是** DeepSeek 官方 API 的 `reasoning_effort`（none|minimal|low|medium|high|xhigh|max），
+ * 早先误按官方取值给的下拉框会把学生端整个实验卡死。
+ * 留空 = 用 provider 默认（verify profile 里钉的是 low）。
+ */
+const EFFORT_OPTIONS = ['off', 'low', 'high', 'max'].map((v) => ({ label: v, value: v }));
 
 function percent(rate?: number) {
   return rate != null ? Math.round(rate * 100) : null;
@@ -421,7 +432,7 @@ export default function ProjectDetail() {
             <Form.Item
               name="evalEffort"
               label="推理档位"
-              extra="留空：DeepSeek provider 不支持推理档位，填了会让学生端 claim 后每个请求都失败"
+              extra="off / low / high / max（dsh 实际支持的集合）；留空 = 用 provider 默认（low）。填其他值（如官方 API 的 medium/xhigh）会让学生端每个请求都失败"
             >
               <Select options={EFFORT_OPTIONS} allowClear style={{ width: 140 }} />
             </Form.Item>

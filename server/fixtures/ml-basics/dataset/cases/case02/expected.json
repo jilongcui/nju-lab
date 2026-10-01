@@ -1,0 +1,18 @@
+{
+  "model": "LogisticRegression",
+  "n_train": 150,
+  "n_test": 50,
+  "metrics": {
+    "accuracy": 0.9,
+    "confusion_matrix": [
+      [
+        22,
+        4
+      ],
+      [
+        1,
+        23
+      ]
+    ]
+  }
+}

@@ -1,7 +1,8 @@
 # 示例实验材料（fixtures）
 
-平台上的示例实验包源文件。仓库里有**两个任务类型**，其中 `sales-report` 演示并验证
-「任务知识随包走」的包驱动流程（规范见 `docs/EXPERIMENT-PACKAGE-SPEC.md`）。
+平台上的示例实验包源文件。仓库里有**三个任务类型**：`csv-cleaner`（内置回落型）、
+`sales-report`（包驱动 + 表格汇总）、`ml-basics`（包驱动 + ML 依赖）。
+后两个演示并验证「任务知识随包走」的包驱动流程（规范见 `docs/EXPERIMENT-PACKAGE-SPEC.md`）。
 
 ## 1. csv-cleaner + dataset —— CSV 数据清洗（内置回落型）
 
@@ -30,6 +31,27 @@ sales-report/
 - 三个 case 分别覆盖：基础汇总、`top_product` 并列、`units=0` 与小额金额
 - `manifest.requires.python = ["pandas"]`：用来验证「镜像预装集 + 包内声明自检」这条链路
 - 期望值由 `reference/report.py --regen-cases` 生成，并用 Decimal 独立实现交叉复核（MATCH）
+
+## 3. ml-basics —— 机器学习基础建模（包驱动 + ML 依赖，第三个任务类型）
+
+对应平台上那个 draft 项目「机器学习基础模型构建与运行」。
+
+```
+ml-basics/
+├── template/     → template.zip   （SKILL.md 骨架 + scripts/train.py + references/checklist.md）
+├── dataset/      → dataset.zip    （manifest.json + task.md + judge.md + README + cases/*）
+├── reference/                     （**教师自用，不打包、不下发**）
+│   ├── gen_cases.py               （固定种子生成 cases 输入，可重跑）
+│   └── solve.py                   （参考实现；--regen-cases 重算 expected.json）
+└── README.md
+```
+
+- 任务：`input.csv` + `params.json` → `output.json`（按 params 口径训练评估，输出 `model`/`n_train`/`n_test`/`metrics`）
+- 三个 case：`LinearRegression`（r2=0.9861/mae=0.4626）、`LogisticRegression`（accuracy=0.90）、
+  `LogisticRegression(class_weight="balanced")` 类别不平衡（accuracy=0.92）
+- `manifest.requires.python = ["sklearn", "pandas", "numpy"]` —— 依赖基于 pkg2 镜像的 ML 预装集
+- ⚠️ 期望值**必须在 pkg2 镜像里生成**（sklearn 版本决定指标）：
+  `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/w" --entrypoint python3 nju-lab-verify:0.2.0-rc.2-pkg2 /w/reference/solve.py --regen-cases`
 
 ## 修改后重新发布
 

@@ -33,6 +33,30 @@ NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已�
 **2026-10-01：本次改动已部署到生产（就是这台机器）** —— `server/` `npm run build` → `kill $(systemctl show nju-lab -p MainPID --value)`（`Restart=always` + `RestartSec=5` 拉起，旧 PID 1116643 → 新 PID 3555145）→ 冒烟通过：`POST 127.0.0.1:3100/api/auth/login` **201**；经 nginx `Host: medai.nju.edu.cn` 的 `/lab/` **200**、`/lab/api/auth/login` **201**；编译产物确认运行中的服务使用 `nju-lab-verify:0.2.0-rc.2-pkg2` 与 `nju-lab-workspace:0.2.0-rc.2-pkg2`（`pkg1` 镜像保留作回滚点）。前端产物未动（本次只改 `server/`），无需重新部署。
 
 > **⚠️ 环境澄清（2026-10-01 实测，纠正 §2 与 §2.1 的并列叙述）**：**njuserver 就是这台机器本身** —— `/data` 957G（`ubuntu--vg-lab--data`）、Node 在 `~/opt/node24`、静态产物 `/var/www/lab`、服务单元 `WorkingDirectory=/home/ubuntu/nju-lab/server`、**系统 MySQL**（无 mysql 容器）、nginx 唯一站配置 `sites-enabled/cms.conf`（`server_name medai.nju.edu.cn`，`/lab` 由 `snippets/medai-lab.conf` 提供；`lab.xiaohe.biz` 只是落到同一台 nginx 的另一 Host）。因此**不存在需要跨机 `docker save | load` 的第二部署点**；本机沙箱里也没有 `ssh njuserver` 的凭据与 config 条目（`~/.ssh/config` 无该 Host、`known_hosts` 无记录、该机只接受密码认证）。§2 中「docker `nju-lab-mysql` / `sites-enabled/lab.conf` / 根分区仅剩 10G」等描述**与当前实测不符**，勿据此判断现状。**待办影响**：学生工作台的旧容器（`nju-lab-workspace:0.1.5-rc.2`）会在这名学生下次进入时被 reclaim 重建为 pkg2，其会话上下文丢失。
+
+**2026-10-01（续）：推理档位白名单 + ML 实验包 + 复验内存 2g** ——
+
+① **推理档位必须用 dsh 的取值集合**（原先按 DeepSeek **官方 API** 给的下拉框会把学生端卡死）：
+`dsh-llm-deepseek` 实际只接受 `off|low|high|max`（源码判定 `["low","high","max"].includes(effort) || thinking==="disabled" && effort==="off"`），
+2026-10-01 在 pkg2 镜像内实测 `off`、`low` 都能跑通复验；而教师端选项是官方 API 的 `none|minimal|low|medium|high|xhigh|max`
+→ 选到 `none/minimal/medium/xhigh` 会让学生 claim 之后**每个请求**抛 `UNSUPPORTED_REASONING_EFFORT`，实验直接做不了。
+已修：`web/src/pages/teacher/ProjectDetail.tsx` 的 `EFFORT_OPTIONS` → `off/low/high/max` + 文案订正；
+后端新增 `ProjectsService.assertEvalConfig` 白名单（create / update 两条路径都拦，实测 PATCH `medium` → 400 且报错明确）；
+`seed.ts` 里「deepseek-official 完全不支持 reasoningEffort」的过时注释已订正。
+
+② **新增第三个示例实验包** `server/fixtures/ml-basics/`（机器学习基础建模，包驱动 + ML 依赖）：
+由 `params.json` 驱动口径（`task`/`model`/`model_params`/切分），产出 `output.json` 的 `model`/`n_train`/`n_test`/`metrics`；
+3 个 case（`LinearRegression` r2=0.9861 · `LogisticRegression` accuracy=0.90 · `class_weight="balanced"` 不平衡 accuracy=0.92，
+指标都非满分）；`requires.python=[sklearn,pandas,numpy]`；数据用固定种子生成、`expected.json` 在 pkg2 镜像内计算（sklearn 版本一致）；
+端到端实测 baseline 1/1 + treatment 1/1。**可直接绑定到 draft 项目「机器学习基础模型构建与运行」**（该项目当前模板与数据集均未绑定）。
+注意其 baseline 也能通过 —— 题面自包含的固有代价，已在包 README 说明。
+
+③ **复验容器内存**：`server/.env` 设 `VERIFY_DOCKER_MEMORY=2g`（本机 31Gi/16 核，`1g` 跑 torch/sklearn 容易 OOM；`.env` 不入 git）。
+
+④ **前端重新部署**：沙箱里 `/home/ubuntu` 与 `/var/www` 均只读（§2.1 注意⑦），故用 `docker run --user 1000:1000` 等价执行
+`deploy/deploy-web-lab.sh` 的 2–5 步（备份 → **先写 assets** → md5 校验 → **最后切 index.html**），
+再按脚本第 6 步逐个探测线上 index.html 引用的资源（4 个全为 200 + `application/javascript`/`text/css`），
+线上 index.html md5 与 `web/dist` 一致。后端随之重启（PID 3555145 → 3572017）。
 **顺带发现（既有问题，未修）**：驱动 `extractUsage()` 统计的 token 明显偏低（一个 case 两轮仅 ~400 input），旧镜像 `0.2.0-rc.2` 复跑结果相同 → 与本次改造无关；因 `tokenCost < 30_000` 参与 `autoScoreSuggestion`，建议后续单独排查 session 日志的 usage 帧匹配。
 
 ## 1. 仓库布局

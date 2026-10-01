@@ -147,9 +147,11 @@ async function seed() {
           // 与 DSH 的默认对齐（`agent-default-model`: provider deepseek-official,
           // model deepseek-flash），学生本地不用额外配置就能跑。
           //
-          // ⚠️ 不要写 `reasoningEffort`：deepseek-official **整体不支持**它
-          // （dsh-llm-deepseek 的 reasoningEffort() 直接抛 UNSUPPORTED_REASONING_EFFORT），
-          // 写了会让 DSH 在 claim 之后**每个请求都失败**。
+          // `reasoningEffort` 可写，但**只能取 off / low / high / max**
+          // （dsh-llm-deepseek 实测接受的集合，2026-10-01 在 pkg2 镜像内复核；不填 = provider 默认）。
+          // 其他取值 —— 尤其 DeepSeek **官方 API** 的 none/minimal/medium/xhigh ——
+          // 会让 DSH 在 claim 之后**每个请求都失败**；该约束由
+          // ProjectsService.assertEvalConfig 白名单 + 教师端下拉框双重兜住。
           model: 'deepseek-flash',
           tools: ['shell', 'fs'],
           timeoutSeconds: 600,
