@@ -4,8 +4,10 @@
  *
  * 用法：
  *   node update-chapter.cjs --title "大语言模型原理和实践"                 # 只定位、预览，不写入
- *   node update-chapter.cjs --title "大语言模型原理和实践" --file body.md  # 写入并回读校验
+ *   node update-chapter.cjs --title "大语言模型原理和实践" --file body.md  # 写入正文并回读校验
  *   node update-chapter.cjs --id <chapter-uuid> --file body.md
+ *   node update-chapter.cjs --title "旧标题" --new-title "新标题"          # 修改章节标题
+ *   node update-chapter.cjs --title "旧标题" --new-title "新标题" --file body.md  # 标题 + 正文一起改
  *
  * 安全约定：
  *   - 数据库口令由本脚本通过 server/.env 自行加载（dotenv），绝不在终端打印；
@@ -63,7 +65,7 @@ function parseArgs(argv) {
   });
   await ds.initialize();
 
-  const COLS = `c.id, c.title, c.\`order\`, c.status, co.title AS courseTitle,
+  const COLS = `c.id, c.courseId, c.title, c.\`order\`, c.status, co.title AS courseTitle,
                 LENGTH(c.content) AS contentLen, LEFT(c.content, 60) AS head`;
   let rows;
   if (args.id) {
@@ -104,21 +106,48 @@ function parseArgs(argv) {
   console.log(`定位章节: ${ch.id}`);
   console.log(`  课程「${ch.courseTitle}」第${ch.order}章 《${ch.title}》 status=${ch.status} 当前正文 ${ch.contentLen} 字节`);
 
-  if (!args.file) {
-    console.log('（预览模式，未提供 --file，不写入）');
+  const wantRename = args['new-title'] !== undefined;
+  const newTitle = (args['new-title'] || '').trim();
+  if (wantRename && !newTitle) {
+    console.error('--new-title 不能为空。');
+    process.exit(2);
+  }
+
+  if (!args.file && !wantRename) {
+    console.log('（预览模式，未提供 --file / --new-title，不写入）');
     await ds.destroy();
     return;
   }
 
-  const content = fs.readFileSync(args.file, 'utf8');
-  const res = await ds.query('UPDATE chapters SET content = ? WHERE id = ?', [content, ch.id]);
-  console.log(`UPDATE affectedRows: ${res.affectedRows}（原 ${ch.contentLen} 字节 → 新 ${Buffer.byteLength(content, 'utf8')} 字节）`);
+  if (wantRename) {
+    if (newTitle === ch.title) {
+      console.log('新标题与原标题相同，标题不变。');
+    } else {
+      // 同一课程内不允许两章同名，否则 --title 定位会失效
+      const dup = await ds.query(
+        'SELECT id FROM chapters WHERE courseId = ? AND title = ? AND id != ?',
+        [ch.courseId, newTitle, ch.id],
+      );
+      if (dup.length > 0) {
+        console.error(`课程「${ch.courseTitle}」内已存在同名章节《${newTitle}》（${dup[0].id}），拒绝改名。`);
+        process.exit(1);
+      }
+      await ds.query('UPDATE chapters SET title = ? WHERE id = ?', [newTitle, ch.id]);
+      console.log(`标题: 「${ch.title}」→「${newTitle}」`);
+    }
+  }
+
+  if (args.file) {
+    const content = fs.readFileSync(args.file, 'utf8');
+    const res = await ds.query('UPDATE chapters SET content = ? WHERE id = ?', [content, ch.id]);
+    console.log(`正文 UPDATE affectedRows: ${res.affectedRows}（原 ${ch.contentLen} 字节 → 新 ${Buffer.byteLength(content, 'utf8')} 字节）`);
+  }
 
   const [back] = await ds.query(
-    'SELECT LENGTH(content) AS len, LEFT(content, 60) AS head, RIGHT(content, 60) AS tail FROM chapters WHERE id = ?',
+    'SELECT title, LENGTH(content) AS len, LEFT(content, 60) AS head, RIGHT(content, 60) AS tail FROM chapters WHERE id = ?',
     [ch.id],
   );
-  console.log(`回读校验: len=${back.len}`);
+  console.log(`回读校验: title=《${back.title}》 len=${back.len}`);
   console.log(`  head: ${JSON.stringify(back.head)}`);
   console.log(`  tail: ${JSON.stringify(back.tail)}`);
 

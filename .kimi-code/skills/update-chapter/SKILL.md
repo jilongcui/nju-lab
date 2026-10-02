@@ -1,8 +1,8 @@
 ---
 name: update-chapter
-description: 将写好的 Markdown 正文更新到课程平台指定章节（按标题或 ID 定位 chapters 表，写入 content 并回读校验）
+description: 将写好的 Markdown 正文更新到课程平台指定章节，也可修改章节标题（按标题或 ID 定位 chapters 表，写入并回读校验）
 type: prompt
-whenToUse: 当用户要求把课程内容、章节正文、讲义更新/写入/发布到平台的某一章（如"把它更新到课程章节 X 作为内容"）时
+whenToUse: 当用户要求把课程内容、章节正文、讲义更新/写入/发布到平台的某一章，或修改某章标题（如"把它更新到课程章节 X 作为内容"、"把 X 章标题改为 Y"）时
 arguments:
   - title
   - file
@@ -29,11 +29,15 @@ node ${KIMI_SKILL_DIR}/update-chapter.cjs --title "$title"
 
 # ② 唯一命中后写入并回读校验（affectedRows / 长度 / 首尾片段）
 node ${KIMI_SKILL_DIR}/update-chapter.cjs --title "$title" --file "$file"
+
+# ③ 修改章节标题（可与 --file 同用，一次改标题 + 正文）
+node ${KIMI_SKILL_DIR}/update-chapter.cjs --title "旧标题" --new-title "新标题"
 ```
 
 - 命中 0 个：脚本会列出平台全部章节，与用户核对真实标题后重试；
 - 命中多个：脚本列出候选的 UUID，改用 `--id <uuid>` 指定，**绝不猜测写入**；
-- 正文文件为空时脚本拒绝写入。
+- 正文文件为空时脚本拒绝写入；
+- 改名时若**同一课程内已有同名章节**，脚本拒绝执行（防止 --title 定位失效），需换个标题或先与用户确认。
 
 ## 完成后向用户报告
 
@@ -48,7 +52,7 @@ node ${KIMI_SKILL_DIR}/update-chapter.cjs --title "$title" --file "$file"
   禁止 `cat`/复制 `.env`，禁止用 `mysql -p<明文>` 命令行，禁止在回复中打印口令。
 - 本 skill 只修改数据库**内容**，不涉及代码；`AGENTS.md` 的
   「禁止直接在部署目录（`server/`）改代码」对代码改动仍然有效。
-- 只 `UPDATE chapters.content`；不要动 `status`、`order`、课程归属等其他字段，
-  除非用户明确要求。
+- 本 skill 只 `UPDATE chapters` 的 `content` / `title` 字段（`title` 仅在用户明确要求改名时）；
+  不要动 `status`、`order`、课程归属等其他字段，除非用户明确要求。
 
 ARGUMENTS: $ARGUMENTS
