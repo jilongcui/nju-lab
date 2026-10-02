@@ -15,6 +15,7 @@
 - 客户端设计：`nju-lab-client-design.md`；其他设计：`docs/DESIGN-*.md`
 - 验收记录：`docs/ACCEPTANCE-*.md`（**历史快照，勿改**）
 - 本地构件（插件 / profile / kit）：`dsh/`
+- 项目 skill（可复用的 agent 操作，如更新课程章节正文）：`.kimi-code/skills/`
 
 ## 纪律
 
