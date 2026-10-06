@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Card, Empty, List, Skeleton, Space, Tag, Typography } from 'antd';
+import { Card, Col, Empty, Row, Skeleton, Space, Tag, Typography } from 'antd';
 import { ExperimentOutlined, LockOutlined, ReadOutlined } from '@ant-design/icons';
 import { getCourse, listMyAssignments, listMyCourses } from '../../api';
 import type { Assignment, ChapterProgressStatus, Course, MyCourse } from '../../types';
@@ -57,65 +57,69 @@ export default function StudentCourseDetail() {
 
   return (
     <div>
-      <Title level={4} style={{ marginTop: 0 }}>
+      <Title level={4} style={{ marginTop: 0, marginBottom: 4 }}>
         {course.title}
       </Title>
+      <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
+        授课教师：{myCourse?.teacherName || '未署名'}
+        {course.term || myCourse?.term ? ` · ${course.term || myCourse?.term}` : ''}
+      </Text>
       {chapters.length === 0 ? (
         <Card>
           <Empty description="本课程还没有章节" />
         </Card>
       ) : (
-        <List
-          grid={{ gutter: 16, xs: 1, sm: 1, md: 2, lg: 2, xl: 3 }}
-          dataSource={chapters}
-          renderItem={(ch, idx) => (
-            <List.Item>
+        <Row gutter={[16, 16]} align="stretch">
+          {chapters.map((ch, idx) => (
+            <Col xs={24} md={12} xl={8} key={ch.id} style={{ display: 'flex' }}>
               <Card
+                style={{ width: '100%', display: 'flex', flexDirection: 'column' }}
+                styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column' } }}
                 title={
-                  <Space>
-                    <ReadOutlined />
+                  <span title={`第 ${idx + 1} 章 · ${ch.title}`}>
+                    <ReadOutlined style={{ marginRight: 8 }} />
                     第 {idx + 1} 章 · {ch.title}
-                  </Space>
+                  </span>
                 }
                 extra={<StatusTag status={chapterStatusOf(ch.id)} />}
               >
-                <Space direction="vertical" style={{ width: '100%' }}>
-                  <Link to={`/student/chapters/${ch.id}`}>进入学习</Link>
-                  <div>
+                <div style={{ flex: 1 }}>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    本章实验：
+                  </Text>
+                  {(ch.projects ?? []).length === 0 ? (
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      本章实验：
+                      暂无
                     </Text>
-                    {(ch.projects ?? []).length === 0 ? (
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        暂无
-                      </Text>
-                    ) : (
-                      <Space wrap style={{ marginTop: 4 }}>
-                        {(ch.projects ?? []).map((p) => {
-                          const asg = assignmentOf(p.id);
-                          const unlocked = asg?.unlocked ?? false;
-                          return (
-                            <Link key={p.id} to={`/student/projects/${p.id}`}>
-                              <Tag
-                                icon={unlocked ? <ExperimentOutlined /> : <LockOutlined />}
-                                color={unlocked ? 'blue' : 'default'}
-                                style={{ cursor: 'pointer' }}
-                              >
-                                {p.title}
-                                {!unlocked && '（未解锁）'}
-                                {asg && asg.status !== 'pending' && <StatusTag status={asg.status} />}
-                              </Tag>
-                            </Link>
-                          );
-                        })}
-                      </Space>
-                    )}
-                  </div>
-                </Space>
+                  ) : (
+                    <Space wrap style={{ marginTop: 4 }}>
+                      {(ch.projects ?? []).map((p) => {
+                        const asg = assignmentOf(p.id);
+                        const unlocked = asg?.unlocked ?? false;
+                        return (
+                          <Link key={p.id} to={`/student/projects/${p.id}`}>
+                            <Tag
+                              icon={unlocked ? <ExperimentOutlined /> : <LockOutlined />}
+                              color={unlocked ? 'blue' : 'default'}
+                              style={{ cursor: 'pointer' }}
+                            >
+                              {p.title}
+                              {!unlocked && '（未解锁）'}
+                              {asg && asg.status !== 'pending' && <StatusTag status={asg.status} />}
+                            </Tag>
+                          </Link>
+                        );
+                      })}
+                    </Space>
+                  )}
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <Link to={`/student/chapters/${ch.id}`}>进入学习 →</Link>
+                </div>
               </Card>
-            </List.Item>
-          )}
-        />
+            </Col>
+          ))}
+        </Row>
       )}
     </div>
   );

@@ -46,13 +46,13 @@ export default function MyCourses() {
           <Empty description="你还没有加入任何课程，请联系任课教师" />
         </Card>
       ) : (
-        <Row gutter={[16, 16]}>
+        <Row gutter={[16, 16]} align="stretch">
           {courses.map((c) => {
             const total = c.chapters?.length ?? 0;
             const done = c.completedCount ?? c.chapters?.filter((ch) => ch.status === 'completed').length ?? 0;
             const percent = total ? Math.round((done / total) * 100) : 0;
             return (
-              <Col xs={24} sm={12} lg={8} key={c.id}>
+              <Col xs={24} sm={12} lg={8} key={c.id} style={{ display: 'flex' }}>
                 <Card
                   title={c.title}
                   extra={
@@ -62,8 +62,20 @@ export default function MyCourses() {
                       </Button>
                     </Link>
                   }
+                  style={{ width: '100%', display: 'flex', flexDirection: 'column' }}
+                  styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column' } }}
                 >
-                  <Text type="secondary">{c.term || ''}</Text>
+                  <Text type="secondary">
+                    授课教师：{c.teacherName || '未署名'}
+                    {c.term ? ` · ${c.term}` : ''}
+                  </Text>
+                  <Paragraph
+                    type="secondary"
+                    style={{ marginTop: 8, marginBottom: 0, flex: 1 }}
+                    ellipsis={{ rows: 2, tooltip: c.description ? { title: c.description } : false }}
+                  >
+                    {c.description || '暂无课程简介'}
+                  </Paragraph>
                   <div style={{ marginTop: 12 }}>
                     <Progress percent={percent} size="small" format={(p) => `${p}%（${done}/${total} 章）`} />
                   </div>

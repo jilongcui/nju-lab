@@ -155,6 +155,8 @@ export interface MyCourse {
   id: string;
   title: string;
   term?: string;
+  description?: string | null;
+  teacherName?: string;
   courseStatus: CourseStatus;
   completedCount: number;
   chapters: StudentChapterBrief[];

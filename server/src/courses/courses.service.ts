@@ -536,6 +536,7 @@ export class CoursesService {
     }
     const courses = await this.courseRepo.find({
       where: { id: In(enrollments.map((e) => e.courseId)) },
+      relations: ['teacher'],
     });
     const result = [];
     for (const course of courses) {
@@ -562,6 +563,8 @@ export class CoursesService {
         id: course.id,
         title: course.title,
         term: course.term,
+        description: course.description,
+        teacherName: course.teacher?.nickname || course.teacher?.username || '',
         courseStatus: course.status,
         completedCount: chapterViews.filter(
           (c) => c.status === ProgressStatus.COMPLETED,
