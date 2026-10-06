@@ -24,6 +24,7 @@ import type {
   Submission,
   TeacherProjectRow,
   TeacherSummary,
+  TeacherUser,
   User,
   WorkspaceInfo,
   ChapterSlidesResponse,
@@ -126,6 +127,8 @@ export const getTeacherSummary = () =>
 
 // ---------- 选课学生管理 ----------
 export const listStudents = () => client.get<unknown, StudentUser[]>('/users/students');
+/** 教师名单（仅管理员；转让课程用） */
+export const listTeachers = () => client.get<unknown, TeacherUser[]>('/users/teachers');
 export const listEnrollments = (courseId: string) =>
   client.get<unknown, Enrollment[]>(`/courses/${courseId}/enrollments`);
 export const addEnrollments = (courseId: string, studentIds: string[]) =>

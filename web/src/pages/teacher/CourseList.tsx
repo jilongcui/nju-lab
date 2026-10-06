@@ -11,15 +11,17 @@ import {
   Modal,
   Popconfirm,
   Row,
+  Select,
   Skeleton,
   Space,
   Typography,
 } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
-import { createCourse, deleteCourse, listCourses, publishCourse, updateCourse } from '../../api';
-import type { Course } from '../../types';
+import { createCourse, deleteCourse, listCourses, listTeachers, publishCourse, updateCourse } from '../../api';
+import type { Course, TeacherUser } from '../../types';
 import StatusTag from '../../components/StatusTag';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
+import { useAuthStore } from '../../stores/auth';
 
 const { Title, Paragraph, Text } = Typography;
 
@@ -27,6 +29,8 @@ interface CourseFormValues {
   title: string;
   term?: string;
   description?: string;
+  /** 仅管理员可见该表单项：把课程转让给其他教师 */
+  teacherId?: string;
 }
 
 export default function CourseList() {
@@ -35,6 +39,8 @@ export default function CourseList() {
   const [editing, setEditing] = useState<Course | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [teachers, setTeachers] = useState<TeacherUser[]>([]);
+  const isAdmin = useAuthStore((s) => s.user?.role) === 'admin';
   const [form] = Form.useForm<CourseFormValues>();
 
   useAuxiliaryPanel(
@@ -57,6 +63,16 @@ export default function CourseList() {
     void load();
   }, [load]);
 
+  // 管理员可转让课程 → 预取教师名单（接口本身仅管理员可见）
+  useEffect(() => {
+    if (!isAdmin) {
+      return;
+    }
+    listTeachers()
+      .then((t) => setTeachers(t ?? []))
+      .catch(() => setTeachers([]));
+  }, [isAdmin]);
+
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
@@ -65,7 +81,12 @@ export default function CourseList() {
 
   const openEdit = (c: Course) => {
     setEditing(c);
-    form.setFieldsValue({ title: c.title, term: c.term, description: c.description });
+    form.setFieldsValue({
+      title: c.title,
+      term: c.term,
+      description: c.description,
+      ...(isAdmin ? { teacherId: c.teacherId } : {}),
+    });
     setModalOpen(true);
   };
 
@@ -120,12 +141,14 @@ export default function CourseList() {
           <Empty description="还没有课程" />
         </Card>
       ) : (
-        <Row gutter={[16, 16]}>
+        <Row gutter={[16, 16]} align="stretch">
           {courses.map((c) => (
-            <Col xs={24} sm={12} lg={8} key={c.id}>
+            <Col xs={24} sm={12} lg={8} key={c.id} style={{ display: 'flex' }}>
               <Card
-                title={c.title}
+                title={<span title={c.title}>{c.title}</span>}
                 extra={<StatusTag status={c.status} />}
+                style={{ width: '100%', display: 'flex', flexDirection: 'column' }}
+                styles={{ body: { flex: 1 } }}
                 actions={[
                   <Link key="detail" to={`/teacher/courses/${c.id}`}>
                     管理
@@ -156,9 +179,15 @@ export default function CourseList() {
                   </Popconfirm>,
                 ]}
               >
-                <Space direction="vertical" size={4}>
+                <Space direction="vertical" size={4} style={{ width: '100%' }}>
+                  <Text type="secondary">授课教师：{c.teacherName || '-'}</Text>
                   <Text type="secondary">学期：{c.term || '-'}</Text>
-                  <Paragraph ellipsis={{ rows: 2 }} type="secondary" style={{ marginBottom: 0 }}>
+                  <Paragraph
+                    ellipsis={{ rows: 2, tooltip: c.description ? { title: c.description } : false }}
+                    type="secondary"
+                    /* 简介不足两行也占满两行高度，保证整排卡片底边对齐 */
+                    style={{ marginBottom: 0, minHeight: '3.15em' }}
+                  >
                     {c.description || '暂无课程简介'}
                   </Paragraph>
                 </Space>
@@ -186,6 +215,23 @@ export default function CourseList() {
           <Form.Item name="description" label="课程简介">
             <Input.TextArea rows={3} placeholder="课程目标与内容简介" />
           </Form.Item>
+          {editing && isAdmin ? (
+            <Form.Item
+              name="teacherId"
+              label="授课教师（转让课程）"
+              extra="仅管理员可改；转让后课程归新教师所有，不再出现在原教师的课程列表中。"
+            >
+              <Select
+                showSearch
+                optionFilterProp="label"
+                placeholder="选择新的授课教师"
+                options={teachers.map((t) => ({
+                  value: t.id,
+                  label: `${t.nickname || t.username}（${t.username}）`,
+                }))}
+              />
+            </Form.Item>
+          ) : null}
         </Form>
       </Modal>
     </div>

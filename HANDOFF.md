@@ -5,6 +5,16 @@
 
 ## 0. 一句话现状
 
+**2026-10-06（续）：教师端课程管理优化 + 课程转让（已上线）** —— ①「课程管理」卡片整行等高
+（与 student 端同一套 flex 链路），**简介固定占两行高度**（`min-height: 3.15em`，不足两行也撑满），
+卡片新增「授课教师」行（`GET /api/courses` 列表补返回 `teacherName`；⚠️ 用解构剔除 `teacher` 实体本身，
+防止 `passwordHash` 随响应泄漏）；② **管理员可把课程转让给其他教师**：`UpdateCourseDto` 新增
+`teacherId`（服务层校验：仅管理员、目标须为 teacher/admin 角色，教师自己 PATCH → 403），
+新增 `GET /api/users/teachers`（仅管理员，**含管理员账号**——否则 owner 是管理员的课程在下拉里
+回显 UUID）；课程「编辑」弹窗新增「授课教师（转让课程）」下拉，仅管理员可见。
+验证：`web/tools/verify-course-pages.mjs` 扩到 22 项断言（学生/教师/管理员三角色），curl 负向实测
+（教师访问 teachers 名单 403、教师转让 403、转让给学生 400）。
+
 **2026-10-06：学生端课程页版式优化（已上线）** —— ①「我的课程」卡片新增**授课教师/学期**与**课程简介**（2 行省略 + 悬停全文）：`GET /api/me/courses` 补返回 `description`/`teacherName`（`courses.service.ts` 关联 `teacher` 取昵称），前端 `MyCourse` 类型同步；② **课程章节页卡片宽高统一**：`List grid` 改 `Row/Col` + flex 满高（`align="stretch"` + Col `display:flex` + Card `height:100%` 链路），「进入学习」对齐卡片底部，章节标题单行省略 + 悬停全文，标题下补授课教师/学期。验证走 `web/tools/verify-course-pages.mjs`（Playwright，12 项断言：逐行等高/等宽/标题不折行/教师展示），前后端均已部署（后端 kill MainPID 由 systemd 拉起，前端 `deploy-web-lab.sh` 自检通过）。
 
 NJU-Lab（"课程 + 实验"一体化 Skill 工程教学平台）**端到端已验收通过（2026-09-21，见 `docs/ACCEPTANCE-2026-09-21.md`）**：学生本地 DSH（插件）登录 → 看任务 → 领取（真实下载 + sha256 校验 + 解压 + 条件钉死）→ 开发 Skill → 自测 3/3 → 提交（真实 ZIP + `.dshc` 证据包 + 审计事件）→ 服务端真实容器复验（deepseek-flash，baseline/treatment + LLM judge）→ 教师批改 → 学生看反馈，全程一次跑通、零代码修复，总成本 ≈59k tokens / ≈100s。生产化关键项也已落地：容器 SNI 白名单网络隔离、evalConfig.model 逐项目映射、修改密码、migrations、systemd 常驻、CSV 成绩导出。**剩余为后续阶段功能**（第 5 节）。

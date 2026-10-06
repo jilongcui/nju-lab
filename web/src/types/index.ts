@@ -45,6 +45,8 @@ export interface Course {
   id: string;
   title: string;
   teacherId?: string;
+  /** 列表接口返回的授课教师显示名（nickname 或 username） */
+  teacherName?: string;
   term?: string;
   description?: string;
   status: CourseStatus;
@@ -375,6 +377,13 @@ export interface Enrollment {
 }
 
 export interface StudentUser {
+  id: string;
+  username: string;
+  nickname: string;
+}
+
+/** GET /api/users/teachers 条目（仅管理员） */
+export interface TeacherUser {
   id: string;
   username: string;
   nickname: string;

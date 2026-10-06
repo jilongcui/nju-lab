@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { User, UserRole } from './user.entity';
 
 @Injectable()
@@ -25,6 +25,15 @@ export class UsersService {
       order: { createdAt: 'ASC' },
     });
     return students.map((s) => this.sanitize(s));
+  }
+
+  /** 全部教师与管理员（脱敏）：转让课程的可选归属人（管理员账号也可持有课程） */
+  async listTeachers() {
+    const teachers = await this.userRepo.find({
+      where: { role: In([UserRole.TEACHER, UserRole.ADMIN]) },
+      order: { createdAt: 'ASC' },
+    });
+    return teachers.map((t) => this.sanitize(t));
   }
 
   sanitize(user: User) {

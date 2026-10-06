@@ -67,6 +67,11 @@ export class UpdateCourseDto {
   @IsOptional()
   @IsDateString()
   applicationCloseAt?: string | null;
+
+  /** 课程转让：新授课教师的用户 id。仅管理员可改（服务层校验） */
+  @IsOptional()
+  @IsUUID()
+  teacherId?: string;
 }
 
 /** 创建/更新章节：带 id 时视为更新该章节 */

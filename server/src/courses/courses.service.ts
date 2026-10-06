@@ -59,25 +59,37 @@ export class CoursesService {
 
   /** 管理员看全部课程，教师看自己开的课，学生看自己被选入的课 */
   async listCourses(user: User) {
+    const relations = ['teacher'];
+    let courses: Course[];
     if (user.role === UserRole.ADMIN) {
-      return this.courseRepo.find({ order: { createdAt: 'DESC' } });
-    }
-    if (user.role === UserRole.TEACHER) {
-      return this.courseRepo.find({
+      courses = await this.courseRepo.find({
+        relations,
+        order: { createdAt: 'DESC' },
+      });
+    } else if (user.role === UserRole.TEACHER) {
+      courses = await this.courseRepo.find({
         where: { teacherId: user.id },
+        relations,
+        order: { createdAt: 'DESC' },
+      });
+    } else {
+      const enrollments = await this.enrollmentRepo.find({
+        where: { studentId: user.id },
+      });
+      if (enrollments.length === 0) {
+        return [];
+      }
+      courses = await this.courseRepo.find({
+        where: { id: In(enrollments.map((e) => e.courseId)) },
+        relations,
         order: { createdAt: 'DESC' },
       });
     }
-    const enrollments = await this.enrollmentRepo.find({
-      where: { studentId: user.id },
-    });
-    if (enrollments.length === 0) {
-      return [];
-    }
-    return this.courseRepo.find({
-      where: { id: In(enrollments.map((e) => e.courseId)) },
-      order: { createdAt: 'DESC' },
-    });
+    // 只暴露教师显示名；teacher 实体本身（含 passwordHash）不能随响应出去
+    return courses.map(({ teacher, ...course }) => ({
+      ...course,
+      teacherName: teacher?.nickname || teacher?.username || '',
+    }));
   }
 
   async getCourse(user: User, courseId: string) {
@@ -155,6 +167,22 @@ export class CoursesService {
     if (dto.title !== undefined) course.title = dto.title;
     if (dto.term !== undefined) course.term = dto.term;
     if (dto.description !== undefined) course.description = dto.description;
+    if (dto.teacherId !== undefined && dto.teacherId !== course.teacherId) {
+      // 课程转让是管理员专属操作；教师本人只能改自己的课，谈不上"转给谁"
+      if (user.role !== UserRole.ADMIN) {
+        throw new ForbiddenException('只有管理员可以把课程转让给其他教师');
+      }
+      const target = await this.userRepo.findOne({
+        where: { id: dto.teacherId },
+      });
+      if (
+        !target ||
+        (target.role !== UserRole.TEACHER && target.role !== UserRole.ADMIN)
+      ) {
+        throw new BadRequestException('目标用户不存在或不是教师');
+      }
+      course.teacherId = dto.teacherId;
+    }
     if (dto.capacity !== undefined) course.capacity = dto.capacity ?? null;
     if (dto.applicationOpenAt !== undefined) {
       course.applicationOpenAt = dto.applicationOpenAt

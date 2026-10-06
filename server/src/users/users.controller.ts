@@ -20,4 +20,11 @@ export class UsersController {
   listStudents() {
     return this.usersService.listStudents();
   }
+
+  /** GET /api/users/teachers 教师名单（仅管理员，转让课程用） */
+  @Get('users/teachers')
+  @Roles(UserRole.ADMIN)
+  listTeachers() {
+    return this.usersService.listTeachers();
+  }
 }
