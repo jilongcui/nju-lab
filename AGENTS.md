@@ -12,9 +12,11 @@
 ## 导航
 
 - 运行态事实、服务与部署现状：`HANDOFF.md`
+- **出题教师**：实验设计框架 `docs/EXPERIMENT-DESIGN-FRAMEWORK.md`、实验包规范 `docs/EXPERIMENT-PACKAGE-SPEC.md`
 - 客户端设计：`nju-lab-client-design.md`；其他设计：`docs/DESIGN-*.md`
 - 验收记录：`docs/ACCEPTANCE-*.md`（**历史快照，勿改**）
 - 本地构件（插件 / profile / kit）：`dsh/`
+- 示例实验包（可直接复制改名）：`server/fixtures/`（`ml-basics` / `sales-report` / `csv-cleaner`）
 - 项目 skill（可复用的 agent 操作，如更新课程章节正文）：`.kimi-code/skills/`
 
 ## 纪律

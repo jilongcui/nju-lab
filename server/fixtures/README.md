@@ -2,7 +2,11 @@
 
 平台上的示例实验包源文件。仓库里有**三个任务类型**：`csv-cleaner`（内置回落型）、
 `sales-report`（包驱动 + 表格汇总）、`ml-basics`（包驱动 + ML 依赖）。
-后两个演示并验证「任务知识随包走」的包驱动流程（规范见 `docs/EXPERIMENT-PACKAGE-SPEC.md`）。
+后两个演示并验证「任务知识随包走」的包驱动流程。
+
+> **做新实验**：先读 `docs/EXPERIMENT-DESIGN-FRAMEWORK.md`（目标/题干/判分/成绩怎么设计），
+> 再按 `docs/EXPERIMENT-PACKAGE-SPEC.md` 组织材料 —— 最省事的做法是
+> `cp -r ml-basics <你的实验名>` 然后替换内容。
 
 ## 1. csv-cleaner + dataset —— CSV 数据清洗（内置回落型）
 
