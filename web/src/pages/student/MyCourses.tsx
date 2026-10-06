@@ -54,7 +54,7 @@ export default function MyCourses() {
             return (
               <Col xs={24} sm={12} lg={8} key={c.id} style={{ display: 'flex' }}>
                 <Card
-                  title={c.title}
+                  title={<span title={c.title}>{c.title}</span>}
                   extra={
                     <Link to={`/student/courses/${c.id}`}>
                       <Button size="small" type="primary" ghost>
