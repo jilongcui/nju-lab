@@ -138,7 +138,7 @@ async function seed() {
         chapterId: chapter2.id,
         title: '实验一：CSV 数据清洗 Skill',
         objectives: '掌握 Skill 目录结构、能力边界描述与本地自测流程',
-        background: '回顾第 1 章的 Skill 规范；了解 baseline/treatment 对比方法',
+        background: '回顾第 1 章的 Skill 规范；跑通用标准数据集自测、打包提交闭环',
         description:
           '1. 领取模板并解压\n2. 编写 SKILL.md 与清洗脚本\n3. 用标准数据集自测\n4. 打包提交 Skill 包与证据包',
         skillTemplateFileId: null,

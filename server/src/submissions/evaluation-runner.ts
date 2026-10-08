@@ -3,7 +3,7 @@ import { ExperimentProject } from '../projects/project.entity';
 import { Submission } from './submission.entity';
 
 export interface EvaluationRunResult {
-  baselineResult: Record<string, unknown>;
+  /** 「使用 Skill」那一轮的运行结果（baseline 轮已于 2026-10-06 取消） */
   treatmentResult: Record<string, unknown>;
   successRate: number;
   tokenCost: number;
@@ -18,8 +18,8 @@ export interface EvaluationRunResult {
  * 当前实现：MockEvaluationRunner——基于提交哈希生成确定性的模拟评估数据，
  * 用于打通"提交 → 复验 → 评分"链路。
  * 后续接入真实复验时，新增实现：对每个提交起一个一次性容器
- * （dsh headless + approval=never + 断网 + 资源限额），跑 baseline/treatment
- * 对比并回填 dossier 快照，然后在 SubmissionsModule 中替换 EVALUATION_RUNNER
+ * （dsh headless + approval=never + 断网 + 资源限额），跑一轮（学生的 Skill）
+ * + judge 评分并回填 dossier 快照，然后在 SubmissionsModule 中替换 EVALUATION_RUNNER
  * 的 useClass 即可。
  */
 export interface EvaluationRunner {
@@ -45,18 +45,10 @@ export class MockEvaluationRunner implements EvaluationRunner {
     );
 
     const datasetSize = 20;
-    const baselineSuccess = 0.4 + rand() * 0.2; // baseline 成功率 40%~60%
-    const lift = 0.15 + rand() * 0.35; // treatment 提升 15%~50%
-    const successRate = Math.min(0.98, baselineSuccess + lift);
-    const tokenCost = Math.floor(8000 + rand() * 42000);
+    // 单轮复验（baseline 轮已取消）：直接生成「使用 Skill」那一轮的成功率。
+    const successRate = Math.min(0.98, 0.55 + rand() * 0.4); // 单轮成功率 55%~95%
+    const tokenCost = Math.floor(4000 + rand() * 21000); // 单轮（两轮时代的约一半）
 
-    const baselineResult = {
-      dataset: project.testDatasetFileId,
-      evalConfig: project.evalConfig,
-      runs: datasetSize,
-      successRate: round2(baselineSuccess),
-      avgTokensPerRun: Math.floor(tokenCost * (0.6 + rand() * 0.2)),
-    };
     const treatmentResult = {
       dataset: project.testDatasetFileId,
       evalConfig: project.evalConfig,
@@ -87,17 +79,15 @@ export class MockEvaluationRunner implements EvaluationRunner {
         : '自报与复验偏差偏大，建议教师人工复核',
     };
 
-    // 按第九节评分维度生成建议分（实测有效性 40% 为主导）
+    // 按第九节评分维度生成建议分（实测有效性为主导；lift 项已并入成功率）
     const autoScoreSuggestion = round2(
-      successRate * 40 +
-        lift * 100 * 0.15 +
+      successRate * 55 +
         (dossierSnapshot.boundariesDocumented ? 20 : 10) +
         (consistent ? 10 : 5) +
-        (tokenCost < 30000 ? 10 : 6),
+        (tokenCost < 15000 ? 10 : 6),
     );
 
     return {
-      baselineResult,
       treatmentResult,
       successRate: round2(successRate),
       tokenCost,

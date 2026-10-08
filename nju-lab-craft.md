@@ -3,6 +3,8 @@
 > 版本说明：本版已根据 dsh-handbook 第 1/3/13 章的事实修订（三元架构），并已同步 **2026-09-21 首期实现**的全部技术决策与变更：技术栈落定 NestJS + TypeORM + MySQL + React/AntD、nginx 生产部署、admin 角色、API 全量清单、当前实现状态与遗留项（见第十三节）。
 >
 > **2026-09-24 更新**：njuserver 部署点接入**南大统一认证（CAS 3.0）** —— 校园网关放开后认证改由应用自负，走标准 ticket 重定向流（登录 / 登出 / 角色判定均已上生产）；角色由 CAS 属性 `containerId` 判定（`ou=JZG` = 教职工）；前端产物按 `VITE_BASE=/lab/` 重建部署。详见 §6.1 与 HANDOFF.md §2.1 / §3.4。
+>
+> **2026-10-06 更新**：平台**取消了复验的 baseline（"只给题干"）轮** —— 复验只跑一轮（题干 + 学生的 Skill），`lift` 不再是平台信号；建议分公式里原 lift 的 15 分并入成功率（40 → 55），token 阈值 30000 → 15000（镜像 `nju-lab-verify:0.2.0-rc.2-pkg3`）。本文其余章节中涉及 baseline/lift 的表述属**原始设计**（保留作历史），实现现状以 `docs/EXPERIMENT-DESIGN-FRAMEWORK.md` 与 `HANDOFF.md` 为准。
 
 ## 一、平台定位：这是什么？
 

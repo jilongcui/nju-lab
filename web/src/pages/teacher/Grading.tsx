@@ -78,7 +78,7 @@ export default function Grading() {
     '批改说明',
     <div>
       <Paragraph type="secondary">
-        评分以平台独立复验结果为准：baseline/treatment 对比、成功率与 token 成本由服务端重跑产生。
+        评分以平台独立复验结果为准：逐用例成功率与 token 成本由服务端重跑产生。
       </Paragraph>
       <Paragraph type="secondary">
         哈希与审计事件用于印证过程真实性；一致性存疑时请人工复核后再确认评分。
@@ -294,14 +294,7 @@ export default function Grading() {
                     {ic.note && <Text type="secondary">{ic.note}</Text>}
                   </Space>
                 )}
-                <Row gutter={16}>
-                  <Col span={12}>
-                    <RunCard title="Baseline（不使用 Skill）" result={evaluation.baselineResult} />
-                  </Col>
-                  <Col span={12}>
-                    <RunCard title="Treatment（使用 Skill）" result={evaluation.treatmentResult} />
-                  </Col>
-                </Row>
+                <RunCard title="复验（使用学生的 Skill）" result={evaluation.treatmentResult} />
               </>
             )}
           </Card>

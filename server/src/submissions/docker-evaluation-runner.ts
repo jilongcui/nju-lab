@@ -15,7 +15,7 @@ import { EvaluationRunner, EvaluationRunResult } from './evaluation-runner';
 import { Submission } from './submission.entity';
 
 /** 复验容器镜像（构建见 server/verify-image/Dockerfile） */
-const VERIFY_IMAGE = process.env.VERIFY_IMAGE || 'nju-lab-verify:0.2.0-rc.2-pkg2';
+const VERIFY_IMAGE = process.env.VERIFY_IMAGE || 'nju-lab-verify:0.2.0-rc.2-pkg3';
 /** 整体时长限额兜底（毫秒）；project.evalConfig.timeoutSeconds 优先 */
 const VERIFY_TIMEOUT_MS = Number(process.env.VERIFY_TIMEOUT_MS || 600_000);
 /**
@@ -35,7 +35,6 @@ interface JudgeVerdict {
 }
 
 interface RoundResult {
-  round: string;
   exitCode: number | null;
   timedOut: boolean;
   durationMs: number;
@@ -68,8 +67,9 @@ interface DriverResult {
   dependencyCheck?: { ok: boolean; missing: string[]; declared: Record<string, string[]> } | null;
   skillFileHashes: Record<string, string> | null;
   skillInfo?: { boundariesDocumented: boolean; pitfallsRecorded: number } | null;
-  cases: { case: string; rounds: Record<string, RoundResult> }[];
-  summary: { baseline: DriverSummary; treatment?: DriverSummary };
+  /** 单轮复验（baseline 轮已取消）：每个 case 一条记录，无 rounds 嵌套 */
+  cases: ({ case: string } & RoundResult)[];
+  summary: DriverSummary;
 }
 
 /** 数据集包（实验材料）的声明摘要，由驱动 inspectPackage() 产出 */
@@ -90,7 +90,7 @@ interface DriverPackage {
 /**
  * 真实复验执行器：每个提交起一个一次性 Docker 容器
  * （dsh headless + approval=never + workspace-write 沙箱 + 资源限额 + 出栈白名单），
- * 跑 baseline/treatment 两轮对比 + LLM judge 评分，回填真实数据。
+ * 跑一轮（学生的 Skill）+ LLM judge 逐 case 评分，回填真实数据。
  *
  * 容器编排（资源限额 / 出栈隔离 / 一次性）已抽到 ContainerRuntime，
  * 与将来的实验工作台共用同一份隔离策略；本类只保留复验特有的业务：
@@ -215,55 +215,39 @@ export class DockerEvaluationRunner implements EvaluationRunner {
     capsuleHashVerified: boolean,
     project: ExperimentProject,
   ): EvaluationRunResult {
-    const treatment = result.summary.treatment;
-    if (!treatment) {
-      throw new InternalServerErrorException('复验结果缺少 treatment 汇总');
+    const summary = result.summary;
+    if (!summary) {
+      throw new InternalServerErrorException('复验结果缺少汇总');
     }
-    const roundsOf = (r: string) =>
-      result.cases.map((c) => ({ case: c.case, ...c.rounds[r] })).filter((x) => x.judge);
-    const roundDetail = (r: string) =>
-      roundsOf(r).map((x) => ({
-        case: x.case,
-        pass: x.judge.pass,
-        score: x.judge.score,
-        rationale: x.judge.rationale,
-        exitCode: x.exitCode,
-        timedOut: x.timedOut,
-        tokens: x.tokens,
-        durationMs: x.durationMs,
-        sessionId: x.sessionId,
-      }));
+    const caseDetail = result.cases.map((c) => ({
+      case: c.case,
+      pass: c.judge.pass,
+      score: c.judge.score,
+      rationale: c.judge.rationale,
+      exitCode: c.exitCode,
+      timedOut: c.timedOut,
+      tokens: c.tokens,
+      durationMs: c.durationMs,
+      sessionId: c.sessionId,
+    }));
 
-    const successRate = treatment.successRate;
-    const lift = round2(treatment.successRate - result.summary.baseline.successRate);
-    const tokenCost = Math.round(
-      treatment.tokens.input + treatment.tokens.output +
-      result.summary.baseline.tokens.input + result.summary.baseline.tokens.output,
-    );
+    const successRate = summary.successRate;
+    const tokenCost = Math.round(summary.tokens.input + summary.tokens.output);
 
     const integrity = this.integrityCheck(submission, result, capsuleHashVerified);
     const boundariesDocumented = result.skillInfo?.boundariesDocumented ?? false;
 
-    // 与 Mock 相同的评分建议公式（craft 第九节权重），但输入全部是实测值
+    // 与 Mock 相同的评分建议公式（craft 第九节权重），但输入全部是实测值。
+    // baseline 轮已取消 → 原 lift 项（15 分）并入成功率（40 → 55）；
+    // tokenCost 也从「两轮之和」变成「单轮」，阈值按比例减半（30000 → 15000）。
     const autoScoreSuggestion = Math.min(100, round2(
-      successRate * 40 +
-      Math.max(0, lift) * 100 * 0.15 +
+      successRate * 55 +
       (boundariesDocumented ? 20 : 10) +
       (integrity.selfReportVsRerun !== 'suspicious' ? 10 : 5) +
-      (tokenCost < 30_000 ? 10 : 6),
+      (tokenCost < 15_000 ? 10 : 6),
     ));
 
     return {
-      baselineResult: {
-        runner: `evaluation-runner:${this.name}`,
-        dataset: project.testDatasetFileId,
-        evalConfig: project.evalConfig,
-        package: result.package ?? null,
-        model: result.model,
-        judge: result.judge,
-        cases: roundDetail('baseline'),
-        summary: result.summary.baseline,
-      },
       treatmentResult: {
         runner: `evaluation-runner:${this.name}`,
         dataset: project.testDatasetFileId,
@@ -271,8 +255,8 @@ export class DockerEvaluationRunner implements EvaluationRunner {
         package: result.package ?? null,
         model: result.model,
         judge: result.judge,
-        cases: roundDetail('treatment'),
-        summary: treatment,
+        cases: caseDetail,
+        summary,
       },
       successRate,
       tokenCost,
@@ -284,16 +268,14 @@ export class DockerEvaluationRunner implements EvaluationRunner {
         /** 本次复验用的实验包声明与依赖自检（包驱动的可追溯口径） */
         experimentPackage: result.package ?? null,
         dependencyCheck: result.dependencyCheck ?? null,
-        invocationCount: result.cases.length * 2,
+        invocationCount: result.cases.length,
         measuredOutcomes: {
-          success: treatment.passCount,
-          failure: treatment.runs - treatment.passCount,
+          success: summary.passCount,
+          failure: summary.runs - summary.passCount,
         },
         boundariesDocumented,
         pitfallsRecorded: result.skillInfo?.pitfallsRecorded ?? 0,
-        baselineSuccessRate: result.summary.baseline.successRate,
-        treatmentSuccessRate: treatment.successRate,
-        lift,
+        successRate: summary.successRate,
       },
       integrityCheck: integrity,
       autoScoreSuggestion,

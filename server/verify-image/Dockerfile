@@ -2,8 +2,10 @@
 # profile(approval=never) + 复验驱动 run-eval.mjs + 预装教学依赖集。
 #
 # 构建（在 server/verify-image/ 下）：
-#   docker build -t nju-lab-verify:0.2.0-rc.2-pkg2 .
+#   docker build -t nju-lab-verify:<tag> .
 #
+# 只改驱动（如 pkg3 = 取消 baseline 轮）时不必整层重建：`FROM` 上一版镜像 +
+# 覆盖 run-eval.mjs，再 `docker export | import` 压平（见 docs/UPGRADE-playbook.md §5）。
 # 「包驱动」的两半（见 run-eval.mjs 头部注释与 docs/EXPERIMENT-PACKAGE-SPEC.md）：
 #   1) 题目与评分口径随**数据集包**走（manifest.json / task.md / judge.md）——
 #      新增实验类型不用改代码、不用重建本镜像。

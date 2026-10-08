@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """销售数据汇总：input.csv → output.json（**骨架，核心逻辑由学生补全**）。
 
-平台复验会把这个 Skill 交给 agent 使用（treatment 轮）并与“不用 Skill”的
-baseline 轮对比，所以：
+平台复验会把这份 Skill 交给 agent 使用，所以：
   - 这里的函数签名与命令行约定保持稳定；
   - TODO 处要真正实现，不要在脚本里写死测试用例的答案。
 """

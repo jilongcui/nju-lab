@@ -21,8 +21,12 @@
    （能力点）      （可复现）        （模板 + 数据集）      （领取→自测→提交）   （机器 + 教师）
 ```
 
-关键前提：**平台的评判建立在"同一任务，用 Skill 与不用 Skill 各跑一遍"的对比上**。
+关键前提：**平台只判一件事 —— 学生交付的 Skill 能不能在标准用例上跑出正确结果**。
 所以每个要素都要能被机器观测到 —— 这是本框架与普通实验指导书最大的区别。
+
+> 平台曾在每个用例上额外跑一轮"只给题干"的 baseline，用来度量 `lift`（用 Skill 比裸做强多少）。
+> **该对比已于 2026-10-06 取消**：实验面向学生的练习，不是严格考试，只看"最终结果对不对"。
+> 因此本文里凡涉及 baseline / lift 的历史说明都已按单轮口径改写。
 
 ---
 
@@ -31,7 +35,7 @@
 平台机制是**任务无关**的。复验对每个 case 只做四件事：
 
 1. 把 `cases/<case>/` 里的输入文件拷进一个干净工作目录
-2. 跑两轮 dsh —— baseline（只给题干）与 treatment（题干 + 学生的 Skill）
+2. 跑一轮 dsh —— 题干（`task.md`）+ 学生的 Skill
 3. 把 `manifest.outputFile` 指向的产出与同目录的 `expected.*` 比对
 4. 按 `judge.md` 的细则判定 `{pass, score, rationale}`
 
@@ -75,12 +79,11 @@
 
 ## 1. ① 实验目的：写成"平台能测到的东西"
 
-实验目的不能只写"掌握机器学习基本流程"，要落到平台真实产出的信号上。可用信号只有五个：
+实验目的不能只写"掌握机器学习基本流程"，要落到平台真实产出的信号上。可用信号只有四个：
 
 | 平台信号 | 来源 | 说明 |
 |---|---|---|
-| **复验成功率** | treatment 轮逐 case 判定 | 用学生的 Skill 跑测试集，通过比例（0~1） |
-| **lift（提升量）** | treatment 成功率 − baseline 成功率 | "有了这个 Skill 到底强多少" |
+| **复验成功率** | 逐 case 判定 | 用学生的 Skill 跑标准用例，通过比例（0~1）—— 判分主指标 |
 | **证据一致性** | `.dshc` 证据包 + 逐文件 sha256 | 学生自报哈希 vs 平台容器内实测哈希 |
 | **能力边界填写质量** | 扫 `SKILL.md` 的 `## 能力边界…` 小节（非空且无 `TODO`） | 布尔值 |
 | **踩坑记录条数** | 扫 `SKILL.md` 的踩坑列表项 | 整数 |
@@ -91,7 +94,7 @@
 |---|---|
 | 掌握逻辑回归的用法 | 在给定切分口径下复现指标（成功率 ≥ 2/3）；能说明模型不适用的情况（能力边界） |
 | 熟悉数据清洗 | 3 个含脏数据的用例清洗后与期望输出一致；记录至少 2 条真实踩坑 |
-| 了解 Skill 规范 | Skill 目录结构合规、可被平台装入并在 treatment 轮跑通（成功率 > baseline） |
+| 了解 Skill 规范 | Skill 目录结构合规、可被平台装入并跑通用例（成功率 ≥ 2/3） |
 
 > 每个实验建议只设 **2~3 个能力点**。能力点越多，题干越长、判分越糊。
 
@@ -101,7 +104,7 @@
 
 ### 2.1 口径必须钉死三件事
 
-| 要素 | 必须写清 | 反例（会让学生与 baseline 各做各的） |
+| 要素 | 必须写清 | 反例（口径含糊，学生只能猜） |
 |---|---|---|
 | **输入** | 文件名、列/字段含义、编码 | "给定一批销售数据" |
 | **处理规则** | 每一步的判定与优先级 | "合理清洗一下" |
@@ -110,17 +113,18 @@
 参考 `server/fixtures/ml-basics/dataset/task.md`：它把切分函数、`random_state`、指标名、四舍五入位数全写死，
 所以同一份输入任何人跑都得到同一个期望值。
 
-### 2.2 `task.md` 必须自包含（这条最容易被忽略）
+### 2.2 `task.md` 仍要自包含（理由变了：为了学生自测，不是为了 baseline）
 
-复验会跑**两轮**：
+复验只跑**一轮**：
 
 ```
-baseline   ：只给题干 + 输入文件，模型裸做   ← 用来衡量"没有 Skill 时的水平"
-treatment  ：题干 + 输入文件 + 学生的 Skill  ← 学生的交付物
+treatment：题干 + 输入文件 + 学生的 Skill → 与同目录的 expected.* 比对
 ```
 
-baseline 轮**看不到你的 Skill**。所以题干里少写一条口径，baseline 就变弱 → lift 虚高 → 这个实验的
-"提升量"就不再有意义。**把口径全部写进 `task.md`，不要藏进模板。**
+题干是这轮的唯一事实源，所以口径仍要写全 —— 但理由从"让 baseline 公平"变成了
+**"学生本地自测与平台复验必须同口径"**：学生手里拿到的 dataset.zip 与复验用的是同一份材料，
+题干少写一条口径，学生按自己的理解做"对了"，复验却判他错。
+**把口径全部写进 `task.md`，不要藏进模板** —— 模板是学生写代码的起点，不是教师补口径的地方。
 
 ### 2.3 用例（cases）设计
 
@@ -145,11 +149,13 @@ baseline 轮**看不到你的 Skill**。所以题干里少写一条口径，base
 
 ### 2.4 难度与区分度
 
-- `lift = 0`（baseline 也全过）说明**题目对当前模型太容易**。这不一定算错（题干自包含是硬要求，
-  模型能裸做对是必然代价），但如果你的教学重点就是"让学生把方法沉淀成可复用资产"，
-  应当通过**更细的口径**（更多 `model_params` 组合、多指标、边界样本）来拉高难度，
+取消 baseline 对照后，难度只从**结果本身**看：
+
+- **成功率接近 1**（用例几乎全过）说明题目偏易。这本身不算错，但如果你的教学重点是"让学生把方法
+  沉淀成可复用资产"，应当通过**更细的口径**（更多 `model_params` 组合、多指标、边界样本）拉高难度，
   而不是把信息藏进模板。
-- `lift < 0`（用 Skill 反而更差）通常说明学生的 Skill 有破坏性行为，这本身是有效的教学信号。
+- **成功率不高、学生之间差异明显**就是区分度的来源；`judge.md` 的 rationale 会指出错在哪，
+  这是比分数更有用的教学反馈。
 - 判分阈值不要写进 `judge.md` 之外的地方；`judge.md` 里明确"什么算通过"。
 
 ### 2.5 反作弊设计（注意：数据集包会下发给学生）
@@ -164,7 +170,7 @@ baseline 轮**看不到你的 Skill**。所以题干里少写一条口径，base
 `expected.*` 公开是刻意的（学生要自测），这与"开放评分标准"的教学设计一致；
 但答案是**实现方法**，必须留在仓库的 `reference/` 里（该目录不打进任何 zip）。
 
-模板里也不要有答案：`template/scripts/*.py` 只留骨架 + `TODO`，平台在 treatment 轮会把模板交给模型，
+模板里也不要有答案：`template/scripts/*.py` 只留骨架 + `TODO`，平台复验时会把模板交给模型，
 它必须自己实现。
 
 ---
@@ -173,7 +179,7 @@ baseline 轮**看不到你的 Skill**。所以题干里少写一条口径，base
 
 ```
 你的实验/
-├── template/          → template.zip   交给学生当起点（也是 treatment 轮的 Skill）
+├── template/          → template.zip   交给学生当起点（也是复验时装入的 Skill）
 │   ├── SKILL.md       ← 必需，含规定小节
 │   ├── scripts/       ← 骨架，留 TODO
 │   └── references/    ← 清单/规范
@@ -274,7 +280,7 @@ cp -r server/fixtures/ml-basics server/fixtures/<你的实验名>
 | **开发** | 学生在工作区 `nju-lab/<assignmentId>/skill/` 里改模板 | 模板目录结构不能太深（Skill 根必须是含 `SKILL.md` 的那一层） |
 | **自测** | 学生拿 `cases/` 自己比对 `expected.*` | 用例要能让学生自己判断对错 → `README.md` 里给自测命令 |
 | **提交** | 自检 Skill 根 → 逐文件 sha256 → 打包 ZIP → 生成 `.dshc` 证据包 → 上传；**多版本**（上限 10） | 交付物是完整 Skill 目录，不是单个文件 |
-| **复验** | 一次性容器：逐 case 跑 baseline/treatment 两轮 → judge 逐 case 判定 | 容器整体超时 = `evalConfig.timeoutSeconds`（默认 600s）；**每轮 dsh 另有上限**（平台当前钉在 ≤300s/轮）；用例太多太慢要设 `maxCases` |
+| **复验** | 一次性容器：逐 case 跑一轮（题干 + 学生的 Skill）→ judge 逐 case 判定 | 容器整体超时 = `evalConfig.timeoutSeconds`（默认 600s）；**单轮 dsh 另有上限**（平台当前钉在 ≤300s）；用例太多太慢要设 `maxCases` |
 | **反馈** | 学生端看复验结果 + 教师评语 | `judge.md` 的 rationale 会进反馈，写清"错在哪"对学生最有用 |
 
 **给学生的两条经验规则**（可以写进课程说明）：
@@ -288,12 +294,12 @@ cp -r server/fixtures/ml-basics server/fixtures/<你的实验名>
 
 ### 5.1 第一层：机器复验（客观实测）
 
-每个 case 跑两轮，逐轮产出 `{pass, score, rationale}`。汇总口径：
+每个 case 跑一轮，产出 `{pass, score, rationale}`。汇总口径：
 
 | 字段 | 含义 |
 |---|---|
-| `successRate` | **treatment 轮**通过率（0~1）—— 判分的主指标 |
-| `tokenCost` | 两轮 dsh 实测 token 之和（+ judge 的开销） |
+| `successRate` | 逐用例通过率（0~1）—— 判分的主指标 |
+| `tokenCost` | 本轮 dsh 实测 token（+ judge 的开销） |
 | 逐 case 明细 | 每 case 的 pass/score/rationale/exitCode/耗时/sessionId |
 | `skillInfo` | `{boundariesDocumented, pitfallsRecorded}` |
 | `integrityCheck` | `capsuleHashVerified`、`selfReportVsRerun`（`consistent` / `suspicious` / `no-self-report`） |
@@ -317,15 +323,14 @@ cp -r server/fixtures/ml-basics server/fixtures/<你的实验名>
 
 ```text
 建议分 = min(100,
-           成功率 × 40
-         + max(0, lift) × 15
+           成功率 × 55
          + (能力边界已填写 ? 20 : 10)
          + (证据一致 ? 10 : 5)
-         + (tokenCost < 30000 ? 10 : 6))
+         + (tokenCost < 15000 ? 10 : 6))
 ```
 
-- `成功率` = treatment 轮通过率（0~1）；`lift` = treatment 成功率 − baseline 成功率（0~1 的比例，
-  例如 0.30 表示提升 30 个百分点，故该项最多贡献 15 分）
+- `成功率` = 逐用例通过率（0~1）。原 `lift` 项（15 分）在 2026-10-06 取消 baseline 后并入成功率
+  （40 → 55）；`tokenCost` 也从"两轮之和"变成单轮，阈值按比例减半（30000 → 15000）。
 - 上限 100；**注意**：这是平台的固定公式，**不读你自定义的 `rubric`**。`rubric` 是给你在批改页展示、
   以及手动打分时参考的维度清单（`[{name, weight}]`），权重之和不必等于 100。
 - 如果这个实验不看 token 成本，可以在 rubric 里弱化它 —— 最终分由你自己给。
@@ -342,7 +347,7 @@ cp -r server/fixtures/ml-basics server/fixtures/<你的实验名>
 
 | 取舍 | 建议 |
 |---|---|
-| 用例数量 vs 成本 | 每个 case 两轮 dsh 调用；先 `--max-cases 1` 试跑，确认口径后再放开全部 |
+| 用例数量 vs 成本 | 每个 case 一次 dsh 调用；先 `--max-cases 1` 试跑，确认口径后再放开全部 |
 | 严格 vs 宽容 | 口径能写死的（键名、行数、取值集合）就写死用 `llm`；完全确定的输出才用 `exact` |
 | 成功率 vs 过程分 | 成功率是客观的；"能力边界/踩坑"是过程分。两者权重在 rubric 里体现、由你手工落分 |
 
@@ -367,7 +372,7 @@ cp -r server/fixtures/ml-basics server/fixtures/<你的实验名>
 | 学生 claim 后**每个请求**都失败 | 项目 `evalConfig.reasoningEffort` 不是 `off/low/high/max`（教师端已限制为这四个值） |
 | 学生领取时被拒 | 解锁规则：需完成该实验所属章节之前的全部**已发布**章节 |
 | 复验超时 | 用例过多或单轮太慢 → 调 `evalConfig.timeoutSeconds`（容器整体）或 `maxCases` 收敛用例数 |
-| treatment 通过但分数低 | 看 `skillInfo`（边界/踩坑没写）与 `tokenCost`（超过 30000 会掉 4 分） |
+| 复验通过但分数低 | 看 `skillInfo`（边界/踩坑没写）与 `tokenCost`（超过 15000 会掉 4 分） |
 
 ---
 
@@ -378,7 +383,7 @@ cp -r server/fixtures/ml-basics server/fixtures/<你的实验名>
 - [ ] 明确"没做到"的判据（否则成功率无意义）
 
 **任务与口径**
-- [ ] `task.md` 自包含：不看 Skill 也能照着做（baseline 轮的公平性）
+- [ ] `task.md` 自包含：口径写全，学生本地自测与平台复验不会各做各的
 - [ ] 输入/处理/输出三件事全部写死（文件名、键名、精度、特例）
 - [ ] 用例覆盖基础 / 边界 / 陷阱三档，期望值**不是满分**
 - [ ] `expected.*` 在与复验同一个镜像里生成，并用独立方法复核过
@@ -401,7 +406,7 @@ cp -r server/fixtures/ml-basics server/fixtures/<你的实验名>
 
 | 坑 | 说明 |
 |---|---|
-| 题干藏信息 | baseline 看不到 Skill，藏起来的信息等于没有 → lift 失真 |
+| 题干藏信息 | 复验只看"题干 + Skill"：题干没写的口径，学生只能猜，判分口径也跟着糊 |
 | 期望值满分 | 实验失去区分度（`accuracy=1.0` 时"做错"也能对） |
 | 在数据集包里放答案 | 数据集会下发给学生（`reference/` 目录不要打包） |
 | 改了口径只改一处 | `task.md` / `judge.md` / 参考实现三份事实源必须同步，然后重算 `expected` |
@@ -417,7 +422,6 @@ cp -r server/fixtures/ml-basics server/fixtures/<你的实验名>
 | 你想考查的 | 用哪个机制 | 怎么设 |
 |---|---|---|
 | 结果正确性 | 复验成功率 | 用例 + `expected.*` + `judge.md` |
-| 方法是否比"裸做"更好 | lift | 题干自包含，让 baseline 有意义 |
 | 是否能说清边界 | 能力边界扫描 | 模板保留 `## 能力边界` 小节 |
 | 是否真做过实验 | 踩坑记录 + `.dshc` 证据 | 模板保留"实测档案/踩坑记录"小节 |
 | 过程是否真实 | 证据一致性 | 平台自动对照自报哈希与实测哈希（无需配置） |

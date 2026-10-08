@@ -5,6 +5,36 @@
 
 ## 0. 一句话现状
 
+**2026-10-06：复验取消 baseline 轮 —— 每个实验不再多跑一轮"只给题干"的对照（已上线）** ——
+面向学生的练习不是严格考试，评判只保留"学生交付的 Skill 能否在标准用例上跑出正确结果"，不再度量 `lift`。
+① 驱动 `server/verify-image/run-eval.mjs` 只跑**一轮**（题干 + 学生的 Skill），`--skill` 成为必需输入；
+结果 JSON 去掉 `summary.baseline` 与 `cases[].rounds`（`evalVersion: docker-3`，每个 case 一条扁平记录）。
+② `DockerEvaluationRunner` / `MockEvaluationRunner` 去掉 `lift` 与 `baselineResult`；`tokenCost` 改为单轮、
+`invocationCount` = case 数、`dossierSnapshot` 去掉 `baselineSuccessRate`/`lift`。
+③ 建议分公式：**成功率 40 → 55**（原 lift 的 15 分并入），token 阈值 **30000 → 15000**（单轮减半）；
+其余两项（能力边界 20/10、证据一致 10/5）不变 —— 上限仍是 `min(100, …)`。
+④ 前端：教师批改页去掉 Baseline 卡片（改为单个「复验（使用学生的 Skill）」卡片）、学生端去掉「Baseline 成功率」行；
+`baselineResult` 作为**历史字段**保留在实体与类型里（旧记录仍可读，新复验不再写入）。
+镜像 **`nju-lab-verify:0.2.0-rc.2-pkg3`**：只覆盖驱动 + `export/import` 压平（不重装依赖），
+**pkg2 保留作回滚点**；workspace 镜像本次不重建（工作台不跑复验驱动），仍基于 pkg2。
+文档同步：`docs/EXPERIMENT-DESIGN-FRAMEWORK.md`（五信号 → 四信号、§2.2/§2.4 按单轮口径改写、§5.2 公式）、
+`docs/EXPERIMENT-PACKAGE-SPEC.md`、`server/README.md`、`server/verify-image/README.md`、两个 fixtures 的 README 与模板脚本注释；
+`nju-lab-craft.md` 加"现状注记"（其中其余 baseline/lift 表述属**原始设计**，保留作历史）。
+验证（2026-10-06 本机实测）：
+① `server` `npm run build` + `web` `npm run build` 通过；
+② pkg3 镜像端到端直跑：`--skill fixtures/csv-cleaner --dataset fixtures/dataset --max-cases 1` → 日志只有**一次** `[run]/[done]`
+（无 baseline），`evalVersion=docker-3`、`summary` 扁平（`passCount/runs/successRate/avgScore/tokens/durationMs`）、
+`cases[0]` 扁平无 `rounds`；26.6s / 486 tokens（对照两轮时代 ≈ 翻倍）；
+③ 不传 `--skill` → **退出码 2** + `--skill is required：baseline 轮已取消…`（不再静默只跑 baseline）；
+④ 服务端映射（`mapResult`）喂入上述真实 result.json：顶层**无** `baselineResult`、`tokenCost=486`（单轮）、
+`invocationCount=1`、建议分 `85`（1×55 + 10 + 10 + 10）；
+⑤ 部署：`server` build → `kill` MainPID（3757030 → **1398576**）→ 冒烟 `POST /api/auth/login` **201**
+（3100 直连与经 nginx 的 `/lab/api/...` 均 201）、`/lab/` **200**；前端 `deploy/deploy-web-lab.sh` 部署通过（md5 校验 + 6/6 资源探测）。
+⚠️ 重启打断了一次活跃工作台会话（容器按 `adoptOrReclaim()` 处置）。
+**取舍说明**：关掉 baseline 后平台答不出"用 Skill 比裸做强多少"（原卖点），
+换来的是每个 case 的 token 与时间**减半**、出题与判分口径更简单（`task.md` 自包含从"硬要求"降级为良好习惯）。
+真要恢复对照，按 `docs/UPGRADE-playbook.md §5` 重建一版驱动即可。
+
 **2026-10-06（续）：教师端课程管理优化 + 课程转让（已上线）** —— ①「课程管理」卡片整行等高
 （与 student 端同一套 flex 链路），**简介固定占两行高度**（`min-height: 3.15em`，不足两行也撑满），
 卡片新增「授课教师」行（`GET /api/courses` 列表补返回 `teacherName`；⚠️ 用解构剔除 `teacher` 实体本身，

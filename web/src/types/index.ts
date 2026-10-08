@@ -302,6 +302,7 @@ export interface IntegrityCheck {
 export interface Evaluation {
   id: string;
   submissionId: string;
+  /** @deprecated baseline 轮已取消（2026-10-06）；仅历史记录里还可能有值 */
   baselineResult?: RunResult;
   treatmentResult?: RunResult;
   /** 0~1 小数 */

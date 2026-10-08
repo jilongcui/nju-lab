@@ -86,10 +86,10 @@ dataset/
 
 ### 3.3 `task.md`（题干）
 
-- 这是 **baseline 轮（不用 Skill）唯一的事实源** —— 写得自包含：数据在哪、要产出什么文件、
-  口径是什么。缺了它，baseline 就没有可比性，lift 无意义。
+- 这是 **复验唯一的事实源** —— 写得自包含：数据在哪、要产出什么文件、口径是什么。
+  学生拿到的 dataset.zip 与复验用的是同一份材料，题干含糊 = 判分口径含糊。
 - 占位符：`{{input}}`（第一个输入文件名）、`{{inputs}}`（逗号分隔）、`{{output}}`、`{{skill}}`（= `./skill`）。
-- 若正文里没出现 `outputFile`，驱动会自动补一句「把结果写到 …」；treatment 轮还会自动附一句
+- 若正文里没出现 `outputFile`，驱动会自动补一句「把结果写到 …」；另外会自动附一句
   「Skill 已在 `./skill`，优先使用它」—— 你不必自己写这两句。
 
 ### 3.4 `judge.md`（评分细则）
@@ -116,7 +116,7 @@ dataset/
 - 自检通过 → 正常复验，结果 JSON 里带 `dependencyCheck`。
 - 自检失败 → **直接失败并明确报错**（不会跑到一半才发现脚本 ImportError）。
 
-当前镜像 `nju-lab-verify:0.2.0-rc.2-pkg2` 的预装集（`python3` + 系统命令）：
+当前镜像 `nju-lab-verify:0.2.0-rc.2-pkg3` 的预装集（`python3` + 系统命令）：
 
 | 类别 | 内容 |
 |---|---|
@@ -147,7 +147,7 @@ dataset/
 | 内容 | 归属 | 理由 |
 |---|---|---|
 | 题目、评分细则、IO 约定、用例、模板 | **你的包** | 出题与评分标准本就该由教师定 |
-| dsh 版本、verify profile（approval=never）、容器网络白名单、工具面收窄、token 统计、baseline/treatment 两轮对比 | **平台（镜像）** | 这是**裁判程序**：能改它就能绕过评测条件 |
+| dsh 版本、verify profile（approval=never）、容器网络白名单、工具面收窄、token 统计、逐用例复验（题干 + 学生 Skill 一轮；baseline 轮已于 2026-10-06 取消） | **平台（镜像）** | 这是**裁判程序**：能改它就能绕过评测条件 |
 | Python/系统依赖 | **平台（镜像）** | 容器无外网、镜像只读，装包只能在构建期 |
 
 即：**裁判的外壳由平台钉死，题目与判据由你提供**。包驱动的价值是让你加实验类型时
@@ -163,7 +163,7 @@ rm -f template.zip dataset.zip
 (cd dataset  && zip -qr ../dataset.zip .)
 
 # 1) 上传前自检（不跑模型、不烧 token）：结构 + 依赖
-docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg2 \
+docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg3 \
   --check --skill /p/template.zip --dataset /p/dataset.zip
 
 # 2) 上传拿 fileId（教师 token）

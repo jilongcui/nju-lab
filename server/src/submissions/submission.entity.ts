@@ -93,7 +93,7 @@ export class Evaluation {
   @JoinColumn({ name: 'submissionId' })
   submission: Submission;
 
-  /** baseline（不用 Skill）运行结果 */
+  /** baseline（不用 Skill）运行结果 —— **历史字段**：baseline 轮已于 2026-10-06 取消，新复验不再写入 */
   @Column({ type: 'json', nullable: true })
   baselineResult: Record<string, unknown> | null;
 

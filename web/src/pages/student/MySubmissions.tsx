@@ -334,10 +334,7 @@ export default function MySubmissions() {
                       <Tag color="orange">证据存疑</Tag>
                     )}
                   </Descriptions.Item>
-                  <Descriptions.Item label="Baseline 成功率">
-                    {pct(feedback.evaluation.baselineResult?.successRate)}
-                  </Descriptions.Item>
-                  <Descriptions.Item label="Treatment 成功率">
+                  <Descriptions.Item label="逐用例成功率">
                     {pct(feedback.evaluation.treatmentResult?.successRate)}
                   </Descriptions.Item>
                   <Descriptions.Item label="教师评语">

@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """按 params.json 的口径训练并评估模型：<case_dir>/{input.csv,params.json} → output.json。
 
-**骨架：核心逻辑由学生补全**（TODO 处）。平台复验会把这个 Skill 交给 agent 使用
-（treatment 轮），并与"不用 Skill"的 baseline 轮对比，所以：
+**骨架：核心逻辑由学生补全**（TODO 处）。平台复验会把这份 Skill 交给 agent 使用，所以：
   - 命令行约定保持稳定（不要改用法）；
   - TODO 要真正实现，**不要在脚本里写死某个测试用例的答案**。
 

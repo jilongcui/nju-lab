@@ -8,7 +8,7 @@
 export DSH_HOME=/opt/nju-verify/.dsh
 cp -r nju-lab-verify "$DSH_HOME/profiles/nju-lab-verify"
 
-# 解包学生 Skill → 用标准数据集跑 baseline/treatment（驱动脚本见 dsh/verify-poc/）
+# 解包学生 Skill → 用标准数据集跑复验（题干 + Skill 一轮；驱动见 server/verify-image/run-eval.mjs）
 dsh --profile nju-lab-verify "run the skill against the standard dataset"
 ```
 

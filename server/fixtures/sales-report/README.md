@@ -13,7 +13,7 @@ sales-report/
 │   └── references/checklist.md
 ├── dataset/                   # 标准测试数据集源（打包 → dataset.zip，claim 时下发给学生）
 │   ├── manifest.json          # 包声明：输出文件名 / 输入文件 / judgeMode / 依赖
-│   ├── task.md                # 题干（baseline 轮的唯一事实源；支持 {{input}}/{{output}} 占位符）
+│   ├── task.md                # 题干（复验唯一的事实源；支持 {{input}}/{{output}} 占位符）
 │   ├── judge.md               # 评分细则（LLM judge 的判据）
 │   ├── README.md              # 给人看
 │   └── cases/case0N/{input.csv, expected.json}
@@ -41,7 +41,7 @@ curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN
 ## 上传前自检（不烧 token）
 
 ```sh
-docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg2 \
+docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg3 \
   --check --skill /p/template.zip --dataset /p/dataset.zip
 ```
 
@@ -70,4 +70,7 @@ docker run --rm --env-file /tmp/verify.env \
 ⚠️ **baseline 也通过了**（`lift = 0`）：deepseek-flash 裸跑就能完成"分组求和"这类题。
 这不是包的 bug，但说明该 case **区分度不足** —— 正式出题时建议设计"口径依赖 Skill 文档里
 的领域知识、题干只能给出目标而给不出细节"的用例（题干仍须自包含，否则 baseline 失去可比性）。
+
+> **2026-10-06 注**：本文以上实测记录按当时口径保留。平台此后**取消了 baseline 轮**，
+> `lift` 不再是平台信号 —— 该 case 现在只看"用 Skill 跑一轮"的成功率。
 

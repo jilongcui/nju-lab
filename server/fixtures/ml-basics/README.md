@@ -13,7 +13,7 @@ ml-basics/
 │   └── references/checklist.md
 ├── dataset/                   # → dataset.zip（下发给学生 + 复验只读挂载）
 │   ├── manifest.json          # outputFile=output.json；requires.python=[sklearn,pandas,numpy]
-│   ├── task.md                # 题干（含切分口径 —— baseline 轮的唯一事实源）
+│   ├── task.md                # 题干（含切分口径；复验唯一的事实源）
 │   ├── judge.md               # 判分细则（键名 + 容差 + 混淆矩阵结构）
 │   ├── README.md
 │   └── cases/case0N/{input.csv, params.json, expected.json}
@@ -40,10 +40,10 @@ ml-basics/
 cd server/fixtures/ml-basics
 # 数据（固定种子，可重跑）：需要镜像里的 numpy
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/w" --entrypoint python3 \
-  nju-lab-verify:0.2.0-rc.2-pkg2 /w/reference/gen_cases.py
-# 期望值：**必须在 pkg2 镜像里生成**，保证 sklearn 版本与复验环境一致
+  nju-lab-verify:0.2.0-rc.2-pkg3 /w/reference/gen_cases.py
+# 期望值：**必须在与复验同一个镜像里生成**，保证 sklearn 版本与复验环境一致
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/w" --entrypoint python3 \
-  nju-lab-verify:0.2.0-rc.2-pkg2 /w/reference/solve.py --regen-cases
+  nju-lab-verify:0.2.0-rc.2-pkg3 /w/reference/solve.py --regen-cases
 ```
 
 ## 打包、自检、上传
@@ -55,7 +55,7 @@ rm -f template.zip dataset.zip
 (cd dataset  && zip -qr ../dataset.zip .)
 
 # 上传前自检（不烧 token）：结构 + 依赖
-docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg2 \
+docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg3 \
   --check --skill /p/template.zip --dataset /p/dataset.zip
 
 # 上传拿 fileId → 在「机器学习基础模型构建与运行」项目详情里绑定：
@@ -76,8 +76,7 @@ curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN
 
 ## 出题提醒
 
-- 题面（`task.md`）必须**自包含**：baseline 轮没有 Skill，只有这份题干 + `input.csv`/`params.json`，
-  漏写切分口径会导致 baseline 与 treatment 比的不是同一件事。
-- 代价是模型裸跑也能做对（lift 可能为 0）—— 这是"可复现"与"有区分度"的固有取舍。
-  想提高区分度，可让口径更细（更多 `model_params` 组合、多指标、边界样本），而不是把信息藏进模板。
+- 题面（`task.md`）必须**自包含**：复验只给这份题干 + `input.csv`/`params.json` + 学生的 Skill，
+  漏写切分口径，学生按自己理解做"对了"也会被判错。
+- 想提高区分度，可让口径更细（更多 `model_params` 组合、多指标、边界样本），而不是把信息藏进模板。
 - 改口径要三处同步：`dataset/task.md`、`dataset/judge.md`、`reference/solve.py`，然后重算 `expected.json`。

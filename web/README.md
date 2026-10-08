@@ -50,7 +50,7 @@ cd .. && bash deploy/deploy-web-lab.sh    # 构建 → 备份 → 先 chunk 后 
 | `/teacher/courses/:courseId` | 课程详情：章节与实验（章节大纲、实验卡片、班级学习进度）、学生管理（报名审批 + 选课名单统一表格）、公开报名设置 | 教师 |
 | `/teacher/chapters/:chapterId/edit` | 章节编辑（Markdown 编辑 + 预览） | 教师 |
 | `/teacher/projects/:projectId` | 实验项目详情：完整项目信息展示与编辑（目标/背景/任务/evalConfig/rubric/截止时间/解锁规则）、发布、学生提交表格 | 教师 |
-| `/teacher/submissions/:submissionId/grade` | 批改页：提交详情（引用/哈希/审计事件）+ 复验结果（baseline/treatment 对比、成功率、token 成本、评分建议）+ 打分评语 | 教师 |
+| `/teacher/submissions/:submissionId/grade` | 批改页：提交详情（引用/哈希/审计事件）+ 复验结果（逐用例成功率、token 成本、评分建议）+ 打分评语 | 教师 |
 | `/student/courses` | 我的课程（含章节进度） | 学生 |
 | `/student/courses/:courseId` | 课程学习页：章节列表 + 实验卡片解锁状态 | 学生 |
 | `/student/chapters/:chapterId` | 章节阅读（标记完成） | 学生 |

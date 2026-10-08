@@ -388,7 +388,7 @@ dsh --profile headless "run the skill against the standard dataset"
 # 资源限额：CPU/内存/时长/token 由容器 + config 双重限制
 ```
 
-容器编排（与 `nju-lab-craft.md` §6.4 一致）：解包 Skill → 用标准数据集跑 baseline/treatment → 采集 `session` 持久化/导出产物 → 输出结构化结果 JSON。**学生 Skill 的 `scripts/` 是任意代码，容器是唯一信任边界**。
+容器编排（与 `nju-lab-craft.md` §6.4 一致）：解包 Skill → 用标准数据集跑复验（题干 + 学生的 Skill，一轮）→ 采集 `session` 持久化/导出产物 → 输出结构化结果 JSON。**学生 Skill 的 `scripts/` 是任意代码，容器是唯一信任边界**。
 
 > 平台复验用的是**平台自己的** `nju-lab-verify` profile 与基础镜像，**不读学生本地 profile**——这就是"评估条件不可篡改"的落地方式（学生改本地 profile 不影响复验）。
 

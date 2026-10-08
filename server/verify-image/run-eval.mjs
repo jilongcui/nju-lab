@@ -1,23 +1,26 @@
 #!/usr/bin/env node
 // NJU-Lab 复验驱动（生产版，运行于 nju-lab-verify 一次性容器内）。
 //
-// 输入：skill.zip|dir + dataset.zip|dir → 逐 case 跑 baseline/treatment 两轮
-// dsh headless（approval=never / workspace-write），按 judge-mode 评分，输出单个
-// 结构化结果 JSON。
+// 输入：skill.zip|dir + dataset.zip|dir → 逐 case 跑一轮 dsh headless
+// （approval=never / workspace-write），按 judge-mode 评分，输出单个结构化结果 JSON。
+//
+// **单轮（无 baseline）**：2026-10-06 起平台取消 baseline（"只给题干"）轮 ——
+// 面向学生的实验只判「学生交付的工具是否产出了正确结果」，不再度量 lift。
+// 因此 --skill 是必需输入，驱动不再产出 baseline 汇总。
 //
 // **任务知识随数据集包走（包驱动）** —— 数据集 ZIP 根目录可放三个可选文件：
 //   manifest.json  机器读的结构声明（输出文件名 / 输入文件 / judgeMode / 依赖）
-//   task.md        任务提示（被测 agent 看到的题干；baseline 轮的唯一事实源）
+//   task.md        任务提示（被测 agent 看到的题干）
 //   judge.md       评分细则（LLM judge 的判据）
 // 三者都不放 → **逐字回落内置的「CSV 数据清洗」行为**（历史数据集与在跑实验零影响）。
 // 由此：新增实验类型只需重新上传数据集包，裁判程序与镜像都不动 ——
-// 题目与评分细则由教师的包决定，执行与公平性由平台钉死。
+// 题目与评分细则由教师的包决定，执行与判分口径由平台钉死。
 //
 // 用法：
 //   node run-eval.mjs --skill <zip|dir> --dataset <zip|dir> --out <result.json>
 //     [--judge-mode llm|exact]          默认取包内 manifest.judgeMode，再回落 llm
 //     [--cases case01,case02 | --max-cases N]   默认全部 case
-//     [--timeout-ms N]                  每轮 dsh 运行上限，默认 300000
+//     [--timeout-ms N]                  dsh 单轮运行上限，默认 300000
 //     [--dsh-home DIR]                  默认 $DSH_HOME 或 /tmp/dsh-home
 //     [--profile-src DIR]               nju-lab-verify profile 源目录
 //     [--check]                         只解析与校验包（结构 + 依赖），不跑模型、不烧 token
@@ -49,7 +52,7 @@ const API_KEY = process.env.DEEPSEEK_API_KEY || process.env.MOONSHOT_API_KEY;
 // ---------- 内置回落：CSV 数据清洗 ----------
 // 数据集包没放 task.md / judge.md 时用这一套，保证历史数据集行为逐字不变。
 
-// 评判规则：来自标准数据集 README，judge prompt 与 baseline 任务共用同一份事实源。
+// 评判规则：来自标准数据集 README，与题干（task.md）共用同一份事实源。
 const CLEAN_RULES = `Cleaning rules:
 1. Trim leading/trailing whitespace from every field.
 2. Normalize the date column to YYYY-MM-DD (inputs may be YYYY/M/D, DD-MM-YYYY, YYYY.MM.DD).
@@ -67,8 +70,7 @@ const JUDGE_PROMPT = `你是一个严格的 CSV 数据清洗结果评判器。�
 
 只输出一个 JSON 对象，不要输出其他内容：{"pass": true|false, "score": 0~1, "rationale": "中文一句话说明判定依据，不通过时指出具体差异"}`;
 
-const BUILTIN_BASELINE_TASK = `Clean the dirty CSV file input.csv and write the cleaned result to output.csv in the current directory.\n${CLEAN_RULES}\nFinally make sure output.csv exists. Reply briefly.`;
-const BUILTIN_TREATMENT_TASK = `A skill is provided in ./skill (start from skill/SKILL.md). Use it to clean the dirty CSV file input.csv and write the cleaned result to output.csv in the current directory. You may inspect, fix, and run the skill's scripts. Finally make sure output.csv exists.`;
+const BUILTIN_TASK = `A skill is provided in ./skill (start from skill/SKILL.md). Use it to clean the dirty CSV file input.csv and write the cleaned result to output.csv in the current directory. You may inspect, fix, and run the skill's scripts. Finally make sure output.csv exists.`;
 
 /**
  * 包内含 judge.md 时的判分 prompt 外壳。
@@ -321,23 +323,19 @@ function caseExpected(caseDir, spec) {
 }
 
 /** 任务提示：包内 task.md（占位符替换 + 兜底补产出要求），否则内置 CSV 题干。 */
-function buildTaskPrompt({ spec, treatment, inputs, outputFile }) {
-  if (!spec.taskPrompt) {
-    return treatment ? BUILTIN_TREATMENT_TASK : BUILTIN_BASELINE_TASK;
-  }
+function buildTaskPrompt({ spec, inputs, outputFile }) {
+  if (!spec.taskPrompt) return BUILTIN_TASK;
   const firstInput = inputs[0]?.rel ?? '输入文件';
   let text = spec.taskPrompt
     .replace(/\{\{\s*input\s*\}\}/g, firstInput)
     .replace(/\{\{\s*inputs\s*\}\}/g, inputs.map((i) => i.rel).join(', '))
     .replace(/\{\{\s*output\s*\}\}/g, outputFile)
     .replace(/\{\{\s*skill\s*\}\}/g, './skill');
-  // 题干里没提到产出文件名时补一句：baseline 轮没有 Skill 兜底，漏了它任务不可完成。
+  // 题干里没提到产出文件名时补一句，否则任务不可完成。
   if (!text.includes(outputFile)) {
     text += `\n\n产出要求：把结果写到当前目录的 ${outputFile}，完成后确认该文件存在。`;
   }
-  if (treatment) {
-    text += `\n\n一个 Skill 已提供在 ./skill（从 skill/SKILL.md 开始读）。优先使用它完成任务：可以检查、修正并运行其中的脚本。`;
-  }
+  text += `\n\n一个 Skill 已提供在 ./skill（从 skill/SKILL.md 开始读）。优先使用它完成任务：可以检查、修正并运行其中的脚本。`;
   return text;
 }
 
@@ -437,13 +435,8 @@ function extractUsage(dshHome, sinceMs) {
   return { tokens, sessionId };
 }
 
-function runRound({ opts, spec, inputs, round, workdir }) {
-  const task = buildTaskPrompt({
-    spec,
-    treatment: round === 'treatment',
-    inputs,
-    outputFile: spec.outputFile,
-  });
+function runRound({ opts, spec, inputs, workdir }) {
+  const task = buildTaskPrompt({ spec, inputs, outputFile: spec.outputFile });
 
   const startedAt = Date.now();
   const proc = spawnSync(DSH_BIN, ['--profile', PROFILE, task], {
@@ -461,7 +454,6 @@ function runRound({ opts, spec, inputs, round, workdir }) {
   const outputText = existsSync(outputPath) ? readFileSync(outputPath, 'utf8') : null;
   const { tokens, sessionId } = extractUsage(opts.dshHome, startedAt);
   return {
-    round,
     exitCode: proc.status,
     timedOut: proc.error?.code === 'ETIMEDOUT' || proc.signal === 'SIGTERM',
     durationMs,
@@ -592,6 +584,10 @@ async function main() {
   const datasetRoot = resolveDatasetRoot(unpack(opts.dataset, 'dataset'));
   const spec = readDatasetSpec(datasetRoot);
   const skillRoot = opts.skill ? resolveSkillRoot(unpack(opts.skill, 'skill')) : null;
+  // 单轮复验必须带 Skill：baseline 轮已取消，"没有 Skill 的裸做"不再是评测对象。
+  if (!opts.check && !skillRoot) {
+    fail('--skill is required：baseline 轮已取消，复验只跑「使用 Skill」一轮');
+  }
   const caseNames = listCases(datasetRoot, opts, spec);
   // 判分模式优先级：命令行（平台项目配置）> 包内 manifest > 内置 llm
   const judgeMode = opts.judgeMode ?? spec.judgeMode ?? 'llm';
@@ -626,7 +622,7 @@ async function main() {
 
   const runRoot = mkdtempSync(join(tmpdir(), 'nju-verify-runs-'));
   const result = {
-    evalVersion: 'docker-2',
+    evalVersion: 'docker-3',
     startedAt: new Date().toISOString(),
     dshVersion: DSH_VERSION,
     profile: PROFILE,
@@ -644,49 +640,40 @@ async function main() {
     const inputs = caseInputs(caseDir, spec);
     const expected = caseExpected(caseDir, spec);
     const expectedText = readFileSync(expected.path, 'utf8');
-    const entry = { case: caseName, rounds: {} };
-    for (const round of ['baseline', 'treatment']) {
-      if (round === 'treatment' && !skillRoot) continue;
-      const workdir = join(runRoot, caseName, round);
-      mkdirSync(workdir, { recursive: true });
-      for (const inp of inputs) {
-        const dest = join(workdir, inp.rel);
-        mkdirSync(dirname(dest), { recursive: true });
-        cpSync(inp.abs, dest, { recursive: true });
-      }
-      if (round === 'treatment') cpSync(skillRoot, join(workdir, 'skill'), { recursive: true });
-      console.error(`[run] ${caseName}/${round} ...`);
-      const r = runRound({ opts, spec, inputs, round, workdir });
-      const j = await judge(judgeMode, {
-        spec,
-        expected: expectedText,
-        expectedName: expected.name,
-        actual: r.outputText,
-      });
-      r.judge = { pass: j.pass, score: j.score, rationale: j.rationale };
-      r.tokens.input += j.judgeTokens.input;
-      r.tokens.output += j.judgeTokens.output;
-      delete r.outputText; // 结果 JSON 不带全量输出，只带判定（输出留在容器内 workdir）
-      entry.rounds[round] = r;
-      console.error(`[done] ${caseName}/${round}: pass=${j.pass} score=${j.score} exit=${r.exitCode} in=${r.tokens.input} out=${r.tokens.output} ${r.durationMs}ms`);
+    const workdir = join(runRoot, caseName, 'run');
+    mkdirSync(workdir, { recursive: true });
+    for (const inp of inputs) {
+      const dest = join(workdir, inp.rel);
+      mkdirSync(dirname(dest), { recursive: true });
+      cpSync(inp.abs, dest, { recursive: true });
     }
-    result.cases.push(entry);
+    cpSync(skillRoot, join(workdir, 'skill'), { recursive: true });
+    console.error(`[run] ${caseName} ...`);
+    const r = runRound({ opts, spec, inputs, workdir });
+    const j = await judge(judgeMode, {
+      spec,
+      expected: expectedText,
+      expectedName: expected.name,
+      actual: r.outputText,
+    });
+    r.judge = { pass: j.pass, score: j.score, rationale: j.rationale };
+    r.tokens.input += j.judgeTokens.input;
+    r.tokens.output += j.judgeTokens.output;
+    delete r.outputText; // 结果 JSON 不带全量输出，只带判定（输出留在容器内 workdir）
+    console.error(`[done] ${caseName}: pass=${j.pass} score=${j.score} exit=${r.exitCode} in=${r.tokens.input} out=${r.tokens.output} ${r.durationMs}ms`);
+    result.cases.push({ case: caseName, ...r });
   }
 
-  const roundsOf = (r) => result.cases.map((c) => c.rounds[r]).filter(Boolean);
-  const stat = (r) => {
-    const rs = roundsOf(r);
-    return {
-      passCount: rs.filter((x) => x.judge.pass).length,
-      runs: rs.length,
-      successRate: rs.length ? Math.round((rs.filter((x) => x.judge.pass).length / rs.length) * 100) / 100 : 0,
-      avgScore: rs.length ? Math.round((rs.reduce((a, x) => a + x.judge.score, 0) / rs.length) * 100) / 100 : 0,
-      tokens: rs.reduce((a, x) => ({ input: a.input + x.tokens.input, output: a.output + x.tokens.output }), { input: 0, output: 0 }),
-      durationMs: rs.reduce((a, x) => a + x.durationMs, 0),
-    };
+  const rs = result.cases;
+  const passCount = rs.filter((x) => x.judge.pass).length;
+  result.summary = {
+    passCount,
+    runs: rs.length,
+    successRate: rs.length ? Math.round((passCount / rs.length) * 100) / 100 : 0,
+    avgScore: rs.length ? Math.round((rs.reduce((a, x) => a + x.judge.score, 0) / rs.length) * 100) / 100 : 0,
+    tokens: rs.reduce((a, x) => ({ input: a.input + x.tokens.input, output: a.output + x.tokens.output }), { input: 0, output: 0 }),
+    durationMs: rs.reduce((a, x) => a + x.durationMs, 0),
   };
-  result.summary = { baseline: stat('baseline') };
-  if (skillRoot) result.summary.treatment = stat('treatment');
 
   const json = JSON.stringify(result, null, 2);
   if (opts.out) { writeFileSync(opts.out, json + '\n'); console.error(`[ok] wrote ${opts.out}`); }
