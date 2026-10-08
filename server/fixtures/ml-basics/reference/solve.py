@@ -9,10 +9,10 @@
   python3 reference/solve.py --regen-cases                # 重算全部 cases/*/expected.json
 
 口径与 dataset/task.md、dataset/judge.md 三处必须一致（改一处要改三处）。
-expected.json 请在 **pkg2 镜像内**生成，保证 sklearn 版本与复验环境一致：
+expected.json 请在**与复验同一个镜像内**生成，保证 sklearn 版本与复验环境一致（当前 pkg3）：
 
   docker run --rm -v "$PWD:/w" --entrypoint python3 \
-    nju-lab-verify:0.2.0-rc.2-pkg2 /w/reference/solve.py --regen-cases
+    nju-lab-verify:0.2.0-rc.2-pkg3 /w/reference/solve.py --regen-cases
 """
 import csv
 import json

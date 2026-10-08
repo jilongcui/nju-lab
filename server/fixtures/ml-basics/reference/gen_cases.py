@@ -4,11 +4,11 @@
 **可重跑**：数据全部由固定种子生成，跑两次结果逐字节一致 —— 改案例时重跑它，
 再用 reference/solve.py --regen-cases 重算 expected.json 即可。
 
-在 pkg2 镜像里跑（镜像内有 numpy/sklearn，版本与复验环境一致）：
+在与复验同一个镜像里跑（镜像内有 numpy/sklearn，版本与复验环境一致；当前 pkg3）：
 
   cd server/fixtures/ml-basics
   docker run --rm -v "$PWD:/w" --entrypoint python3 \
-    nju-lab-verify:0.2.0-rc.2-pkg2 /w/reference/gen_cases.py
+    nju-lab-verify:0.2.0-rc.2-pkg3 /w/reference/gen_cases.py
 
 ⚠️ 这个脚本与 solve.py 一样**不随任何包分发**（dataset 包会下发给学生）。
 """

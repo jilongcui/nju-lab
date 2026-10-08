@@ -25,7 +25,7 @@
 
 ## 依赖
 
-`manifest.requires.python = ["sklearn", "pandas", "numpy"]` —— 复验镜像 `nju-lab-verify:0.2.0-rc.2-pkg2`
+`manifest.requires.python = ["sklearn", "pandas", "numpy"]` —— 复验镜像 `nju-lab-verify:0.2.0-rc.2-pkg3`
 已预装（scikit-learn 1.9.1 / pandas / numpy），驱动会在开跑前自检，缺了直接失败。
 
 ## 自测方法

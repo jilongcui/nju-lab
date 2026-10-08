@@ -53,9 +53,9 @@ ml-basics/
 - 任务：`input.csv` + `params.json` → `output.json`（按 params 口径训练评估，输出 `model`/`n_train`/`n_test`/`metrics`）
 - 三个 case：`LinearRegression`（r2=0.9861/mae=0.4626）、`LogisticRegression`（accuracy=0.90）、
   `LogisticRegression(class_weight="balanced")` 类别不平衡（accuracy=0.92）
-- `manifest.requires.python = ["sklearn", "pandas", "numpy"]` —— 依赖基于 pkg2 镜像的 ML 预装集
-- ⚠️ 期望值**必须在 pkg2 镜像里生成**（sklearn 版本决定指标）：
-  `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/w" --entrypoint python3 nju-lab-verify:0.2.0-rc.2-pkg2 /w/reference/solve.py --regen-cases`
+- `manifest.requires.python = ["sklearn", "pandas", "numpy"]` —— 依赖基于复验镜像的 ML 预装集（pkg2 起就有）
+- ⚠️ 期望值**必须在与复验同一个镜像里生成**（sklearn 版本决定指标）：
+  `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/w" --entrypoint python3 nju-lab-verify:0.2.0-rc.2-pkg3 /w/reference/solve.py --regen-cases`
 
 ## 修改后重新发布
 
@@ -83,7 +83,7 @@ curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN
 
 ```sh
 docker run --rm -v "$PWD/server/fixtures/sales-report:/p:ro" \
-  nju-lab-verify:0.2.0-rc.2-pkg2 --check --skill /p/template.zip --dataset /p/dataset.zip
+  nju-lab-verify:0.2.0-rc.2-pkg3 --check --skill /p/template.zip --dataset /p/dataset.zip
 ```
 
 注意：数据集 `expected.*` 是评分基准，修改任一 case 即视为新版本，注意已在进行中的实验不要中途换数据。
