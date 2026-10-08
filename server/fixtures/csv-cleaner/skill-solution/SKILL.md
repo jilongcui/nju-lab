@@ -51,7 +51,5 @@ python3 scripts/clean.py --regen-cases
 - 自测时间：2026-10-08
 - 用例通过率：3/3（case01/02/03 输出与 `expected.csv` **逐字节一致**）
 - 踩坑记录（pitfalls）：
-  1. `csv.writer` 默认写 CRLF，而 `expected.csv` 是 LF —— 逐字节自测会"看起来一样却 diff 不通过"，
-     必须显式 `lineterminator="\n"`。
-  2. `02-03-2026` 这类值不能按"先试 ISO 再试 DMY"的顺序随便套正则：必须先锚定形态
-     （4 位年开头 vs 2 位日开头），否则 `DD-MM-YYYY` 会被误判。
+  1. `csv.writer` 默认写 CRLF，而 `expected.csv` 是 LF —— 逐字节自测会"看起来一样却 diff 不通过"，必须显式 `lineterminator="\n"`。
+  2. `02-03-2026` 这类值不能按"先试 ISO 再试 DMY"的顺序随便套正则：必须先锚定形态（4 位年开头 vs 2 位日开头），否则 `DD-MM-YYYY` 会被误判。

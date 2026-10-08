@@ -54,7 +54,5 @@ python3 scripts/report.py --regen-cases
 - 自测时间：2026-10-08
 - 用例通过率：3/3（case01 基础汇总 / case02 冠军产品并列 / case03 `units=0` 与小金额）
 - 踩坑记录（pitfalls）：
-  1. `top_product` 并列时若直接 `max(items, key=金额)`，结果取决于字典插入顺序而不是码点序 ——
-     必须显式二级排序键，否则 case02 会偶发不通过。
-  2. 把表头当数据行读（用 `csv.reader` 而非 `DictReader`）会让 `row_count` 多 1，
-     这是最容易被漏掉的差一错误。
+  1. `top_product` 并列时若直接 `max(items, key=金额)`，结果取决于字典插入顺序而不是码点序，必须显式二级排序键（先金额降序、再名字升序），否则 case02 会偶发不通过。
+  2. 把表头当数据行读（用 `csv.reader` 而非 `DictReader`）会让 `row_count` 多 1，这是最容易被漏掉的差一错误。
