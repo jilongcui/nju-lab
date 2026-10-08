@@ -5,6 +5,25 @@
 
 ## 0. 一句话现状
 
+**2026-10-08（续）：ml-basics 全面优化 —— 扩到 5 个 case + 判据放宽到 K×K + 学生侧引导（已上线）** ——
+① **新增两个"陷阱"用例**（`tools/gen_cases.py`，固定种子可重跑）：**case04** K=3 多分类 + `stratify=false` +
+   `test_size=0.2` + `random_state=7`（期望 `acc=0.75`、混淆矩阵 **3×3**）；**case05** 回归 +
+   `model_params={"fit_intercept": false}`（期望 `R²=0.4907` —— **照妖镜**：漏传参数会跳到 ≈0.98）；
+② **判据同步放宽**：`problem/judge.md` 的混淆矩阵从写死的 2×2 改为 **K×K**；`task.md` 补"多分类"与
+   "`stratify` 为假时**不要**传"；（case01–03 的期望值逐字节不变）；
+③ **学生侧引导**：骨架 `SKILL.md` 的 TODO 具体化（`stratify` 分支 / `**model_params` 解包透传 / K×K），
+   实测档案加"踩坑记录每条写一行"提示并改成**非列表格式**（避免污染信号：骨架 `pitfallsRecorded` 1 → **0**）；
+   `problem/README.md` 的**自测命令修正**（原文写成 `train.py input.csv params.json out.json`，与骨架 CLI 不符）
+   并补 5-case 批量比对脚本；`references/checklist.md` 同步；
+④ **平台侧**：ml-basics 项目重新上传绑定（sha256 与本地一致）+ `evalConfig` 补 `model: deepseek-flash`（原先缺省）。
+**实测（2026-10-08）**：`--check` 通过（5 cases、依赖 ok）；**满配 Skill 复验 5/5 通过**
+（60.1s / 3543+446 tokens，`pitfallsRecorded=5`）；
+⚠️ **骨架也 5/5 通过**（145.7s，token 相近 —— 模型在骨架下现场写出正确实现，连 3×3 混淆矩阵与
+`fit_intercept` 都对）。**结论：这次优化提升的是"考点覆盖与实现难度"，没有提升"对模型的区分度"** ——
+题干自包含（平台要求：学生自测与复验同口径）+ 模型能力足够 ⇒ 裸做成功率一样高。
+真正能拉开差距的方向（按代价排序，分析记在 `server/fixtures/ml-basics/README.md` 实测记录）：
+**过程分**（能力边界 / 踩坑 / 证据一致性 —— 骨架这几项是空的）> 让任务超出模型一步 > 恢复 baseline 对照。
+
 **2026-10-08（续）：命名统一为「题目包 / problem」—— 平台、驱动、客户端、DB 全链路（已上线）** ——
 项目尚未发给学生，故**直接改名而非兼容**（上一 commit 只改了仓库目录与 zip 名，这次打通内部命名）：
 ① **DB**：`experiment_projects.testDatasetFileId` → `problemFileId`（迁移 `RenameProblemFileId1790720000000`，

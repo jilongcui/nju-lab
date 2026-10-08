@@ -23,15 +23,18 @@ ml-basics/
 `tools/` 是**第四块**：它既不是题目（不是标准），也不是 Skill（不可被装入执行），
 而是"造题工具"——所以单独放，且与 `skill-solution/` 一样永不下发。
 
-## 三个 case
+## 五个 case
 
-| case | 模型 | 期望（测试集） | 考点 |
+| case | 配置 | 期望（测试集） | 考点 |
 |---|---|---|---|
 | case01 | `LinearRegression` | `r2=0.9861`、`mae=0.4626` | 回归口径与四舍五入 |
-| case02 | `LogisticRegression` | `accuracy=0.90`、CM=`[[22,4],[1,23]]` | `stratify` 与混淆矩阵结构 |
+| case02 | `LogisticRegression` | `accuracy=0.90`、CM=`[[22,4],[1,23]]` | `stratify=y` 与混淆矩阵结构 |
 | case03 | `LogisticRegression(class_weight="balanced")` | `accuracy=0.92`、CM=`[[61,6],[0,8]]` | `model_params` 透传 + 类别不平衡 |
+| case04 | `LogisticRegression`、`test_size=0.2`、`random_state=7`、`stratify=false`、三分类 | `accuracy=0.75`、CM=`[[11,2,0],[1,12,3],[0,6,13]]` | 多分类（CM **3×3**）、**不传 `stratify` 的分支**、非默认切分与种子 |
+| case05 | `LinearRegression(fit_intercept=false)`、`test_size=0.3` | `r2=0.4907`、`mae=2.662` | `model_params` **是否真透传**（漏传 → R²≈0.98，一眼暴露） |
 
-指标**都不是满分** —— 口径抄错（漏 `stratify`、随机种子写死错值）会真的掉分。
+指标**都明显不是满分**（0.49 ~ 0.92）—— 口径抄错（漏 `stratify`、漏传 `model_params`、随机种子写死）
+会真的掉分，很难碰巧全对。
 
 ## 重新生成数据与期望值
 
@@ -87,6 +90,27 @@ ML 实验记得把 `VERIFY_DOCKER_MEMORY` 从 `1g` 调到 `2g`（torch/sklearn �
   然后重算 `expected.json`。
 
 ## 实测记录
+
+### 2026-10-08（续）：扩到 5 个 case —— 提升考点覆盖，并实测"区分度"这个真问题
+
+- 新增两个**陷阱**用例（`tools/gen_cases.py`，固定种子可重跑）：
+  - `case04`：K=3 多分类 + `stratify=false` + `test_size=0.2` + `random_state=7`
+    → `accuracy=0.75`、混淆矩阵 **3×3**；考"多分类"、"不传 `stratify` 的分支"、照抄切分口径
+  - `case05`：回归 + `model_params={"fit_intercept": false}` + `test_size=0.3`
+    → `R²=0.4907`（**照妖镜**：漏传 `model_params` 会变成 ≈0.98，一眼看出没透传）
+- 同步放宽判据：`judge.md` 的混淆矩阵从写死的 2×2 改为 **K×K**；`task.md` 补多分类与
+  "`stratify` 为假时不要传"
+- **满配 Skill 复验：5/5 通过**（60.1s，3543 in / 446 out tokens；`pitfallsRecorded=5`）
+- ⚠️ **骨架也 5/5 通过**（145.7s，token 相近）—— 模型在骨架下现场写出了正确实现，
+  连 3×3 混淆矩阵与 `fit_intercept` 都对了。**结论：这次优化提升的是"考点覆盖与实现难度"，
+  没有提升"对模型的区分度"**：题干自包含（平台要求，为了学生自测与复验同口径）+
+  模型能力足够 ⇒ 裸做的成功率一样高。
+  真正能拉开差距的方向（按代价排序）：
+  1. **过程分**（当前最现实）：能力边界 / 踩坑记录 / 证据一致性 —— 骨架这几项是空的
+     （实测骨架 `boundariesDocumented=false`、`pitfallsRecorded=1`），学生认真做才有分；
+  2. **让任务超出模型一步**：更多工程约束（性能上限、多文件交付、必须复用 Skill 内既有脚本）、
+     或依赖**领域口径**（但注意与"题干自包含"的张力）；
+  3. 恢复 baseline 对照（衡量"Skill 有没有用"而不是"学生水平"，是另一个维度）。
 
 ### 2026-10-08（当前结构）
 

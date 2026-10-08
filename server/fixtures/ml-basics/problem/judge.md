@@ -8,7 +8,7 @@
 4. `metrics`：
    - 回归：必须有 `r2` 与 `mae`，各自的绝对值与期望相差 ≤ 0.001 视为一致。
    - 分类：必须有 `accuracy` 与 `confusion_matrix`；`accuracy` 绝对差 ≤ 0.001；
-     `confusion_matrix` 必须是 **2×2 嵌套整数列表**且逐元素相等。
+     `confusion_matrix` 必须是 **K×K 嵌套整数列表**（K = 标签类别数：二分类 2×2、三分类 3×3）且逐元素相等。
    - `metrics` 内**不允许**出现该 task 之外的指标键（例如回归里混进 `accuracy`）。
 5. 判定口径：
    - JSON 的键序、缩进、空白差异不扣分；数值只要在容差内即视为一致。

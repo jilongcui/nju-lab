@@ -14,8 +14,8 @@ description: 按 params.json 指定的口径（回归/分类、模型与超参�
 - **能处理**：数值型特征 + 单标签的 CSV（表头 + 数据行，**最后一列是 `target`**）；
   `LinearRegression` / `LogisticRegression` 两个模型及其构造参数（`model_params` 原样透传）。
 - **能处理**：`regression` / `classification` 两类任务，指标按任务给出（回归 `r2`/`mae`，
-  分类 `accuracy`/`confusion_matrix`）。
-- **不处理**：类别型特征编码（所有列必须是数值，`float()` 失败即抛错）；多分类（混淆矩阵按 2×2 给）；
+  分类 `accuracy`/`confusion_matrix`）—— 分类含**二分类与多分类**（混淆矩阵按类别数 K 给 K×K）。
+- **不处理**：类别型特征编码（所有列必须是数值，`float()` 失败即抛错）；
   缺失值填补（CSV 里出现空值会读成 `nan`，直接进模型）；
   其他模型族（`model` 不在白名单即报错，不做静默回退）；GPU / 大数据（复验镜像只有 CPU）。
 - **不负责**：调参搜索、特征工程、模型持久化 —— 本题只产出一次训练的指标 JSON。
@@ -58,9 +58,12 @@ python3 scripts/train.py --regen-cases
 ## 实测档案（dossier）
 
 - 自测时间：2026-10-08
-- 用例通过率：3/3（case01 线性回归 R²=0.9861 / case02 均衡二分类 acc=0.90 /
-  case03 类别不平衡 + `class_weight="balanced"` acc=0.92）
+- 用例通过率：5/5（case01 线性回归 R²=0.9861 / case02 均衡二分类 acc=0.90 /
+  case03 类别不平衡 + `class_weight="balanced"` acc=0.92 / case04 **三分类** acc=0.75（CM 3×3）/
+  case05 回归 + `fit_intercept=False` R²=0.4907）
 - 踩坑记录（pitfalls）：
   1. 分类任务漏传 `stratify=y` 时脚本不报错，但 `n_train`/`n_test` 与期望不一致（最先暴露问题的是样本数而不是指标）。
   2. `y` 用 `float` 直接喂 `LogisticRegression` 会被当成连续目标报错，必须先 `astype(int)`。
   3. `expected.json` 必须在**与复验同一个镜像**里生成：sklearn 主版本变化会改变指标数值。
+  4. `stratify` 为 `false` 时若仍传 `stratify=y`，切分结果不同 —— case04 的 `n_train`/`n_test` 与指标会一起错。
+  5. 漏传 `model_params`（用默认 `fit_intercept=True`）时 case05 的 R² 会从 0.4907 跳到 ≈0.98 —— 最容易蒙混过关的一处。

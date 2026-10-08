@@ -1,0 +1,9 @@
+{
+  "task": "regression",
+  "model": "LinearRegression",
+  "model_params": {
+    "fit_intercept": false
+  },
+  "test_size": 0.3,
+  "random_state": 42
+}

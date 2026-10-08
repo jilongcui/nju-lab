@@ -1,0 +1,9 @@
+{
+  "model": "LinearRegression",
+  "n_train": 84,
+  "n_test": 36,
+  "metrics": {
+    "r2": 0.4907,
+    "mae": 2.662
+  }
+}

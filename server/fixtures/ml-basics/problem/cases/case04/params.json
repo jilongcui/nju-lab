@@ -1,0 +1,8 @@
+{
+  "task": "classification",
+  "model": "LogisticRegression",
+  "model_params": {},
+  "test_size": 0.2,
+  "random_state": 7,
+  "stratify": false
+}

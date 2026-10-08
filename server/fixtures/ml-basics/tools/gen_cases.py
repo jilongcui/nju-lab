@@ -92,6 +92,51 @@ def main():
             "stratify": True,
         },
     )
+
+    # case04 三分类（K=3）+ stratify=false + test_size=0.2 + random_state=7
+    # 考点：多分类（混淆矩阵是 3×3，不是 2×2）、**不传 stratify 的分支**、非默认切分与种子。
+    # 簇间距刻意只有 ~1σ，三簇互相重叠 → accuracy 落在 0.6~0.8，不会碰巧满分。
+    rng = np.random.default_rng(20261004)
+    n = 240
+    y4 = rng.integers(0, 3, n)
+    f1 = rng.normal(0, 1, n) + y4 * 1.1
+    f2 = rng.normal(0, 1, n) + y4 * 0.9
+    write_case(
+        "case04",
+        np.column_stack([f1, f2]),
+        ["feature1", "feature2"],
+        y4,
+        {
+            "task": "classification",
+            "model": "LogisticRegression",
+            "model_params": {},
+            "test_size": 0.2,
+            "random_state": 7,
+            "stratify": False,
+        },
+    )
+
+    # case05 回归 + model_params 透传（fit_intercept=False）+ test_size=0.3
+    # 考点：`model_params` 是否**真的透传**给构造函数 —— 数据有显著截距（4.0），
+    # 漏传 fit_intercept 会得到 ≈0.98 的 R²，透传后 R² 只剩 ~0.7，指标直接暴露。
+    rng = np.random.default_rng(20261005)
+    n = 120
+    x1 = rng.uniform(-3, 3, n)
+    x2 = rng.uniform(-2, 4, n)
+    y5 = 4.0 + 2.5 * x1 - 1.5 * x2 + rng.normal(0, 0.8, n)
+    write_case(
+        "case05",
+        np.column_stack([x1, x2]),
+        ["x1", "x2"],
+        y5,
+        {
+            "task": "regression",
+            "model": "LinearRegression",
+            "model_params": {"fit_intercept": False},
+            "test_size": 0.3,
+            "random_state": 42,
+        },
+    )
     return 0
 
 
