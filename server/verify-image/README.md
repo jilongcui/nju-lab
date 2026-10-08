@@ -7,8 +7,9 @@
 - `Dockerfile` → 镜像 `nju-lab-verify:0.2.0-rc.2-pkg3`（node:22-slim + 锁定
   `@deepseek-ai/dsh@0.2.0-rc.2` + zstd/unzip/**jq**/python3 + 驱动 + profile
   + **预装教学依赖集**，见下）
-- `run-eval.mjs` — 复验驱动（**包驱动**）：解包 skill.zip/dataset.zip（resolveSkillRoot /
-  resolveDatasetRoot 语义）→ 读数据集包的 `manifest.json` / `task.md` / `judge.md`
+- `run-eval.mjs` — 复验驱动（**包驱动**）：解包 `--skill` / `--dataset` 两个 ZIP
+  （resolveSkillRoot / resolveDatasetRoot 语义；CLI 参数名保留历史称法，仓库里的包现在叫
+  `skill-template.zip` / `problem.zip`）→ 读题目包的 `manifest.json` / `task.md` / `judge.md`
   → 依赖自检 → 逐 case 跑一轮 dsh headless（题干 + 学生的 Skill；
   approval=never + workspace-write）→ LLM judge（默认，`--judge-mode exact` 可切）
   → 输出单个结果 JSON。包内无声明时**逐字回落**内置「CSV 数据清洗」语义。
@@ -35,7 +36,7 @@
 | `judge.md` | 评分细则，填进平台固定的判分外壳（外壳只钉 JSON 形状与差异容忍口径） |
 
 优先级：命令行（项目 `evalConfig`）> 包内 manifest > 内置默认。
-无以上三文件 → `source=builtin`，行为与改造前逐字一致（`server/fixtures/dataset/` 实测通过）。
+无以上三文件 → `source=builtin`，行为与改造前逐字一致（`server/fixtures/csv-cleaner/problem/` 实测通过）。
 
 面向教师的完整规范见 **`docs/EXPERIMENT-PACKAGE-SPEC.md`**。
 
@@ -68,13 +69,19 @@ torch==2.14.1+cpu        ← CPU 版：PyPI 上 linux wheel 是 CUDA 版（+nvid
 ```sh
 # 结构 + 依赖自检（宿主有 docker 即可）
 docker run --rm -v "$PWD/server/fixtures/sales-report:/p:ro" \
-  nju-lab-verify:0.2.0-rc.2-pkg3 --check --skill /p/template.zip --dataset /p/dataset.zip
+  nju-lab-verify:0.2.0-rc.2-pkg3 --check --skill /p/skill-template.zip --dataset /p/problem.zip
 
 # 端到端（要 key，走默认 bridge 网络即可；平台内由 container-runtime 提供 internal + 代理）
 docker run --rm -e DEEPSEEK_API_KEY=<key> \
   -v "$PWD/server/fixtures/sales-report:/p:ro" -v /tmp/out:/outputs \
   nju-lab-verify:0.2.0-rc.2-pkg3 \
-  --skill /p/template.zip --dataset /p/dataset.zip --out /outputs/result.json --max-cases 1
+  --skill /p/skill-template.zip --dataset /p/problem.zip --out /outputs/result.json --max-cases 1
+
+# 教师侧自检闭环：拿满配 Skill 跑一遍（全部通过 = 题目可解）
+docker run --rm --env-file server/.env \
+  -v "$PWD/server/fixtures/sales-report:/p:ro" -v /tmp/out:/outputs \
+  nju-lab-verify:0.2.0-rc.2-pkg3 \
+  --skill /p/skill-solution --dataset /p/problem.zip --out /outputs/solution.json
 ```
 
 ## 出栈白名单隔离（SNI 代理）

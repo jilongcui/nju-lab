@@ -12,7 +12,7 @@ import json
 import sys
 from pathlib import Path
 
-# TODO：按 SKILL.md / dataset/task.md 的口径实现。
+# TODO：按 SKILL.md / problem/task.md 的口径实现。
 # 允许用的库（复验镜像已预装）：sklearn / pandas / numpy。
 # 这里刻意不 import，学生自行决定实现方式（pandas 或 csv 都行）。
 
@@ -31,7 +31,7 @@ def load_case(case_dir):
 def train_and_evaluate(X, y, params):
     """按 params 训练并评估，返回 {"model", "n_train", "n_test", "metrics"}。
 
-    TODO：实现。口径见 SKILL.md「建模口径」与 dataset/task.md：
+    TODO：实现。口径见 SKILL.md「建模口径」与 problem/task.md：
       - 切分要照抄 params 的 test_size / random_state，并按 stratify 决定是否分层；
       - model_params 透传给模型构造函数；
       - 回归给 r2/mae，分类给 accuracy/confusion_matrix，数值 4 位小数。

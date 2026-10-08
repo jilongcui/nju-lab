@@ -106,8 +106,8 @@ export const SKILL_CONTENT = `# NJU-Lab 实验流程
 
 \`\`\`
 <工作区>/nju-lab/<assignmentId>/
-  template.zip        # 平台下发的原始模板（已校验 sha256）
-  <数据集文件>         # 数据集，原样落盘
+  <Skill 模板 ZIP>     # 平台下发的原始模板（已校验 sha256；文件名以平台实际下发为准）
+  <题目包 ZIP>         # 题面 + 用例 + 期望值（本地自测用），原样落盘
   skill/              # 模板解压结果
     <name>/SKILL.md   # 真正的 Skill 根（模板带顶层目录时）
   skill.zip           # 提交时生成的打包产物

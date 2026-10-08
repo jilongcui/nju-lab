@@ -5,6 +5,30 @@
 
 ## 0. 一句话现状
 
+**2026-10-08：实验项目结构统一为「题目包 + Skill 两态」—— 参考实现升级为满配 Skill（只改仓库结构，未动平台代码）** ——
+原 `template/ + dataset/ + reference/` 改为语义化四块：
+`problem/`（题目包 → `problem.zip`）、`skill-template/`（学生起点 → `skill-template.zip`）、
+`skill-solution/`（**满配 Skill = 标准答案**，不打包、不下发）、`tools/`（造题工具，可选，不下发）。
+三个示例项目（`csv-cleaner` / `sales-report` / `ml-basics`）统一改造，`reference/` 目录名退役。
+配套改动：
+① **满配 Skill 可被复验直接当 Skill 装入**（驱动接受目录）—— 跑通即"题目可解性 + 模板契约可行"的机器证明，
+写进上线流程与自查清单（`docs/EXPERIMENT-PACKAGE-SPEC.md` §7/§8、`docs/EXPERIMENT-DESIGN-FRAMEWORK.md` §3）；
+② csv-cleaner 新写满配 `skill-solution/scripts/clean.py`（此前没有参考实现），并**修正 CSV 行尾**：
+骨架与满配都显式 `lineterminator="\n"`（`csv.writer` 默认 CRLF，会让"看起来一样却 diff 不通过"）；
+③ ml-basics：`reference/solve.py` → `skill-solution/scripts/train.py`（函数划分与骨架对齐）、
+`reference/gen_cases.py` → `tools/gen_cases.py`；sales-report：`reference/report.py` → `skill-solution/scripts/report.py`；
+④ 仓库内 6 个 zip 重打为 `skill-template.zip` / `problem.zip`，旧的 `template.zip` / `dataset.zip` 从仓库移除。
+**实测（2026-10-08）**：三项目 `--check` 全过（csv-cleaner 仍 `source=builtin` —— 内置回落基线性质保住）；
+三个满配 Skill 复现期望值 **9/9 逐字节一致**（`cmp`）；csv-cleaner 满配跑真复验 **3/3 通过**
+（`successRate=1`，30.3s / 1407 tokens）。
+⚠️ **骨架也通过了**（`--skill skill-template.zip` → case01 pass）：题面与规则足够清楚时，模型能临场把
+清洗做对、用不上脚本里的 TODO —— 说明该样例**区分度有限**（已记入 `server/fixtures/csv-cleaner/README.md`；
+这与"取消 baseline 后难度只看成功率"的取舍一致）。
+**未改平台代码、未重建镜像**：平台文件位名、驱动 CLI 参数名（`--dataset`）、客户端文案仍是历史称法
+（"标准测试数据集" / `testDataset`），只是仓库里的目录与 zip 名语义化了 —— 详见
+`docs/EXPERIMENT-PACKAGE-SPEC.md` §1 的"命名说明"。线上示例项目仍绑定 2026-10-01 上传的旧包，
+要让新结构生效需按各项目 README 重新上传并绑定。
+
 **2026-10-06：复验取消 baseline 轮 —— 每个实验不再多跑一轮"只给题干"的对照（已上线）** ——
 面向学生的练习不是严格考试，评判只保留"学生交付的 Skill 能否在标准用例上跑出正确结果"，不再度量 `lift`。
 ① 驱动 `server/verify-image/run-eval.mjs` 只跑**一轮**（题干 + 学生的 Skill），`--skill` 成为必需输入；

@@ -28,7 +28,7 @@ python3 scripts/clean.py <input.csv> <output.csv>
 
 ## 自测
 
-用平台下发的标准测试数据集（`dataset/cases/`）运行本 Skill，
+用平台下发的标准测试数据集（`problem/cases/`）运行本 Skill，
 对每个 case 比较输出与 `expected.csv`，把成功率与踩坑记录到下面的实测档案。
 
 ## 实测档案（TODO：学生填写，dossier）

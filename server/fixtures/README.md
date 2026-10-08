@@ -1,89 +1,72 @@
-# 示例实验材料（fixtures）
+# 示例实验项目（fixtures）
 
-平台上的示例实验包源文件。仓库里有**三个任务类型**：`csv-cleaner`（内置回落型）、
-`sales-report`（包驱动 + 表格汇总）、`ml-basics`（包驱动 + ML 依赖）。
-后两个演示并验证「任务知识随包走」的包驱动流程。
+平台上三个**示例实验项目**的源文件。每个项目都是同一套结构（见下），
+差别只在任务类型与依赖：
+
+| 实验项目 | 任务 | 类型 | `problem/` 里有题面与判据吗 |
+|---|---|---|---|
+| [`csv-cleaner/`](csv-cleaner/) | CSV 数据清洗 | 内置回落型（最简样板 + 历史回归基线） | ❌ 走驱动内置语义（`source=builtin`） |
+| [`sales-report/`](sales-report/) | 销售明细汇总 | 包驱动型 | ✅ `manifest.json` + `task.md` + `judge.md` |
+| [`ml-basics/`](ml-basics/) | 机器学习基础建模 | 包驱动 + ML 依赖 | ✅ 同上（另有 `tools/` 造题工具） |
 
 > **做新实验**：先读 `docs/EXPERIMENT-DESIGN-FRAMEWORK.md`（目标/题干/判分/成绩怎么设计），
 > 再按 `docs/EXPERIMENT-PACKAGE-SPEC.md` 组织材料 —— 最省事的做法是
-> `cp -r ml-basics <你的实验名>` 然后替换内容。
+> `cp -r sales-report <你的实验名>` 然后替换内容（它是四块结构里最典型的一个）。
 
-## 1. csv-cleaner + dataset —— CSV 数据清洗（内置回落型）
-
-「CSV 数据清洗」示例实验的模板与标准测试数据集。当前已上传到平台并绑定到两个示例项目：
-
-- template.zip → sha256 `10486f5e…b8f6c1`（fileId `6c645480-9774-4db9-ac28-841bd4b3d666`）
-- dataset.zip → sha256 `3f055d84…3befe1`（fileId `e2bd7953-9928-4370-a8df-2e5623c844d3`）
-
-- `csv-cleaner/` — Skill 模板源文件（SKILL.md 骨架 + scripts/clean.py + references/checklist.md），关键处留 TODO 引导学生
-- `dataset/` — 3 个测试用例（input.csv 脏数据 + expected.csv 期望输出），`dataset/README.md` 写明参考清洗规则；数据集已用参考实现验证自洽（3/3）
-- 该数据集**没有** `manifest.json` / `task.md` / `judge.md`，因此复验走驱动内置的 CSV 清洗语义
-  （`source=builtin`）—— 它同时是历史行为的回归基线：驱动改成包驱动后，这套包必须仍然 3/3 通过。
-- `template.zip` / `dataset.zip` — 上述目录的打包产物（修改源文件后需重新打包）
-
-## 2. sales-report —— 销售数据汇总（包驱动型，第二个任务类型）
+## 统一结构：题目包 + Skill 两态（+ 教师工具）
 
 ```
-sales-report/
-├── template/     → template.zip   （SKILL.md 骨架 + scripts/report.py + references/checklist.md）
-├── dataset/      → dataset.zip    （manifest.json + task.md + judge.md + README + cases/*）
-├── reference/report.py            （参考实现：**教师自用，不打包、不下发**）
-└── README.md                      （实验包说明 + 打包上传 + 上传前自检命令）
+<实验名>/
+├── problem/            → problem.zip        题目包：题面 + 判据 + IO 契约 + 用例（标准，不可改）
+├── skill-template/     → skill-template.zip 学生起点：Skill 骨架（关键处留 TODO）
+├── skill-solution/                          满配 Skill = 标准答案（不打包、不下发）
+├── tools/                                   教师工具，如造题脚本（不打包、不下发；可选）
+└── README.md                                打包 / 自检 / 上传 / 自检闭环命令
 ```
 
-- 任务：`input.csv`（销售明细）→ `output.json`（总额 / 分地区 / 冠军产品 / 行数）
-- 三个 case 分别覆盖：基础汇总、`top_product` 并列、`units=0` 与小额金额
-- `manifest.requires.python = ["pandas"]`：用来验证「镜像预装集 + 包内声明自检」这条链路
-- 期望值由 `reference/report.py --regen-cases` 生成，并用 Decimal 独立实现交叉复核（MATCH）
+两条形态契约（`--check` 会查）：
 
-## 3. ml-basics —— 机器学习基础建模（包驱动 + ML 依赖，第三个任务类型）
+- `skill-template.zip` 的**根**必须是含 `SKILL.md` 的那一层（`no unique SKILL.md layer` 就会失败）；
+- `problem.zip` 的**根**必须有 `cases/`，每个 case 有输入文件与 `expected.*`。
 
-对应平台上那个 draft 项目「机器学习基础模型构建与运行」。
+**Skill 三态**（骨架 / 满配 / 学生提交）只有完成度与可见性不同：`skill-template/` 与
+`skill-solution/` **形态相同**，前者下发、后者永不下发。满配版还有个额外用途 ——
+**它可以被复验直接当 Skill 装入，跑通即"题目可解性"的机器证明**（各项目 README 有命令）。
 
-```
-ml-basics/
-├── template/     → template.zip   （SKILL.md 骨架 + scripts/train.py + references/checklist.md）
-├── dataset/      → dataset.zip    （manifest.json + task.md + judge.md + README + cases/*）
-├── reference/                     （**教师自用，不打包、不下发**）
-│   ├── gen_cases.py               （固定种子生成 cases 输入，可重跑）
-│   └── solve.py                   （参考实现；--regen-cases 重算 expected.json）
-└── README.md
-```
+`reference/` 这个旧目录名已不再使用：参考实现就是满配 Skill（`skill-solution/`），
+造题脚本等非 Skill 工具放 `tools/`。两者都**不打包、不下发**。
 
-- 任务：`input.csv` + `params.json` → `output.json`（按 params 口径训练评估，输出 `model`/`n_train`/`n_test`/`metrics`）
-- 三个 case：`LinearRegression`（r2=0.9861/mae=0.4626）、`LogisticRegression`（accuracy=0.90）、
-  `LogisticRegression(class_weight="balanced")` 类别不平衡（accuracy=0.92）
-- `manifest.requires.python = ["sklearn", "pandas", "numpy"]` —— 依赖基于复验镜像的 ML 预装集（pkg2 起就有）
-- ⚠️ 期望值**必须在与复验同一个镜像里生成**（sklearn 版本决定指标）：
-  `docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/w" --entrypoint python3 nju-lab-verify:0.2.0-rc.2-pkg3 /w/reference/solve.py --regen-cases`
+## 各项目细节
 
-## 修改后重新发布
+- **csv-cleaner**：见 [`csv-cleaner/README.md`](csv-cleaner/README.md)（含"骨架也通过了"这一区分度实测结论）
+- **sales-report**：见 [`sales-report/README.md`](sales-report/README.md)
+- **ml-basics**：见 [`ml-basics/README.md`](ml-basics/README.md)（含 `tools/gen_cases.py` 的用法）
+
+## 打包 / 自检 / 上传（通用）
 
 ```sh
-# 方式一：zip 根即 SKILL.md / manifest.json（推荐，无需额外顶层目录）
-cd server/fixtures/sales-report
-rm -f template.zip dataset.zip
-(cd template && zip -qr ../template.zip .)
-(cd dataset  && zip -qr ../dataset.zip .)
+cd server/fixtures/<实验名>
+rm -f skill-template.zip problem.zip
+(cd skill-template && zip -qr ../skill-template.zip .)   # zip 根即 SKILL.md
+(cd problem        && zip -qr ../problem.zip .)          # zip 根即 cases/ 与 manifest.json
 
-# 方式二：csv-cleaner 沿用「带一层顶层目录」的打包方式（两种都被 resolveSkillRoot 支持）
-cd server/fixtures
-zip -qr template.zip csv-cleaner && zip -qr dataset.zip dataset
-
-# 上传（教师 token）
-TOKEN=$(curl -s http://127.0.0.1:3100/api/auth/login -X POST \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"teacher","password":"teacher123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["accessToken"])')
-curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN" -F "file=@template.zip"
-curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN" -F "file=@dataset.zip"
-# 拿到新的 fileId 后，PATCH /api/projects/:id 绑定（见 HANDOFF 第 2 节）
+# 上传前自检（不烧 token）：结构 + 依赖
+docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg3 \
+  --check --skill /p/skill-template.zip --dataset /p/problem.zip
 ```
 
-上传前先自检（不烧 token）：
+上传拿 fileId 后在项目详情里绑定（`Skill 模板` ← `skill-template.zip`、
+`标准测试数据集` ← `problem.zip`）；**平台上绑定的是 fileId，与 zip 文件名无关**，
+但文件名会成为学生下载到的原始名。完整命令见各项目 README。
 
-```sh
-docker run --rm -v "$PWD/server/fixtures/sales-report:/p:ro" \
-  nju-lab-verify:0.2.0-rc.2-pkg3 --check --skill /p/template.zip --dataset /p/dataset.zip
-```
+注意：`problem/cases/*/expected.*` 是评分基准，改任一 case 即视为新版本 ——
+**不要在有学生做的时候换**。
 
-注意：数据集 `expected.*` 是评分基准，修改任一 case 即视为新版本，注意已在进行中的实验不要中途换数据。
+## 历史制品记录（2026-10-01 上传的版本，保留原样）
+
+仓库内的 zip 已按新结构重打包、且换了文件名；平台上当时绑定的仍是下列旧制品：
+
+- `template.zip`（csv-cleaner 的 Skill 模板）→ sha256 `10486f5e…b8f6c1`（fileId `6c645480-9774-4db9-ac28-841bd4b3d666`）
+- `dataset.zip`（csv-cleaner 的测试数据集）→ sha256 `3f055d84…3befe1`（fileId `e2bd7953-9928-4370-a8df-2e5623c844d3`）
+
+要让新结构（含新文件名与新打包方式）在平台上生效，按上面命令重新上传并重新绑定。

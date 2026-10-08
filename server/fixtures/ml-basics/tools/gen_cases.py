@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""生成 ml-basics 的用例输入（input.csv + params.json）。
+"""生成 ml-basics 的用例输入（input.csv + params.json）—— **教师工具，不属于 Skill**。
 
 **可重跑**：数据全部由固定种子生成，跑两次结果逐字节一致 —— 改案例时重跑它，
-再用 reference/solve.py --regen-cases 重算 expected.json 即可。
+再用 skill-solution/scripts/train.py --regen-cases 重算 expected.json 即可。
 
 在与复验同一个镜像里跑（镜像内有 numpy/sklearn，版本与复验环境一致；当前 pkg3）：
 
   cd server/fixtures/ml-basics
   docker run --rm -v "$PWD:/w" --entrypoint python3 \
-    nju-lab-verify:0.2.0-rc.2-pkg3 /w/reference/gen_cases.py
+    nju-lab-verify:0.2.0-rc.2-pkg3 /w/tools/gen_cases.py
 
-⚠️ 这个脚本与 solve.py 一样**不随任何包分发**（dataset 包会下发给学生）。
+⚠️ 本目录（tools/）与 skill-solution/ 一样**不打包、不下发**：problem 包会下发给学生。
 """
 import csv
 import json
@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-CASES_DIR = Path(__file__).resolve().parent.parent / "dataset" / "cases"
+CASES_DIR = Path(__file__).resolve().parent.parent / "problem" / "cases"
 
 
 def write_case(case, features, feature_names, target, params):

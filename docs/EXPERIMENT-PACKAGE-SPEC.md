@@ -6,30 +6,46 @@
 > 本文只讲**材料格式**。要设计一个新实验的完整流程（目标怎么定、题干怎么写、判分口径怎么设计、
 > 成绩怎么算），先看 **`docs/EXPERIMENT-DESIGN-FRAMEWORK.md`**。
 >
-> 一句话：**题目与评分口径随「数据集包」走，执行与公平性由平台钉死** ——
+> 一句话：**题目与评分口径随「题目包」走，执行与判分口径由平台钉死** ——
 > 新增一个实验类型不需要改平台代码、不需要重建镜像。
 
-## 1. 一个实验要准备两样东西
+## 1. 一个实验项目 = 题目包 + Skill 两态
 
-| 材料 | 传给谁 | 作用 |
+| 材料 | 谁看 | 作用 |
 |---|---|---|
-| **Skill 模板 ZIP** | 学生（claim 时下载） | 实验起点：`SKILL.md` 骨架 + `scripts/` + `references/`，关键处留 TODO |
-| **标准测试数据集 ZIP** | 学生（claim 时下载）+ 复验容器（只读挂载） | 题目（`task.md`）、评分细则（`judge.md`）、结构声明（`manifest.json`）、用例（`cases/`） |
+| **题目包 ZIP**（仓库里叫 `problem/` → `problem.zip`） | 学生（claim 时下载）+ 复验容器（只读挂载） | **标准**：题面（`task.md`）、评分细则（`judge.md`）、IO 契约（`manifest.json`）、用例（`cases/`：输入 + 期望输出） |
+| **Skill 模板 ZIP**（`skill-template/` → `skill-template.zip`） | 学生（claim 时下载） | **起点**：`SKILL.md` 骨架 + `scripts/` + `references/`，关键处留 TODO |
+| **满配 Skill**（`skill-solution/`） | 只有教师 | **答案**：与模板同构但填满；不打包、不下发 |
 
-上传后各自拿到一个 `fileId`，在「项目详情 → 编辑项目信息」里分别绑到
-**Skill 模板** 与 **标准测试数据集** 两个文件位。发布项目后学生即可按解锁规则领取。
+上传两个 ZIP 各拿一个 `fileId`，在「项目详情 → 编辑项目信息」里分别绑到
+**Skill 模板** 与 **标准测试数据集** 两个文件位（后者沿用平台旧称，见下面的命名说明）。
+发布项目后学生即可按解锁规则领取。
 
-> 数据集包会**下发给学生**（用于本地自测），所以：`expected.*`、`judge.md`、`task.md`
-> 都可以放（评分标准公开是教学设计）；**参考实现/答案代码不要放**（放进去等于泄题）。
+### 命名说明：为什么"数据集包"里装着题干与判据
 
-## 2. Skill 模板 ZIP
+历史上题目与判据**写死在驱动里**，那时的"数据集包"真的只有 `cases/*`（纯数据）。
+2026-10-01 改成包驱动后，题面/判据/契约被搬进同一个 ZIP（复用已有上传位，零迁移），
+这个包于是变成了**一整份考卷**（题干 + 答案 + 评分标准 + 测试数据），名字却留了下来。
+
+因此：**仓库里统一叫 `problem/`（题目包）与 `problem.zip`**；
+平台文件位、驱动内部变量名、客户端文案仍是历史称法（"标准测试数据集" / `dataset.zip` /
+`testDataset`）—— 指的是同一件东西。
+
+> 题目包会**下发给学生**（用于本地自测），所以：`expected.*`、`judge.md`、`task.md`
+> 都可以放（评分标准公开是教学设计）；**满配 Skill / 参考实现不要放**（放进去等于泄题）。
+
+## 2. Skill 模板 ZIP（学生起点）
 
 ```
-sales-report/            ← 可以包一层顶层目录，但只允许一层
+skill-template/          ← 可以包一层顶层目录，但只允许一层
   SKILL.md               ← 必需：含 SKILL.md 的那一层就是「Skill 根」
   scripts/*.py           ← 学生实现；运行时是容器里的 python3（依赖见 §4）
   references/*.md
 ```
+
+同目录下还有一个**满配 Skill** `skill-solution/`（本题标准答案）：形态与模板完全一致，
+只是 TODO 全填满。它**不打包、不下发**，但可以被复验直接当 Skill 装入 ——
+跑通即"题目可解性 + 模板契约可行"的机器证明（命令见各示例项目 README）。
 
 硬性要求：
 
@@ -38,19 +54,22 @@ sales-report/            ← 可以包一层顶层目录，但只允许一层
 2. 模板里的 `TODO` 是**故意留的**：平台会扫 `SKILL.md` 的 `## 能力边界…` 小节
    （非空且不含 `TODO` 才算填写）与踩坑记录条数，这两项进复验产物 `skillInfo`，
    是 rubric 里「能力边界填写质量」等维度的依据。所以模板要保留这两节的标题结构。
-3. 打包：zip 根即 `SKILL.md`（`cd template && zip -qr ../template.zip .`）。
+3. 打包：zip 根即 `SKILL.md`（`cd skill-template && zip -qr ../skill-template.zip .`）。
 
-## 3. 标准测试数据集 ZIP
+## 3. 题目包 ZIP（题面 + 判据 + 用例）
 
 ```
-dataset/
+problem/
   manifest.json    ← 可选（不写则完全按内置「CSV 清洗」语义跑，见 §5）
   task.md          ← 可选：题干，被测 agent 看到的任务描述
   judge.md         ← 可选：评分细则，LLM judge 的判据
-  README.md        ← 给人看
+  README.md        ← 给人看（会下发给学生）
   cases/case01/{input.csv, expected.json}
   cases/case02/…
 ```
+
+> 复验时这个包只读挂载给驱动：`cases/*/input.*` 会被拷进 agent 的工作目录，
+> 而 `expected.*` 与 `judge.md` 只用于判分 —— **agent 看不到答案**。
 
 ### 3.1 `cases/` 的约定
 
@@ -87,7 +106,7 @@ dataset/
 ### 3.3 `task.md`（题干）
 
 - 这是 **复验唯一的事实源** —— 写得自包含：数据在哪、要产出什么文件、口径是什么。
-  学生拿到的 dataset.zip 与复验用的是同一份材料，题干含糊 = 判分口径含糊。
+  学生拿到的题目包（`problem.zip`）与复验用的是同一份材料，题干含糊 = 判分口径含糊。
 - 占位符：`{{input}}`（第一个输入文件名）、`{{inputs}}`（逗号分隔）、`{{output}}`、`{{skill}}`（= `./skill`）。
 - 若正文里没出现 `outputFile`，驱动会自动补一句「把结果写到 …」；另外会自动附一句
   「Skill 已在 `./skill`，优先使用它」—— 你不必自己写这两句。
@@ -139,7 +158,7 @@ dataset/
 ## 5. 不写 manifest 会怎样
 
 完全按内置的「CSV 数据清洗」语义跑：输入 `input.csv`、输出 `output.csv`、
-题干与细则取内置常量、判分 `llm`。这是历史数据集（`server/fixtures/dataset/`）的行为，
+题干与细则取内置常量、判分 `llm`。这是历史数据集（`server/fixtures/csv-cleaner/problem/`）的行为，
 现在还逐字保留 —— 老包不用改。
 
 ## 6. 为什么"新增实验类型不用改代码"（设计边界）
@@ -158,33 +177,41 @@ dataset/
 ```sh
 # 0) 目录组织见 §2/§3；打包
 cd server/fixtures/sales-report
-rm -f template.zip dataset.zip
-(cd template && zip -qr ../template.zip .)
-(cd dataset  && zip -qr ../dataset.zip .)
+rm -f skill-template.zip problem.zip
+(cd skill-template && zip -qr ../skill-template.zip .)
+(cd problem        && zip -qr ../problem.zip .)
 
 # 1) 上传前自检（不跑模型、不烧 token）：结构 + 依赖
 docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg3 \
-  --check --skill /p/template.zip --dataset /p/dataset.zip
+  --check --skill /p/skill-template.zip --dataset /p/problem.zip
+
+# 1b) 教师侧自检闭环：拿满配 Skill 跑一遍复验（应全部通过 = 题目可解）
+docker run --rm --env-file server/.env -v "$PWD:/p:ro" -v /tmp/out:/outputs \
+  nju-lab-verify:0.2.0-rc.2-pkg3 \
+  --skill /p/skill-solution --dataset /p/problem.zip --out /outputs/result.json
 
 # 2) 上传拿 fileId（教师 token）
 TOKEN=$(curl -s http://127.0.0.1:3100/api/auth/login -X POST \
   -H 'Content-Type: application/json' \
   -d '{"username":"teacher","password":"teacher123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["accessToken"])')
-curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN" -F "file=@template.zip"
-curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN" -F "file=@dataset.zip"
+curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN" -F "file=@skill-template.zip"
+curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN" -F "file=@problem.zip"
 
 # 3) 平台里：项目详情 → 编辑 → 绑定两个 fileId → 发布
 # 4) 建议先用一个测试学生账号领取 + 提交一次，跑通「提交 → 复验 → 批改」再放开给全班
 ```
 
-参考示例：`server/fixtures/sales-report/`（第二个任务类型，含参考实现与独立校验）。
+参考示例：`server/fixtures/` 下三个示例项目，结构统一（`problem/` + `skill-template/` +
+`skill-solution/`）：`csv-cleaner` 最简（内置回落型）、`sales-report` 最典型、
+`ml-basics` 另带 `tools/` 造题工具。抽象说明见 `server/fixtures/README.md`。
 
 ## 8. 自查清单
 
 - [ ] 模板能唯一定位到一层 `SKILL.md`；`SKILL.md` 有「能力边界」与「实测档案/踩坑记录」小节结构
-- [ ] `cases/*/` 的输入与 `expected.*` 齐全；`expected` 用参考实现算出并**独立复核**过
+- [ ] `cases/*/` 的输入与 `expected.*` 齐全；`expected` 用满配 Skill 算出并**独立复核**过
 - [ ] `task.md` 自包含（不看 Skill 也能照做），口径与 `judge.md`、`expected` 完全一致
 - [ ] `manifest.json` 的 `outputFile` 与 `task.md`/`expected` 一致；`requires` 列的库在 §4 预装集内
 - [ ] `docker run … --check` 通过（退出码 0）
-- [ ] 数据集包内**没有**参考实现/答案代码（它会被下发给学生）
-- [ ] 改口径时：`task.md` / `judge.md` / 参考实现三处同步 + 重算 `expected` + 重新打包上传（新 fileId 即新版本）
+- [ ] 满配 Skill 跑复验**全部通过**（`--skill skill-solution`）——否则题目本身不可解
+- [ ] 题目包内**没有**满配 Skill / 参考实现（它会被下发给学生）
+- [ ] 改口径时：`task.md` / `judge.md` / 满配 Skill 三处同步 + 重算 `expected` + 重新打包上传（新 fileId 即新版本）

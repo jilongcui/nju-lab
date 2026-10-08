@@ -110,7 +110,7 @@
 | **处理规则** | 每一步的判定与优先级 | "合理清洗一下" |
 | **输出格式** | 文件名、结构、键名、精度 | "输出一个报告" |
 
-参考 `server/fixtures/ml-basics/dataset/task.md`：它把切分函数、`random_state`、指标名、四舍五入位数全写死，
+参考 `server/fixtures/ml-basics/problem/task.md`：它把切分函数、`random_state`、指标名、四舍五入位数全写死，
 所以同一份输入任何人跑都得到同一个期望值。
 
 ### 2.2 `task.md` 仍要自包含（理由变了：为了学生自测，不是为了 baseline）
@@ -122,7 +122,7 @@ treatment：题干 + 输入文件 + 学生的 Skill → 与同目录的 expected
 ```
 
 题干是这轮的唯一事实源，所以口径仍要写全 —— 但理由从"让 baseline 公平"变成了
-**"学生本地自测与平台复验必须同口径"**：学生手里拿到的 dataset.zip 与复验用的是同一份材料，
+**"学生本地自测与平台复验必须同口径"**：学生手里拿到的题目包（`problem.zip`）与复验用的是同一份材料，
 题干少写一条口径，学生按自己的理解做"对了"，复验却判他错。
 **把口径全部写进 `task.md`，不要藏进模板** —— 模板是学生写代码的起点，不是教师补口径的地方。
 
@@ -144,7 +144,7 @@ treatment：题干 + 输入文件 + 学生的 Skill → 与同目录的 expected
    数值受库版本影响（sklearn 主版本变了，指标会变），`ml-basics` 的做法是：
    ```sh
    docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/w" --entrypoint python3 \
-     nju-lab-verify:0.2.0-rc.2-pkg3 /w/reference/solve.py --regen-cases
+     nju-lab-verify:0.2.0-rc.2-pkg3 /w/skill-solution/scripts/train.py --regen-cases
    ```
 
 ### 2.4 难度与区分度
@@ -158,39 +158,43 @@ treatment：题干 + 输入文件 + 学生的 Skill → 与同目录的 expected
   这是比分数更有用的教学反馈。
 - 判分阈值不要写进 `judge.md` 之外的地方；`judge.md` 里明确"什么算通过"。
 
-### 2.5 反作弊设计（注意：数据集包会下发给学生）
+### 2.5 反作弊设计（注意：题目包会下发给学生）
 
-学生领取任务时会**下载 dataset.zip**（用于本地自测）。所以：
+学生领取任务时会**下载题目包 `problem.zip`**（用于本地自测）。所以：
 
 | 能放进包 | 不能放进包 |
 |---|---|
-| `task.md`（题干）、`judge.md`（评分细则）、`expected.*` | **参考实现 / 标准答案代码** |
+| `task.md`（题干）、`judge.md`（评分细则）、`expected.*` | **满配 Skill / 参考实现（答案）** |
 | `README.md`、`manifest.json`、cases 输入 | 你自己写的"正确 Skill" |
 
 `expected.*` 公开是刻意的（学生要自测），这与"开放评分标准"的教学设计一致；
-但答案是**实现方法**，必须留在仓库的 `reference/` 里（该目录不打进任何 zip）。
+但答案是**实现方法**，必须留在仓库的 `skill-solution/` 里（该目录不打进任何 zip、
+也不下发给学生）。
 
-模板里也不要有答案：`template/scripts/*.py` 只留骨架 + `TODO`，平台复验时会把模板交给模型，
-它必须自己实现。
+骨架里也不要有答案：`skill-template/scripts/*.py` 只留骨架 + `TODO`，平台复验时会把骨架
+交给模型，它必须自己实现。
 
 ---
 
-## 3. ③ 材料准备：两个 ZIP
+## 3. ③ 材料准备：一个题目包 + 两个 Skill
 
 ```
-你的实验/
-├── template/          → template.zip   交给学生当起点（也是复验时装入的 Skill）
-│   ├── SKILL.md       ← 必需，含规定小节
-│   ├── scripts/       ← 骨架，留 TODO
-│   └── references/    ← 清单/规范
-├── dataset/           → dataset.zip    题目 + 判据 + 用例（会下发给学生）
+你的实验项目/
+├── problem/           → problem.zip        题目包：题面 + 判据 + IO 契约 + 用例（标准，不可改）
 │   ├── manifest.json  ← 输出文件名 / 输入 / judgeMode / 依赖声明
 │   ├── task.md        ← 题干（自包含）
 │   ├── judge.md       ← 评分细则
-│   ├── README.md
+│   ├── README.md      ← 给学生看的说明（会下发）
 │   └── cases/case0N/{input.*, expected.*}
-└── reference/         ← 教师自用，**不打包、不下发**
+├── skill-template/    → skill-template.zip 学生起点：SKILL.md 骨架 + TODO
+├── skill-solution/                         满配 Skill = 标准答案（**不打包、不下发**）
+└── tools/                                  造题工具等（可选，**不打包、不下发**）
 ```
+
+> **同一形态、三种完成度**：`skill-template/` 与 `skill-solution/` 都是"Skill 根"
+> （含 `SKILL.md`），差别只在 TODO 填没填、下发不下发。复验装入的是**学生提交的 Skill**，
+> 不是模板 —— 模板只决定交付物的形态契约（唯一一层 `SKILL.md`）。
+> 完整示例见 `server/fixtures/`（三块统一的三个示例项目）。
 
 ### 3.1 `SKILL.md` 的必备结构
 
@@ -252,7 +256,7 @@ requests · beautifulsoup4 · lxml · PyYAML · tabulate · pytest    +  命令 
 
 ```sh
 docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg3 \
-  --check --skill /p/template.zip --dataset /p/dataset.zip
+  --check --skill /p/skill-template.zip --dataset /p/problem.zip
 ```
 
 它会检查：结构（唯一 `SKILL.md` 层 / `cases/` 层）、每 case 的输入与期望文件是否齐全、
@@ -261,9 +265,9 @@ docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg3 \
 ### 3.4 最小上手路径
 
 ```sh
-cp -r server/fixtures/ml-basics server/fixtures/<你的实验名>
-# 改 template/、dataset/{task.md,judge.md,manifest.json,cases}、reference/
-# 重算期望值 → 打包 → --check → 上传绑定（命令见包内 README.md）
+cp -r server/fixtures/sales-report server/fixtures/<你的实验名>
+# 改 problem/{task.md,judge.md,manifest.json,cases}、skill-template/、skill-solution/
+# 重算期望值 → 打包 → --check → 上传绑定（命令见该项目的 README.md）
 ```
 
 ---
@@ -312,7 +316,7 @@ cp -r server/fixtures/ml-basics server/fixtures/<你的实验名>
 | `llm`（默认） | 平台固定的判分外壳 + 你的 `judge.md` 细则，由模型判等 | 输出有格式弹性、需要"容忍无意义差异"的任务 |
 | `exact` | 归一化换行/行尾空白后逐字节比对 | 输出高度确定、期望完全精确的任务 |
 
-`judge.md` 写法建议（模板见 `ml-basics/dataset/judge.md`）：
+`judge.md` 写法建议（模板见 `ml-basics/problem/judge.md`）：
 
 - 先写**键名/结构约束**（多键少键拼写不同都算不通过）
 - 再写**数值容差**（例：绝对差 ≤ 0.001 视为一致）
@@ -408,8 +412,8 @@ cp -r server/fixtures/ml-basics server/fixtures/<你的实验名>
 |---|---|
 | 题干藏信息 | 复验只看"题干 + Skill"：题干没写的口径，学生只能猜，判分口径也跟着糊 |
 | 期望值满分 | 实验失去区分度（`accuracy=1.0` 时"做错"也能对） |
-| 在数据集包里放答案 | 数据集会下发给学生（`reference/` 目录不要打包） |
-| 改了口径只改一处 | `task.md` / `judge.md` / 参考实现三份事实源必须同步，然后重算 `expected` |
+| 在题目包里放答案 | 题目包会下发给学生（`skill-solution/` 与 `tools/` 不要打包） |
+| 改了口径只改一处 | `task.md` / `judge.md` / 满配 Skill 三份事实源必须同步，然后重算 `expected` |
 | 复验容器要联网 | 不可能：`--internal` 网络 + SNI 白名单，只有模型 API 可达 |
 | 在教师页保存项目后 `judgeMode/maxCases` 丢失 | 已修（提交时会带回）；若发现旧数据缺失，重设一次即可 |
 | 中途换数据集 | `expected.*` 是评分基准，改任一 case 即新版本；不要在有学生做的时候换 |

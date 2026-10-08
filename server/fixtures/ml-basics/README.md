@@ -1,28 +1,27 @@
-# 示例实验包（第三个任务类型）：机器学习基础建模
+# ml-basics —— 机器学习基础建模（包驱动 + ML 依赖）
 
-对应平台上那个 draft 项目「机器学习基础模型构建与运行」。用于演示**依赖 ML 库**的实验包
-怎么写（与 `csv-cleaner`、`sales-report` 并列，规范见 `docs/EXPERIMENT-PACKAGE-SPEC.md`）。
+第三个任务类型的完整示例，对应平台上那个 draft 项目「机器学习基础模型构建与运行」。
+用来演示**依赖 ML 库**的实验项目怎么写（与 `csv-cleaner`、`sales-report` 并列）。
 
-## 目录结构
+## 目录结构（实验项目的四块 + 教师工具）
 
 ```
 ml-basics/
-├── template/                  # → template.zip（claim 时下发给学生）
-│   ├── SKILL.md               # 骨架：能力边界 / 口径 / 实测档案 三节留 TODO
-│   ├── scripts/train.py       # 骨架：CLI 约定稳定，建模逻辑留 TODO
-│   └── references/checklist.md
-├── dataset/                   # → dataset.zip（下发给学生 + 复验只读挂载）
-│   ├── manifest.json          # outputFile=output.json；requires.python=[sklearn,pandas,numpy]
-│   ├── task.md                # 题干（含切分口径；复验唯一的事实源）
-│   ├── judge.md               # 判分细则（键名 + 容差 + 混淆矩阵结构）
-│   ├── README.md
+├── problem/            → problem.zip        题目包：题面 + 判据 + IO 契约 + 用例（标准，不可改）
+│   ├── manifest.json   IO 契约（outputFile=output.json；requires=[sklearn,pandas,numpy]）
+│   ├── task.md         题面（切分口径、指标、输出结构全写死 → 结果可复现）
+│   ├── judge.md        评分细则（键名 + 数值容差 + 混淆矩阵结构）
+│   ├── README.md       给学生看的说明（会被下发）
 │   └── cases/case0N/{input.csv, params.json, expected.json}
-├── reference/                 # **教师自用，不打包、不下发**
-│   ├── gen_cases.py           # 固定种子生成用例输入（可重跑，逐字节可复现）
-│   └── solve.py               # 参考实现；--regen-cases 重算全部 expected.json
-├── template.zip / dataset.zip
+├── skill-template/     → skill-template.zip 学生起点：SKILL.md 骨架 + TODO
+├── skill-solution/                          满配 Skill = 标准答案（不打包、不下发）
+│   ├── SKILL.md  scripts/train.py           （函数划分与骨架一致；`--regen-cases` 重算期望值）
+├── tools/gen_cases.py                       教师工具：固定种子生成用例输入（不打包、不下发）
 └── README.md
 ```
+
+`tools/` 是**第四块**：它既不是题目（不是标准），也不是 Skill（不可被装入执行），
+而是"造题工具"——所以单独放，且与 `skill-solution/` 一样永不下发。
 
 ## 三个 case
 
@@ -38,45 +37,67 @@ ml-basics/
 
 ```sh
 cd server/fixtures/ml-basics
-# 数据（固定种子，可重跑）：需要镜像里的 numpy
+# 1) 数据（固定种子，可重跑）：需要镜像里的 numpy
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/w" --entrypoint python3 \
-  nju-lab-verify:0.2.0-rc.2-pkg3 /w/reference/gen_cases.py
-# 期望值：**必须在与复验同一个镜像里生成**，保证 sklearn 版本与复验环境一致
+  nju-lab-verify:0.2.0-rc.2-pkg3 /w/tools/gen_cases.py
+# 2) 期望值：**必须在与复验同一个镜像里生成**，保证 sklearn 版本与复验环境一致
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/w" --entrypoint python3 \
-  nju-lab-verify:0.2.0-rc.2-pkg3 /w/reference/solve.py --regen-cases
+  nju-lab-verify:0.2.0-rc.2-pkg3 /w/skill-solution/scripts/train.py --regen-cases
 ```
 
 ## 打包、自检、上传
 
 ```sh
 cd server/fixtures/ml-basics
-rm -f template.zip dataset.zip
-(cd template && zip -qr ../template.zip .)
-(cd dataset  && zip -qr ../dataset.zip .)
+rm -f skill-template.zip problem.zip
+(cd skill-template && zip -qr ../skill-template.zip .)   # zip 根即 SKILL.md
+(cd problem        && zip -qr ../problem.zip .)          # zip 根即 manifest.json + cases/
 
 # 上传前自检（不烧 token）：结构 + 依赖
 docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg3 \
-  --check --skill /p/template.zip --dataset /p/dataset.zip
+  --check --skill /p/skill-template.zip --dataset /p/problem.zip
 
 # 上传拿 fileId → 在「机器学习基础模型构建与运行」项目详情里绑定：
-#   Skill 模板 ← template.zip 的 fileId
-#   标准测试数据集 ← dataset.zip 的 fileId
+#   Skill 模板 ← skill-template.zip 的 fileId
+#   标准测试数据集 ← problem.zip 的 fileId
 TOKEN=$(curl -s http://127.0.0.1:3100/api/auth/login -X POST \
   -H 'Content-Type: application/json' \
   -d '{"username":"teacher","password":"teacher123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["accessToken"])')
-curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN" -F "file=@template.zip"
-curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN" -F "file=@dataset.zip"
+curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN" -F "file=@skill-template.zip"
+curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN" -F "file=@problem.zip"
 ```
 
-## 实测记录（2026-10-01，pkg2 镜像）
+## 教师侧自检闭环：拿满配 Skill 跑一遍复验
 
-- `--check`：结构合法、`source=manifest`、`outputFile=output.json`、
-  `requires.python=[sklearn,pandas,numpy]` 全部命中镜像预装集（依赖自检 ok）
-- 端到端复验见 HANDOFF §0 的 2026-10-01 条目
+```sh
+docker run --rm --env-file server/.env \
+  -v "$PWD/server/fixtures/ml-basics:/p:ro" -v /tmp/out:/outputs \
+  nju-lab-verify:0.2.0-rc.2-pkg3 \
+  --skill /p/skill-solution --dataset /p/problem.zip --out /outputs/result.json
+```
+
+ML 实验记得把 `VERIFY_DOCKER_MEMORY` 从 `1g` 调到 `2g`（torch/sklearn 的内存需求）。
 
 ## 出题提醒
 
 - 题面（`task.md`）必须**自包含**：复验只给这份题干 + `input.csv`/`params.json` + 学生的 Skill，
   漏写切分口径，学生按自己理解做"对了"也会被判错。
 - 想提高区分度，可让口径更细（更多 `model_params` 组合、多指标、边界样本），而不是把信息藏进模板。
-- 改口径要三处同步：`dataset/task.md`、`dataset/judge.md`、`reference/solve.py`，然后重算 `expected.json`。
+- 改口径要三处同步：`problem/task.md`、`problem/judge.md`、`skill-solution/scripts/train.py`，
+  然后重算 `expected.json`。
+
+## 实测记录
+
+### 2026-10-08（当前结构）
+
+- 目录改为「题目包 + Skill 两态 + `tools/`」；原 `reference/solve.py` 升级为满配 Skill
+  `skill-solution/scripts/train.py`（函数划分与骨架对齐），`reference/gen_cases.py` → `tools/gen_cases.py`
+- 满配 Skill 在与复验同一个镜像（pkg3）里复现期望值：**3/3 逐字节一致**
+- `--check` 通过：`source=manifest`、`outputFile=output.json`、
+  `requires.python=[sklearn,pandas,numpy]` 全部命中镜像预装集（依赖自检 ok）
+
+### 2026-10-01（历史，当时的目录结构 `template/ + dataset/ + reference/`）
+
+- `--check`：结构合法、`source=manifest`、`outputFile=output.json`、
+  `requires.python=[sklearn,pandas,numpy]` 全部命中镜像预装集（依赖自检 ok）
+- 端到端复验见 HANDOFF §0 的 2026-10-01 条目

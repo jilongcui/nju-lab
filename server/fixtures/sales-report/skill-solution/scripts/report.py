@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""销售数据汇总的**参考实现**（教师自用，用于生成/复核 cases/*/expected.json）。
+"""销售数据汇总的**满配参考实现**（本题标准答案）：input.csv → output.json。
 
-⚠️ 这个文件**不随任何包分发**：template/ 与 dataset/ 里都不含它，
-   而 dataset 包会下发给学生（claim 时下载解压），参考实现放进去等于泄题。
+⚠️ 本目录（skill-solution/）**不打包、不下发**：problem 包会下发给学生，
+   参考实现放进去等于泄题。学生拿到的是 skill-template/ 里的 TODO 骨架。
 
 用法：
-  python3 reference/report.py <input.csv> <output.json>      # 与题面同构的 CLI
-  python3 reference/report.py --regen-cases                  # 重算全部 expected.json
+  python3 scripts/report.py <input.csv> <output.json>   # 与题面同构的 CLI
+  python3 scripts/report.py --regen-cases               # 重算 problem/cases/*/expected.json
 
-口径与 dataset/task.md、dataset/judge.md 保持一致（改口径要三处一起改）。
+口径与 problem/task.md、problem/judge.md 保持一致（改口径要三处一起改）。
 """
 import csv
 import json
@@ -37,7 +37,7 @@ def summarize(rows):
 
 
 def regen_cases():
-    cases_dir = Path(__file__).resolve().parent.parent / "dataset" / "cases"
+    cases_dir = Path(__file__).resolve().parent.parent.parent / "problem" / "cases"
     for case_dir in sorted(p for p in cases_dir.iterdir() if p.is_dir()):
         with (case_dir / "input.csv").open(newline="", encoding="utf-8") as f:
             report = summarize(list(csv.DictReader(f)))
