@@ -126,7 +126,7 @@ async function seed() {
         order: 2,
         title: '第 2 章：实验一——编写你的第一个 Skill',
         content:
-          '# 编写你的第一个 Skill\n\n基于模板完成一个数据处理 Skill，并用标准测试数据集自测。',
+          '# 编写你的第一个 Skill\n\n基于模板完成一个数据处理 Skill，并用题目包自测。',
         status: ChapterStatus.PUBLISHED,
       }),
     );
@@ -138,11 +138,11 @@ async function seed() {
         chapterId: chapter2.id,
         title: '实验一：CSV 数据清洗 Skill',
         objectives: '掌握 Skill 目录结构、能力边界描述与本地自测流程',
-        background: '回顾第 1 章的 Skill 规范；跑通用标准数据集自测、打包提交闭环',
+        background: '回顾第 1 章的 Skill 规范；跑通用题目包自测、打包提交闭环',
         description:
-          '1. 领取模板并解压\n2. 编写 SKILL.md 与清洗脚本\n3. 用标准数据集自测\n4. 打包提交 Skill 包与证据包',
+          '1. 领取模板并解压\n2. 编写 SKILL.md 与清洗脚本\n3. 用题目包自测\n4. 打包提交 Skill 包与证据包',
         skillTemplateFileId: null,
-        testDatasetFileId: null,
+        problemFileId: null,
         evalConfig: {
           // 与 DSH 的默认对齐（`agent-default-model`: provider deepseek-official,
           // model deepseek-flash），学生本地不用额外配置就能跑。

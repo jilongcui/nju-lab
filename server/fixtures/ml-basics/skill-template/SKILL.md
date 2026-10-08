@@ -8,7 +8,7 @@ description: 按 params.json 指定的口径（回归/分类、模型与超参�
 ## 能力边界（TODO：学生补全）
 
 > 说明：能力边界是评分维度之一。请如实填写本 Skill **能做什么、不能做什么**，
-> 并用标准测试数据集自测后，把实测结论也记录在这里。
+> 并用题目包自测后，把实测结论也记录在这里。
 
 - 能处理：数值型特征 + 单标签的 CSV（表头 + 数据行，最后一列是 `target`）
 - 能处理：`LinearRegression` / `LogisticRegression` 两类模型与它们的构造参数
@@ -34,7 +34,7 @@ python3 scripts/train.py <case_dir> <output.json>
 
 ## 自测
 
-用平台下发的标准测试数据集（`cases/`）运行本 Skill，
+用平台下发的题目包（`cases/`）运行本 Skill，
 对每个 case 把 `output.json` 与 `expected.json` 逐字段比对（数值差 ≤ 0.001），
 把成功率与踩坑记录写到下面的实测档案。
 

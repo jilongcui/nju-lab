@@ -51,22 +51,28 @@ rm -f skill-template.zip problem.zip
 (cd problem        && zip -qr ../problem.zip .)          # zip 根即 cases/ 与 manifest.json
 
 # 上传前自检（不烧 token）：结构 + 依赖
-docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg3 \
-  --check --skill /p/skill-template.zip --dataset /p/problem.zip
+docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg4 \
+  --check --skill /p/skill-template.zip --problem /p/problem.zip
 ```
 
 上传拿 fileId 后在项目详情里绑定（`Skill 模板` ← `skill-template.zip`、
-`标准测试数据集` ← `problem.zip`）；**平台上绑定的是 fileId，与 zip 文件名无关**，
+`题目包` ← `problem.zip`）；**平台上绑定的是 fileId，与 zip 文件名无关**，
 但文件名会成为学生下载到的原始名。完整命令见各项目 README。
 
 注意：`problem/cases/*/expected.*` 是评分基准，改任一 case 即视为新版本 ——
 **不要在有学生做的时候换**。
 
-## 历史制品记录（2026-10-01 上传的版本，保留原样）
+## 平台绑定现状（2026-10-08 更新）
 
-仓库内的 zip 已按新结构重打包、且换了文件名；平台上当时绑定的仍是下列旧制品：
+三个示例项目已按新结构重新上传并绑定：
 
-- `template.zip`（csv-cleaner 的 Skill 模板）→ sha256 `10486f5e…b8f6c1`（fileId `6c645480-9774-4db9-ac28-841bd4b3d666`）
-- `dataset.zip`（csv-cleaner 的测试数据集）→ sha256 `3f055d84…3befe1`（fileId `e2bd7953-9928-4370-a8df-2e5623c844d3`）
+| 项目 | Skill 模板 | 题目包 |
+|---|---|---|
+| 机器学习基础模型构建与运行 | `ml-basics/skill-template.zip` | `ml-basics/problem.zip` |
+| 实验：数据清洗 | `csv-cleaner/skill-template.zip` | `csv-cleaner/problem.zip` |
+| 实验一：CSV 数据清洗 Skill | `csv-cleaner/skill-template.zip` | `csv-cleaner/problem.zip` |
 
-要让新结构（含新文件名与新打包方式）在平台上生效，按上面命令重新上传并重新绑定。
+（`sales-report` 未绑定到任何线上项目，仅作示例。）
+
+历史制品：2026-10-01 上传的 `template.zip` / `dataset.zip` 仍在文件库里（sha256 `10486f5e…` / `3f055d84…`），
+已不再被任何项目引用 —— 需要时可作为回滚点重新绑定。

@@ -59,7 +59,7 @@ function percent(rate?: number) {
   return rate != null ? Math.round(rate * 100) : null;
 }
 
-/** 模板/数据集上传控件：上传即调用 POST /api/files，本地持有 StoredFileInfo */
+/** 模板/题目包上传控件：上传即调用 POST /api/files，本地持有 StoredFileInfo */
 function FilePicker({
   label,
   value,
@@ -115,7 +115,7 @@ export default function ProjectDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [templateFile, setTemplateFile] = useState<StoredFileInfo | null>(null);
-  const [datasetFile, setDatasetFile] = useState<StoredFileInfo | null>(null);
+  const [problemFile, setProblemFile] = useState<StoredFileInfo | null>(null);
   /** 所属章节候选（同课程内的章节）—— 用于纠正"实验挂错章节" */
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [form] = Form.useForm();
@@ -163,7 +163,7 @@ export default function ProjectDetail() {
   const openEdit = () => {
     if (!project) return;
     setTemplateFile(project.skillTemplate ?? null);
-    setDatasetFile(project.testDataset ?? null);
+    setProblemFile(project.problem ?? null);
     form.setFieldsValue({
       title: project.title,
       chapterId: project.chapterId,
@@ -196,7 +196,7 @@ export default function ProjectDetail() {
         background: values.background ?? null,
         description: values.description ?? null,
         skillTemplateFileId: templateFile?.fileId ?? null,
-        testDatasetFileId: datasetFile?.fileId ?? null,
+        problemFileId: problemFile?.fileId ?? null,
         references: values.references ?? null,
         faq: values.faq ?? null,
         evalConfig: {
@@ -205,7 +205,7 @@ export default function ProjectDetail() {
           tools: values.evalTools ?? [],
           timeoutSeconds: values.evalTimeout,
           // 下面两项不在本表单里编辑，但要原样带回去 —— 否则每次保存都会把它们抹掉
-          // （平台侧可用它们做成本控制；缺省时由数据集包的 manifest 决定）
+          // （平台侧可用它们做成本控制；缺省时由题目包的 manifest 决定）
           ...(project?.evalConfig?.judgeMode ? { judgeMode: project.evalConfig.judgeMode } : {}),
           ...(project?.evalConfig?.maxCases ? { maxCases: project.evalConfig.maxCases } : {}),
         },
@@ -309,10 +309,10 @@ export default function ProjectDetail() {
               '-'
             )}
           </Descriptions.Item>
-          <Descriptions.Item label="测试数据集">
-            {project.testDataset ? (
-              <a onClick={() => void downloadStoredFile(project.testDataset!)}>
-                {project.testDataset.originalName}
+          <Descriptions.Item label="题目包">
+            {project.problem ? (
+              <a onClick={() => void downloadStoredFile(project.problem!)}>
+                {project.problem.originalName}
               </a>
             ) : (
               '-'
@@ -513,9 +513,9 @@ export default function ProjectDetail() {
             onChange={setTemplateFile}
           />
           <FilePicker
-            label="标准测试数据集"
-            value={datasetFile}
-            onChange={setDatasetFile}
+            label="题目包"
+            value={problemFile}
+            onChange={setProblemFile}
           />
           <Form.Item name="references" label="参考资料">
             <Input.TextArea rows={2} />

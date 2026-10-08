@@ -225,7 +225,7 @@ test(
     })
     const home = await mkdtemp(join(tmpdir(), 'nju-e2e-claim-'))
     // 这条用例真的会 claim，落盘目录是 <cwd>/nju-lab/<id>/ —— cwd 必须指向临时目录，
-    // 否则模板/数据集会被写进仓库（插件未配 workspaceDir，默认取 process.cwd()）。
+    // 否则模板/题目包会被写进仓库（插件未配 workspaceDir，默认取 process.cwd()）。
     const workspaceDir = await mkdtemp(join(tmpdir(), 'nju-e2e-claim-ws-'))
 
     try {

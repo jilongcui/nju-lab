@@ -8,7 +8,7 @@ description: 从销售明细 CSV 汇总出统计报告 JSON（总额、分地区
 ## 能力边界（TODO：学生补全）
 
 > 说明：能力边界是评分维度之一（权重 25%）。请如实填写本 Skill **能做什么、不能做什么**，
-> 并用标准测试数据集自测后，把实测结论也记录在这里。
+> 并用题目包自测后，把实测结论也记录在这里。
 
 - 能处理：UTF-8 编码、逗号分隔、表头为 `date,region,product,units,unit_price` 的销售明细
 - TODO：本 Skill 不处理哪些情况？（例如：缺失列？非数值的 units？空文件？）
@@ -28,7 +28,7 @@ python3 scripts/report.py <input.csv> <output.json>
 
 ## 自测
 
-用平台下发的标准测试数据集（`cases/`）运行本 Skill，
+用平台下发的题目包（`cases/`）运行本 Skill，
 对每个 case 把 `output.json` 与 `expected.json` 逐字段比对，
 把成功率与踩坑记录写到下面的实测档案。
 

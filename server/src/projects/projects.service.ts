@@ -95,7 +95,7 @@ export class ProjectsService {
     }
     await this.assertCourseOwner(teacher, chapter.courseId);
     await this.assertFileExists(dto.skillTemplateFileId, 'Skill 模板');
-    await this.assertFileExists(dto.testDatasetFileId, '测试数据集');
+    await this.assertFileExists(dto.problemFileId, '题目包');
     this.assertEvalConfig(dto.evalConfig);
     const project = this.projectRepo.create({
       courseId: chapter.courseId,
@@ -105,7 +105,7 @@ export class ProjectsService {
       background: dto.background ?? null,
       description: dto.description ?? null,
       skillTemplateFileId: dto.skillTemplateFileId ?? null,
-      testDatasetFileId: dto.testDatasetFileId ?? null,
+      problemFileId: dto.problemFileId ?? null,
       evalConfig: dto.evalConfig ?? null,
       rubric: dto.rubric ?? null,
       references: dto.references ?? null,
@@ -132,7 +132,7 @@ export class ProjectsService {
     }
     await this.assertEnrolled(project.courseId, user.id);
     const unlocked = await this.checkUnlock(user.id, project);
-    // 模板与数据集仅对已领取的学生下发（未领取只能看实验说明）
+    // 模板与题目包仅对已领取的学生下发（未领取只能看实验说明）
     const assignment = await this.assignmentRepo.findOne({
       where: { projectId, studentId: user.id },
     });
@@ -154,7 +154,7 @@ export class ProjectsService {
     await this.assertCourseOwner(teacher, project.courseId);
     const { deadline, ...rest } = dto;
     await this.assertFileExists(rest.skillTemplateFileId, 'Skill 模板');
-    await this.assertFileExists(rest.testDatasetFileId, '测试数据集');
+    await this.assertFileExists(rest.problemFileId, '题目包');
     this.assertEvalConfig(rest.evalConfig);
     if (rest.chapterId) {
       await this.assertChapterInCourse(rest.chapterId, project.courseId);
@@ -384,15 +384,15 @@ export class ProjectsService {
       await this.assignmentRepo.save(assignment);
     }
     // claimed / submitted 都幂等重发材料（状态不变）：学生换机或清理工作区后
-    // 可把模板与数据集拉回本地；已提交任务的提交记录与复验结果不受影响。
-    // 领取成功后下发模板、测试数据集（真实下载地址 + 服务端 sha256）与评估条件
+    // 可把模板与题目包拉回本地；已提交任务的提交记录与复验结果不受影响。
+    // 领取成功后下发模板、题目包（真实下载地址 + 服务端 sha256）与评估条件
     return {
       assignment,
       skillTemplate: await this.filesService.infoOrNull(
         project.skillTemplateFileId,
       ),
-      testDataset: await this.filesService.infoOrNull(
-        project.testDatasetFileId,
+      problem: await this.filesService.infoOrNull(
+        project.problemFileId,
       ),
       evalConfig: project.evalConfig,
     };
@@ -464,15 +464,15 @@ export class ProjectsService {
 
   // ---------- 内部工具 ----------
 
-  /** 项目详情附带模板/数据集文件信息（下载地址 + sha256） */
+  /** 项目详情附带模板/题目包文件信息（下载地址 + sha256） */
   private async withFileInfos(project: ExperimentProject) {
     return {
       ...project,
       skillTemplate: await this.filesService.infoOrNull(
         project.skillTemplateFileId,
       ),
-      testDataset: await this.filesService.infoOrNull(
-        project.testDatasetFileId,
+      problem: await this.filesService.infoOrNull(
+        project.problemFileId,
       ),
     };
   }

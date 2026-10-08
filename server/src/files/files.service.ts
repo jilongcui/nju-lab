@@ -105,7 +105,7 @@ export class FilesService {
     return { items: files.map((f) => this.toInfo(f)), total };
   }
 
-  /** 按 id 取对外信息；空 id 或文件不存在返回 null（用于项目模板/数据集等可空关联） */
+  /** 按 id 取对外信息；空 id 或文件不存在返回 null（用于项目模板/题目包等可空关联） */
   async infoOrNull(fileId: string | null): Promise<StoredFileInfo | null> {
     if (!fileId) {
       return null;

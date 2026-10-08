@@ -53,9 +53,9 @@ function RunCard({ title, result }: { title: string; result?: RunResult }) {
         <Descriptions.Item label="成功率">{pct(result.successRate)}</Descriptions.Item>
         <Descriptions.Item label="运行次数">{result.runs ?? '-'}</Descriptions.Item>
         <Descriptions.Item label="平均 Token/次">{result.avgTokensPerRun ?? '-'}</Descriptions.Item>
-        <Descriptions.Item label="数据集">
+        <Descriptions.Item label="题目包">
           <Text code style={{ fontSize: 12 }}>
-            {result.dataset || '-'}
+            {result.problem || '-'}
           </Text>
         </Descriptions.Item>
       </Descriptions>

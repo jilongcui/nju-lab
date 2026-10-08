@@ -51,7 +51,7 @@ DSH_BIN=/path/to/新版本/dsh npm test      # 不带 DSH_BIN 时 6 条 L2 会�
 ```
 
 - 需要一个**新版本的真 dsh 二进制**：`npm i --prefix /tmp/dsh-bin @deepseek-ai/dsh@<新版本>`。
-- 若要端到端复验链路：`cd server/verify-image && docker run --rm -v <fixtures>:/fixtures:ro -e DEEPSEEK_API_KEY=<key> nju-lab-verify:<新版本> --skill /fixtures/csv-cleaner/skill-solution --dataset /fixtures/csv-cleaner/problem --out /out/result.json`（用满配 Skill 跑，全部通过即链路正常）。
+- 若要端到端复验链路：`cd server/verify-image && docker run --rm -v <fixtures>:/fixtures:ro -e DEEPSEEK_API_KEY=<key> nju-lab-verify:<新版本> --skill /fixtures/csv-cleaner/skill-solution --problem /fixtures/csv-cleaner/problem --out /out/result.json`（用满配 Skill 跑，全部通过即链路正常）。
 
 ## 4. 已知坑（每次都要过一遍）
 

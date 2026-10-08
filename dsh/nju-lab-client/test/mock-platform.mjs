@@ -7,7 +7,7 @@
  *
  * 覆盖的端点：
  *   GET  /api/me/assignments        任务列表（嵌套 project 对象）
- *   POST /api/assignments/:id/claim 领取（下发 skillTemplate/testDataset + evalConfig）
+ *   POST /api/assignments/:id/claim 领取（下发 skillTemplate/problem + evalConfig）
  *   POST /api/files                 multipart 上传（字段名 file，服务端算 sha256）
  *   GET  /api/files/:id             下载（UUID 即能力凭证）
  *   POST /api/assignments/:id/submit 提交（fileId 模式）
@@ -99,14 +99,14 @@ async function parseMultipart(req) {
  *   assignments?: unknown[],
  *   evalConfig?: object | null,
  *   skillTemplate?: Buffer,
- *   testDataset?: Buffer,
+ *   problem?: Buffer,
  * }} [options]
  */
 export async function startMockPlatform(options = {}) {
   const token = options.token ?? 'test-token'
   const evalConfig = options.evalConfig === undefined ? DEFAULT_EVAL_CONFIG : options.evalConfig
   const skillTemplateBuf = options.skillTemplate ?? EMPTY_ZIP
-  const testDatasetBuf = options.testDataset ?? EMPTY_ZIP
+  const problemBuf = options.problem ?? EMPTY_ZIP
 
   /** fileId → { buf, originalName, mimeType, sha256, uploaderId } */
   const files = new Map()
@@ -134,7 +134,7 @@ export async function startMockPlatform(options = {}) {
   }
 
   const templateId = 'file-template'
-  const datasetId = 'file-dataset'
+  const problemId = 'file-problem'
   files.set(templateId, {
     buf: skillTemplateBuf,
     originalName: 'template.zip',
@@ -142,11 +142,11 @@ export async function startMockPlatform(options = {}) {
     sha256: sha256(skillTemplateBuf),
     uploaderId: 'teacher',
   })
-  files.set(datasetId, {
-    buf: testDatasetBuf,
-    originalName: 'dataset.zip',
+  files.set(problemId, {
+    buf: problemBuf,
+    originalName: 'problem.zip',
     mimeType: 'application/zip',
-    sha256: sha256(testDatasetBuf),
+    sha256: sha256(problemBuf),
     uploaderId: 'teacher',
   })
 
@@ -249,7 +249,7 @@ export async function startMockPlatform(options = {}) {
       return created({
         assignment,
         skillTemplate: info(templateId),
-        testDataset: info(datasetId),
+        problem: info(problemId),
         evalConfig,
       })
     }

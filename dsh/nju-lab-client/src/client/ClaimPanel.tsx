@@ -70,7 +70,7 @@ interface SnapshotDto {
 }
 
 interface ArtifactDto {
-  /** `skillTemplate` | `testDataset` */
+  /** `skillTemplate` | `problem` */
   label: string
   originalName: string
   path: string
@@ -143,7 +143,7 @@ const linkButton = {
 const mono = { fontFamily: 'var(--dsh-font-mono, monospace)', fontSize: 11 } as const
 const small = { fontSize: 11 } as const
 
-const LABELS = { skillTemplate: '模板', testDataset: '数据集' } as const
+const LABELS = { skillTemplate: '模板', problem: '题目包' } as const
 const STATUS_LABELS: Record<string, string> = {
   pending: '未领取',
   claimed: '已领取',
@@ -413,10 +413,10 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
                     !a.unlocked
                       ? '尚未满足解锁条件，暂时不能领取'
                       : canRedownload
-                        ? '重新下载模板与数据集（平台幂等重发材料，不影响提交记录），并钉死评估条件'
+                        ? '重新下载模板与题目包（平台幂等重发材料，不影响提交记录），并钉死评估条件'
                         : claimed
                           ? '已领取，材料在工作区 nju-lab/ 下'
-                          : '下载模板与数据集，并钉死评估条件'
+                          : '下载模板与题目包，并钉死评估条件'
                   }
                   onClick={() => void act(a.id, 'claim')}
                 >

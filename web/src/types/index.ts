@@ -171,7 +171,7 @@ export interface EvalConfig {
   reasoningEffort?: string;
   tools?: string[];
   timeoutSeconds?: number;
-  /** 复验评判模式（llm | exact）：通常由数据集包 manifest 声明，这里只做平台级覆盖 */
+  /** 复验评判模式（llm | exact）：通常由题目包 manifest 声明，这里只做平台级覆盖 */
   judgeMode?: 'llm' | 'exact';
   /** 成本控制：最多跑几个 case（0 或缺省 = 全部） */
   maxCases?: number;
@@ -206,10 +206,10 @@ export interface ExperimentProject {
   background?: string | null;
   description?: string | null;
   skillTemplateFileId?: string | null;
-  testDatasetFileId?: string | null;
-  /** 模板/数据集文件信息：教师详情恒返回；学生端仅领取后返回 */
+  problemFileId?: string | null;
+  /** 模板/题目包文件信息：教师详情恒返回；学生端仅领取后返回 */
   skillTemplate?: StoredFileInfo | null;
-  testDataset?: StoredFileInfo | null;
+  problem?: StoredFileInfo | null;
   evalConfig?: EvalConfig;
   rubric?: RubricItem[];
   references?: string | null;
@@ -270,7 +270,7 @@ export interface Assignment {
 export interface ClaimResult {
   assignment: unknown;
   skillTemplate?: StoredFileInfo | null;
-  testDataset?: StoredFileInfo | null;
+  problem?: StoredFileInfo | null;
   evalConfig?: EvalConfig;
 }
 
@@ -285,7 +285,7 @@ export interface AuditEvent {
 
 export interface RunResult {
   runs?: number;
-  dataset?: string;
+  problem?: string;
   evalConfig?: EvalConfig;
   /** 0~1 小数 */
   successRate?: number;

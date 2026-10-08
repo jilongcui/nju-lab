@@ -122,7 +122,7 @@ describe('contract: platform shapes (REQ-2026-09-21 §0)', () => {
     })
   })
 
-  test('POST /assignments/:id/claim returns file info objects, not templateUrl/datasetUrl', async () => {
+  test('POST /assignments/:id/claim returns file info objects, not templateUrl/problemUrl', async () => {
     await withClient({}, async ({ platform }) => {
       const raw = await fetch(`${platform.url}/assignments/a-unlocked/claim`, {
         method: 'POST',
@@ -130,10 +130,10 @@ describe('contract: platform shapes (REQ-2026-09-21 §0)', () => {
       }).then((r) => r.json())
 
       const d = raw.data
-      assert.deepEqual(Object.keys(d).sort(), ['assignment', 'evalConfig', 'skillTemplate', 'testDataset'])
+      assert.deepEqual(Object.keys(d).sort(), ['assignment', 'evalConfig', 'problem', 'skillTemplate'])
       assert.ok(!('templateUrl' in d), 'the old templateUrl field must not exist')
 
-      for (const key of ['skillTemplate', 'testDataset']) {
+      for (const key of ['skillTemplate', 'problem']) {
         const info = d[key]
         assert.deepEqual(
           Object.keys(info).sort(),
@@ -173,16 +173,16 @@ describe('host half: nju_lab_list_assignments', () => {
 })
 
 describe('host half: nju_lab_claim', () => {
-  test('downloads template + dataset into the workspace and verifies sha256', async () => {
+  test('downloads template + problem package into the workspace and verifies sha256', async () => {
     const templateZip = await makeTemplateZip()
     await withClient({ platform: { skillTemplate: templateZip } }, async ({ harness, workspaceDir }) => {
       const out = await harness.tool('nju_lab_claim').execute({ assignmentId: 'a-unlocked' })
 
       const dir = join(workspaceDir, 'nju-lab', 'a-unlocked')
       const tplPath = join(dir, 'template.zip')
-      const dsPath = join(dir, 'dataset.zip')
+      const pkgPath = join(dir, 'problem.zip')
       assert.ok(existsSync(tplPath), 'template.zip should be written')
-      assert.ok(existsSync(dsPath), 'dataset.zip should be written')
+      assert.ok(existsSync(pkgPath), 'problem.zip should be written')
 
       const onDisk = await readFile(tplPath)
       assert.equal(
@@ -194,8 +194,8 @@ describe('host half: nju_lab_claim', () => {
       assert.match(out, /sha256 校验通过/)
       // 模板是 ZIP，应被解压出 SKILL.md
       assert.ok(existsSync(join(dir, 'skill', 'SKILL.md')), 'template should be unzipped into skill/')
-      // 不再打印 templateUrl/datasetUrl
-      assert.doesNotMatch(out, /templateUrl|datasetUrl/)
+      // 不再打印 templateUrl/problemUrl
+      assert.doesNotMatch(out, /templateUrl|problemUrl/)
     })
   })
 

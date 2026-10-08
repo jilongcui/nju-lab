@@ -76,7 +76,7 @@ export class ProjectsController {
 export class AssignmentsController {
   constructor(private readonly projectsService: ProjectsService) {}
 
-  /** 领取：校验 unlockRule，返回模板 + 数据集 + eval_config */
+  /** 领取：校验 unlockRule，返回模板 + 题目包 + eval_config */
   @Post(':id/claim')
   @Roles(UserRole.STUDENT)
   claim(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {

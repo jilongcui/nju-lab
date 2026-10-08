@@ -5,6 +5,26 @@
 
 ## 0. 一句话现状
 
+**2026-10-08（续）：命名统一为「题目包 / problem」—— 平台、驱动、客户端、DB 全链路（已上线）** ——
+项目尚未发给学生，故**直接改名而非兼容**（上一 commit 只改了仓库目录与 zip 名，这次打通内部命名）：
+① **DB**：`experiment_projects.testDatasetFileId` → `problemFileId`（迁移 `RenameProblemFileId1790720000000`，
+   `migrationsRun: true` 重启即生效；已核实列名只剩 `problemFileId` / `skillTemplateFileId`）；
+② **驱动**：CLI `--dataset` → `--problem`、`resolveProblemRoot` / `problemRoot`、`taskPromptSource: 'problem/task.md'`、
+   容器内挂载名 `/inputs/problem.zip`（镜像 **`nju-lab-verify:0.2.0-rc.2-pkg4`**，基底复用 pkg3 只覆盖驱动）；
+③ **服务端/接口**：`project.problemFileId`、claim 与项目详情返回 `problem`、dossier 快照键 `problem`、
+   错误文案「项目未绑定题目包」；
+④ **前端**：教师端「题目包」上传与展示、学生端下载按钮、批改页 `result.problem`；
+⑤ **客户端插件**：`ArtifactLabel = 'skillTemplate' | 'problem'`、面板按钮与 guidance 文案改为不写死文件名
+   （镜像 **`nju-lab-workspace:0.2.0-rc.2-pkg4`**，基于 pkg4 重建；kit 重打并投放）。
+**实测（2026-10-08）**：`server` / `web` `npm run build` 通过；客户端 `npm test` **59 pass / 0 fail**
+（6 skipped = 需 `DSH_BIN` 的 L2）；三项目 `--check`（新参数）全过、`taskPromptSource=problem/task.md`；DB 列名与迁移记录已核实；
+**端到端复验（平台链路，student1 的历史提交 v5）**：`POST /api/submissions/:id/verify` →
+**24.5s**，`baselineResult: null`、`treatmentResult.problem=37e13044…`、`package.problemRoot=/tmp/nju-verify-problem-…`、
+`successRate=1`、`tokenCost=456`、建议分 **95**、dossier 无 baseline 字段（链路含 pkg4 + 新参数名 + 新列名）。
+三个示例项目已用新 zip 名重新上传并绑定（见 `server/fixtures/README.md` 的绑定现状表）；
+`deploy deploy-web-lab.sh` 通过；kit 重打（版本 `20261009-0021-78e945f`）并投放 `/var/www/lab/kit/`。
+部署：`kill` MainPID → systemd 拉起，PID 1398576 → **1598175**。
+
 **2026-10-08：实验项目结构统一为「题目包 + Skill 两态」—— 参考实现升级为满配 Skill（只改仓库结构，未动平台代码）** ——
 原 `template/ + dataset/ + reference/` 改为语义化四块：
 `problem/`（题目包 → `problem.zip`）、`skill-template/`（学生起点 → `skill-template.zip`）、

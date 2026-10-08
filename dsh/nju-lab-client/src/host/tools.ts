@@ -29,7 +29,7 @@ function renderArtifacts(outcome: ClaimOutcome): string[] {
     (a) => `- ${a.label}: ${a.path} (${a.bytes} bytes, sha256 校验通过)`,
   )
   const got = new Set(outcome.artifacts.map((a) => a.label))
-  for (const label of ['skillTemplate', 'testDataset'] as const) {
+  for (const label of ['skillTemplate', 'problem'] as const) {
     if (!got.has(label)) lines.push(`- ${label}: (平台未绑定)`)
   }
   return lines
@@ -102,7 +102,7 @@ export function registerTools(ctx: Context, actions: NjuLabActions): void {
     defineTool({
       name: TOOL_NAMES.claim,
       description:
-        'Claim an assignment: downloads the Skill template and test dataset into the workspace, verifies sha256, and pins the evaluation conditions.',
+        'Claim an assignment: downloads the Skill template and problem package into the workspace, verifies sha256, and pins the evaluation conditions.',
       parameters: {
         assignmentId: { type: 'string', required: true, description: 'assignment id' },
       },

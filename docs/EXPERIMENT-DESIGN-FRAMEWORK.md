@@ -18,7 +18,7 @@
 
 ```
 ① 实验目的  →  ② 任务与口径  →  ③ 材料（两个 ZIP）  →  ④ 学生过程  →  ⑤ 评判
-   （能力点）      （可复现）        （模板 + 数据集）      （领取→自测→提交）   （机器 + 教师）
+   （能力点）      （可复现）        （模板 + 题目包）      （领取→自测→提交）   （机器 + 教师）
 ```
 
 关键前提：**平台只判一件事 —— 学生交付的 Skill 能不能在标准用例上跑出正确结果**。
@@ -144,7 +144,7 @@ treatment：题干 + 输入文件 + 学生的 Skill → 与同目录的 expected
    数值受库版本影响（sklearn 主版本变了，指标会变），`ml-basics` 的做法是：
    ```sh
    docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/w" --entrypoint python3 \
-     nju-lab-verify:0.2.0-rc.2-pkg3 /w/skill-solution/scripts/train.py --regen-cases
+     nju-lab-verify:0.2.0-rc.2-pkg4 /w/skill-solution/scripts/train.py --regen-cases
    ```
 
 ### 2.4 难度与区分度
@@ -221,7 +221,7 @@ python3 scripts/xxx.py <输入> <输出>
 1. TODO：…
 
 ## 自测
-用平台下发的标准测试数据集（cases/）…
+用平台下发的题目包（cases/）…
 
 ## 实测档案（TODO：学生填写，dossier）
 - 自测时间：
@@ -242,7 +242,7 @@ python3 scripts/xxx.py <输入> <输出>
 { "requires": { "python": ["sklearn", "pandas", "numpy"] } }
 ```
 
-当前镜像 `nju-lab-verify:0.2.0-rc.2-pkg3` 的预装集（完整清单见 `docs/EXPERIMENT-PACKAGE-SPEC.md` §4）：
+当前镜像 `nju-lab-verify:0.2.0-rc.2-pkg4` 的预装集（完整清单见 `docs/EXPERIMENT-PACKAGE-SPEC.md` §4）：
 
 ```
 pandas · numpy · scipy · scikit-learn · statsmodels · matplotlib · torch(CPU) · openpyxl
@@ -255,8 +255,8 @@ requests · beautifulsoup4 · lxml · PyYAML · tabulate · pytest    +  命令 
 ### 3.3 上传前自检（不烧 token）
 
 ```sh
-docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg3 \
-  --check --skill /p/skill-template.zip --dataset /p/problem.zip
+docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg4 \
+  --check --skill /p/skill-template.zip --problem /p/problem.zip
 ```
 
 它会检查：结构（唯一 `SKILL.md` 层 / `cases/` 层）、每 case 的输入与期望文件是否齐全、
@@ -280,7 +280,7 @@ cp -r server/fixtures/sales-report server/fixtures/<你的实验名>
 
 | 环节 | 平台行为 | 对实验设计的要求 |
 |---|---|---|
-| **领取** | 校验解锁规则（默认：完成该实验所属章节之前的全部已发布章节），下发模板 + 数据集 + 评估条件（模型/推理档位/工具白名单，此后钉死不可改） | 实验挂在正确的章节下，否则解锁条件错 |
+| **领取** | 校验解锁规则（默认：完成该实验所属章节之前的全部已发布章节），下发模板 + 题目包 + 评估条件（模型/推理档位/工具白名单，此后钉死不可改） | 实验挂在正确的章节下，否则解锁条件错 |
 | **开发** | 学生在工作区 `nju-lab/<assignmentId>/skill/` 里改模板 | 模板目录结构不能太深（Skill 根必须是含 `SKILL.md` 的那一层） |
 | **自测** | 学生拿 `cases/` 自己比对 `expected.*` | 用例要能让学生自己判断对错 → `README.md` 里给自测命令 |
 | **提交** | 自检 Skill 根 → 逐文件 sha256 → 打包 ZIP → 生成 `.dshc` 证据包 → 上传；**多版本**（上限 10） | 交付物是完整 Skill 目录，不是单个文件 |
@@ -360,7 +360,7 @@ cp -r server/fixtures/sales-report server/fixtures/<你的实验名>
 ## 6. ⑥ 上线与验收
 
 1. **打包 → `--check`**（§3.3，不烧 token）
-2. **上传两个 ZIP** → 拿到 `fileId` → 项目详情里绑定（Skill 模板 / 标准测试数据集）
+2. **上传两个 ZIP** → 拿到 `fileId` → 项目详情里绑定（Skill 模板 / 题目包）
 3. **确认项目挂对章节**（影响默认解锁规则）、填好截止时间、评分维度
 4. **发布**：`draft → published` 时才为本课程学生生成任务（草稿不会派发）
 5. **自测闭环**（强烈建议）：用一个测试学生账号走一遍
@@ -416,7 +416,7 @@ cp -r server/fixtures/sales-report server/fixtures/<你的实验名>
 | 改了口径只改一处 | `task.md` / `judge.md` / 满配 Skill 三份事实源必须同步，然后重算 `expected` |
 | 复验容器要联网 | 不可能：`--internal` 网络 + SNI 白名单，只有模型 API 可达 |
 | 在教师页保存项目后 `judgeMode/maxCases` 丢失 | 已修（提交时会带回）；若发现旧数据缺失，重设一次即可 |
-| 中途换数据集 | `expected.*` 是评分基准，改任一 case 即新版本；不要在有学生做的时候换 |
+| 中途换题目包 | `expected.*` 是评分基准，改任一 case 即新版本；不要在有学生做的时候换 |
 | 推理档位填官方 API 的值 | 平台只认 `off/low/high/max`（教师端下拉已限制），填 `medium/xhigh` 等会让学生端全挂 |
 
 ---

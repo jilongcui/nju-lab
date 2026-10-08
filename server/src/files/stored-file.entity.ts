@@ -6,7 +6,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
-/** 平台存储文件：模板、数据集、学生提交物（ZIP / .dshc）等 */
+/** 平台存储文件：模板、题目包、学生提交物（ZIP / .dshc）等 */
 @Entity('stored_files')
 export class StoredFile {
   @PrimaryGeneratedColumn('uuid')

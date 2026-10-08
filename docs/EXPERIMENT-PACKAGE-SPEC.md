@@ -18,18 +18,18 @@
 | **满配 Skill**（`skill-solution/`） | 只有教师 | **答案**：与模板同构但填满；不打包、不下发 |
 
 上传两个 ZIP 各拿一个 `fileId`，在「项目详情 → 编辑项目信息」里分别绑到
-**Skill 模板** 与 **标准测试数据集** 两个文件位（后者沿用平台旧称，见下面的命名说明）。
+**Skill 模板** 与 **题目包** 两个文件位（后者沿用平台旧称，见下面的命名说明）。
 发布项目后学生即可按解锁规则领取。
 
-### 命名说明：为什么"数据集包"里装着题干与判据
+### 命名说明
 
-历史上题目与判据**写死在驱动里**，那时的"数据集包"真的只有 `cases/*`（纯数据）。
-2026-10-01 改成包驱动后，题面/判据/契约被搬进同一个 ZIP（复用已有上传位，零迁移），
-这个包于是变成了**一整份考卷**（题干 + 答案 + 评分标准 + 测试数据），名字却留了下来。
+题面与判据**原本写死在驱动里**，那时的包真的只有 `cases/*`（纯数据）；2026-10-01 改成
+"包驱动"后，题面/判据/契约被搬进同一个 ZIP（复用已有上传位，零迁移），这个包于是变成了
+**一整份考卷**（题干 + 答案 + 评分标准 + 测试数据）。
 
-因此：**仓库里统一叫 `problem/`（题目包）与 `problem.zip`**；
-平台文件位、驱动内部变量名、客户端文案仍是历史称法（"标准测试数据集" / `dataset.zip` /
-`testDataset`）—— 指的是同一件东西。
+**2026-10-08 起名称统一为「题目包 / problem」**：仓库目录（`problem/`）、zip 名
+（`problem.zip`）、DB 字段（`problemFileId`）、驱动参数（`--problem`）、前端与客户端文案
+一律用这个叫法，不再有"数据集"这类历史称法（项目当时还没发给学生，故直接改名而非兼容）。
 
 > 题目包会**下发给学生**（用于本地自测），所以：`expected.*`、`judge.md`、`task.md`
 > 都可以放（评分标准公开是教学设计）；**满配 Skill / 参考实现不要放**（放进去等于泄题）。
@@ -135,7 +135,7 @@ problem/
 - 自检通过 → 正常复验，结果 JSON 里带 `dependencyCheck`。
 - 自检失败 → **直接失败并明确报错**（不会跑到一半才发现脚本 ImportError）。
 
-当前镜像 `nju-lab-verify:0.2.0-rc.2-pkg3` 的预装集（`python3` + 系统命令）：
+当前镜像 `nju-lab-verify:0.2.0-rc.2-pkg4` 的预装集（`python3` + 系统命令）：
 
 | 类别 | 内容 |
 |---|---|
@@ -158,7 +158,7 @@ problem/
 ## 5. 不写 manifest 会怎样
 
 完全按内置的「CSV 数据清洗」语义跑：输入 `input.csv`、输出 `output.csv`、
-题干与细则取内置常量、判分 `llm`。这是历史数据集（`server/fixtures/csv-cleaner/problem/`）的行为，
+题干与细则取内置常量、判分 `llm`。这是历史题目包（`server/fixtures/csv-cleaner/problem/`）的行为，
 现在还逐字保留 —— 老包不用改。
 
 ## 6. 为什么"新增实验类型不用改代码"（设计边界）
@@ -182,13 +182,13 @@ rm -f skill-template.zip problem.zip
 (cd problem        && zip -qr ../problem.zip .)
 
 # 1) 上传前自检（不跑模型、不烧 token）：结构 + 依赖
-docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg3 \
-  --check --skill /p/skill-template.zip --dataset /p/problem.zip
+docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg4 \
+  --check --skill /p/skill-template.zip --problem /p/problem.zip
 
 # 1b) 教师侧自检闭环：拿满配 Skill 跑一遍复验（应全部通过 = 题目可解）
 docker run --rm --env-file server/.env -v "$PWD:/p:ro" -v /tmp/out:/outputs \
-  nju-lab-verify:0.2.0-rc.2-pkg3 \
-  --skill /p/skill-solution --dataset /p/problem.zip --out /outputs/result.json
+  nju-lab-verify:0.2.0-rc.2-pkg4 \
+  --skill /p/skill-solution --problem /p/problem.zip --out /outputs/result.json
 
 # 2) 上传拿 fileId（教师 token）
 TOKEN=$(curl -s http://127.0.0.1:3100/api/auth/login -X POST \

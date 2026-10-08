@@ -39,10 +39,10 @@ ml-basics/
 cd server/fixtures/ml-basics
 # 1) 数据（固定种子，可重跑）：需要镜像里的 numpy
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/w" --entrypoint python3 \
-  nju-lab-verify:0.2.0-rc.2-pkg3 /w/tools/gen_cases.py
+  nju-lab-verify:0.2.0-rc.2-pkg4 /w/tools/gen_cases.py
 # 2) 期望值：**必须在与复验同一个镜像里生成**，保证 sklearn 版本与复验环境一致
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/w" --entrypoint python3 \
-  nju-lab-verify:0.2.0-rc.2-pkg3 /w/skill-solution/scripts/train.py --regen-cases
+  nju-lab-verify:0.2.0-rc.2-pkg4 /w/skill-solution/scripts/train.py --regen-cases
 ```
 
 ## 打包、自检、上传
@@ -54,12 +54,12 @@ rm -f skill-template.zip problem.zip
 (cd problem        && zip -qr ../problem.zip .)          # zip 根即 manifest.json + cases/
 
 # 上传前自检（不烧 token）：结构 + 依赖
-docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg3 \
-  --check --skill /p/skill-template.zip --dataset /p/problem.zip
+docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg4 \
+  --check --skill /p/skill-template.zip --problem /p/problem.zip
 
 # 上传拿 fileId → 在「机器学习基础模型构建与运行」项目详情里绑定：
 #   Skill 模板 ← skill-template.zip 的 fileId
-#   标准测试数据集 ← problem.zip 的 fileId
+#   题目包 ← problem.zip 的 fileId
 TOKEN=$(curl -s http://127.0.0.1:3100/api/auth/login -X POST \
   -H 'Content-Type: application/json' \
   -d '{"username":"teacher","password":"teacher123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["accessToken"])')
@@ -72,8 +72,8 @@ curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN
 ```sh
 docker run --rm --env-file server/.env \
   -v "$PWD/server/fixtures/ml-basics:/p:ro" -v /tmp/out:/outputs \
-  nju-lab-verify:0.2.0-rc.2-pkg3 \
-  --skill /p/skill-solution --dataset /p/problem.zip --out /outputs/result.json
+  nju-lab-verify:0.2.0-rc.2-pkg4 \
+  --skill /p/skill-solution --problem /p/problem.zip --out /outputs/result.json
 ```
 
 ML 实验记得把 `VERIFY_DOCKER_MEMORY` 从 `1g` 调到 `2g`（torch/sklearn 的内存需求）。

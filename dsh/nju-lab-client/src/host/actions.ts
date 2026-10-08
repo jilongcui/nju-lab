@@ -61,7 +61,7 @@ export async function resolveSkillRoot(dir: string): Promise<string> {
   )
 }
 
-export type ArtifactLabel = 'skillTemplate' | 'testDataset'
+export type ArtifactLabel = 'skillTemplate' | 'problem'
 
 /** 一次成功落盘的文件。 */
 export interface DownloadedArtifact {
@@ -262,7 +262,7 @@ export function createActions(
       const artifacts: DownloadedArtifact[] = []
       const pending: Array<[ArtifactLabel, StoredFileInfo | null]> = [
         ['skillTemplate', result.skillTemplate],
-        ['testDataset', result.testDataset],
+        ['problem', result.problem],
       ]
       for (const [label, info] of pending) {
         if (!info) continue

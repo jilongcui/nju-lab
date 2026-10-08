@@ -126,12 +126,12 @@ export default function ExperimentDetail() {
               ) : (
                 <Text type="secondary">模板未配置</Text>
               )}
-              {project.testDataset ? (
-                <Button icon={<DownloadOutlined />} onClick={() => void downloadStoredFile(project.testDataset!)}>
-                  测试数据集：{project.testDataset.originalName}
+              {project.problem ? (
+                <Button icon={<DownloadOutlined />} onClick={() => void downloadStoredFile(project.problem!)}>
+                  题目包：{project.problem.originalName}
                 </Button>
               ) : (
-                <Text type="secondary">数据集未配置</Text>
+                <Text type="secondary">题目包未配置</Text>
               )}
             </Space>
             <Paragraph type="secondary" style={{ fontSize: 12 }}>

@@ -144,7 +144,7 @@ describe('host routes: nju-lab panel', () => {
       assert.equal(body.dir, join(workspaceDir, 'nju-lab', 'a-unlocked'))
       assert.deepEqual(
         body.artifacts.map((a) => a.label).sort(),
-        ['skillTemplate', 'testDataset'],
+        ['problem', 'skillTemplate'],
       )
       for (const artifact of body.artifacts) {
         assert.ok(artifact.bytes > 0)

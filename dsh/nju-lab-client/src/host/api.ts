@@ -38,12 +38,12 @@ export interface Assignment {
 
 /**
  * `POST /assignments/:id/claim` 的响应（server/src/projects/projects.service.ts:276）。
- * 注意：旧的 `templateUrl` / `datasetUrl` 字符串字段**已不存在**。
+ * 注意：旧的 `templateUrl` / `problemUrl` 字符串字段**已不存在**。
  */
 export interface ClaimResult {
   assignment: { id: string; projectId?: string; status: string } & Record<string, unknown>
   skillTemplate: StoredFileInfo | null
-  testDataset: StoredFileInfo | null
+  problem: StoredFileInfo | null
   evalConfig: EvalConfig | null
 }
 

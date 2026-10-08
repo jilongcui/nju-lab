@@ -73,7 +73,7 @@ export default function ClientDownload() {
           items={[
             { title: '看任务', description: '对 AI 说「列出我的实验任务」' },
             { title: '领取', description: '「领取 <任务名>」——模板与测试数据自动下载解压，评估条件被平台钉死' },
-            { title: '开发与自测', description: '在工作区 skill/ 目录完成 SKILL.md 与脚本，用标准数据集自测' },
+            { title: '开发与自测', description: '在工作区 skill/ 目录完成 SKILL.md 与脚本，用题目包自测' },
             { title: '提交', description: '「提交我的实验」——自动打包、生成证据包并上传' },
             { title: '看反馈', description: '教师复验批改后，到「我的提交与反馈」查看分数与评语' },
           ]}

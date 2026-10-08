@@ -39,7 +39,7 @@ export const GUIDANCE_ORDER = 1800
 export const GUIDANCE_TEXT = `你在 NJU-Lab 教学平台上陪学生做课程实验。任务的查看、领取与提交都走 nju_lab_* 工具：
 
 - 学生问"有哪些实验 / 要交什么" → nju_lab_list_assignments
-- 学生选定任务、准备开工 → nju_lab_claim（平台模板与数据集会落到工作区 nju-lab/<assignmentId>/，同时钉死评估条件）
+- 学生选定任务、准备开工 → nju_lab_claim（平台模板与题目包会落到工作区 nju-lab/<assignmentId>/，同时钉死评估条件）
 - 学生说"改好了 / 我要交作业" → nju_lab_submit（自检 → 打包 ZIP → 生成 .dshc 证据包 → 上传提交）
 
 三条约定：
@@ -52,7 +52,7 @@ export const SKILL_NAME = 'nju-lab-experiment'
 
 /** 目录里渲染的描述（`dsh-tool-skill` 有长度上限，默认 500）。 */
 export const SKILL_DESCRIPTION =
-  'NJU-Lab 课程实验的操作手册：用 nju_lab_list_assignments / nju_lab_claim / nju_lab_submit 查看任务、领取模板与数据集、打包提交（含 .dshc 证据包），以及工作区布局和常见报错。'
+  'NJU-Lab 课程实验的操作手册：用 nju_lab_list_assignments / nju_lab_claim / nju_lab_submit 查看任务、领取模板与题目包、打包提交（含 .dshc 证据包），以及工作区布局和常见报错。'
 
 /** 额外的路由提示：什么时候值得加载这个 skill。 */
 export const SKILL_WHEN_TO_USE =
@@ -78,7 +78,7 @@ export const SKILL_CONTENT = `# NJU-Lab 实验流程
 
 ### 2. \`nju_lab_claim\` \`{ assignmentId }\`
 
-- 从平台**真实下载**模板 ZIP 与数据集到 \`<工作区>/nju-lab/<assignmentId>/\`，逐个校验 sha256；
+- 从平台**真实下载**模板 ZIP 与题目包到 \`<工作区>/nju-lab/<assignmentId>/\`，逐个校验 sha256；
 - 模板是 ZIP：解压到 \`<assignmentId>/skill/\`，并告诉你**真正的 Skill 根** —— 模板允许
   包一层顶层目录，此时 Skill 根是 \`skill/<name>\`，不是 \`skill/\`；
 - 平台下发的评估条件（model / reasoningEffort / tools）从此对本会话生效。\`tools\` 是
@@ -121,14 +121,14 @@ export const SKILL_CONTENT = `# NJU-Lab 实验流程
 | 工具提示未配置 token | 没有平台长期 token | 到平台个人页「API Token」生成，填进 DSH 设置页的 \`nju-lab\` 节，或设 \`NJU_LAB_TOKEN\` |
 | 工具报 401 | token 已过期或被吊销 | 重新生成 token；吊销是整体的，Web 登录态也会一起失效 |
 | 提交报"找不到 SKILL.md" | Skill 根判断错了 | 先看 \`<assignmentId>/skill/\` 的结构，Skill 根必须是含 SKILL.md 的那一层 |
-| 提交报 sha256 不符 | 文件下载后被改动过 | 重新 claim；确认没有手工改模板 / 数据集 |
+| 提交报 sha256 不符 | 文件下载后被改动过 | 重新 claim；确认没有手工改模板 / 题目包 |
 | claim 报"尚未满足解锁条件" | 前置章节未完成 | 这份实验现在还不能领，让学生先完成前置要求 |
 
 ## 不要做
 
 - 不要把平台下发的评估条件改回去 —— 那是评分口径；
 - 不要伪造审计事件或证据包内容：\`.dshc\` 由插件生成、平台登记哈希，复验独立重跑；
-- 不要为了让测试通过去改模板或数据集 —— 复验用的是平台侧原始数据集。`
+- 不要为了让测试通过去改模板或题目包 —— 复验用的是平台侧原始题目包。`
 
 /**
  * 注册引导（system prompt 段 + skill）。

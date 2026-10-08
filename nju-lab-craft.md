@@ -5,6 +5,8 @@
 > **2026-09-24 更新**：njuserver 部署点接入**南大统一认证（CAS 3.0）** —— 校园网关放开后认证改由应用自负，走标准 ticket 重定向流（登录 / 登出 / 角色判定均已上生产）；角色由 CAS 属性 `containerId` 判定（`ou=JZG` = 教职工）；前端产物按 `VITE_BASE=/lab/` 重建部署。详见 §6.1 与 HANDOFF.md §2.1 / §3.4。
 >
 > **2026-10-06 更新**：平台**取消了复验的 baseline（"只给题干"）轮** —— 复验只跑一轮（题干 + 学生的 Skill），`lift` 不再是平台信号；建议分公式里原 lift 的 15 分并入成功率（40 → 55），token 阈值 30000 → 15000（镜像 `nju-lab-verify:0.2.0-rc.2-pkg3`）。本文其余章节中涉及 baseline/lift 的表述属**原始设计**（保留作历史），实现现状以 `docs/EXPERIMENT-DESIGN-FRAMEWORK.md` 与 `HANDOFF.md` 为准。
+>
+> **2026-10-08 更新（命名统一）**：复验用的那个 ZIP（本文称"标准测试数据集 / `testDatasetFileId`"）现统一叫**题目包 / `problem`** —— 仓库目录 `problem/`、zip 名 `problem.zip`、DB 字段 `problemFileId`、驱动参数 `--problem`、前端与客户端文案。本文中的旧称、旧字段名（如 §93 的 `testDatasetFileId`）属**原始设计记录**，保留作历史。
 
 ## 一、平台定位：这是什么？
 

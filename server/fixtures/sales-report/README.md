@@ -42,7 +42,7 @@ curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN
 
 ```sh
 docker run --rm -v "$PWD/server/fixtures/sales-report:/p:ro" \
-  nju-lab-verify:0.2.0-rc.2-pkg3 --check --skill /p/skill-template.zip --dataset /p/problem.zip
+  nju-lab-verify:0.2.0-rc.2-pkg4 --check --skill /p/skill-template.zip --problem /p/problem.zip
 ```
 
 打印解析结果（输出文件名、题干/细则来源、每个 case 的输入与期望文件、依赖自检）；
@@ -56,8 +56,8 @@ docker run --rm -v "$PWD/server/fixtures/sales-report:/p:ro" \
 ```sh
 docker run --rm --env-file server/.env \
   -v "$PWD/server/fixtures/sales-report:/p:ro" -v /tmp/out:/outputs \
-  nju-lab-verify:0.2.0-rc.2-pkg3 \
-  --skill /p/skill-solution --dataset /p/problem.zip --out /outputs/result.json
+  nju-lab-verify:0.2.0-rc.2-pkg4 \
+  --skill /p/skill-solution --problem /p/problem.zip --out /outputs/result.json
 ```
 
 ## 改口径时三处一起改

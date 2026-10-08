@@ -25,7 +25,7 @@ export interface EvalConfig {
   timeoutSeconds?: number;
   /** 复验评判模式：llm = LLM judge（默认）；exact = 与 expected 逐字节比对 */
   judgeMode?: 'llm' | 'exact';
-  /** 成本控制：复验最多跑数据集前 N 个 case；缺省全部 */
+  /** 成本控制：复验最多跑题目包前 N 个 case；缺省全部 */
   maxCases?: number;
 }
 
@@ -83,9 +83,9 @@ export class ExperimentProject {
   @Column({ type: 'varchar', length: 36, nullable: true })
   skillTemplateFileId: string | null;
 
-  /** 标准测试数据集对应的存储文件 id，见 files 模块 */
+  /** 题目包对应的存储文件 id，见 files 模块 */
   @Column({ type: 'varchar', length: 36, nullable: true })
-  testDatasetFileId: string | null;
+  problemFileId: string | null;
 
   @Column({ type: 'json', nullable: true })
   evalConfig: EvalConfig | null;

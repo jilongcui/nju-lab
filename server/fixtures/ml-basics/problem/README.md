@@ -1,4 +1,4 @@
-# 标准测试数据集：机器学习基础建模（v1.0.0）
+# 题目包：机器学习基础建模（v1.0.0）
 
 3 个用例，每个目录下 `input.csv`（数据）+ `params.json`（建模参数）+ `expected.json`（期望产出）。
 
@@ -25,7 +25,7 @@
 
 ## 依赖
 
-`manifest.requires.python = ["sklearn", "pandas", "numpy"]` —— 复验镜像 `nju-lab-verify:0.2.0-rc.2-pkg3`
+`manifest.requires.python = ["sklearn", "pandas", "numpy"]` —— 复验镜像 `nju-lab-verify:0.2.0-rc.2-pkg4`
 已预装（scikit-learn 1.9.1 / pandas / numpy），驱动会在开跑前自检，缺了直接失败。
 
 ## 自测方法

@@ -101,7 +101,7 @@ dsh --profile nju-lab-student --no-open
 | 工具 | 行为 | 平台 API |
 | --- | --- | --- |
 | `nju_lab_list_assignments` | 列出任务：解锁状态、章节、截止时间、最新提交 | `GET /me/assignments` |
-| `nju_lab_claim` | 领取：**真实下载**模板与数据集到 `<会话工作区>/nju-lab/<id>/`、逐个校验 sha256、纯 JS 解压模板，并**探测真正的 Skill 根**（模板带顶层目录时是 `skill/csv-cleaner`）+ 钉死评估条件；claimed/submitted 幂等重发 | `POST /assignments/:id/claim`、`GET /files/:id` |
+| `nju_lab_claim` | 领取：**真实下载**模板与题目包到 `<会话工作区>/nju-lab/<id>/`、逐个校验 sha256、纯 JS 解压模板，并**探测真正的 Skill 根**（模板带顶层目录时是 `skill/csv-cleaner`）+ 钉死评估条件；claimed/submitted 幂等重发 | `POST /assignments/:id/claim`、`GET /files/:id` |
 | `nju_lab_submit` | 提交前自检 → 逐文件 sha256 → 打包 ZIP → 生成 `.dshc` → 上传两者 → 以 fileId 模式提交 | `POST /files`、`POST /assignments/:id/submit` |
 
 ### 2. 右侧栏面板（client 半）

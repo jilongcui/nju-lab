@@ -44,26 +44,26 @@ export class MockEvaluationRunner implements EvaluationRunner {
       `${submission.id}:${submission.skillZipSha256}:${submission.capsuleSha256}`,
     );
 
-    const datasetSize = 20;
+    const caseCount = 20;
     // 单轮复验（baseline 轮已取消）：直接生成「使用 Skill」那一轮的成功率。
     const successRate = Math.min(0.98, 0.55 + rand() * 0.4); // 单轮成功率 55%~95%
     const tokenCost = Math.floor(4000 + rand() * 21000); // 单轮（两轮时代的约一半）
 
     const treatmentResult = {
-      dataset: project.testDatasetFileId,
+      problem: project.problemFileId,
       evalConfig: project.evalConfig,
-      runs: datasetSize,
+      runs: caseCount,
       successRate: round2(successRate),
-      avgTokensPerRun: Math.floor(tokenCost / datasetSize),
+      avgTokensPerRun: Math.floor(tokenCost / caseCount),
     };
 
     const dossierSnapshot = {
       generatedBy: `evaluation-runner:${this.name}`,
       direction: ['engineering', 'data-processing'][Math.floor(rand() * 2)],
-      invocationCount: datasetSize,
+      invocationCount: caseCount,
       measuredOutcomes: {
-        success: Math.round(successRate * datasetSize),
-        failure: datasetSize - Math.round(successRate * datasetSize),
+        success: Math.round(successRate * caseCount),
+        failure: caseCount - Math.round(successRate * caseCount),
       },
       boundariesDocumented: rand() > 0.3,
       pitfallsRecorded: Math.floor(rand() * 5),

@@ -4,11 +4,11 @@
 
 ## 构成
 
-- `Dockerfile` → 镜像 `nju-lab-verify:0.2.0-rc.2-pkg3`（node:22-slim + 锁定
+- `Dockerfile` → 镜像 `nju-lab-verify:0.2.0-rc.2-pkg4`（node:22-slim + 锁定
   `@deepseek-ai/dsh@0.2.0-rc.2` + zstd/unzip/**jq**/python3 + 驱动 + profile
   + **预装教学依赖集**，见下）
-- `run-eval.mjs` — 复验驱动（**包驱动**）：解包 `--skill` / `--dataset` 两个 ZIP
-  （resolveSkillRoot / resolveDatasetRoot 语义；CLI 参数名保留历史称法，仓库里的包现在叫
+- `run-eval.mjs` — 复验驱动（**包驱动**）：解包 `--skill` / `--problem` 两个 ZIP
+  （resolveSkillRoot / resolveProblemRoot 语义；CLI 参数名保留历史称法，仓库里的包现在叫
   `skill-template.zip` / `problem.zip`）→ 读题目包的 `manifest.json` / `task.md` / `judge.md`
   → 依赖自检 → 逐 case 跑一轮 dsh headless（题干 + 学生的 Skill；
   approval=never + workspace-write）→ LLM judge（默认，`--judge-mode exact` 可切）
@@ -24,12 +24,12 @@
 **只改驱动（如本 pkg3 取消 baseline 轮）时**走 UPGRADE-playbook §5 的变通：`FROM` 上一版镜像 +
 覆盖 `run-eval.mjs`，再 `docker export | import` 压平，省掉整层依赖重装。）
 
-## 包驱动：题目与判据随数据集包走
+## 包驱动：题目与判据随题目包走
 
 **为什么**：任务类型的知识原先写死在驱动代码里，于是「加一个实验类型 = 改驱动 + 重建镜像 +
-部署」；现在搬到数据集包，加类型只需重新上传数据集包（平台零动作）。
+部署」；现在搬到题目包，加类型只需重新上传题目包（平台零动作）。
 
-| 文件（数据集 ZIP 根，全部可选） | 作用 |
+| 文件（题目包 ZIP 根，全部可选） | 作用 |
 |---|---|
 | `manifest.json` | `outputFile` / `inputs` / `judgeMode` / `maxCases` / `requires` |
 | `task.md` | 题干：复验唯一的事实源；支持 `{{input}}`/`{{inputs}}`/`{{output}}`/`{{skill}}` |
@@ -69,19 +69,19 @@ torch==2.14.1+cpu        ← CPU 版：PyPI 上 linux wheel 是 CUDA 版（+nvid
 ```sh
 # 结构 + 依赖自检（宿主有 docker 即可）
 docker run --rm -v "$PWD/server/fixtures/sales-report:/p:ro" \
-  nju-lab-verify:0.2.0-rc.2-pkg3 --check --skill /p/skill-template.zip --dataset /p/problem.zip
+  nju-lab-verify:0.2.0-rc.2-pkg4 --check --skill /p/skill-template.zip --problem /p/problem.zip
 
 # 端到端（要 key，走默认 bridge 网络即可；平台内由 container-runtime 提供 internal + 代理）
 docker run --rm -e DEEPSEEK_API_KEY=<key> \
   -v "$PWD/server/fixtures/sales-report:/p:ro" -v /tmp/out:/outputs \
-  nju-lab-verify:0.2.0-rc.2-pkg3 \
-  --skill /p/skill-template.zip --dataset /p/problem.zip --out /outputs/result.json --max-cases 1
+  nju-lab-verify:0.2.0-rc.2-pkg4 \
+  --skill /p/skill-template.zip --problem /p/problem.zip --out /outputs/result.json --max-cases 1
 
 # 教师侧自检闭环：拿满配 Skill 跑一遍（全部通过 = 题目可解）
 docker run --rm --env-file server/.env \
   -v "$PWD/server/fixtures/sales-report:/p:ro" -v /tmp/out:/outputs \
-  nju-lab-verify:0.2.0-rc.2-pkg3 \
-  --skill /p/skill-solution --dataset /p/problem.zip --out /outputs/solution.json
+  nju-lab-verify:0.2.0-rc.2-pkg4 \
+  --skill /p/skill-solution --problem /p/problem.zip --out /outputs/solution.json
 ```
 
 ## 出栈白名单隔离（SNI 代理）

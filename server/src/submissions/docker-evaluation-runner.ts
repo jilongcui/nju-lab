@@ -15,17 +15,17 @@ import { EvaluationRunner, EvaluationRunResult } from './evaluation-runner';
 import { Submission } from './submission.entity';
 
 /** 复验容器镜像（构建见 server/verify-image/Dockerfile） */
-const VERIFY_IMAGE = process.env.VERIFY_IMAGE || 'nju-lab-verify:0.2.0-rc.2-pkg3';
+const VERIFY_IMAGE = process.env.VERIFY_IMAGE || 'nju-lab-verify:0.2.0-rc.2-pkg4';
 /** 整体时长限额兜底（毫秒）；project.evalConfig.timeoutSeconds 优先 */
 const VERIFY_TIMEOUT_MS = Number(process.env.VERIFY_TIMEOUT_MS || 600_000);
 /**
  * 成本控制：最多跑几个 case。**未配置（undefined）时不下发 CLI 参数** ——
- * 由数据集包 manifest.maxCases / 驱动内置默认决定；evalConfig.maxCases 优先级最高。
+ * 由题目包 manifest.maxCases / 驱动内置默认决定；evalConfig.maxCases 优先级最高。
  */
 const VERIFY_MAX_CASES = process.env.VERIFY_MAX_CASES
   ? Number(process.env.VERIFY_MAX_CASES)
   : undefined;
-/** 判分模式：同上，未配置则交给数据集包 manifest.judgeMode（再回落 llm）。 */
+/** 判分模式：同上，未配置则交给题目包 manifest.judgeMode（再回落 llm）。 */
 const VERIFY_JUDGE_MODE = process.env.VERIFY_JUDGE_MODE || undefined;
 
 interface JudgeVerdict {
@@ -62,7 +62,7 @@ interface DriverResult {
   profile: string;
   model: Record<string, unknown>;
   judge: { mode: string; model: string | null };
-  /** 数据集包声明摘要（包驱动：输出文件名 / 题干与细则来源 / 依赖），可追溯本次评测口径 */
+  /** 题目包声明摘要（包驱动：输出文件名 / 题干与细则来源 / 依赖），可追溯本次评测口径 */
   package?: DriverPackage | null;
   dependencyCheck?: { ok: boolean; missing: string[]; declared: Record<string, string[]> } | null;
   skillFileHashes: Record<string, string> | null;
@@ -72,7 +72,7 @@ interface DriverResult {
   summary: DriverSummary;
 }
 
-/** 数据集包（实验材料）的声明摘要，由驱动 inspectPackage() 产出 */
+/** 题目包（实验材料）的声明摘要，由驱动 inspectPackage() 产出 */
 interface DriverPackage {
   source: 'builtin' | 'manifest';
   name: string | null;
@@ -114,12 +114,12 @@ export class DockerEvaluationRunner implements EvaluationRunner {
       submission.skillZipRef,
       '提交物不是已上传文件（skillZipRef 须为 file:<id>，旧 s3:// 数据不支持复验）',
     );
-    if (!project.testDatasetFileId) {
-      throw new BadRequestException('项目未绑定标准测试数据集，无法复验');
+    if (!project.problemFileId) {
+      throw new BadRequestException('项目未绑定题目包，无法复验');
     }
-    const datasetPath = await this.resolveUpload(
-      `file:${project.testDatasetFileId}`,
-      '项目数据集文件不存在',
+    const problemPath = await this.resolveUpload(
+      `file:${project.problemFileId}`,
+      '项目未绑定题目包',
     );
     const capsuleHashVerified = await this.verifyCapsuleHash(submission);
     // 出栈白名单代理：幂等确保 internal 网络与双宿主代理容器存在，取其内部 IP
@@ -154,17 +154,17 @@ export class DockerEvaluationRunner implements EvaluationRunner {
           ? [`VERIFY_REASONING_EFFORT=${project.evalConfig.reasoningEffort}`]
           : []),
       ],
-      // 提交物与数据集只读挂载；结果写到独立输出目录
+      // 提交物与题目包只读挂载；结果写到独立输出目录
       mounts: [
         `${skillPath}:/inputs/skill.zip:ro`,
-        `${datasetPath}:/inputs/dataset.zip:ro`,
+        `${problemPath}:/inputs/problem.zip:ro`,
         `${outDir}:/outputs`,
       ],
       args: [
         '--skill', '/inputs/skill.zip',
-        '--dataset', '/inputs/dataset.zip',
+        '--problem', '/inputs/problem.zip',
         '--out', '/outputs/result.json',
-        // 未显式配置判分模式时不传：让数据集包的 manifest.judgeMode 生效（包驱动）
+        // 未显式配置判分模式时不传：让题目包的 manifest.judgeMode 生效（包驱动）
         ...(judgeMode ? ['--judge-mode', judgeMode] : []),
         '--timeout-ms', String(Math.min(300_000, timeoutMs)),
         ...(maxCases && maxCases > 0 ? ['--max-cases', String(maxCases)] : []),
@@ -250,7 +250,7 @@ export class DockerEvaluationRunner implements EvaluationRunner {
     return {
       treatmentResult: {
         runner: `evaluation-runner:${this.name}`,
-        dataset: project.testDatasetFileId,
+        problem: project.problemFileId,
         evalConfig: project.evalConfig,
         package: result.package ?? null,
         model: result.model,

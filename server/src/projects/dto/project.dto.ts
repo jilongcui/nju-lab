@@ -77,7 +77,7 @@ class ProjectBaseDto {
 
   @IsOptional()
   @IsUUID()
-  testDatasetFileId?: string;
+  problemFileId?: string;
 
   @IsOptional()
   @IsObject()
@@ -148,7 +148,7 @@ export class UpdateProjectDto {
 
   @IsOptional()
   @IsUUID()
-  testDatasetFileId?: string;
+  problemFileId?: string;
 
   @IsOptional()
   @IsObject()

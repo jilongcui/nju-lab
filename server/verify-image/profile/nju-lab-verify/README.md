@@ -8,8 +8,8 @@
 export DSH_HOME=/opt/nju-verify/.dsh
 cp -r nju-lab-verify "$DSH_HOME/profiles/nju-lab-verify"
 
-# 解包学生 Skill → 用标准数据集跑复验（题干 + Skill 一轮；驱动见 server/verify-image/run-eval.mjs）
-dsh --profile nju-lab-verify "run the skill against the standard dataset"
+# 解包学生 Skill → 用题目包跑复验（题干 + Skill 一轮；驱动见 server/verify-image/run-eval.mjs）
+dsh --profile nju-lab-verify "run the skill against the problem package"
 ```
 
 ## 实测契约（0.1.5-rc.2，2026-09-21 实测，修正设计文档 §7 的推断）

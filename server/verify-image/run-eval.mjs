@@ -1,23 +1,23 @@
 #!/usr/bin/env node
 // NJU-Lab 复验驱动（生产版，运行于 nju-lab-verify 一次性容器内）。
 //
-// 输入：skill.zip|dir + dataset.zip|dir → 逐 case 跑一轮 dsh headless
+// 输入：skill.zip|dir + problem.zip|dir → 逐 case 跑一轮 dsh headless
 // （approval=never / workspace-write），按 judge-mode 评分，输出单个结构化结果 JSON。
 //
 // **单轮（无 baseline）**：2026-10-06 起平台取消 baseline（"只给题干"）轮 ——
 // 面向学生的实验只判「学生交付的工具是否产出了正确结果」，不再度量 lift。
 // 因此 --skill 是必需输入，驱动不再产出 baseline 汇总。
 //
-// **任务知识随数据集包走（包驱动）** —— 数据集 ZIP 根目录可放三个可选文件：
+// **任务知识随题目包走（包驱动）** —— 题目包 ZIP 根目录可放三个可选文件：
 //   manifest.json  机器读的结构声明（输出文件名 / 输入文件 / judgeMode / 依赖）
 //   task.md        任务提示（被测 agent 看到的题干）
 //   judge.md       评分细则（LLM judge 的判据）
-// 三者都不放 → **逐字回落内置的「CSV 数据清洗」行为**（历史数据集与在跑实验零影响）。
-// 由此：新增实验类型只需重新上传数据集包，裁判程序与镜像都不动 ——
+// 三者都不放 → **逐字回落内置的「CSV 数据清洗」行为**（历史题目包与在跑实验零影响）。
+// 由此：新增实验类型只需重新上传题目包，裁判程序与镜像都不动 ——
 // 题目与评分细则由教师的包决定，执行与判分口径由平台钉死。
 //
 // 用法：
-//   node run-eval.mjs --skill <zip|dir> --dataset <zip|dir> --out <result.json>
+//   node run-eval.mjs --skill <zip|dir> --problem <zip|dir> --out <result.json>
 //     [--judge-mode llm|exact]          默认取包内 manifest.judgeMode，再回落 llm
 //     [--cases case01,case02 | --max-cases N]   默认全部 case
 //     [--timeout-ms N]                  dsh 单轮运行上限，默认 300000
@@ -50,9 +50,9 @@ const JUDGE_MODEL = process.env.VERIFY_JUDGE_MODEL || MODEL;
 const API_KEY = process.env.DEEPSEEK_API_KEY || process.env.MOONSHOT_API_KEY;
 
 // ---------- 内置回落：CSV 数据清洗 ----------
-// 数据集包没放 task.md / judge.md 时用这一套，保证历史数据集行为逐字不变。
+// 题目包没放 task.md / judge.md 时用这一套，保证历史题目包行为逐字不变。
 
-// 评判规则：来自标准数据集 README，与题干（task.md）共用同一份事实源。
+// 评判规则：来自标准题目包 README（csv-cleaner 的历史语义），与题干（task.md）共用同一份事实源。
 const CLEAN_RULES = `Cleaning rules:
 1. Trim leading/trailing whitespace from every field.
 2. Normalize the date column to YYYY-MM-DD (inputs may be YYYY/M/D, DD-MM-YYYY, YYYY.MM.DD).
@@ -104,7 +104,7 @@ function parseArgs(argv) {
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--skill') opts.skill = resolve(argv[++i]);
-    else if (a === '--dataset') opts.dataset = resolve(argv[++i]);
+    else if (a === '--problem') opts.problem = resolve(argv[++i]);
     else if (a === '--out') opts.out = resolve(argv[++i]);
     else if (a === '--judge-mode') opts.judgeMode = argv[++i];
     else if (a === '--cases') opts.cases = argv[++i].split(',').map((s) => s.trim()).filter(Boolean);
@@ -114,11 +114,11 @@ function parseArgs(argv) {
     else if (a === '--profile-src') opts.profileSrc = resolve(argv[++i]);
     else if (a === '--check') opts.check = true;
     else if (a === '--help' || a === '-h') {
-      console.log('usage: node run-eval.mjs --skill <zip|dir> --dataset <zip|dir> [--out f] [--judge-mode llm|exact] [--cases a,b|--max-cases n] [--timeout-ms n] [--dsh-home dir] [--profile-src dir] [--check]');
+      console.log('usage: node run-eval.mjs --skill <zip|dir> --problem <zip|dir> [--out f] [--judge-mode llm|exact] [--cases a,b|--max-cases n] [--timeout-ms n] [--dsh-home dir] [--profile-src dir] [--check]');
       process.exit(0);
     } else fail(`unknown arg: ${a}`);
   }
-  if (!opts.dataset) fail('--dataset is required');
+  if (!opts.problem) fail('--problem is required');
   if (opts.judgeMode !== null && !['llm', 'exact'].includes(opts.judgeMode)) fail('--judge-mode must be llm or exact');
   return opts;
 }
@@ -154,24 +154,24 @@ function resolveSkillRoot(dir) {
   fail(`invalid skill package: no unique SKILL.md layer under ${dir}`);
 }
 
-/** 数据集根：含 cases/ 的那一层（同样允许一层顶层目录）。 */
-function resolveDatasetRoot(dir) {
+/** 题目包根：含 cases/ 的那一层（同样允许一层顶层目录）。 */
+function resolveProblemRoot(dir) {
   if (existsSync(join(dir, 'cases'))) return dir;
   const entries = readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory());
   const withCases = entries.filter((e) => existsSync(join(dir, e.name, 'cases')));
   if (withCases.length === 1) return join(withCases[0].name);
-  fail(`invalid dataset package: no unique cases/ layer under ${dir}`);
+  fail(`invalid problem package: no unique cases/ layer under ${dir}`);
 }
 
-// ---------- 数据集的包声明（manifest.json / task.md / judge.md） ----------
+// ---------- 题目包的包声明（manifest.json / task.md / judge.md） ----------
 
 const EXPECTED_RE = /^expected(\..+)?$/i;
 
 /**
- * 读数据集包的声明。三者皆无 → 全部回落内置「CSV 数据清洗」语义。
+ * 读题目包的声明。三者皆无 → 全部回落内置「CSV 数据清洗」语义。
  * 缺某个字段只在字段级回落，不做静默猜测以外的处理。
  */
-function readDatasetSpec(datasetRoot) {
+function readProblemSpec(problemRoot) {
   const spec = {
     name: null,
     title: null,
@@ -186,7 +186,7 @@ function readDatasetSpec(datasetRoot) {
     files: { manifest: false, task: false, judge: false },
   };
 
-  const manifestPath = join(datasetRoot, 'manifest.json');
+  const manifestPath = join(problemRoot, 'manifest.json');
   if (existsSync(manifestPath)) {
     spec.files.manifest = true;
     spec.source = 'manifest';
@@ -194,32 +194,32 @@ function readDatasetSpec(datasetRoot) {
     try {
       raw = JSON.parse(readFileSync(manifestPath, 'utf8'));
     } catch (e) {
-      fail(`dataset/manifest.json 不是合法 JSON: ${e.message}`);
+      fail(`problem/manifest.json 不是合法 JSON: ${e.message}`);
     }
     if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
-      fail('dataset/manifest.json 必须是 JSON 对象');
+      fail('problem/manifest.json 必须是 JSON 对象');
     }
     if (raw.schemaVersion !== undefined && raw.schemaVersion !== 1) {
-      fail(`dataset/manifest.json 的 schemaVersion=${raw.schemaVersion} 不被本驱动支持（当前支持 1）`);
+      fail(`problem/manifest.json 的 schemaVersion=${raw.schemaVersion} 不被本驱动支持（当前支持 1）`);
     }
     if (raw.name !== undefined) spec.name = String(raw.name);
     if (raw.title !== undefined) spec.title = String(raw.title);
     if (raw.outputFile !== undefined) {
       const v = String(raw.outputFile).replace(/^\.\//, '');
       if (!v || v.startsWith('/') || v.split('/').includes('..')) {
-        fail(`dataset/manifest.json 的 outputFile 非法（须是工作目录内的相对路径）: ${raw.outputFile}`);
+        fail(`problem/manifest.json 的 outputFile 非法（须是工作目录内的相对路径）: ${raw.outputFile}`);
       }
       spec.outputFile = v;
     }
     if (raw.inputs !== undefined) {
       if (!Array.isArray(raw.inputs) || raw.inputs.some((x) => typeof x !== 'string')) {
-        fail('dataset/manifest.json 的 inputs 必须是字符串数组（相对 case 目录的路径）');
+        fail('problem/manifest.json 的 inputs 必须是字符串数组（相对 case 目录的路径）');
       }
       spec.inputs = raw.inputs;
     }
     if (raw.judgeMode !== undefined) {
       if (!['llm', 'exact'].includes(raw.judgeMode)) {
-        fail(`dataset/manifest.json 的 judgeMode 只能是 llm 或 exact: ${raw.judgeMode}`);
+        fail(`problem/manifest.json 的 judgeMode 只能是 llm 或 exact: ${raw.judgeMode}`);
       }
       spec.judgeMode = raw.judgeMode;
     }
@@ -227,7 +227,7 @@ function readDatasetSpec(datasetRoot) {
     if (raw.requires !== undefined) {
       const req = raw.requires ?? {};
       if (typeof req !== 'object' || Array.isArray(req)) {
-        fail('dataset/manifest.json 的 requires 必须是对象，如 {"python": ["pandas"], "commands": ["jq"]}');
+        fail('problem/manifest.json 的 requires 必须是对象，如 {"python": ["pandas"], "commands": ["jq"]}');
       }
       spec.requires = {
         python: Array.isArray(req.python) ? req.python.map(String) : [],
@@ -236,17 +236,17 @@ function readDatasetSpec(datasetRoot) {
     }
   }
 
-  const taskPath = join(datasetRoot, 'task.md');
+  const taskPath = join(problemRoot, 'task.md');
   if (existsSync(taskPath)) {
     spec.files.task = true;
     spec.taskPrompt = readFileSync(taskPath, 'utf8').trim();
-    if (!spec.taskPrompt) fail('dataset/task.md 是空的：题干不能为空');
+    if (!spec.taskPrompt) fail('problem/task.md 是空的：题干不能为空');
   }
-  const judgePath = join(datasetRoot, 'judge.md');
+  const judgePath = join(problemRoot, 'judge.md');
   if (existsSync(judgePath)) {
     spec.files.judge = true;
     spec.judgeRules = readFileSync(judgePath, 'utf8').trim();
-    if (!spec.judgeRules) fail('dataset/judge.md 是空的：评分细则不能为空');
+    if (!spec.judgeRules) fail('problem/judge.md 是空的：评分细则不能为空');
   }
 
   return spec;
@@ -538,8 +538,8 @@ function judge(mode, args) {
 
 // ---------- 主流程 ----------
 
-function listCases(datasetRoot, opts, spec) {
-  const casesDir = join(datasetRoot, 'cases');
+function listCases(problemRoot, opts, spec) {
+  const casesDir = join(problemRoot, 'cases');
   let names = readdirSync(casesDir, { withFileTypes: true })
     .filter((d) => d.isDirectory()).map((d) => d.name).sort();
   if (opts.cases) names = names.filter((c) => opts.cases.includes(c));
@@ -550,9 +550,9 @@ function listCases(datasetRoot, opts, spec) {
 }
 
 /** 包结构自检摘要（--check 的输出，也是复验结果里的可追溯快照）。 */
-function inspectPackage({ datasetRoot, spec, skillRoot, caseNames }) {
+function inspectPackage({ problemRoot, spec, skillRoot, caseNames }) {
   return {
-    datasetRoot,
+    problemRoot,
     source: spec.source,
     name: spec.name,
     title: spec.title,
@@ -562,10 +562,10 @@ function inspectPackage({ datasetRoot, spec, skillRoot, caseNames }) {
     maxCases: spec.maxCases,
     requires: spec.requires,
     declaredFiles: spec.files,
-    taskPromptSource: spec.taskPrompt ? 'dataset/task.md' : 'builtin(csv-cleaner)',
-    judgeRulesSource: spec.judgeRules ? 'dataset/judge.md' : 'builtin(csv-cleaner)',
+    taskPromptSource: spec.taskPrompt ? 'problem/task.md' : 'builtin(csv-cleaner)',
+    judgeRulesSource: spec.judgeRules ? 'problem/judge.md' : 'builtin(csv-cleaner)',
     cases: caseNames.map((name) => {
-      const caseDir = join(datasetRoot, 'cases', name);
+      const caseDir = join(problemRoot, 'cases', name);
       return {
         name,
         inputs: caseInputs(caseDir, spec).map((i) => i.rel),
@@ -581,20 +581,20 @@ function inspectPackage({ datasetRoot, spec, skillRoot, caseNames }) {
 async function main() {
   const opts = parseArgs(process.argv);
 
-  const datasetRoot = resolveDatasetRoot(unpack(opts.dataset, 'dataset'));
-  const spec = readDatasetSpec(datasetRoot);
+  const problemRoot = resolveProblemRoot(unpack(opts.problem, 'problem'));
+  const spec = readProblemSpec(problemRoot);
   const skillRoot = opts.skill ? resolveSkillRoot(unpack(opts.skill, 'skill')) : null;
   // 单轮复验必须带 Skill：baseline 轮已取消，"没有 Skill 的裸做"不再是评测对象。
   if (!opts.check && !skillRoot) {
     fail('--skill is required：baseline 轮已取消，复验只跑「使用 Skill」一轮');
   }
-  const caseNames = listCases(datasetRoot, opts, spec);
+  const caseNames = listCases(problemRoot, opts, spec);
   // 判分模式优先级：命令行（平台项目配置）> 包内 manifest > 内置 llm
   const judgeMode = opts.judgeMode ?? spec.judgeMode ?? 'llm';
   const judgeModel = judgeMode === 'llm' ? JUDGE_MODEL : null;
 
   const deps = checkRequires(spec);
-  const pkg = inspectPackage({ datasetRoot, spec, skillRoot, caseNames });
+  const pkg = inspectPackage({ problemRoot, spec, skillRoot, caseNames });
 
   if (opts.check) {
     console.log(JSON.stringify({
@@ -636,7 +636,7 @@ async function main() {
   };
 
   for (const caseName of caseNames) {
-    const caseDir = join(datasetRoot, 'cases', caseName);
+    const caseDir = join(problemRoot, 'cases', caseName);
     const inputs = caseInputs(caseDir, spec);
     const expected = caseExpected(caseDir, spec);
     const expectedText = readFileSync(expected.path, 'utf8');

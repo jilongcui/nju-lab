@@ -7,7 +7,7 @@
 # 只改驱动（如 pkg3 = 取消 baseline 轮）时不必整层重建：`FROM` 上一版镜像 +
 # 覆盖 run-eval.mjs，再 `docker export | import` 压平（见 docs/UPGRADE-playbook.md §5）。
 # 「包驱动」的两半（见 run-eval.mjs 头部注释与 docs/EXPERIMENT-PACKAGE-SPEC.md）：
-#   1) 题目与评分口径随**数据集包**走（manifest.json / task.md / judge.md）——
+#   1) 题目与评分口径随**题目包**走（manifest.json / task.md / judge.md）——
 #      新增实验类型不用改代码、不用重建本镜像。
 #   2) 运行环境（Python 依赖 / 命令行工具）**必须预装在本镜像**：复验容器在
 #      --internal 网络里没有外网（只放行模型 API 的 SNI 白名单），镜像层只读，
@@ -23,7 +23,7 @@
 # 跨机部署首选 `docker save | ssh … docker load` 整体同步，不要异地重建。
 FROM node:22.23.2-slim
 
-# zstd: 解 session 日志提取 token 用量；unzip: 解提交物/数据集；jq: 包自检与运维排查；
+# zstd: 解 session 日志提取 token 用量；unzip: 解提交物/题目包；jq: 包自检与运维排查；
 # python3: 学生 Skill 脚本运行时；pip: 装下面的预装依赖集
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \

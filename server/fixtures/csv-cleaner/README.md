@@ -43,14 +43,13 @@ curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN
 ```
 
 > 平台上绑定的是 **fileId**，与 zip 文件名无关；但文件名会作为学生下载到的原始名。
-> 线上示例项目目前仍绑定 2026-10-01 上传的旧版包（`template.zip` / `dataset.zip`）——
-> 想让新结构生效（含新文件名），按上面命令重新上传并绑定。
+> 三个示例项目已于 2026-10-08 按新结构重新上传并绑定（`skill-template.zip` / `problem.zip`）。
 
 ## 上传前自检（不烧 token）
 
 ```sh
 docker run --rm -v "$PWD/server/fixtures/csv-cleaner:/p:ro" \
-  nju-lab-verify:0.2.0-rc.2-pkg3 --check --skill /p/skill-template.zip --dataset /p/problem.zip
+  nju-lab-verify:0.2.0-rc.2-pkg4 --check --skill /p/skill-template.zip --problem /p/problem.zip
 ```
 
 ## 教师侧自检闭环：拿满配 Skill 跑一遍复验
@@ -61,8 +60,8 @@ docker run --rm -v "$PWD/server/fixtures/csv-cleaner:/p:ro" \
 ```sh
 docker run --rm --env-file server/.env \
   -v "$PWD/server/fixtures/csv-cleaner:/p:ro" -v /tmp/out:/outputs \
-  nju-lab-verify:0.2.0-rc.2-pkg3 \
-  --skill /p/skill-solution --dataset /p/problem.zip --out /outputs/result.json
+  nju-lab-verify:0.2.0-rc.2-pkg4 \
+  --skill /p/skill-solution --problem /p/problem.zip --out /outputs/result.json
 ```
 
 ## 改口径时三处一起改
