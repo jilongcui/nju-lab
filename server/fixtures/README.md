@@ -1,21 +1,26 @@
 # 示例实验项目（fixtures）
 
-平台上三个**示例实验项目**的源文件。每个项目都是同一套结构（见下），
-差别只在任务类型与依赖：
+平台示例实验项目的源文件。每个项目同一套结构（见下），差别在**任务范式**与依赖：
 
-| 实验项目 | 任务 | 类型 | 参考实现位置（学生可见） |
+| 实验项目 | 任务 | 范式 | 判分方式 |
 |---|---|---|---|
-| [`csv-cleaner/`](csv-cleaner/) | CSV 数据清洗 | 内置回落型（最简 + 历史回归基线） | 顶层 `skill-solution/`（**待按新规范跟进**） |
-| [`sales-report/`](sales-report/) | 销售明细汇总 | 包驱动型 | 顶层 `skill-solution/`（**待按新规范跟进**） |
-| [`ml-basics/`](ml-basics/) | 机器学习基础建模 | 包驱动 + ML 依赖 | ✅ `problem/reference/`（**教学向样板**，随包下发） |
+| [`aq-forecast/`](aq-forecast/) | 下一小时 PM2.5 估算 | **应用驱动**（回归：需求 → 选模型 → 基线 → 达标） | `manifest.assertions`（达标线）+ `judge.md`（语义） |
+| [`csv-cleaner/`](csv-cleaner/) | CSV 数据清洗 | 口径驱动（内置回落型，最简） | LLM judge 逐字段比对 |
+| [`sales-report/`](sales-report/) | 销售明细汇总 | 口径驱动（包驱动型） | LLM judge 逐字段比对 |
+| [`ml-basics/`](ml-basics/) | 机器学习基础建模 | 技术驱动（一个实验塞多个算法变体）—— **已下线** | — |
 
-> **做新实验**：先读 `docs/EXPERIMENT-DESIGN-FRAMEWORK.md`（**§3.5 教学向设计清单（七件事）**），
-> 再按 `docs/EXPERIMENT-PACKAGE-SPEC.md` 组织材料 —— 最省事的做法是
-> `cp -r ml-basics <你的实验名>` 然后替换内容（它是当前的教学向样板）。
+> **做新实验**：先读 `docs/EXPERIMENT-DESIGN-FRAMEWORK.md` ——
+> **应用驱动**（推荐，学生自己选模型、判"是否达标"）看 **§2.6 + §3.5**，照
+> `cp -r aq-forecast <你的实验名>` 改；**口径驱动**（给定模型与口径、逐字段比对）看 §2.4，
+> 照 `cp -r sales-report <你的实验名>` 改。格式细节见 `docs/EXPERIMENT-PACKAGE-SPEC.md`。
 
-> ⚠️ **一致性状态（2026-10-08）**：只有 `ml-basics` 落实了"参考实现随题目包下发"的新规范；
-> `csv-cleaner` 与 `sales-report` 仍把参考实现放在顶层 `skill-solution/`（不下发）。
-> 照 `ml-basics` 改即可（`git mv skill-solution problem/reference` + 重打 zip + 重新绑定）。
+> ⚠️ **现状（2026-10-10）**：
+> - `aq-forecast` 是**应用驱动样板**（平台项目已建并发布）；`ml-basics` 的平台项目**已删除下线**，
+>   仓库目录保留作历史参考（它的 5 个技术用例已被 aq-forecast 取代）。
+> - `csv-cleaner` / `sales-report` 仍是口径驱动，且参考实现放在顶层 `skill-solution/`（不下发）；
+>   若要把它们改成"参考实现随包下发"（§3.5 第 5 项），照 `aq-forecast` 做
+>   （`git mv skill-solution problem/reference` + 重打 zip + 重新绑定）。
+> - **判据分层**（算术给代码、语义给模型）见 §2.6 与 §5.1，模板是 `aq-forecast/problem/`。
 
 ## 统一结构：题目包（含参考实现）+ 学生起点 + 教师工具
 

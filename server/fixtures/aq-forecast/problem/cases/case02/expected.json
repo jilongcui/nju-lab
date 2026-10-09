@@ -1,0 +1,16 @@
+{
+  "note": "参考水平（不是标准答案）：baseline 用于核对学生的基线报告是否可信，reference 用于识别『可疑地过于好』的结果；n_rows 用于核对切分是否覆盖全部样本。硬性达标判据见 manifest.json 的 assertions，语义判据见 judge.md。",
+  "n_rows": 420,
+  "baseline": {
+    "name": "persistence",
+    "mae": 7.9419
+  },
+  "reference": {
+    "model": "Ridge(alpha=1.0)",
+    "mae": 4.7527
+  },
+  "accept": {
+    "mae_max_ratio_to_baseline": 0.8,
+    "baseline_tolerance": 0.15
+  }
+}

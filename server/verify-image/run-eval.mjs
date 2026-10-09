@@ -9,7 +9,7 @@
 // 因此 --skill 是必需输入，驱动不再产出 baseline 汇总。
 //
 // **任务知识随题目包走（包驱动）** —— 题目包 ZIP 根目录可放三个可选文件：
-//   manifest.json  机器读的结构声明（输出文件名 / 输入文件 / judgeMode / 依赖）
+//   manifest.json  机器读的结构声明（输出文件名 / 输入文件 / judgeMode / assertions / 依赖）
 //   task.md        任务提示（被测 agent 看到的题干）
 //   judge.md       评分细则（LLM judge 的判据）
 // 三者都不放 → **逐字回落内置的「CSV 数据清洗」行为**（历史题目包与在跑实验零影响）。
@@ -179,6 +179,7 @@ function readProblemSpec(problemRoot) {
     inputs: null,
     judgeMode: null,
     maxCases: 0,
+    assertions: [],
     requires: { python: [], commands: [] },
     taskPrompt: null,
     judgeRules: null,
@@ -222,6 +223,17 @@ function readProblemSpec(problemRoot) {
         fail(`problem/manifest.json 的 judgeMode 只能是 llm 或 exact: ${raw.judgeMode}`);
       }
       spec.judgeMode = raw.judgeMode;
+    }
+    if (raw.assertions !== undefined) {
+      if (!Array.isArray(raw.assertions)) {
+        fail('problem/manifest.json 的 assertions 必须是数组');
+      }
+      spec.assertions = raw.assertions.map((a, i) => {
+        if (!a || typeof a !== 'object' || typeof a.expr !== 'string' || !a.expr.trim()) {
+          fail(`problem/manifest.json 的 assertions[${i}] 必须是 {name?, expr}，且 expr 为非空字符串`);
+        }
+        return { name: String(a.name ?? `断言 ${i + 1}`), expr: a.expr.trim() };
+      });
     }
     if (raw.maxCases !== undefined) spec.maxCases = Number(raw.maxCases) || 0;
     if (raw.requires !== undefined) {
@@ -465,6 +477,55 @@ function runRound({ opts, spec, inputs, workdir }) {
   };
 }
 
+// ---------- 教师声明的确定性断言 ----------
+
+/**
+ * 把"算术/阈值"判定交给代码，而不是让 LLM 去算 —— 实测教训：让 judge 核对
+ * 「MAE ≤ 0.8 × 基线」这类比值，LLM 会漏算并误判通过。
+ *
+ * 表达式里可用：
+ *   out        实际产出（outputFile 若是 JSON，则为解析后的对象；否则为 null）
+ *   expected   case 的期望产出文件（同上规则解析）
+ *   abs min max round
+ * 任一断言不成立（求值结果不为 `true`）→ 该 case 直接不通过（LLM 只再判结构与语义）。
+ * 题目包没写 assertions 时返回 null，行为与历史版本完全一致。
+ */
+function evalAssertions(spec, expectedText, actualText) {
+  if (!spec.assertions.length) return null;
+  const parse = (t) => {
+    try {
+      return JSON.parse(t);
+    } catch {
+      return null;
+    }
+  };
+  const out = parse(actualText);
+  const expected = parse(expectedText);
+  if (out === null) {
+    return {
+      checked: spec.assertions.length,
+      passed: false,
+      failed: [{ name: '输出可解析', expr: '(JSON)', error: '实际产出不是合法 JSON，按不通过处理' }],
+    };
+  }
+  const failed = [];
+  for (const a of spec.assertions) {
+    let value;
+    try {
+      // 表达式来自题目包（教师可控、已在容器内运行），与包内脚本同一信任级
+      const fn = new Function('out', 'expected', 'abs', 'min', 'max', 'round', `"use strict"; return (${a.expr});`);
+      value = fn(out, expected, Math.abs, Math.min, Math.max, Math.round);
+    } catch (e) {
+      failed.push({ name: a.name, expr: a.expr, error: `表达式求值失败：${e.message}` });
+      continue;
+    }
+    if (value !== true) {
+      failed.push({ name: a.name, expr: a.expr, error: `不成立（实际求值结果：${JSON.stringify(value)}）` });
+    }
+  }
+  return { checked: spec.assertions.length, passed: failed.length === 0, failed };
+}
+
 // ---------- judge ----------
 
 async function judgeWithLlm({ spec, expected, expectedName, actual }) {
@@ -473,7 +534,8 @@ async function judgeWithLlm({ spec, expected, expectedName, actual }) {
   const body = {
     model: JUDGE_MODEL,
     // kimi-k2.6 只允许 temperature=1（400 invalid temperature），不传用默认
-    max_tokens: 1024,
+    // 1024 装不下"逐项核对"型判据的 rationale（实测：JSON 被截断 → 整轮解析失败）
+    max_tokens: 2048,
     reasoning_effort: 'low',
     messages: [
       { role: 'system', content: useBuiltin ? JUDGE_PROMPT : judgeShell(spec.judgeRules) },
@@ -487,13 +549,24 @@ async function judgeWithLlm({ spec, expected, expectedName, actual }) {
   };
   let lastError;
   for (let attempt = 0; attempt < 2; attempt++) {
+    // 第二次尝试：明确要求短 JSON，避免再次截断（首次失败多半是输出超长/带了额外文字）
+    const attemptBody =
+      attempt === 0
+        ? body
+        : {
+            ...body,
+            messages: [
+              ...body.messages,
+              { role: 'user', content: '只输出一个 JSON 对象（不要代码块、不要其他文字），rationale 不超过 60 字。' },
+            ],
+          };
     const res = await fetch(`${BASE_URL}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${API_KEY}`,
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(attemptBody),
       signal: AbortSignal.timeout(60_000),
     });
     const data = await res.json();
@@ -559,6 +632,7 @@ function inspectPackage({ problemRoot, spec, skillRoot, caseNames }) {
     outputFile: spec.outputFile,
     inputs: spec.inputs,
     judgeMode: spec.judgeMode,
+    assertions: spec.assertions.length,
     maxCases: spec.maxCases,
     requires: spec.requires,
     declaredFiles: spec.files,
@@ -650,17 +724,38 @@ async function main() {
     cpSync(skillRoot, join(workdir, 'skill'), { recursive: true });
     console.error(`[run] ${caseName} ...`);
     const r = runRound({ opts, spec, inputs, workdir });
+    const hard = evalAssertions(spec, expectedText, r.outputText);
     const j = await judge(judgeMode, {
       spec,
       expected: expectedText,
       expectedName: expected.name,
       actual: r.outputText,
     });
-    r.judge = { pass: j.pass, score: j.score, rationale: j.rationale };
+    // 硬性判据（代码判定）不成立 → 直接不通过；LLM 的判定只覆盖结构与语义
+    const hardFailed = hard ? hard.failed : [];
+    const pass = j.pass && hardFailed.length === 0;
+    const rationale = [
+      hardFailed.length
+        ? `硬性判据未满足：${hardFailed.map((f) => `${f.name} —— ${f.expr}：${f.error}`).join('；')}`
+        : null,
+      j.rationale,
+    ]
+      .filter(Boolean)
+      .join(' ／ ');
+    r.judge = {
+      pass,
+      score: hardFailed.length ? Math.min(j.score, 0.5) : j.score,
+      rationale,
+      hardChecks: hard ? { checked: hard.checked, failed: hardFailed } : null,
+    };
     r.tokens.input += j.judgeTokens.input;
     r.tokens.output += j.judgeTokens.output;
     delete r.outputText; // 结果 JSON 不带全量输出，只带判定（输出留在容器内 workdir）
-    console.error(`[done] ${caseName}: pass=${j.pass} score=${j.score} exit=${r.exitCode} in=${r.tokens.input} out=${r.tokens.output} ${r.durationMs}ms`);
+    console.error(
+      `[done] ${caseName}: pass=${pass} score=${r.judge.score} exit=${r.exitCode} ` +
+        `hard=${hard ? `${hard.checked - hardFailed.length}/${hard.checked}` : '-'} ` +
+        `in=${r.tokens.input} out=${r.tokens.output} ${r.durationMs}ms`
+    );
     result.cases.push({ case: caseName, ...r });
   }
 

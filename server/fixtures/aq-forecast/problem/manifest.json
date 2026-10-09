@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "name": "aq-forecast",
+  "title": "应用实验：下一小时 PM2.5 估算（回归）",
+  "outputFile": "output.json",
+  "inputs": ["data.csv"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['model','n_train','n_test','metrics','baseline','notes'].every((k) => out[k] !== undefined && out[k] !== null && out[k] !== '')"
+    },
+    {
+      "name": "指标与基线是正数",
+      "expr": "typeof out.metrics.mae === 'number' && out.metrics.mae > 0 && typeof out.baseline.mae === 'number' && out.baseline.mae > 0"
+    },
+    {
+      "name": "切分覆盖全部样本",
+      "expr": "out.n_train + out.n_test === expected.n_rows"
+    },
+    {
+      "name": "测试集占比在 20%~40%",
+      "expr": "out.n_test / (out.n_train + out.n_test) >= 0.2 && out.n_test / (out.n_train + out.n_test) <= 0.4"
+    },
+    {
+      "name": "基线报告可信（与参考值相差 ≤15%）",
+      "expr": "abs(out.baseline.mae - expected.baseline.mae) <= expected.accept.baseline_tolerance * expected.baseline.mae"
+    },
+    {
+      "name": "达标：MAE 比持久性基线低 ≥20%",
+      "expr": "out.metrics.mae <= expected.accept.mae_max_ratio_to_baseline * out.baseline.mae"
+    },
+    {
+      "name": "说清选择（notes ≥20 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 20"
+    }
+  ],
+  "requires": { "python": ["sklearn", "pandas", "numpy"] }
+}

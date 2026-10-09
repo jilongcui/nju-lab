@@ -91,6 +91,9 @@ problem/
   "inputs": ["input.csv"],
   "judgeMode": "llm",
   "maxCases": 0,
+  "assertions": [
+    { "name": "销售额为正", "expr": "out.total_revenue > 0" }
+  ],
   "requires": { "python": ["pandas"], "commands": [] }
 }
 ```
@@ -101,7 +104,25 @@ problem/
 | `inputs` | 全部非 `expected.*` | 相对 case 目录的路径列表 |
 | `judgeMode` | `llm` | `llm`（LLM judge，推荐）或 `exact`（归一化后逐字节比对，适合输出高度确定的任务） |
 | `maxCases` | `0`=全部 | 成本控制；项目级 `evalConfig.maxCases` 优先级更高 |
+| `assertions` | `[]` | **确定性断言**（见下）；不写则行为与历史版本完全一致 |
 | `requires` | `{}` | **声明任务要用的运行时依赖**（见 §4）；`python` 写模块名，`commands` 写命令名 |
+
+**`assertions`：把"算术/阈值"判定交给代码**（应用驱动实验的达标线就靠它）：
+
+```json
+"assertions": [
+  { "name": "达标：MAE 比持久性基线低 ≥20%",
+    "expr": "out.metrics.mae <= expected.accept.mae_max_ratio_to_baseline * out.baseline.mae" },
+  { "name": "切分覆盖全部样本", "expr": "out.n_train + out.n_test === expected.n_rows" }
+]
+```
+
+- 表达式可用 `out`（实际产出，`outputFile` 是 JSON 则自动解析成对象）、
+  `expected`（该 case 的 `expected.*`，同样解析）、`abs` / `min` / `max` / `round`
+- 求值结果必须严格为 `true`；任一条不成立 → 该 case **直接不通过**，`rationale` 里写明是哪条断言、
+  表达式与实计结果，且**不再交给 LLM judge 判**
+- 写法约定：**算术/阈值写这里，语义判断留给 `judge.md`**（理由与实测教训见
+  `docs/EXPERIMENT-DESIGN-FRAMEWORK.md` §5.1）
 
 优先级：**命令行（平台项目配置）> 包内 manifest > 内置默认**。
 
