@@ -15,7 +15,7 @@ import { EvaluationRunner, EvaluationRunResult } from './evaluation-runner';
 import { Submission } from './submission.entity';
 
 /** 复验容器镜像（构建见 server/verify-image/Dockerfile） */
-const VERIFY_IMAGE = process.env.VERIFY_IMAGE || 'nju-lab-verify:0.2.0-rc.2-pkg5';
+const VERIFY_IMAGE = process.env.VERIFY_IMAGE || 'nju-lab-verify:0.2.0-rc.2-pkg6';
 /** 整体时长限额兜底（毫秒）；project.evalConfig.timeoutSeconds 优先 */
 const VERIFY_TIMEOUT_MS = Number(process.env.VERIFY_TIMEOUT_MS || 600_000);
 /**

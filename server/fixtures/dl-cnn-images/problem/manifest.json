@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "name": "dl-cnn-images",
+  "title": "深度学习实验二：手写数字分拣（小图分类 · 卷积结构）",
+  "outputFile": "output.json",
+  "inputs": ["data.csv"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['model','n_train','n_test','metrics','baseline','training','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null && out[k] !== '')"
+    },
+    {
+      "name": "图表说明齐全（至少 3 张图，每张一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 3 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "macro F1 与准确率在 [0,1] 之间",
+      "expr": "typeof out.metrics.macro_f1 === 'number' && out.metrics.macro_f1 >= 0 && out.metrics.macro_f1 <= 1 && typeof out.metrics.accuracy === 'number' && out.metrics.accuracy >= 0 && out.metrics.accuracy <= 1"
+    },
+    {
+      "name": "逐档召回率齐全且在 [0,1] 之间（10 档）",
+      "expr": "Array.isArray(out.metrics.per_class_recall) && out.metrics.per_class_recall.length === 10 && out.metrics.per_class_recall.every((r) => typeof r === 'number' && r >= 0 && r <= 1)"
+    },
+    {
+      "name": "切分覆盖全部样本",
+      "expr": "out.n_train + out.n_test === expected.n_rows"
+    },
+    {
+      "name": "测试集占比在 20%~40%",
+      "expr": "out.n_test / (out.n_train + out.n_test) >= 0.2 && out.n_test / (out.n_train + out.n_test) <= 0.4"
+    },
+    {
+      "name": "逐轮训练历史齐全（≥5 轮，每轮都有训练与验证损失）",
+      "expr": "Array.isArray(out.training.history) && out.training.history.length >= 5 && out.training.history.every((h) => h && typeof h.loss === 'number' && typeof h.val_loss === 'number')"
+    },
+    {
+      "name": "训练轮数自洽（epochs_run 与历史长度一致）",
+      "expr": "typeof out.training.epochs_run === 'number' && out.training.epochs_run === out.training.history.length && out.training.epochs_run >= 5"
+    },
+    {
+      "name": "是否早停要明确表态",
+      "expr": "typeof out.training.early_stopped === 'boolean' && typeof out.training.best_epoch === 'number' && out.training.best_epoch >= 1 && out.training.best_epoch <= out.training.epochs_run"
+    },
+    {
+      "name": "基线报告可信（现有做法 macro F1 与参考值相差 ≤0.12）",
+      "expr": "typeof out.baseline.macro_f1 === 'number' && abs(out.baseline.macro_f1 - expected.baseline.macro_f1) <= expected.accept.baseline_macro_f1_tolerance"
+    },
+    {
+      "name": "达标：macro F1 ≥ 达标线",
+      "expr": "out.metrics.macro_f1 >= expected.accept.macro_f1_min"
+    },
+    {
+      "name": "防退化：每一档的召回率都不低于达标线（不能放弃任何一档）",
+      "expr": "out.metrics.per_class_recall.every((r) => r >= expected.accept.per_class_recall_min)"
+    },
+    {
+      "name": "说清选择（notes ≥20 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 20"
+    }
+  ],
+  "requires": { "python": ["torch", "sklearn", "pandas", "numpy", "matplotlib"] }
+}

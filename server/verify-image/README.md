@@ -7,6 +7,24 @@
 - `Dockerfile` → 镜像 `nju-lab-verify:0.2.0-rc.2-pkg4`（node:22-slim + 锁定
   `@deepseek-ai/dsh@0.2.0-rc.2` + zstd/unzip/**jq**/python3 + 驱动 + profile
   + **预装教学依赖集**，见下）
+  > **当前生产镜像（2026-11）**：`nju-lab-verify:0.2.0-rc.2-pkg6` —— 基底与依赖沿用 pkg5，
+  > 只覆盖驱动（`run-eval.mjs`），改动是 **judge 请求的 `max_tokens` 2048 → 4096**：
+  > 实测 deepseek-flash 带 reasoning 时，2048 会被推理吃满，返回 `finish_reason=length`、
+  > content 为空 → 整轮报 `judge output not parseable`（且随判据/产物体积波动而偶发）。
+  > 重建方式（只覆盖驱动，不重装依赖，见 `docs/UPGRADE-playbook.md` §5 的"复用上一版当基底"）：
+  >
+  > ```sh
+  > cat > /tmp/verify-rebuild.Dockerfile <<'EOF'
+  > FROM nju-lab-verify:0.2.0-rc.2-pkg5
+  > WORKDIR /opt/verify
+  > COPY run-eval.mjs ./
+  > COPY profile/ ./profile/
+  > EOF
+  > docker build -f /tmp/verify-rebuild.Dockerfile -t nju-lab-verify:0.2.0-rc.2-pkg6 server/verify-image/
+  > ```
+  >
+  > 只加小文件层，体积与 pkg5 持平（2.17GB），无需 export/import 压平。
+  > `server/src/submissions/docker-evaluation-runner.ts` 的默认镜像已切到 pkg6。**pkg5 保留作回滚点**。
 - `run-eval.mjs` — 复验驱动（**包驱动**）：解包 `--skill` / `--problem` 两个 ZIP
   （resolveSkillRoot / resolveProblemRoot 语义；CLI 参数名保留历史称法，仓库里的包现在叫
   `skill-template.zip` / `problem.zip`）→ 读题目包的 `manifest.json` / `task.md` / `judge.md`

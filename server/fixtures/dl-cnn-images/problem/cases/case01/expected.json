@@ -1,0 +1,19 @@
+{
+  "note": "参考水平（不是标准答案）：baseline 用于核对学生的基线报告是否可信，reference 用于识别『可疑地过于好』的结果；n_rows 用于核对切分是否覆盖全部样本。硬性达标判据见 manifest.json 的 assertions，语义判据见 judge.md。",
+  "n_rows": 1797,
+  "baseline": {
+    "name": "linear_on_raw_pixels",
+    "macro_f1": 0.9712,
+    "accuracy": 0.9711
+  },
+  "reference": {
+    "model": "SmallCNN(16-32 channels) + shift augmentation + Adam + early stop",
+    "macro_f1": 0.9822,
+    "accuracy": 0.9822
+  },
+  "accept": {
+    "macro_f1_min": 0.93,
+    "per_class_recall_min": 0.85,
+    "baseline_macro_f1_tolerance": 0.12
+  }
+}

@@ -10,6 +10,16 @@
 | [`csv-cleaner/`](csv-cleaner/) | CSV 数据清洗 | 口径驱动（内置回落型，最简） | LLM judge 逐字段比对 |
 | [`sales-report/`](sales-report/) | 销售明细汇总 | 口径驱动（包驱动型） | LLM judge 逐字段比对 |
 | [`ml-basics/`](ml-basics/) | 机器学习基础建模 | 技术驱动（一个实验塞多个算法变体）—— **已下线** | — |
+| [`dl-train-diagnose/`](dl-train-diagnose/) | 细胞核形态辅助筛查（二分类 · **训练过程诊断**） | **应用驱动 · 深度学习一** | 13 条断言（达标线 + 逐轮训练历史 + 防退化）+ `judge.md` |
+| [`dl-cnn-images/`](dl-cnn-images/) | 手写数字分拣（小图分类 · **卷积结构**） | **应用驱动 · 深度学习二** | 13 条断言（macro F1 + 逐档召回）+ `judge.md` |
+| [`dl-rnn-forecast/`](dl-rnn-forecast/) | 传感器时序下一值估计（**序列建模 · 滑窗 + LSTM**） | **应用驱动 · 深度学习三** | 13 条断言（MAE 比值 + 窗口/样本数自洽）+ `judge.md` |
+
+> **深度学习章（第三章）的三个实验**：按"**决策类型**"切分，不是一个实验塞多个算法 ——
+> ① `dl-train-diagnose` 练"**训练过程怎么看**"（标准化、过拟合、早停、取哪一轮权重）；
+> ② `dl-cnn-images` 练"**结构怎么对得上数据**"（卷积 vs 全连接、数据增强的取舍）；
+> ③ `dl-rnn-forecast` 练"**序列怎么用**"（滑窗、按时间切分、预测增量）。
+> 三个实验共用同一套判据骨架（§5.1 分层：算术给 `assertions`、语义给 `judge.md`），
+> 且都要求 `training.history` 逐轮记录 —— 把"真的训练了"变成硬性条件。
 
 > **做新实验**：先读 `docs/EXPERIMENT-DESIGN-FRAMEWORK.md` ——
 > **应用驱动**（推荐，学生自己选模型、判"是否达标"）看 **§2.6 + §3.5**，照
@@ -60,6 +70,11 @@
 - **csv-cleaner**：见 [`csv-cleaner/README.md`](csv-cleaner/README.md)（含"骨架也通过了"这一区分度实测结论）
 - **sales-report**：见 [`sales-report/README.md`](sales-report/README.md)
 - **ml-basics**：见 [`ml-basics/README.md`](ml-basics/README.md)（含 `tools/gen_cases.py` 的用法）
+- **dl-train-diagnose / dl-cnn-images / dl-rnn-forecast**：见各自 `README.md` ——
+  每个都含「判据设计要点」「**出题时的实测依据**（同一切分下量出的几档差距）」「项目字段文案」与打包上传命令。
+  三个实验的数据分别来自公开数据集 `load_breast_cancer` / `load_digits`（`tools/gen_data.py` 可重跑）
+  与合成教学时序；参考实现与骨架的**函数划分一致**，便于学生逐段对照。
+  数据规模与训练开销都按 CPU 1 核 1~2g 内存设计（单 case 6~70 秒）。
 
 ## 打包 / 自检 / 上传（通用）
 

@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "name": "dl-train-diagnose",
+  "title": "深度学习实验一：细胞核形态辅助筛查（二分类 · 训练过程诊断）",
+  "outputFile": "output.json",
+  "inputs": ["data.csv"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['model','n_train','n_test','metrics','baseline','training','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null && out[k] !== '')"
+    },
+    {
+      "name": "图表说明齐全（至少 3 张图，每张一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 3 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "召回率与精确率在 [0,1] 之间",
+      "expr": "typeof out.metrics.recall === 'number' && out.metrics.recall >= 0 && out.metrics.recall <= 1 && typeof out.metrics.precision === 'number' && out.metrics.precision >= 0 && out.metrics.precision <= 1"
+    },
+    {
+      "name": "切分覆盖全部样本",
+      "expr": "out.n_train + out.n_test === expected.n_rows"
+    },
+    {
+      "name": "测试集占比在 20%~40%",
+      "expr": "out.n_test / (out.n_train + out.n_test) >= 0.2 && out.n_test / (out.n_train + out.n_test) <= 0.4"
+    },
+    {
+      "name": "逐轮训练历史齐全（≥5 轮，每轮都有训练与验证损失）",
+      "expr": "Array.isArray(out.training.history) && out.training.history.length >= 5 && out.training.history.every((h) => h && typeof h.loss === 'number' && typeof h.val_loss === 'number')"
+    },
+    {
+      "name": "训练轮数自洽（epochs_run 与历史长度一致）",
+      "expr": "typeof out.training.epochs_run === 'number' && out.training.epochs_run === out.training.history.length && out.training.epochs_run >= 5"
+    },
+    {
+      "name": "是否早停要明确表态",
+      "expr": "typeof out.training.early_stopped === 'boolean' && typeof out.training.best_epoch === 'number' && out.training.best_epoch >= 1 && out.training.best_epoch <= out.training.epochs_run"
+    },
+    {
+      "name": "基线报告可信（现有做法的召回率与参考值相差 ≤0.15 个点）",
+      "expr": "typeof out.baseline.recall === 'number' && abs(out.baseline.recall - expected.baseline.recall) <= expected.accept.baseline_recall_tolerance"
+    },
+    {
+      "name": "基线报告可信（精确率与参考值相差 ≤0.25 个点）",
+      "expr": "typeof out.baseline.precision === 'number' && abs(out.baseline.precision - expected.baseline.precision) <= expected.accept.baseline_precision_tolerance"
+    },
+    {
+      "name": "达标：恶性样本召回率 ≥ 达标线",
+      "expr": "out.metrics.recall >= expected.accept.recall_min"
+    },
+    {
+      "name": "防退化：精确率 ≥ 达标线（不能把所有样本都报成恶性）",
+      "expr": "out.metrics.precision >= expected.accept.precision_min"
+    },
+    {
+      "name": "说清选择（notes ≥20 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 20"
+    }
+  ],
+  "requires": { "python": ["torch", "sklearn", "pandas", "numpy", "matplotlib"] }
+}

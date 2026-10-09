@@ -533,9 +533,12 @@ async function judgeWithLlm({ spec, expected, expectedName, actual }) {
   const useBuiltin = !spec.judgeRules;
   const body = {
     model: JUDGE_MODEL,
-    // kimi-k2.6 只允许 temperature=1（400 invalid temperature），不传用默认
-    // 1024 装不下"逐项核对"型判据的 rationale（实测：JSON 被截断 → 整轮解析失败）
-    max_tokens: 2048,
+    // kimi-k2.6 只允许 temperature=1（400 invalid temperature），不传用默认。
+    // 历史：1024 装不下"逐项核对"型判据的 rationale（JSON 被截断 → 整轮解析失败）→ 提到 2048；
+    // 2026-11 实测：deepseek-flash 带 reasoning 时 2048 会被**推理**吃满 —— 返回
+    // finish_reason=length 且 completion_tokens 全在 reasoning_tokens 上，content 为空
+    // （表现为"judge output not parseable"，且随判据/产物体积波动而偶发）→ 再提到 4096。
+    max_tokens: 4096,
     reasoning_effort: 'low',
     messages: [
       { role: 'system', content: useBuiltin ? JUDGE_PROMPT : judgeShell(spec.judgeRules) },

@@ -1,0 +1,19 @@
+{
+  "note": "参考水平（不是标准答案）：baseline 用于核对学生的基线报告是否可信，reference 用于识别『可疑地过于好』的结果；n_rows 用于核对滑窗样本数是否自洽。硬性达标判据见 manifest.json 的 assertions，语义判据见 judge.md。",
+  "n_rows": 1200,
+  "window": 8,
+  "baseline": {
+    "name": "persistence",
+    "mae": 0.7485
+  },
+  "reference": {
+    "model": "LSTM(32) + delta head on 8-min windows",
+    "mae": 0.2988,
+    "rmse": 0.402
+  },
+  "accept": {
+    "mae_max_ratio_to_baseline": 0.6,
+    "mae_min_ratio_to_baseline": 0.02,
+    "baseline_tolerance": 0.15
+  }
+}

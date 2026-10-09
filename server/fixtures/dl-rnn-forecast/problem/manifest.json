@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "name": "dl-rnn-forecast",
+  "title": "深度学习实验三：传感器时序下一值估计（序列建模 · 滑窗 + LSTM）",
+  "outputFile": "output.json",
+  "inputs": ["data.csv"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['model','window','n_train','n_test','metrics','baseline','training','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null && out[k] !== '')"
+    },
+    {
+      "name": "图表说明齐全（至少 3 张图，每张一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 3 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "MAE 为正数（RMSE 若给出也要是数字）",
+      "expr": "typeof out.metrics.mae === 'number' && out.metrics.mae > 0 && (out.metrics.rmse === undefined || typeof out.metrics.rmse === 'number')"
+    },
+    {
+      "name": "窗口用的是多步历史（window ≥ 3 分钟）",
+      "expr": "typeof out.window === 'number' && out.window >= 3"
+    },
+    {
+      "name": "滑窗样本数自洽（样本数 ≈ 行数 − window + 1）",
+      "expr": "abs(out.n_train + out.n_test - (expected.n_rows - out.window + 1)) <= 5"
+    },
+    {
+      "name": "测试集占比在 20%~40%",
+      "expr": "out.n_test / (out.n_train + out.n_test) >= 0.2 && out.n_test / (out.n_train + out.n_test) <= 0.4"
+    },
+    {
+      "name": "逐轮训练历史齐全（≥5 轮，每轮都有训练与验证损失）",
+      "expr": "Array.isArray(out.training.history) && out.training.history.length >= 5 && out.training.history.every((h) => h && typeof h.loss === 'number' && typeof h.val_loss === 'number')"
+    },
+    {
+      "name": "训练轮数自洽（epochs_run 与历史长度一致）",
+      "expr": "typeof out.training.epochs_run === 'number' && out.training.epochs_run === out.training.history.length && out.training.epochs_run >= 5"
+    },
+    {
+      "name": "是否早停要明确表态",
+      "expr": "typeof out.training.early_stopped === 'boolean' && typeof out.training.best_epoch === 'number' && out.training.best_epoch >= 1 && out.training.best_epoch <= out.training.epochs_run"
+    },
+    {
+      "name": "基线报告可信（现有做法 MAE 与参考值相差 ≤ 容差）",
+      "expr": "typeof out.baseline.mae === 'number' && out.baseline.mae > 0 && abs(out.baseline.mae - expected.baseline.mae) <= expected.accept.baseline_tolerance"
+    },
+    {
+      "name": "达标：MAE 比现有做法（当前值当下一秒）低且达到比值线",
+      "expr": "out.metrics.mae <= expected.accept.mae_max_ratio_to_baseline * out.baseline.mae"
+    },
+    {
+      "name": "防『可疑地过于好』：MAE 不能低到不可能的水平",
+      "expr": "out.metrics.mae >= expected.accept.mae_min_ratio_to_baseline * out.baseline.mae"
+    },
+    {
+      "name": "说清选择（notes ≥20 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 20"
+    }
+  ],
+  "requires": { "python": ["torch", "sklearn", "pandas", "numpy", "matplotlib"] }
+}
