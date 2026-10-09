@@ -36,9 +36,21 @@
   ③ 三个 `judge.md` **去掉数值达标线**（数字只由 `assertions` 判，见指南 §3.3）；
   ④ README 的复验命令补 `--timeout-ms 300000` 与 `-e VERIFY_REASONING_EFFORT=low`；
   ⑤ 三个实验的"偷懒解另一端"（全判缺陷 / 全判多数类 / 常数预测）**实测并写进 README**（防退化两端都验过）。
-- **未做**：三个实验**尚未上传平台/绑定项目/挂到"第三章"章节** —— 教师侧按各 README 的
-  「打包 / 自检 / 上传」命令操作（`--check` 已本地通过，含依赖自检 torch/sklearn/matplotlib）。
-  各 README 已备好 §3.5 前四项的**项目字段文案**（`objectives` / `background` / `description` / `references` / `faq`）可直接粘贴。
+- **已上线（2026-11，教师账号上传 + 发布）**：三个项目挂在课程「分子医学人工智能理论与实验」的
+  **第 3 章「深度学习基本原理和实践」**（`chapterId=36e3d1cc-f725-4cdb-962e-99fdd0bed50c`）下，均已 `published`：
+
+  | 项目 | id | 包 sha256（模板 / 题目包，前 12 位） |
+  |---|---|---|
+  | 深度学习实验一：来料自动分检 | `feb2d8a0-69f3-443a-a078-a8918239f5d8` | `1ffbc97ea652` / `61dd8a7f23e0` |
+  | 深度学习实验二：手写数字分拣 | `7b4e1bc8-9427-42bf-9e02-15381123d832` | `acba9ab7cb0b` / `97149e175a51` |
+  | 深度学习实验三：传感器时序下一值估计 | `98faec69-da72-4acb-a170-baf8d7697cb3` | `5afffe5a41be` / `7f08eb5ed115` |
+
+  · `evalConfig = {reasoningEffort: high, timeoutSeconds: 900}`（torch 实验建议容器内存 2g）；
+    `rubric` = 复验通过率 50 / 能力边界与踩坑记录 30 / 判据语义项 20；截止时间**未设**（由教师按课程安排补）。
+  · 五个教学字段（`objectives`/`background`/`description`/`references`/`faq`）已写入，文案源在各实验 `README.md`。
+  · **学生端验证（只到领取为止，未产生提交/成绩数据）**：测试学生 `student1` 三个任务均 `status=claimed`（2026-10-09），
+    领取下发的 `skill-template.zip` / `problem.zip` 的 sha256 与本地逐个一致；任务对 `student1` 已是 `unlocked`。
+  · 未做：提交 → 复验 → 批改这段闭环（由真实学生或教师用真账号走）；`deadline` 未设。
 
 **2026-10-31（续）：把工作区 LLM 改成「教练模式」—— 学生不再被"带着走完流程"（已上线）** ——
 **用户提出的问题**："学生在使用这套流程的时候，好像 LLM 一下把所有的流程走完了，学生在中间没起到
