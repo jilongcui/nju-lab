@@ -3,38 +3,50 @@
 平台上三个**示例实验项目**的源文件。每个项目都是同一套结构（见下），
 差别只在任务类型与依赖：
 
-| 实验项目 | 任务 | 类型 | `problem/` 里有题面与判据吗 |
+| 实验项目 | 任务 | 类型 | 参考实现位置（学生可见） |
 |---|---|---|---|
-| [`csv-cleaner/`](csv-cleaner/) | CSV 数据清洗 | 内置回落型（最简样板 + 历史回归基线） | ❌ 走驱动内置语义（`source=builtin`） |
-| [`sales-report/`](sales-report/) | 销售明细汇总 | 包驱动型 | ✅ `manifest.json` + `task.md` + `judge.md` |
-| [`ml-basics/`](ml-basics/) | 机器学习基础建模 | 包驱动 + ML 依赖 | ✅ 同上（另有 `tools/` 造题工具） |
+| [`csv-cleaner/`](csv-cleaner/) | CSV 数据清洗 | 内置回落型（最简 + 历史回归基线） | 顶层 `skill-solution/`（**待按新规范跟进**） |
+| [`sales-report/`](sales-report/) | 销售明细汇总 | 包驱动型 | 顶层 `skill-solution/`（**待按新规范跟进**） |
+| [`ml-basics/`](ml-basics/) | 机器学习基础建模 | 包驱动 + ML 依赖 | ✅ `problem/reference/`（**教学向样板**，随包下发） |
 
-> **做新实验**：先读 `docs/EXPERIMENT-DESIGN-FRAMEWORK.md`（目标/题干/判分/成绩怎么设计），
+> **做新实验**：先读 `docs/EXPERIMENT-DESIGN-FRAMEWORK.md`（**§3.5 教学向设计清单（七件事）**），
 > 再按 `docs/EXPERIMENT-PACKAGE-SPEC.md` 组织材料 —— 最省事的做法是
-> `cp -r sales-report <你的实验名>` 然后替换内容（它是四块结构里最典型的一个）。
+> `cp -r ml-basics <你的实验名>` 然后替换内容（它是当前的教学向样板）。
 
-## 统一结构：题目包 + Skill 两态（+ 教师工具）
+> ⚠️ **一致性状态（2026-10-08）**：只有 `ml-basics` 落实了"参考实现随题目包下发"的新规范；
+> `csv-cleaner` 与 `sales-report` 仍把参考实现放在顶层 `skill-solution/`（不下发）。
+> 照 `ml-basics` 改即可（`git mv skill-solution problem/reference` + 重打 zip + 重新绑定）。
+
+## 统一结构：题目包（含参考实现）+ 学生起点 + 教师工具
 
 ```
 <实验名>/
-├── problem/            → problem.zip        题目包：题面 + 判据 + IO 契约 + 用例（标准，不可改）
-├── skill-template/     → skill-template.zip 学生起点：Skill 骨架（关键处留 TODO）
-├── skill-solution/                          满配 Skill = 标准答案（不打包、不下发）
-├── tools/                                   教师工具，如造题脚本（不打包、不下发；可选）
+├── problem/            → problem.zip        题目包（**随包下发给学生**）
+│   ├── task.md  judge.md  manifest.json
+│   ├── README.md                             导学：学什么 / 怎么走 / 包内有什么
+│   ├── cases/case0N/{input.*, expected.*}
+│   └── reference/                            **参考实现（学习示范）** —— 学生先读后仿
+├── skill-template/     → skill-template.zip 学生起点：原理 + 最小示例 + TODO
+├── tools/                                   造题工具（不下发；可选）
 └── README.md                                打包 / 自检 / 上传 / 自检闭环命令
 ```
+
+> `ml-basics` 是**教学向样板**（2026-10-08 起）：参考实现放进题目包随包下发，项目字段
+> （`objectives` / `background` / `description` / `references` / `faq`）写实，骨架留解释层。
+> 设计原则与七件事清单见 `docs/EXPERIMENT-DESIGN-FRAMEWORK.md` §3.5。
 
 两条形态契约（`--check` 会查）：
 
 - `skill-template.zip` 的**根**必须是含 `SKILL.md` 的那一层（`no unique SKILL.md layer` 就会失败）；
-- `problem.zip` 的**根**必须有 `cases/`，每个 case 有输入文件与 `expected.*`。
+- `problem.zip` 的**根**必须有 `cases/`，每个 case 有输入文件与 `expected.*`
+  （多出别的目录不影响 —— 参考实现就是这么放进去的）。
 
-**Skill 三态**（骨架 / 满配 / 学生提交）只有完成度与可见性不同：`skill-template/` 与
-`skill-solution/` **形态相同**，前者下发、后者永不下发。满配版还有个额外用途 ——
-**它可以被复验直接当 Skill 装入，跑通即"题目可解性"的机器证明**（各项目 README 有命令）。
+**三个 Skill 形态**（起点骨架 / 参考实现 / 学生提交）只有完成度与可见性不同：起点与参考实现
+**形态完全相同**（同样的函数划分），前者留 `TODO` + 解释层、**随 `skill-template.zip` 下发**，
+后者写满、**随 `problem.zip` 下发**（先读后仿）；学生提交的那份被复验装入。
+参考实现还有第二个用途：**拿它跑一遍复验 = "题目可解性"的机器证明**（各项目 README 有命令）。
 
-`reference/` 这个旧目录名已不再使用：参考实现就是满配 Skill（`skill-solution/`），
-造题脚本等非 Skill 工具放 `tools/`。两者都**不打包、不下发**。
+`tools/` 是唯一**不下发**的目录（造题脚本：怎么造题不是学习材料）。
 
 ## 各项目细节
 

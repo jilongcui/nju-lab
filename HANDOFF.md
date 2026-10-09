@@ -5,6 +5,29 @@
 
 ## 0. 一句话现状
 
+**2026-10-08（再续）：ml-basics 改为「教学向样板」—— 参考实现随包下发 + 教学字段写实（已上线）** ——
+**设计原则纠偏**：平台的目的是**让学生理解知识**，判分只是"他做完了"的确认手段，
+不再为"区分学生"制造陷阱（此前几轮把重心放在了考核上）。
+① **参考实现并入题目包**：`skill-solution/` → `problem/reference/`，随 `problem.zip` 下发给学生
+   （**先读后仿**），同时仍是教师"题目可解性"自检的输入。`skill-solution/` 在 ml-basics 退役；
+   `csv-cleaner` / `sales-report` 待按新规范跟进（`server/fixtures/README.md` 有一致性说明）；
+② **骨架留解释层**：`skill-template/SKILL.md` 从"4 条 TODO 提示"改为"**原理一句 + 最小示例 + 你要做的**"，
+   并指向 `reference/`；case05 的叙述从"照妖镜"改为"值得亲手跑一遍的观察点"；
+③ **题目包 README 改导学**（学什么 / 怎么走 / 包内有什么 / 卡住看哪），用例表"考点"→"这个 case 想让你观察什么"；
+④ **项目字段写实**（学生端 `ExperimentDetail.tsx` 会渲染）：`objectives`（学完能讲清的三件事）/
+   `background`（概念地图）/ `description`（8 步导学，并修掉"虚拟机里应该已经准备好"这类过时内容）/
+   `references`（sklearn 文档）/ `faq`（5 条）；
+⑤ **规范**：`docs/EXPERIMENT-DESIGN-FRAMEWORK.md` 头部写入**教学优先**原则 + 新增 **§3.5 教学向设计清单（七件事）**，
+   §2.4 标注"教学优先时这一节可以放轻"；`docs/EXPERIMENT-PACKAGE-SPEC.md` 的 §1/§2/§7/§8 同步
+   （参考实现由"教师私有"改为"随包下发"，检查表增加教学项）。
+**实测**：`--regen-cases` 路径修正后期望值**逐字节未变**（5 个 case）；`--check` 通过（problem.zip 已含 `reference/`）；
+参考实现跑复验 **5/5 通过**（52.8s）；平台侧重新绑定（problem.zip sha256 `87fcd6bd…`，与本地一致）+ 写入 5 个教学字段。
+**取舍（明确记录）**：参考实现随包下发后，复验成功率不再区分"自己写的 / 抄来的" —— 教学优先下接受；
+原创性由 `SKILL.md` 的能力边界/踩坑记录与 `.dshc` 证据包体现（那部分抄不来）。
+⚠️ 顺带发现（非本轮引入、未修）：复验容器把 `problem.zip` **只读挂载在 `/inputs/problem.zip`**，
+agent 若主动去找，能读到里面的 `expected.json` / `reference/`。若希望复验仍能反映 Skill 质量，
+建议后续把挂载改为"只给 cases 输入"。
+
 **2026-10-08（续）：ml-basics 全面优化 —— 扩到 5 个 case + 判据放宽到 K×K + 学生侧引导（已上线）** ——
 ① **新增两个"陷阱"用例**（`tools/gen_cases.py`，固定种子可重跑）：**case04** K=3 多分类 + `stratify=false` +
    `test_size=0.2` + `random_state=7`（期望 `acc=0.75`、混淆矩阵 **3×3**）；**case05** 回归 +

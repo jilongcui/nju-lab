@@ -2,7 +2,7 @@
 """生成 ml-basics 的用例输入（input.csv + params.json）—— **教师工具，不属于 Skill**。
 
 **可重跑**：数据全部由固定种子生成，跑两次结果逐字节一致 —— 改案例时重跑它，
-再用 skill-solution/scripts/train.py --regen-cases 重算 expected.json 即可。
+再用 problem/reference/scripts/train.py --regen-cases 重算 expected.json 即可。
 
 在与复验同一个镜像里跑（镜像内有 numpy/sklearn，版本与复验环境一致；当前 pkg3）：
 
@@ -10,7 +10,7 @@
   docker run --rm -v "$PWD:/w" --entrypoint python3 \
     nju-lab-verify:0.2.0-rc.2-pkg3 /w/tools/gen_cases.py
 
-⚠️ 本目录（tools/）与 skill-solution/ 一样**不打包、不下发**：problem 包会下发给学生。
+⚠️ 本目录（tools/）**不下发**：它是造题工具，学生拿到的是 problem 包（含参考实现）。
 """
 import csv
 import json

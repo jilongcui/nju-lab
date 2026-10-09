@@ -3,11 +3,17 @@ name: ml-basics
 description: 按 params.json 指定的口径（回归/分类、模型与超参、切分随机种子）训练并评估 sklearn 模型，输出统一结构的指标 JSON。当用户要求"训练/评估模型""复现某个建模结果""跑一遍基线模型"时使用。
 ---
 
-# 机器学习基础建模 Skill
+# 机器学习基础建模 Skill（参考实现 · 学习示范）
 
-> **本文件是本题的「满配参考实现」（标准答案）**，位于 `skill-solution/`，**不打包、不下发**。
-> 学生拿到的是 `skill-template/` 里的同构骨架（关键处留 TODO）；两者函数划分刻意保持一致
-> （`load_case` / `train_and_evaluate` / `main`），学生可以拿它对照自己卡住的那一步。
+> 📖 **这份实现随题目包一起下发**（`problem/reference/`），是给你的**示范**：
+> 建议先读懂它（尤其 `scripts/train.py`），再在 `skill/` 里写自己的版本 ——
+> 自己敲一遍、改掉你觉得别扭的地方，比复制粘贴学得多。
+>
+> 它与你的起点 `skill-template/` 形态完全一致、函数划分也刻意对齐
+> （`load_case` / `train_and_evaluate` / `main`），方便逐段对照：
+> 哪一段没头绪，就看这一段是怎么写的。
+>
+> 教师侧它还有第二个用途：**题目可解性自检**（`--skill problem/reference` 跑复验应全通过）。
 
 ## 能力边界
 

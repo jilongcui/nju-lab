@@ -15,7 +15,7 @@
 |---|---|---|
 | **题目包 ZIP**（仓库里叫 `problem/` → `problem.zip`） | 学生（claim 时下载）+ 复验容器（只读挂载） | **标准**：题面（`task.md`）、评分细则（`judge.md`）、IO 契约（`manifest.json`）、用例（`cases/`：输入 + 期望输出） |
 | **Skill 模板 ZIP**（`skill-template/` → `skill-template.zip`） | 学生（claim 时下载） | **起点**：`SKILL.md` 骨架 + `scripts/` + `references/`，关键处留 TODO |
-| **满配 Skill**（`skill-solution/`） | 只有教师 | **答案**：与模板同构但填满；不打包、不下发 |
+| **参考实现**（`problem/reference/`） | **学生**（随题目包下发） | **学习示范**：一份写完的 Skill，学生先读后仿；同时用于教师「题目可解性」自检 |
 
 上传两个 ZIP 各拿一个 `fileId`，在「项目详情 → 编辑项目信息」里分别绑到
 **Skill 模板** 与 **题目包** 两个文件位（后者沿用平台旧称，见下面的命名说明）。
@@ -32,7 +32,8 @@
 一律用这个叫法，不再有"数据集"这类历史称法（项目当时还没发给学生，故直接改名而非兼容）。
 
 > 题目包会**下发给学生**（用于本地自测），所以：`expected.*`、`judge.md`、`task.md`
-> 都可以放（评分标准公开是教学设计）；**满配 Skill / 参考实现不要放**（放进去等于泄题）。
+> 都可以放（评分标准公开、参考实现可对照，都是教学设计）；**造题工具（`tools/`）不要放** ——
+> 它会把「题目是怎么造出来的」也交给学生，那不是学习材料。
 
 ## 2. Skill 模板 ZIP（学生起点）
 
@@ -43,9 +44,10 @@ skill-template/          ← 可以包一层顶层目录，但只允许一层
   references/*.md
 ```
 
-同目录下还有一个**满配 Skill** `skill-solution/`（本题标准答案）：形态与模板完全一致，
-只是 TODO 全填满。它**不打包、不下发**，但可以被复验直接当 Skill 装入 ——
-跑通即"题目可解性 + 模板契约可行"的机器证明（命令见各示例项目 README）。
+**参考实现**（`problem/reference/`）与这个起点形态完全一致（同样的函数划分），区别只有两点：
+起点留 `TODO` + 解释层，参考实现写满。它放在**题目包**里、随包下发给学生（先读后仿），
+同时可以被复验直接当 Skill 装入 —— 跑通即「题目可解性 + 模板契约可行」的机器证明
+（命令见各示例项目 README）。
 
 硬性要求：
 
@@ -185,10 +187,10 @@ rm -f skill-template.zip problem.zip
 docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg4 \
   --check --skill /p/skill-template.zip --problem /p/problem.zip
 
-# 1b) 教师侧自检闭环：拿满配 Skill 跑一遍复验（应全部通过 = 题目可解）
+# 1b) 教师侧自检闭环：拿参考实现跑一遍复验（应全部通过 = 题目可解）
 docker run --rm --env-file server/.env -v "$PWD:/p:ro" -v /tmp/out:/outputs \
   nju-lab-verify:0.2.0-rc.2-pkg4 \
-  --skill /p/skill-solution --problem /p/problem.zip --out /outputs/result.json
+  --skill /p/problem/reference --problem /p/problem.zip --out /outputs/result.json
 
 # 2) 上传拿 fileId（教师 token）
 TOKEN=$(curl -s http://127.0.0.1:3100/api/auth/login -X POST \
@@ -202,16 +204,18 @@ curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN
 ```
 
 参考示例：`server/fixtures/` 下三个示例项目，结构统一（`problem/` + `skill-template/` +
-`skill-solution/`）：`csv-cleaner` 最简（内置回落型）、`sales-report` 最典型、
-`ml-basics` 另带 `tools/` 造题工具。抽象说明见 `server/fixtures/README.md`。
+`problem/reference/`）：`ml-basics` 是**教学向样板**（参考实现 + 4 个教学字段写实）、
+`sales-report` 最典型、`csv-cleaner` 最简。抽象说明见 `server/fixtures/README.md`。
 
 ## 8. 自查清单
 
 - [ ] 模板能唯一定位到一层 `SKILL.md`；`SKILL.md` 有「能力边界」与「实测档案/踩坑记录」小节结构
-- [ ] `cases/*/` 的输入与 `expected.*` 齐全；`expected` 用满配 Skill 算出并**独立复核**过
+- [ ] `cases/*/` 的输入与 `expected.*` 齐全；`expected` 用参考实现算出并**独立复核**过
 - [ ] `task.md` 自包含（不看 Skill 也能照做），口径与 `judge.md`、`expected` 完全一致
 - [ ] `manifest.json` 的 `outputFile` 与 `task.md`/`expected` 一致；`requires` 列的库在 §4 预装集内
 - [ ] `docker run … --check` 通过（退出码 0）
-- [ ] 满配 Skill 跑复验**全部通过**（`--skill skill-solution`）——否则题目本身不可解
-- [ ] 题目包内**没有**满配 Skill / 参考实现（它会被下发给学生）
-- [ ] 改口径时：`task.md` / `judge.md` / 满配 Skill 三处同步 + 重算 `expected` + 重新打包上传（新 fileId 即新版本）
+- [ ] 参考实现跑复验**全部通过**（`--skill problem/reference`）——否则题目本身不可解
+- [ ] 题目包内**有**参考实现（`problem/reference/`）—— 学生先读后仿；若刻意不给，已在实验定位里写明原因
+- [ ] 项目字段写实：`objectives`（学完能讲清什么）/ `background`（概念铺垫）/ `description`（导学步骤）/ `references` / `faq`
+- [ ] 骨架的每个 `TODO` 都配了「原理一句 + 最小示例」，不是光留 TODO
+- [ ] 改口径时：`task.md` / `judge.md` / 参考实现 三处同步 + 重算 `expected` + 重新打包上传（新 fileId 即新版本）

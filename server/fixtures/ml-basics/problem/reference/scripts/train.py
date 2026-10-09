@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""ml-basics 的**满配参考实现**（本题标准答案）：<case_dir>/{input.csv,params.json} → output.json。
+"""ml-basics 的**参考实现（学习示范）**：<case_dir>/{input.csv,params.json} → output.json。
 
-⚠️ 本目录（skill-solution/）**不打包、不下发**：problem 包会下发给学生（claim 时下载解压），
-   参考实现放进去等于泄题。学生拿到的是 skill-template/ 里的 TODO 骨架。
+📖 这份实现**随题目包一起下发**（`problem/reference/`）—— 建议先读懂它，再在 `skill/` 里
+   写自己的版本（自己敲一遍、改掉你觉得别扭的地方，比复制粘贴学得多）。
 
-函数划分与骨架刻意保持一致（load_case / train_and_evaluate / main）——"Skill 三态"只是
-完成度不同，形态契约相同，学生可以拿它对照自己卡住的那一步。
+函数划分与学生起点 `skill-template/` 刻意保持一致（load_case / train_and_evaluate / main），
+方便逐段对照。教师侧它也用于"题目可解性"自检：`--skill problem/reference` 跑复验应全通过。
 
 用法：
   python3 scripts/train.py <case目录> <output.json>     # 单个 case
   python3 scripts/train.py --regen-cases                # 重算 problem/cases/*/expected.json
 
 口径与 problem/task.md、problem/judge.md 三处必须一致（改一处要改三处）。
-expected.json 请在**与复验同一个镜像内**生成，保证 sklearn 版本与复验环境一致（当前 pkg3）：
+expected.json 请在**与复验同一个镜像内**生成，保证 sklearn 版本与复验环境一致（当前 pkg4）：
 
   docker run --rm -v "$PWD:/w" --entrypoint python3 \
-    nju-lab-verify:0.2.0-rc.2-pkg3 /w/skill-solution/scripts/train.py --regen-cases
+    nju-lab-verify:0.2.0-rc.2-pkg4 /w/problem/reference/scripts/train.py --regen-cases
 """
 import csv
 import json
@@ -103,7 +103,7 @@ def write_result(result, out_path):
 
 
 def regen_cases():
-    cases_dir = Path(__file__).resolve().parent.parent.parent / "problem" / "cases"
+    cases_dir = Path(__file__).resolve().parent.parent.parent / "cases"
     for case_dir in sorted(p for p in cases_dir.iterdir() if p.is_dir()):
         result = run_case(case_dir)
         out = case_dir / "expected.json"

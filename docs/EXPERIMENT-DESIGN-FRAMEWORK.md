@@ -1,16 +1,21 @@
 # 实验设计框架（教师向）
 
-> 从"想让学生练什么"到"成绩怎么算"的完整流程，用于**设计一个新实验**。
+> 从"想让学生学到什么"到"怎么知道他学会了"的完整流程，用于**设计一个新实验**。
+>
+> **设计原则（2026-10-08 明确）：教学优先。** 这个平台的目的是**让学生理解知识**（读完题、读懂示范、
+> 自己动手、看到反馈），判分只是"他做完了"的确认手段，不是设计目标。因此：
+> **不要为了"区分学生"而制造陷阱**；把精力放在"讲清概念 + 给一份能对照的示范 + 给到位的反馈"上。
+>
 > 三份文档的分工：
 >
 > | 文档 | 回答什么 | 读者 |
 > |---|---|---|
-> | **本文** | 一个实验怎么设计（目标 / 任务 / 材料 / 过程 / 评判 / 上线） | 出题教师 |
+> | **本文** | 一个实验怎么设计（学习目标 / 任务 / 材料 / 导学 / 反思 / 判分 / 上线） | 出题教师 |
 > | `docs/EXPERIMENT-PACKAGE-SPEC.md` | 上传的包**技术格式**（manifest 字段、cases 约定、依赖预装集） | 出题教师 |
 > | `HANDOFF.md` | 平台运行态、镜像 tag、部署与回滚 | 平台维护者 |
 >
-> 可直接复制的骨架：`server/fixtures/ml-basics/`（ML 类）、`server/fixtures/sales-report/`（表格类）、
-> `server/fixtures/csv-cleaner/`（最简，内置回落型）。
+> 可直接复制的骨架：`server/fixtures/ml-basics/`（**教学向样板**：题目包内含参考实现 + 4 个教学字段写实）、
+> `server/fixtures/sales-report/`（表格类）、`server/fixtures/csv-cleaner/`（最简，内置回落型）。
 
 ---
 
@@ -149,7 +154,10 @@ treatment：题干 + 输入文件 + 学生的 Skill → 与同目录的 expected
      nju-lab-verify:0.2.0-rc.2-pkg4 /w/skill-solution/scripts/train.py --regen-cases
    ```
 
-### 2.4 难度与区分度
+### 2.4 难度与区分度（教学优先时，这一节可以放轻）
+
+> **教学优先**：不必为了"区分学生"刻意加难。指标不是满分就够（真实感 + 便于解释），
+> 学生之间的差距更多体现在**能不能讲清为什么**（能力边界/踩坑记录）与**有没有真的动手**（证据包）。
 
 取消 baseline 对照后，难度只从**结果本身**看：
 
@@ -267,10 +275,29 @@ docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg4 \
 ### 3.4 最小上手路径
 
 ```sh
-cp -r server/fixtures/sales-report server/fixtures/<你的实验名>
-# 改 problem/{task.md,judge.md,manifest.json,cases}、skill-template/、skill-solution/
+cp -r server/fixtures/ml-basics server/fixtures/<你的实验名>   # 教学向样板，含参考实现与 4 个教学字段
+# 改 problem/{task.md,judge.md,manifest.json,cases,README.md}、problem/reference/、skill-template/
 # 重算期望值 → 打包 → --check → 上传绑定（命令见该项目的 README.md）
 ```
+
+### 3.5 教学向设计清单（七件事 —— 照 `ml-basics` 抄）
+
+| # | 做什么 | 落在哪 | 要点 |
+|---|---|---|---|
+| 1 | **学习目标** | 项目字段 `objectives` | 写"学完能讲清什么"（≤3 条），不要写"掌握 xx"这种验证不了的 |
+| 2 | **知识铺垫** | 项目字段 `background` | 概念地图：本实验涉及的基本概念各是什么 —— 学生动手前的地图 |
+| 3 | **导学步骤** | 项目字段 `description` | ≤8 步，**每步说明"在学什么"**；引用的环境要与现状一致（别写"虚拟机"） |
+| 4 | **参考资料 / FAQ** | 项目字段 `references` / `faq` | 文档链接 + 常见误区；FAQ 优先写"我的指标为什么不对"这类 |
+| 5 | **参考实现随包下发** | `problem/reference/` | 学生**先读后仿**；它同时是教师"题目可解性"自检的输入 |
+| 6 | **骨架留解释层** | `skill-template/SKILL.md` | 不是只留 `TODO`，而是"**原理一句 + 最小示例 + 你要做的**"，并指向 `reference/` |
+| 7 | **反思环节** | 骨架的「能力边界」「实测档案」 | 学生写下"能/不能做什么"与"踩过什么坑" —— **抄不来的部分**，也是知识内化的地方 |
+
+> 前 4 项是**项目字段**（学生端会渲染 `objectives` / `background` / `description` / `references`，
+> 见 `web/src/pages/student/ExperimentDetail.tsx`），后 3 项是**包内材料**。
+>
+> **取舍要说清**：参考实现随包下发后，复验成功率不再能区分"自己写的"与"抄来的"。
+> 教学优先下这是可接受的 —— 原创性由第 7 项（反思）与 `.dshc` 证据包体现。
+> 若某次实验确实要看原创性，可以不放参考实现，但要在实验定位里写明原因。
 
 ---
 
