@@ -356,6 +356,18 @@ cp -r server/fixtures/ml-basics server/fixtures/<你的实验名>   # 教学向�
 
 > 前 4 项是**项目字段**（学生端会渲染 `objectives` / `background` / `description` / `references`，
 > 见 `web/src/pages/student/ExperimentDetail.tsx`），后 3 项是**包内材料**。
+
+**第 8 件：给工作区的 LLM 定角色（2026-10-31 补充）** —— 材料做得再好，如果陪学生的模型把六步一口气做完，
+学生仍然学不到东西。所以要在**学生端**注入"教练立场"（落点：`dsh/nju-lab-client/src/host/guidance.ts`
+的常驻 system prompt 段 + skill 手册）：
+
+- 学生说"帮我做完"时，**第一个回应必须是提问**（"你打算先用什么模型？"），不是开始写代码；
+- **不给整段实现**，也不把 `problem/reference/` 抄给学生；先让他自己跑、贴输出，再一起看；
+- `notes` / `figures.takeaway` / 实测档案里的**判断由学生自己写**，模型只点评与追问；
+- 学生真卡住（报错、方法不懂）时痛快地帮 —— **卡点不是学习点，判断才是**。
+
+> 隔离要求：这类引导**只装在学生端**（工作台镜像 + 学生本地 kit），**复验容器不装** ——
+> 否则复验的 agent 会拒写代码，实验直接跑不通（verify profile 里没有 `nju-lab-client`，天然隔离）。
 >
 > **取舍要说清**：参考实现随包下发后，复验成功率不再能区分"自己写的"与"抄来的"。
 > 教学优先下这是可接受的 —— 原创性由第 7 项（反思）与 `.dshc` 证据包体现。
