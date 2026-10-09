@@ -6,8 +6,8 @@
     "mae": 7.9419
   },
   "reference": {
-    "model": "Ridge(alpha=1.0)",
-    "mae": 4.7527
+    "model": "全特征 + LinearRegression",
+    "mae": 4.752
   },
   "accept": {
     "mae_max_ratio_to_baseline": 0.8,
