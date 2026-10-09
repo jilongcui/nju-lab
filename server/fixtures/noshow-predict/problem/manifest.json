@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "name": "noshow-predict",
+  "title": "应用实验：门诊预约失约预测（二分类 · 类别不平衡）",
+  "outputFile": "output.json",
+  "inputs": ["data.csv"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['model','n_train','n_test','metrics','baseline','notes'].every((k) => out[k] !== undefined && out[k] !== null && out[k] !== '')"
+    },
+    {
+      "name": "召回率与精确率在 [0,1] 之间",
+      "expr": "typeof out.metrics.recall === 'number' && out.metrics.recall >= 0 && out.metrics.recall <= 1 && typeof out.metrics.precision === 'number' && out.metrics.precision >= 0 && out.metrics.precision <= 1"
+    },
+    {
+      "name": "切分覆盖全部样本",
+      "expr": "out.n_train + out.n_test === expected.n_rows"
+    },
+    {
+      "name": "测试集占比在 20%~40%",
+      "expr": "out.n_test / (out.n_train + out.n_test) >= 0.2 && out.n_test / (out.n_train + out.n_test) <= 0.4"
+    },
+    {
+      "name": "基线定义正确（现有做法抓不到任何失约者）",
+      "expr": "typeof out.baseline.recall === 'number' && out.baseline.recall <= 0.05"
+    },
+    {
+      "name": "基线准确率可信（与参考值相差 ≤15%）",
+      "expr": "abs(out.baseline.accuracy - expected.baseline.accuracy) <= expected.accept.baseline_accuracy_tolerance * expected.baseline.accuracy"
+    },
+    {
+      "name": "达标：对失约者的召回率 ≥ 0.65",
+      "expr": "out.metrics.recall >= expected.accept.recall_min"
+    },
+    {
+      "name": "防退化：精确率 ≥ 0.40（不能把所有预约都判成失约）",
+      "expr": "out.metrics.precision >= expected.accept.precision_min"
+    },
+    {
+      "name": "说清选择（notes ≥20 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 20"
+    }
+  ],
+  "requires": { "python": ["sklearn", "pandas", "numpy"] }
+}
