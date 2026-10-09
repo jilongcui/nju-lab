@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "name": "customer-tier",
+  "title": "应用实验：会员价值分级（多分类）",
+  "outputFile": "output.json",
+  "inputs": ["data.csv"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['model','n_train','n_test','metrics','baseline','notes'].every((k) => out[k] !== undefined && out[k] !== null && out[k] !== '')"
+    },
+    {
+      "name": "macro F1 与 accuracy 在 [0,1] 之间",
+      "expr": "typeof out.metrics.macro_f1 === 'number' && out.metrics.macro_f1 >= 0 && out.metrics.macro_f1 <= 1 && typeof out.metrics.accuracy === 'number' && out.metrics.accuracy >= 0 && out.metrics.accuracy <= 1"
+    },
+    {
+      "name": "逐档召回率齐全且在 [0,1] 之间（3 档）",
+      "expr": "Array.isArray(out.metrics.per_class_recall) && out.metrics.per_class_recall.length === 3 && out.metrics.per_class_recall.every((r) => typeof r === 'number' && r >= 0 && r <= 1)"
+    },
+    {
+      "name": "切分覆盖全部样本",
+      "expr": "out.n_train + out.n_test === expected.n_rows"
+    },
+    {
+      "name": "测试集占比在 20%~40%",
+      "expr": "out.n_test / (out.n_train + out.n_test) >= 0.2 && out.n_test / (out.n_train + out.n_test) <= 0.4"
+    },
+    {
+      "name": "基线定义正确（现有做法的准确率≈多数类占比）",
+      "expr": "abs(out.baseline.accuracy - expected.baseline.accuracy) <= expected.accept.baseline_accuracy_tolerance * expected.baseline.accuracy && out.baseline.macro_f1 < 0.4"
+    },
+    {
+      "name": "达标：macro F1 ≥ 0.60（三档平均表现）",
+      "expr": "out.metrics.macro_f1 >= expected.accept.macro_f1_min"
+    },
+    {
+      "name": "防退化：每一档的召回率都 ≥ 0.50（不能放弃任何一档）",
+      "expr": "out.metrics.per_class_recall.every((r) => r >= expected.accept.per_class_recall_min)"
+    },
+    {
+      "name": "说清选择（notes ≥20 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 20"
+    }
+  ],
+  "requires": { "python": ["sklearn", "pandas", "numpy"] }
+}

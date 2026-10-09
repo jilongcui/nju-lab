@@ -1,0 +1,23 @@
+{
+  "note": "参考水平（不是标准答案）：baseline 用于核对学生的基线报告是否可信，reference 用于识别『可疑地过于好』的结果，n_rows 用于核对切分是否覆盖全部样本。硬性达标判据见 manifest.json 的 assertions，语义判据见 judge.md。",
+  "n_rows": 900,
+  "baseline": {
+    "name": "majority_class",
+    "accuracy": 0.4,
+    "macro_f1": 0.1905
+  },
+  "reference": {
+    "model": "StandardScaler + LogisticRegression",
+    "macro_f1": 0.7845,
+    "per_class_recall": [
+      0.8667,
+      0.7089,
+      0.7679
+    ]
+  },
+  "accept": {
+    "macro_f1_min": 0.6,
+    "per_class_recall_min": 0.5,
+    "baseline_accuracy_tolerance": 0.15
+  }
+}

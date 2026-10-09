@@ -6,6 +6,7 @@
 |---|---|---|---|
 | [`aq-forecast/`](aq-forecast/) | 下一小时 PM2.5 估算 | **应用驱动**（回归：需求 → 选模型 → 基线 → 达标） | `manifest.assertions`（达标线）+ `judge.md`（语义） |
 | [`noshow-predict/`](noshow-predict/) | 门诊预约失约预测 | **应用驱动**（二分类 · 类别不平衡：recall/precision 双达标） | 同上（9 条断言，含**防退化**项） |
+| [`customer-tier/`](customer-tier/) | 会员价值分级 | **应用驱动**（多分类：macro F1 + 逐档召回） | 同上（9 条断言，防"只保大类"） |
 | [`csv-cleaner/`](csv-cleaner/) | CSV 数据清洗 | 口径驱动（内置回落型，最简） | LLM judge 逐字段比对 |
 | [`sales-report/`](sales-report/) | 销售明细汇总 | 口径驱动（包驱动型） | LLM judge 逐字段比对 |
 | [`ml-basics/`](ml-basics/) | 机器学习基础建模 | 技术驱动（一个实验塞多个算法变体）—— **已下线** | — |
