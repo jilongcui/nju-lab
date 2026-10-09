@@ -6,7 +6,7 @@
     "mae": 6.074
   },
   "reference": {
-    "model": "全特征 + Ridge(alpha=1.0)",
+    "model": "Ridge(alpha=1.0)",
     "mae": 3.5568
   },
   "accept": {

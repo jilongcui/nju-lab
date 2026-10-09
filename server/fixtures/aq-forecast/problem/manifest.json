@@ -9,7 +9,11 @@
   "assertions": [
     {
       "name": "报告字段完整",
-      "expr": "['model','n_train','n_test','metrics','baseline','notes'].every((k) => out[k] !== undefined && out[k] !== null && out[k] !== '')"
+      "expr": "['model','n_train','n_test','metrics','baseline','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null && out[k] !== '')"
+    },
+    {
+      "name": "图表说明齐全（至少 2 张图，每张一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 2 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
     },
     {
       "name": "指标与基线是正数",
