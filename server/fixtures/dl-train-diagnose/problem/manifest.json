@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "name": "dl-train-diagnose",
-  "title": "深度学习实验一：细胞核形态辅助筛查（二分类 · 训练过程诊断）",
+  "title": "深度学习实验一：来料自动分检（二分类 · 训练过程诊断）",
   "outputFile": "output.json",
   "inputs": ["data.csv"],
   "judgeMode": "llm",
@@ -48,11 +48,11 @@
       "expr": "typeof out.baseline.precision === 'number' && abs(out.baseline.precision - expected.baseline.precision) <= expected.accept.baseline_precision_tolerance"
     },
     {
-      "name": "达标：恶性样本召回率 ≥ 达标线",
+      "name": "达标：缺陷件召回率 ≥ 达标线",
       "expr": "out.metrics.recall >= expected.accept.recall_min"
     },
     {
-      "name": "防退化：精确率 ≥ 达标线（不能把所有样本都报成恶性）",
+      "name": "防退化：精确率 ≥ 达标线（不能把所有样本都报成缺陷）",
       "expr": "out.metrics.precision >= expected.accept.precision_min"
     },
     {

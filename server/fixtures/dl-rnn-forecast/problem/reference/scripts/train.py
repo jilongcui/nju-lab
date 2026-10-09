@@ -162,19 +162,19 @@ def train_lstm(X_train, y_train, X_val, y_val):
     for epoch in range(1, EPOCHS + 1):
         model.train()
         perm = torch.randperm(len(xt))
-        total, batches = 0.0, 0
+        total = 0.0
         for i in range(0, len(xt), BATCH):
             idx = perm[i:i + BATCH]
             opt.zero_grad()
             loss = loss_fn(model(xt[idx]), yt[idx])
             loss.backward()
             opt.step()
-            total += loss.item() * len(idx)
-            batches += 1
+            total += loss.item() * len(idx)         # 按样本数加权累加
         model.eval()
+        train_loss = total / len(xt)                # ⚠️ 除以**样本数**（不是批次数）
         with torch.no_grad():
             val_loss = float(loss_fn(model(xv), yv))
-        history.append({"epoch": epoch, "loss": round(total / batches, 4), "val_loss": round(val_loss, 4)})
+        history.append({"epoch": epoch, "loss": round(train_loss, 4), "val_loss": round(val_loss, 4)})
         if val_loss < best_loss - 1e-5:
             best_loss, best_epoch, waits = val_loss, epoch, 0
             best_state = copy.deepcopy(model.state_dict())
@@ -202,11 +202,10 @@ def plot_training(history: list[dict], best_epoch: int, fig_dir: Path = FIG_DIR)
     path = fig_dir / "training_curve.png"
     fig.savefig(path, dpi=110)
     plt.close(fig)
-    last = history[-1]
     takeaway = (
-        f"训练与验证损失一起降到 {last['loss']:.3f} / {last['val_loss']:.3f}；验证损失在第 {best_epoch} 轮最低，"
-        f"之后不再改善（末轮两者差 {last['val_loss'] - last['loss']:+.3f}），说明继续训练只会拟合训练段的噪声 —— "
-        f"所以取最优轮次的权重。"
+        f"训练损失最低到 {min(h['loss'] for h in history):.3f}、验证损失最低到 "
+        f"{min(h['val_loss'] for h in history):.3f}；验证损失在第 {best_epoch} 轮触底后不再改善，"
+        f"说明继续训练只会拟合训练段的噪声 —— 所以交出去的是最优轮次的权重。"
     )
     return {"path": str(path), "takeaway": takeaway}
 

@@ -1,7 +1,7 @@
-# 深度学习实验一：细胞核形态辅助筛查（二分类 · 训练过程诊断）
+# 深度学习实验一：来料自动分检（二分类 · 训练过程诊断）
 
 **形态：应用驱动**（`docs/EXPERIMENT-DESIGN-FRAMEWORK.md` §2.6）—— 学生拿到的是**需求**而不是
-"模型名字 + 口径"：要解决的问题（把恶性样本查出来、比现有做法更可靠）、达标线（recall / precision）、
+"模型名字 + 口径"：要解决的问题（把缺陷件查出来、比现有做法更可靠）、达标线（recall / precision）、
 约束（必须记录逐轮训练过程、要解释选择）由题干给出；**网络结构 / 优化器 / 早停策略 / 判定阈值由学生自己决定**，
 判据按"是否达到业务目标 + 训练过程是否讲得清"判，而不是"是否等于标准答案"。
 
@@ -25,21 +25,21 @@ dl-train-diagnose/
 
 ## 场景与数据
 
-- 应用：检验科**辅助筛查** —— 由细胞核形态测量判断样本是否恶性（recall 优先，precision 防退化）
+- 应用：产线来料**自动分检** —— 由测量仪读出的 30 个形态量判断这件来料是否有缺陷（recall 优先，precision 防退化）
 - 数据：公开数据集 **UCI Breast Cancer Wisconsin**（sklearn 自带 `load_breast_cancer`，569 条真实测量）
-  → 30 个数值特征（10 个测量量 × 均值/标准误/最差值）+ 标签 `malignant`
+  → 30 个数值特征（10 个测量量 × 均值/标准误/最差值）+ 标签 `defect`
 - case01：全量 569 条、原始量程；case02：**"另一台仪器"** 320 条 —— 每列乘 10^±2.5 的固定增益、
-  叠加 5% 相对测量噪声、恶性占比降到 22%
+  叠加 5% 相对测量噪声、缺陷占比降到 22%
 
 ## 判据设计要点（**训练过程**是本实验的判别核心）
 
 1. **达标线**：case01 `recall ≥ 0.90`、case02 `recall ≥ 0.85`，两者 `precision ≥ 0.80`
    （达标线写进各 case 的 `expected.json.accept`，由 `manifest.assertions` 引用 —— 算术交给代码）。
-2. **防退化**：`precision ≥ 0.80` 挡住"全判恶性"（恶性占比只有 22%/37%）。
+2. **防退化**：`precision ≥ 0.80` 挡住"全判缺陷"（缺陷占比只有 22%/37%）。
 3. **"真的训练了"是硬性条件**：断言要求 `training.history` ≥5 轮、每轮都有 `loss` 与 `val_loss`，
    且 `epochs_run === history.length`、`early_stopped` 为布尔。逻辑回归那类"一次求解"的做法给不出
    逐轮 `val_loss` —— 学生的注意力因此被推到**训练过程**上（这正是本章的教学点）。
-4. **基线语义**：现有做法 = 只看 `mean_radius`、按出厂上限 15 µm 判恶性，且必须**在同一测试集**上算；
+4. **基线语义**：现有做法 = 只看 `mean_radius`、按出厂上限 15（测量仪读数） 判缺陷，且必须**在同一测试集**上算；
    断言核对 `baseline.recall` / `baseline.precision` 与参考值（±0.15 / ±0.25 个点）——挡住"填个假基线"。
    实测：case01 基线 recall 0.72 / precision 0.86（**过不了 0.90 的线**）；case02 量程变了，
    固定上限直接失效（recall 0.00）。
@@ -63,6 +63,15 @@ dl-train-diagnose/
 > 下面命令里的镜像 tag 是当前生产复验镜像（`pkg6`）；本轮材料首次实测是在 `pkg5` 上做的，
 > 两个镜像的区别只在 judge 请求的 token 预算（见 `server/verify-image/README.md`），与题目材料无关。
 
+### 防退化：两个偷懒解都实测过（照指南 §3.4）
+
+| 偷懒解 | 实测成绩 | 是否过线 |
+|---|---|---|
+| A **不建模**：现有做法（`mean_radius ≥ 15` 判缺陷） | case01 recall 0.717 / precision 0.864；case02 recall 0.000 / precision 0.000 | ✗ 拦住（recall 线 0.90 / 0.85） |
+| B **全判「有缺陷」** | case01 recall 1.000 / precision **0.371**；case02 recall 1.000 / precision **0.213** | ✗ 被 `precision ≥ 0.80` 堵住 |
+
+> 两端的线都卡在两个退化解之间：参考实现 0.96/0.98（case02 0.94/0.94）留有余量。
+
 ## 重新生成数据与参考水平
 
 ```sh
@@ -85,9 +94,10 @@ docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg6 \
   --check --skill /p/skill-template.zip --problem /p/problem.zip
 
 # 教师侧自检闭环（拿参考实现跑复验，应全部通过；torch 实验建议给容器 2g 内存）
-docker run --rm --memory 2g --env-file ../../../server/.env -v "$PWD:/p:ro" -v /tmp/out:/outputs \
+docker run --rm --memory 2g --env-file ../../../server/.env -e VERIFY_REASONING_EFFORT=low \
+  -v "$PWD:/p:ro" -v /tmp/out:/outputs \
   nju-lab-verify:0.2.0-rc.2-pkg6 \
-  --skill /p/problem/reference --problem /p/problem.zip --out /outputs/result.json
+  --skill /p/problem/reference --problem /p/problem.zip --out /outputs/result.json --timeout-ms 300000
 ```
 
 上传两个 zip 拿 `fileId`，再绑定到项目并写入教学字段（**命令模板**，把 `PROJECT_ID` 换成实际值）：
@@ -139,7 +149,7 @@ PY
 · 过拟合与泛化：训练损失继续下降但验证损失回升 = 开始记住训练集；处理手段有早停、dropout、L2、减小网络。
 · 早停与"取哪一轮的权重"：验证损失最低的那一轮才是要交出去的那一轮（不是最后一轮）。
 · 特征缩放：梯度下降对量纲敏感；StandardScaler 要把"只用训练集拟合"这条纪律记住，否则测试集信息会漏进训练。
-· 不平衡数据的指标：accuracy 会被多数类主导；recall（漏报）、precision（误报）是一对需要权衡的量。
+· 不平衡数据的指标：accuracy 会被多数类主导；recall（漏检）、precision（误报）是一对需要权衡的量。
 · 基线：一个不需要模型、现实里真实存在的做法（这里是"单特征 + 出厂上限"），它让"我的模型好不好"有参照物。
 ```
 
@@ -152,7 +162,7 @@ PY
 4. 算现有做法的成绩（mean_radius ≥ 15）并写进报告的 baseline —— 学"为模型找参照物"。
 5. 划分训练/验证/测试集（固定种子、stratify）并做标准化（只用训练集拟合）—— 学"可复现的切分与防泄漏"。
 6. 训练一个多轮模型，逐轮记录训练损失与验证损失；画第二张图（训练曲线）—— 学"训练过程可诊断"。
-7. 在测试集上算 recall/precision 并画混淆矩阵（第三张图）—— 学"读懂漏报与误报的业务含义"。
+7. 在测试集上算 recall/precision 并画混淆矩阵（第三张图）—— 学"读懂漏检与误报的业务含义"。
 8. 写 notes 与每张图的 takeaway：怎么处理过拟合、和基线比如何、还有什么不足 —— 学"把结论说给别人听"。
 ```
 
@@ -175,8 +185,8 @@ Q：训练损失一直降、验证损失在涨，怎么办？
 A：那就是过拟合。做三件事：早停（并回退到验证损失最低那一轮的权重）、加 dropout 或权重衰减、或把网络缩小。
 
 Q：我的 recall 很高但 precision 很低？
-A：说明你把太多良性报成了恶性（退化解的一种）。检查判定阈值是不是太低、类别是否失衡，
-   也可以给恶性样本加权（BCEWithLogitsLoss 的 pos_weight）。
+A：说明你把太多正常报成了缺陷（退化解的一种）。检查判定阈值是不是太低、类别是否失衡，
+   也可以给缺陷件加权（BCEWithLogitsLoss 的 pos_weight）。
 
 Q：case02 上什么都训不出来？
 A：case02 来自"另一台仪器"，量程差两个数量级。先看各列的取值范围，再做标准化。
@@ -189,17 +199,25 @@ A：把数据放在 CPU 上跑小网络（几百个参数到几万个参数）�
 
 - 达标线是**权衡结果**：太松则"随便训一下"就过，太紧则学生受挫。改动前先按上面的命令重算
   `expected.json`，确认"不标准化""只看一列"仍然过不了。
-- 想加难，优先加**数据侧的坑**（更强的量程漂移、更多测量噪声、更少的恶性样本），
+- 想加难，优先加**数据侧的坑**（更强的量程漂移、更多测量噪声、更少的缺陷件），
   而不是把达标线收到"只有一种网络结构能过"。
 - `task.md` / `judge.md` / 参考实现三处事实源改动要同步，然后重算 `expected.json`。
 
 ### 端到端复验（拿参考实现跑真实复验流程）
 
 ```sh
-docker run --rm --memory 2g --cpus 2 --env-file server/.env   -v "$PWD/server/fixtures/dl-train-diagnose:/p:ro" -v /tmp/out:/outputs   nju-lab-verify:0.2.0-rc.2-pkg6 --skill /p/problem/reference --problem /p/problem.zip --out /outputs/result.json
+docker run --rm --memory 2g --cpus 2 --env-file server/.env \
+  -e VERIFY_REASONING_EFFORT=low -v "$PWD/server/fixtures/dl-train-diagnose:/p:ro" -v /tmp/out:/outputs \
+  nju-lab-verify:0.2.0-rc.2-pkg6 \
+  --skill /p/problem/reference --problem /p/problem.zip --out /outputs/result.json --timeout-ms 300000
 ```
 
-实测（pkg5、pkg6 各跑一次）：**case01 / case02 均 pass=true、score=1、硬性断言 13/13**；单轮 dsh 耗时 82s / 56s（pkg5）、66s / 183s（pkg6）。
+实测（按 `EXPERIMENT-CREATION-GUIDE` 对齐后在 pkg6 上重跑）：**case01 / case02 均 pass=true、score=1、硬性断言 13/13**，judge rationale 无矛盾类问题；单轮 dsh 耗时 129s / 66s（更早一轮 pkg5 为 82s / 56s）。
+
+- **2026-11（按 `docs/EXPERIMENT-CREATION-GUIDE.md` 对齐）**：judge 抓出一条真问题 ——
+  `training_curve` 的 `takeaway` 用"末轮训练损失"叙述，而末轮值高于前一轮（小批量训练的正常波动）→
+  被判"与 `training` 矛盾"。已改为以**最低损失**为主、并明示末轮波动（三个实验一并改）。
+  这正是指南 §4 记的坑：**`takeaway` 里的数字必须与 `history` / `metrics` 同源自洽**。
 
 ## 已知风险与调法
 
@@ -216,7 +234,7 @@ docker run --rm --memory 2g --cpus 2 --env-file server/.env   -v "$PWD/server/fi
 
 ### 2026-11（本实验包首次落地）
 
-- 数据：`load_breast_cancer` → case01 569 行 / case02 320 行（另一台仪器：10^±2.5 增益 + 5% 噪声 + 恶性 22%）
+- 数据：`load_breast_cancer` → case01 569 行 / case02 320 行（另一台仪器：10^±2.5 增益 + 5% 噪声 + 缺陷 22%）
 - 参考实现（MLP 32-16 + dropout 0.2 + Adam lr 0.01 + 早停 patience 20，**CPU 1 核 1g 内存**）：
   case01 recall 0.9623 / precision 0.9808（36 轮，best 16）；case02 recall 0.9412 / precision 0.9412（100 轮，best 80）
 - 单 case 运行 6~7 秒（含 torch import、训练与出图）；`--check` 通过（依赖自检覆盖 torch / sklearn / matplotlib）

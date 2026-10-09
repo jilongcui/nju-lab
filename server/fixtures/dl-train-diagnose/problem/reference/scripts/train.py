@@ -2,15 +2,15 @@
 """实验一参考实现（学习示范）：`data.csv` → `output.json` + 三张图。
 
 📖 这份实现**随题目包一起下发**（`problem/reference/`）—— 先读懂它，再写你自己的。
-   **它不是唯一正确答案**：判据只要求"恶性样本 recall ≥ 0.90、precision ≥ 0.80，
+   **它不是唯一正确答案**：判据只要求"缺陷件 recall ≥ 0.90、precision ≥ 0.80，
    并且真的记录了逐轮训练历史"，换网络结构、换优化器、换早停策略同样能通过。
 
 本实现走完**完整流程**（与 task.md 的六步对应）：
-  ① 看清需求      —— 筛查要"宁可多报，不能漏报"（recall 优先）
+  ① 看清需求      —— 分检要"宁可多报，不能漏检"（recall 优先）
   ② 看一眼数据    —— `plot_data_overview`：**画图**看类别分布与最有用的特征
-  ③ 定基线        —— `build_baseline`：现有做法 = 按出厂参考上限（mean_radius > 15）判恶性
+  ③ 定基线        —— `build_baseline`：现有做法 = 按出厂参考上限（mean_radius ≥ 15）判缺陷
   ④ 训练模型      —— `train_mlp`：标准化 + 小 MLP + Adam + **早停**（逐轮记录 train/val loss）
-  ⑤ 评估          —— `plot_evaluation`：**画图**看混淆矩阵（漏报 / 误报各多少）
+  ⑤ 评估          —— `plot_evaluation`：**画图**看混淆矩阵（漏检 / 误报各多少）
   ⑥ 写结论        —— `compose_notes` + 每张图一句 takeaway
 
 用法：
@@ -41,8 +41,8 @@ from sklearn.model_selection import train_test_split  # noqa: E402
 from sklearn.preprocessing import StandardScaler  # noqa: E402
 from torch import nn  # noqa: E402
 
-TARGET = "malignant"
-RADIUS_LIMIT = 15.0  # 现有做法用的出厂参考上限（µm）
+TARGET = "defect"
+RADIUS_LIMIT = 15.0  # 现有做法用的出厂参考上限（测量仪读数，任意单位）
 # 每个 case 的达标线（写进 expected.json 的 accept，供 manifest.json 的断言引用）：
 # case02 来自"另一台仪器"、样本更少、还有测量噪声，线略低一档
 ACCEPT = {
@@ -79,7 +79,7 @@ def plot_data_overview(df: pd.DataFrame, fig_dir: Path = FIG_DIR) -> dict:
     fig, axes = plt.subplots(1, 2, figsize=(10, 4))
     counts = df[TARGET].value_counts().sort_index()
     axes[0].bar([str(i) for i in counts.index], counts.to_numpy(), color="#4C78A8")
-    axes[0].set_xlabel("malignant (0 = benign, 1 = malignant)")
+    axes[0].set_xlabel("defect (0 = ok, 1 = defect)")
     axes[0].set_ylabel("count")
     axes[0].set_title("Class balance")
     for i, v in enumerate(counts.to_numpy()):
@@ -89,7 +89,7 @@ def plot_data_overview(df: pd.DataFrame, fig_dir: Path = FIG_DIR) -> dict:
     axes[1].set_xlabel(feature)
     axes[1].set_ylabel("count")
     axes[1].set_title(f"{feature} by class")
-    axes[1].legend(title="malignant")
+    axes[1].legend(title="defect")
     fig.tight_layout()
     path = fig_dir / "data_overview.png"
     fig.savefig(path, dpi=110)
@@ -97,15 +97,15 @@ def plot_data_overview(df: pd.DataFrame, fig_dir: Path = FIG_DIR) -> dict:
     rate = df[TARGET].mean()
     med0, med1 = df.loc[df[TARGET] == 0, feature].median(), df.loc[df[TARGET] == 1, feature].median()
     takeaway = (
-        f"恶性样本占 {rate:.0%}（样本并不均衡，不能只看准确率）；"
-        f"{feature} 在两类间分布明显分开（良性中位数 {med0:.3g}、恶性 {med1:.3g}），是最主要的依据；"
-        f"但两类仍有重叠区，单靠一个特征会漏报。"
+        f"缺陷件占 {rate:.0%}（并不均衡，不能只看准确率）；"
+        f"{feature} 在两类的分布明显分开（正常件中位数 {med0:.3g}、缺陷件 {med1:.3g}），是最主要的依据；"
+        f"但两类仍有重叠区，单靠一个特征会漏检。"
     )
     return {"path": str(path), "takeaway": takeaway}
 
 
 def build_baseline(y_true: np.ndarray, radius: pd.Series) -> dict:
-    """③ 现有做法：只看 `mean_radius`，超过出厂参考上限就判恶性。"""
+    """③ 现有做法：只看 `mean_radius`，达到/超过出厂参考上限就判"有缺陷"。"""
     pred = (radius.to_numpy() >= RADIUS_LIMIT).astype(int)
     return {
         "name": f"radius_threshold_{RADIUS_LIMIT:g}",
@@ -173,17 +173,16 @@ def plot_training(history: list[dict], best_epoch: int, fig_dir: Path = FIG_DIR)
     path = fig_dir / "training_curve.png"
     fig.savefig(path, dpi=110)
     plt.close(fig)
-    last = history[-1]
-    gap = last["val_loss"] - last["loss"]
     takeaway = (
-        f"训练损失一路降到 {last['loss']:.3f}；验证损失在第 {best_epoch} 轮最低（{min(h['val_loss'] for h in history):.3f}）"
-        f"后不再改善，末轮两者相差 {gap:+.3f} —— 已经出现轻微过拟合，所以取最优轮次而不是最后一轮。"
+        f"训练损失最低到 {min(h['loss'] for h in history):.3f}、验证损失最低到 "
+        f"{min(h['val_loss'] for h in history):.3f}；验证损失在第 {best_epoch} 轮触底，之后不再改善 —— "
+        f"再练下去只是在拟合训练集的噪声，所以交出去的是最优轮次的权重，而不是最后一轮。"
     )
     return {"path": str(path), "takeaway": takeaway}
 
 
 def plot_evaluation(y_true: np.ndarray, pred: np.ndarray, fig_dir: Path = FIG_DIR) -> dict:
-    """⑤ 评估（并画图）之二：混淆矩阵 —— 漏报（FN）与误报（FP）各多少。"""
+    """⑤ 评估（并画图）之二：混淆矩阵 —— 漏检（FN）与误报（FP）各多少。"""
     fig_dir.mkdir(parents=True, exist_ok=True)
     cm = confusion_matrix(y_true, pred, labels=[0, 1])
     fig, ax = plt.subplots(figsize=(4.6, 4))
@@ -192,8 +191,8 @@ def plot_evaluation(y_true: np.ndarray, pred: np.ndarray, fig_dir: Path = FIG_DI
         for j in range(2):
             ax.text(j, i, str(int(cm[i, j])), ha="center", va="center",
                     color="white" if cm[i, j] > cm.max() / 2 else "black")
-    ax.set_xticks([0, 1], ["pred benign", "pred malignant"])
-    ax.set_yticks([0, 1], ["true benign", "true malignant"])
+    ax.set_xticks([0, 1], ["pred ok", "pred defect"])
+    ax.set_yticks([0, 1], ["true ok", "true defect"])
     ax.set_title("Confusion matrix")
     fig.colorbar(im, ax=ax, shrink=0.8)
     fig.tight_layout()
@@ -202,25 +201,25 @@ def plot_evaluation(y_true: np.ndarray, pred: np.ndarray, fig_dir: Path = FIG_DI
     plt.close(fig)
     fn, fp = int(cm[1, 0]), int(cm[0, 1])
     takeaway = (
-        f"漏报（真恶性判成良性）{fn} 例、误报 {fp} 例；漏报是本任务最贵的错误，"
-        f"所以宁可让误报多一些，也不要把漏报压到 0 以下的空间里换准确率。"
+        f"漏检（真有缺陷判成正常）{fn} 件、误报 {fp} 件；漏检是本任务最贵的错误，"
+        f"所以宁可让误报多一些，也不要用准确率去换更少的漏检。"
     )
     return {"path": str(path), "takeaway": takeaway}
 
 
 def compose_notes(
-    df: pd.DataFrame, baseline: dict, metrics: dict, n_malignant: int, history: list[dict], best_epoch: int
+    df: pd.DataFrame, baseline: dict, metrics: dict, n_defect: int, history: list[dict], best_epoch: int
 ) -> str:
     """⑥ 写结论：看过什么 → 怎么处理 → 与基线比如何 → 还有什么不足。"""
-    missed = int(round((1 - metrics["recall"]) * n_malignant))
+    missed = int(round((1 - metrics["recall"]) * n_defect))
     return (
-        f"先看图：恶性占 {df[TARGET].mean():.0%}、{top_feature(df)} 最区分两类但有重叠，"
+        f"先看图：缺陷件占 {df[TARGET].mean():.0%}、{top_feature(df)} 最区分两类但有重叠，"
         f"且各列量程差几个数量级（所以必须先标准化，否则网络学不动）。"
         f"现有做法（只看 mean_radius ≥ {RADIUS_LIMIT:g}）在 test 上 recall {baseline['recall']:.2f}、"
         f"precision {baseline['precision']:.2f}；改用 {df.shape[1] - 1} 列特征训练 MLP（{'/'.join(map(str, HIDDEN))} 隐层 + "
         f"dropout + Adam + 早停，第 {best_epoch} 轮取得最优验证损失，共跑 {len(history)} 轮）后，"
         f"recall {metrics['recall']:.2f}、precision {metrics['precision']:.2f}。"
-        f"不足：漏报仍有 {missed} 例左右，若临床上更在意漏报，可以把判定阈值往下调（用误报换漏报）。"
+        f"不足：漏检仍有 {missed} 件左右，若业务上更在意漏检，可以把判定阈值往下调（用误报换漏检）。"
     )
 
 
@@ -322,7 +321,7 @@ def regen_expected() -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="辅助筛查（训练诊断 · 参考实现）")
+    ap = argparse.ArgumentParser(description="来料自动分检（训练诊断 · 参考实现）")
     ap.add_argument("case_dir", nargs="?")
     ap.add_argument("out", nargs="?")
     ap.add_argument("--regen-expected", action="store_true")

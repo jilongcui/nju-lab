@@ -16,7 +16,7 @@
   ④ 训练模型 → ⑤ 评估并画图 → ⑥ 写结论），差别在**应用与数据**：
   | 实验 | 应用与数据 | 规模/特点 | 达标线（参考实现水平） |
   |---|---|---|---|
-  | `dl-train-diagnose` | 检验科**辅助筛查**（表格数据二分类） | 公开数据集 `load_breast_cancer`；569/320 行，第二批模拟"另一台仪器"（量程差两个数量级、恶性 22%） | case01 recall ≥0.90、case02 ≥0.85，precision 均 ≥0.80（参考 0.96/0.94） |
+  | `dl-train-diagnose` | 产线**来料自动分检**（表格数据二分类） | 公开数据集 `load_breast_cancer`（按"形态测量量"使用）；569/320 件，第二批模拟"另一台测量仪"（量程差两个数量级、缺陷件 22%） | case01 recall ≥0.90、case02 ≥0.85，precision 均 ≥0.80（参考 0.96/0.94） |
   | `dl-cnn-images` | 表单**手写数字分拣**（8×8 小图十分类） | 公开数据集 `load_digits`；1797/1639 张，第二批平移 1px + 噪点 + 0/8 更少 | macro F1 ≥0.93 / ≥0.85，逐档召回 ≥0.85 / ≥0.65（参考 0.982 / 0.946） |
   | `dl-rnn-forecast` | 车间**设备温度提前一分钟估计**（传感器时序） | 合成教学时序；1500/1200 分钟，工作循环 45/37 分钟 | MAE ≤0.55×基线 / ≤0.60×基线（参考比值 0.18 / 0.40） |
 - **判据分层**（§5.1）：每个实验 **13 条确定性断言**（达标线、防退化、基线可信、**`training.history` 逐轮 `loss`/`val_loss` 硬性要求**）+ `judge.md` 语义项。
@@ -30,6 +30,12 @@
   返回 `finish_reason=length`、`content` 为空 → 整轮报 `judge output not parseable`，且随判据/产物体积波动而**偶发**
   （实测实验一通过、实验二/三在临界区抖动）。构建方式：`FROM pkg5` 只覆盖 `run-eval.mjs`（体积持平 2.17GB，无需压平），
   细节见 `server/verify-image/README.md` 与 `docs/UPGRADE-playbook.md` §5。**pkg5 保留作回滚点**。
+- **2026-11（续）按 `docs/EXPERIMENT-CREATION-GUIDE.md` 对齐**：
+  ① 实验一场景改为**产线来料自动分检**（数据不变，只把标签 `malignant` → `defect`、去掉医学措辞，符合指南"零领域门槛"）；
+  ② 三个骨架 `scripts/train.py` 的 TODO 收成**两处**（基线 + 串联流程），绘图等由学生自己写；
+  ③ 三个 `judge.md` **去掉数值达标线**（数字只由 `assertions` 判，见指南 §3.3）；
+  ④ README 的复验命令补 `--timeout-ms 300000` 与 `-e VERIFY_REASONING_EFFORT=low`；
+  ⑤ 三个实验的"偷懒解另一端"（全判缺陷 / 全判多数类 / 常数预测）**实测并写进 README**（防退化两端都验过）。
 - **未做**：三个实验**尚未上传平台/绑定项目/挂到"第三章"章节** —— 教师侧按各 README 的
   「打包 / 自检 / 上传」命令操作（`--check` 已本地通过，含依赖自检 torch/sklearn/matplotlib）。
   各 README 已备好 §3.5 前四项的**项目字段文案**（`objectives` / `background` / `description` / `references` / `faq`）可直接粘贴。

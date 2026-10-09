@@ -182,20 +182,19 @@ def train_cnn(X_train, y_train, X_val, y_val):
     for epoch in range(1, EPOCHS + 1):
         model.train()
         perm = torch.randperm(len(xt))
-        total, batches = 0.0, 0
+        total = 0.0
         for i in range(0, len(xt), BATCH):          # 小批量：每轮多次更新，收敛快得多
             idx = perm[i:i + BATCH]
             opt.zero_grad()
             loss = loss_fn(model(augment_batch(xt[idx])), yt[idx])   # 训练样本先做平移增强
             loss.backward()
             opt.step()
-            total += loss.item() * len(idx)
-            batches += 1
+            total += loss.item() * len(idx)         # 按样本数加权累加
         model.eval()
-        loss = torch.tensor(total / batches, dtype=torch.float32)
+        train_loss = total / len(xt)                # ⚠️ 除以**样本数**（不是批次数）
         with torch.no_grad():
             val_loss = float(loss_fn(model(xv), yv))
-        history.append({"epoch": epoch, "loss": round(loss.item(), 4), "val_loss": round(val_loss, 4)})
+        history.append({"epoch": epoch, "loss": round(train_loss, 4), "val_loss": round(val_loss, 4)})
         if val_loss < best_loss - 1e-4:
             best_loss, best_epoch, waits = val_loss, epoch, 0
             best_state = copy.deepcopy(model.state_dict())
@@ -223,11 +222,10 @@ def plot_training(history: list[dict], best_epoch: int, fig_dir: Path = FIG_DIR)
     path = fig_dir / "training_curve.png"
     fig.savefig(path, dpi=110)
     plt.close(fig)
-    last = history[-1]
     takeaway = (
-        f"训练损失降到 {last['loss']:.3f}；验证损失第 {best_epoch} 轮最低（{min(h['val_loss'] for h in history):.3f}）"
-        f"后开始回升，末轮两者相差 {last['val_loss'] - last['loss']:+.3f} —— 从最优轮次之后就走上了过拟合，"
-        f"所以交出去的是最优轮次的权重。"
+        f"训练损失最低到 {min(h['loss'] for h in history):.3f}、验证损失最低到 "
+        f"{min(h['val_loss'] for h in history):.3f}；验证损失第 {best_epoch} 轮触底后不再改善 —— "
+        f"再练下去只是在拟合训练样本，所以交出去的是最优轮次的权重。"
     )
     return {"path": str(path), "takeaway": takeaway}
 

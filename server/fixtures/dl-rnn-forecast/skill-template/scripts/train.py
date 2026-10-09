@@ -5,7 +5,7 @@
 参考实现在 `problem/reference/scripts/train.py` —— 建议先读它一遍，再回来自己写。
 
 窗口长度、网络结构、特征组合、优化器都由你决定（没有唯一答案）。骨架已经把"结构"搭好，
-你只要填三个 TODO。
+你只要填两处 TODO。
 
 用法：
   python3 scripts/train.py <case目录> <output.json>
@@ -93,44 +93,9 @@ def build_baseline(df: pd.DataFrame, test_start: int, test_end: int) -> dict:
     raise NotImplementedError("TODO(1): 现有做法（当前值当下一秒）在测试段上的 MAE")
 
 
-def make_windows(features: np.ndarray, target: np.ndarray, window: int):
-    """TODO(2)-a：把时序切成 (窗口 → 下一分钟) 的监督样本。
-
-    X[i] = features[i : i+window]（连续 window 分钟）
-    Y[i] = target[i + window - 1]（**紧接其后**那一分钟的温度）
-    样本数 = 行数 − window + 1。返回 `(X.astype(np.float32), Y.astype(np.float32))`。
-    """
-    raise NotImplementedError("TODO(2)-a: 滑窗切分")
-
-
-def train_lstm(X_train, y_train, X_val, y_val):
-    """TODO(2)-b：训练序列模型，并记录逐轮历史。
-
-    需要你自己做的决定：
-      a. **用什么模型**？LSTM / GRU / 一维卷积都行 —— 选你能讲清楚的。
-      b. **预测什么**？直接预测温度绝对值，还是预测"相对窗口最后读数的增量"？（后者通常好学得多）
-      c. **怎么训**？优化器、学习率、epoch 上限、早停（patience）；**特征与目标都要缩放**。
-      d. **记录什么**？每轮的 `loss` 与 `val_loss` 必须记 —— 训练曲线与"是否过拟合"都靠它。
-
-    返回 `(model, history, best_epoch)`：
-      · `history`：`[{"epoch": 1, "loss": ..., "val_loss": ...}, ...]`
-      · `best_epoch`：验证损失最低的那一轮（之后要用它对应的权重）
-    """
-    raise NotImplementedError("TODO(2)-b: 训练循环 + 早停 + 逐轮历史")
-
-
-def plot_training(history: list[dict], best_epoch: int, fig_dir: Path = FIG_DIR) -> dict:
-    """TODO(3)-a：训练曲线（训练损失 vs 验证损失，标出最优轮次）。"""
-    raise NotImplementedError("TODO(3)-a: 训练曲线图")
-
-
-def plot_forecast(y_test, pred, test_start: int, fig_dir: Path = FIG_DIR) -> dict:
-    """TODO(3)-b：预测 vs 实际（时间轴）+ 残差 —— 误差出现在哪一段时刻。"""
-    raise NotImplementedError("TODO(3)-b: 预测对比图")
-
 
 def train_and_evaluate(df: pd.DataFrame) -> dict:
-    """TODO(3)-c：滑窗 → 定基线 → 训练 → 评估 → 组装报告。
+    """TODO(2)：滑窗 → 定基线 → 训练 → 评估 → 组装报告。
 
     返回的字典必须包含（结构见 task.md 的"交付格式"）：
       model / window / n_train / n_test / metrics{mae[, rmse]} /
@@ -142,10 +107,17 @@ def train_and_evaluate(df: pd.DataFrame) -> dict:
       · 特征与目标都用**训练段**统计量做标准化（别把测试段统计量用进来）
       · `n_train` / `n_test` 是**滑窗样本数**（不是原始行数）
       · `notes` 要写清"为什么取这个窗口、周期/工况怎么处理、和基线比如何、还有什么不足"（≥20 字）
-    """
+
+    需要你自己做的决定：
+      a. **滑窗**：窗口取多长（≥3 分钟）、样本数 ≈ 行数 − window + 1、按时间切分（不许打乱）。
+      b. **模型**：LSTM / GRU / 一维卷积都行；**预测绝对值还是预测增量**（后者通常好学得多）。
+      c. **怎么训**？优化器、学习率、epoch 上限、早停；特征与目标都要缩放（只用训练段统计量）。
+      d. **记录什么**？每轮的 `loss` 与 `val_loss` 必须记 —— 训练曲线与"是否过拟合"都靠它。
+      e. **出两张图**：训练曲线（含最优轮次）+ 预测 vs 实际（含残差）—— 图怎么画照 `reference/scripts/train.py`。
+"""
     df = add_cycle_features(df)
     figures = [plot_data_overview(df)]
-    raise NotImplementedError("TODO(3)-c: 滑窗 → 基线 → 训练 → 评估 → 报告")
+    raise NotImplementedError("TODO(2): 滑窗 → 基线 → 训练 → 评估 → 报告")
 
 
 def main() -> None:

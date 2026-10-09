@@ -63,6 +63,15 @@ dl-cnn-images/
 > 下面命令里的镜像 tag 是当前生产复验镜像（`pkg6`）；本轮材料首次实测是在 `pkg5` 上做的，
 > 两个镜像的区别只在 judge 请求的 token 预算（见 `server/verify-image/README.md`），与题目材料无关。
 
+### 防退化：两个偷懒解都实测过（照指南 §3.4）
+
+| 偷懒解 | 实测成绩 | 是否过线 |
+|---|---|---|
+| A **不建模**：上一版系统（64 个像素 → 线性分类器） | case01 macro F1 0.971；case02 macro F1 **0.528** | case02 ✗ 拦住（线 0.85）；case01 是刻意留的常规路径 |
+| B **全判多数类**（数字 3） | macro F1 **0.019 / 0.020**，逐档召回最低 **0.000** | ✗ 被"每档召回 ≥0.85 / 0.65"堵住 |
+
+> 参考实现 0.982 / 0.946，两端都留有余量。
+
 ## 重新生成数据与参考水平
 
 ```sh
@@ -85,9 +94,10 @@ docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg6 \
   --check --skill /p/skill-template.zip --problem /p/problem.zip
 
 # 教师侧自检闭环（拿参考实现跑复验，应全部通过）
-docker run --rm --memory 2g --env-file ../../../server/.env -v "$PWD:/p:ro" -v /tmp/out:/outputs \
+docker run --rm --memory 2g --env-file ../../../server/.env -e VERIFY_REASONING_EFFORT=low \
+  -v "$PWD:/p:ro" -v /tmp/out:/outputs \
   nju-lab-verify:0.2.0-rc.2-pkg6 \
-  --skill /p/problem/reference --problem /p/problem.zip --out /outputs/result.json
+  --skill /p/problem/reference --problem /p/problem.zip --out /outputs/result.json --timeout-ms 300000
 ```
 
 上传两个 zip 拿 `fileId`、绑定到项目并写入教学字段的命令模板见
@@ -170,11 +180,24 @@ A：从训练集里分层抽 20%（stratify），固定随机种子；测试集�
 ### 端到端复验（拿参考实现跑真实复验流程）
 
 ```sh
-docker run --rm --memory 2g --cpus 2 --env-file server/.env   -v "$PWD/server/fixtures/dl-cnn-images:/p:ro" -v /tmp/out:/outputs   nju-lab-verify:0.2.0-rc.2-pkg6 --skill /p/problem/reference --problem /p/problem.zip --out /outputs/result.json
+docker run --rm --memory 2g --cpus 2 --env-file server/.env \
+  -e VERIFY_REASONING_EFFORT=low -v "$PWD/server/fixtures/dl-cnn-images:/p:ro" -v /tmp/out:/outputs \
+  nju-lab-verify:0.2.0-rc.2-pkg6 \
+  --skill /p/problem/reference --problem /p/problem.zip --out /outputs/result.json --timeout-ms 300000
 ```
 
-实测（pkg5、pkg6 各跑一次）：**case01 / case02 均 pass=true、score=1、硬性断言 13/13**；单轮 dsh 耗时 300s / 79s（pkg5）、208s / 77s（pkg6）—— 耗时浮动较大，case01 曾贴着 300s 的单轮上限（见下方"已知风险"）。
+实测（按 `EXPERIMENT-CREATION-GUIDE` 对齐后在 pkg6 上重跑）：**case01 / case02 均 pass=true、score=1、硬性断言 13/13**，judge rationale 无矛盾类问题；单轮 dsh 耗时 105s / 90s（更早两轮：pkg5 300s / 79s、pkg6 208s / 77s —— 耗时浮动较大）。
 case01 那轮**贴着 300s 的单轮上限**（平台钉死 ≤300s/轮），上线前建议留意（见下方"已知风险"）。
+
+- **2026-11（按 `docs/EXPERIMENT-CREATION-GUIDE.md` 对齐）**：judge 抓出一条真问题 ——
+  `training_curve` 的 `takeaway` 用"末轮训练损失"叙述，而末轮值高于前一轮（小批量训练的正常波动）→
+  被判"与 `training` 矛盾"。已改为以**最低损失**为主、并明示末轮波动（三个实验一并改）。
+  这正是指南 §4 记的坑：**`takeaway` 里的数字必须与 `history` / `metrics` 同源自洽**。
+
+- **2026-11（按 `docs/EXPERIMENT-CREATION-GUIDE.md` 对齐 · 续）**：复验时**被 agent 抓出一个真 bug** ——
+  小批量训练循环里把「按样本数加权的损失之和」除以了**批次数**，训练损失因此被放大约 batch size 倍
+  （实验二/三；实验一是全批量写法，本来是对的）。已改成 `total / len(xt)`。
+  教训：**教师自检闭环不只是「看有没有通过」，还要读 agent/judge 的 rationale** —— 它指向的往往是示范或判据里的真问题。
 
 ## 已知风险与调法
 
