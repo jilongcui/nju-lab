@@ -63,7 +63,7 @@ def make_case(case: str, seed: int, n: int, neighbor_scale: float, temp_base: fl
     pm25_lag1 = np.clip(0.85 * pm25_neighbor + rng.normal(0, neighbor_scale / 5.0, n), 5.0, None)
     pm25_lag1 = np.round(pm25_lag1, 1)
 
-    # "真实规律"：本点前一小时浓度是主因；周边站点、风速（扩散）、湿度（二次生成）都有影响
+    # "真实规律"：本点前一小时浓度是主因；附近监测站读数、风速（风大浓度低）、湿度也有影响
     pm25_next = (
         0.55 * pm25_lag1
         + 0.30 * pm25_neighbor

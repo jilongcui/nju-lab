@@ -45,9 +45,9 @@ HERE = Path(__file__).resolve().parent
 CASES_DIR = HERE.parent.parent / "cases"
 
 NOTES = (
-    "用全部 6 个特征 + Ridge(alpha=1.0)：pm25_lag1 是主因，pm25_neighbor 反映区域输送，"
-    "wind_speed 反映扩散条件（风大浓度低），humidity 与二次生成相关；"
-    "Ridge 在样本量不大时比普通最小二乘更稳。测试集 MAE 约为持久性基线的 6 成。"
+    "用全部 6 个特征 + Ridge(alpha=1.0)：pm25_lag1（本监测点上一小时）是主因 —— 空气不会突然变化；"
+    "pm25_neighbor（附近监测站）提供空气流动带来的额外信息，wind_speed 越大污染物越容易被吹散、浓度更低，"
+    "humidity 也有影响；Ridge 在样本量不大时比普通最小二乘更稳。测试集 MAE 约为持久性基线的 6 成。"
 )
 
 
