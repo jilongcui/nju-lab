@@ -62,8 +62,94 @@ function runtimeScript(total: number): string {
   function scale() {
     var s = Math.min(window.innerWidth / W, window.innerHeight / H);
     deck.style.setProperty('--deck-scale', String(s));
+    if (isOverviewOpen()) layoutThumbs();
   }
   window.addEventListener('resize', scale);
+
+  /* 总览（缩略图墙）：克隆每页 DOM 等比缩小 —— 不需要截图能力，也不额外发请求。
+     缩略图容器带上 deck 类，于是版式与令牌（--fs-boost/--ly-scale/卡片风格）全都复用，
+     克隆页与原页一模一样。2026-10-10 补：此前只有父窗口 post('overview') 与提示文案，
+     运行时其实没有实现，按 O 毫无反应。 */
+  var overviewEl = null;
+  var thumbBoxes = [];
+  var thumbObservers = [];
+  function layoutThumbs() {
+    for (var k = 0; k < thumbBoxes.length; k += 1) {
+      var box = thumbBoxes[k];
+      var thumb = box.parentNode;
+      var width = thumb ? thumb.clientWidth : 0;
+      /* 宽度还没量出来（.overview 刚从 display:none 切成 grid）就跳过这次：
+         按 1px 兜底会把缩略图缩成一条线（2026-10-10 实测踩到）。等 ResizeObserver 补算。 */
+      if (!width || width <= 1) continue;
+      box.style.transform = 'scale(' + (width / W) + ')';
+    }
+  }
+  function buildOverview() {
+    if (overviewEl) return;
+    overviewEl = document.createElement('div');
+    overviewEl.className = 'overview';
+    for (var i = 0; i < slides.length; i += 1) {
+      var thumb = document.createElement('div');
+      thumb.className = 'thumb';
+      thumb.setAttribute('data-index', String(i));
+      var box = document.createElement('div');
+      box.className = 'thumb-canvas deck';
+      box.style.width = W + 'px';
+      box.style.height = H + 'px';
+      box.style.transformOrigin = 'top left';
+      var clone = slides[i].cloneNode(true);
+      clone.className = clone.className.replace(/\\bis-(active|prev)\\b/g, '').replace(/\\s+/g, ' ').trim();
+      clone.className += ' is-active';
+      box.appendChild(clone);
+      thumbBoxes.push(box);
+      var num = document.createElement('div');
+      num.className = 'n';
+      num.textContent = String(i + 1);
+      var cap = document.createElement('div');
+      cap.className = 't';
+      var head = slides[i].querySelector('.ly-title, h1, h2');
+      cap.textContent = head ? head.textContent.replace(/\\s+/g, ' ').trim().slice(0, 32) : '';
+      thumb.appendChild(box);
+      thumb.appendChild(num);
+      thumb.appendChild(cap);
+      overviewEl.appendChild(thumb);
+      /* 尺寸就绪后自动补算一次缩放（首帧量不到宽度时靠它兜底） */
+      if (window.ResizeObserver) {
+        var observer = new ResizeObserver(layoutThumbs);
+        observer.observe(thumb);
+        thumbObservers.push(observer);
+      }
+    }
+    overviewEl.addEventListener('click', function (event) {
+      /* 不冒泡给 document：避免再触发"点两侧翻页"把刚跳的页顶掉 */
+      event.stopPropagation();
+      var target = event.target;
+      var thumb = target && target.closest ? target.closest('.thumb') : null;
+      if (thumb) show(Number(thumb.getAttribute('data-index')) || 0);
+      closeOverview();
+    });
+    document.body.appendChild(overviewEl);
+  }
+  function isOverviewOpen() {
+    return !!overviewEl && overviewEl.className.split(' ').indexOf('open') >= 0;
+  }
+  function openOverview() {
+    buildOverview();
+    /* ⚠️ 顺序要紧：先 open 再量宽度 —— .overview 默认 display:none，此时子元素 clientWidth 为 0，
+       缩略图会被算成 scale(0) 而整片空白（2026-10-10 实测踩到）。open 后同步再量一次兜底布局时序。
+       ⚠️ 本函数体是模板字符串：注释里**绝不能出现反引号**，否则字符串提前闭合、整段脚本错乱
+       （2026-10-10 实测踩到；断言 assert-semantic.mjs 会拦）。 */
+    overviewEl.className = 'overview open';
+    layoutThumbs();
+    requestAnimationFrame(layoutThumbs);
+  }
+  function closeOverview() {
+    if (overviewEl) overviewEl.className = 'overview';
+  }
+  function toggleOverview() {
+    if (isOverviewOpen()) closeOverview();
+    else openOverview();
+  }
 
   var bar = document.querySelector('.progress-bar > span');
   function paint() {
@@ -94,19 +180,32 @@ function runtimeScript(total: number): string {
     if (data.action === 'next') show(index + 1);
     else if (data.action === 'prev') show(index - 1);
     else if (data.action === 'goto' && typeof data.index === 'number') show(data.index);
+    else if (data.action === 'overview') toggleOverview();
+    else if (data.action === 'escape') {
+      /* 宿主页面的 Esc：总览开着先关总览，否则回传"退出放映"由页面决定 */
+      if (isOverviewOpen()) closeOverview();
+      else post({ type: 'exit-present' });
+    }
   });
 
   document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape' || event.key === 'Esc') {
       event.preventDefault();
+      /* 总览开着时 Esc 先关总览（放映态再按一次才退出放映） */
+      if (isOverviewOpen()) { closeOverview(); return; }
       post({ type: 'exit-present' });
       return;
     }
+    if (event.key === 'o' || event.key === 'O') { toggleOverview(); event.preventDefault(); return; }
+    /* 总览开着时不吃翻页键：点击缩略图跳页，方向键留给"移动选择"以外的场景（避免误翻） */
+    if (isOverviewOpen()) return;
     if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') { show(index + 1); event.preventDefault(); }
     else if (event.key === 'ArrowLeft' || event.key === 'PageUp') { show(index - 1); event.preventDefault(); }
   });
 
   document.addEventListener('click', function (event) {
+    /* 总览开着时只认缩略图点击 —— 否则点缩略图会被这条"点两侧翻页"再翻一页（2026-10-10 实测） */
+    if (isOverviewOpen()) return;
     if (event.defaultPrevented) return;
     var target = event.target;
     if (target && target.closest && target.closest('a, button, input, textarea, select, video, audio')) return;

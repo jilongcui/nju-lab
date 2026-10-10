@@ -985,6 +985,21 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------- 总览（缩略图墙）----------
+ * `.overview` / `.thumb` 的视觉来自 vendored base.css；这里补两件事：
+ *   ① 缩略图固定 16:9 并裁剪（.thumb-canvas 是 1920×1080 的整块画布，靠 JS 等比 scale 进来）；
+ *   ② 缩放容器定位到左上角（base.css 的 .deck 是 center center，缩略图要按左上角对齐）。
+ * 缩略图基于每页 DOM 的克隆，所以完全不依赖截图能力。 */
+.overview .thumb {
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+}
+.overview .thumb-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
 /* ---------- 打印 / 导出 PDF ----------
  * 分页与「每页一画布」由 vendored base.css 的 @media print 负责（它把 .slide 变成相对定位、
  * 逐页 page-break、并隐藏页眉页脚与进度条）；这里只钉住**纸张尺寸**，

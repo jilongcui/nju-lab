@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Alert, Button, Space, Spin, theme } from 'antd';
 import { CloseOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
 import type { DeckSlide, SlideDeckConfig, SlideJson, SlideTemplateDesign } from '../types';
@@ -28,6 +28,14 @@ export interface SlideStageProps {
   /** 演示模式：铺满视口 + 父窗口接管键盘 */
   presenting?: boolean;
   onExitPresenting?: () => void;
+  /**
+   * **非放映态也由父窗口接管翻页键**（←/→/空格/PageUp/PageDown/O/Esc）。输入框里不抢键。
+   *
+   * 为什么需要：iframe 是 sandbox（无 same-origin）的独立文档，`iframe.focus()` 不保证把焦点
+   * 交给它；焦点一旦留在宿主页面的 antd Segmented/Tabs 上，方向键会被组件当成"切换选项"
+   * （2026-10-10 学员反馈：按 → 反而跳回「文档」）。放映态本来就接管，无需传。
+   */
+  keyboard?: boolean;
   height?: number | string;
   /**
    * 渲染器：`semantic`（新，默认）= 语义模型 + 固定 1920×1080 舞台；
@@ -43,23 +51,42 @@ export interface SlideStageProps {
   onDocument?: (html: string) => void;
 }
 
-export default function SlideStage({
-  slides,
-  template,
-  config,
-  footerText,
-  logoDataUrl,
-  imageDataUrls,
-  onIndexChange,
-  gotoIndex,
-  presenting = false,
-  onExitPresenting,
-  height = 520,
-  renderer,
-  slideTheme,
-  meta,
-  onDocument,
-}: SlideStageProps) {
+/**
+ * 舞台对外能力（`ref`）：让宿主页面能在**非放映态**也给学员/教师提供翻页、总览、
+ * 以及「点开幻灯片后把焦点交给幻灯片」——否则焦点留在 antd Segmented/Tabs 上，
+ * 左右方向键会被组件当成"切换选项"，表现为按 → 反而跳回「文档」（2026-10-10 学员反馈）。
+ */
+export interface SlideStageHandle {
+  next: () => void;
+  prev: () => void;
+  goto: (index: number) => void;
+  /** 总览（缩略图墙）；iframe 内按 `O` 的等价调用 */
+  overview: () => void;
+  /** 把键盘焦点交给幻灯片文档（方向键随后由文档内运行时处理） */
+  focus: () => void;
+}
+
+const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideStage(
+  {
+    slides,
+    template,
+    config,
+    footerText,
+    logoDataUrl,
+    imageDataUrls,
+    onIndexChange,
+    gotoIndex,
+    presenting = false,
+    onExitPresenting,
+    keyboard = false,
+    height = 520,
+    renderer,
+    slideTheme,
+    meta,
+    onDocument,
+  }: SlideStageProps,
+  ref,
+) {
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -71,6 +98,8 @@ export default function SlideStage({
   const [controlsOpacity, setControlsOpacity] = useState(0.35);
   const { token } = theme.useToken();
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  /** 舞台外框：可编程聚焦（`SlideStageHandle.focus()` 的兜底落点，见接口注释） */
+  const frameRef = useRef<HTMLDivElement>(null);
   /** 上一份构建产物：输入"等价但引用变了"（父组件行内对象）时不重建 —— 否则 Spin 会常驻
    * （iframe 的 srcdoc 相同就不会重载，ready 事件不会再发，loading 态永远消不掉，2026-09-29 实测） */
   const lastDocRef = useRef<string | null>(null);
@@ -200,16 +229,41 @@ export default function SlideStage({
     );
   }, []);
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      next: () => post('next'),
+      prev: () => post('prev'),
+      goto: (index: number) => post('goto', { index }),
+      overview: () => post('overview'),
+      focus: () => {
+        // 先尝试把焦点交给文档：这样 ←/→ 由文档内运行时处理（与放映态一致的手感）；
+        // 拿不到（浏览器拒绝聚焦 sandbox iframe）就退到外框，至少不会落在 Segmented 上。
+        try {
+          iframeRef.current?.focus();
+        } catch {
+          /* ignore */
+        }
+        if (document.activeElement !== iframeRef.current) frameRef.current?.focus();
+      },
+    }),
+    [post],
+  );
+
   // 外部跳页（左侧缩略列表点击）：等 iframe 就绪后再发，避免文档尚未初始化
   useEffect(() => {
     if (gotoIndex === undefined || !ready) return;
     post('goto', { index: gotoIndex });
   }, [gotoIndex, ready, post]);
 
-  // 演示模式下父窗口接管键盘（iframe 内不再依赖 Fullscreen API，opaque origin 下不保险）
+  // 父窗口接管键盘：放映态必定接管（iframe 内不依赖 Fullscreen API，opaque origin 下不保险）；
+  // 宿主页面传 keyboard 时内嵌视图也接管 —— 见该 prop 的注释（焦点不在 iframe 里时的兜底）。
   useEffect(() => {
-    if (!presenting) return;
+    if (!presenting && !keyboard) return;
     function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      // 输入类控件里不抢键（模板调参、搜索框等）
+      if (target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
       if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') {
         post('next');
         event.preventDefault();
@@ -218,16 +272,22 @@ export default function SlideStage({
         event.preventDefault();
       } else if (event.key.toLowerCase() === 'o') {
         post('overview');
+        event.preventDefault();
       } else if (event.key === 'Escape') {
-        onExitPresenting?.();
+        // 放映态：直接退出；内嵌态：交给文档自己判（总览开着先关总览）
+        if (presenting) onExitPresenting?.();
+        else post('escape');
       }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [presenting, post, onExitPresenting]);
+  }, [presenting, keyboard, post, onExitPresenting]);
 
   const frame = (
     <div
+      ref={frameRef}
+      // 可编程聚焦：点开幻灯片后把键盘焦点从 Segmented/Tabs 挪走（见 SlideStageHandle 注释）
+      tabIndex={-1}
       style={{
         position: 'relative',
         width: '100%',
@@ -237,6 +297,7 @@ export default function SlideStage({
         background: presenting ? '#000' : token.colorBgLayout,
         borderRadius: presenting ? 0 : 8,
         overflow: 'hidden',
+        outline: 'none',
       }}
     >
       {error ? (
@@ -331,4 +392,6 @@ export default function SlideStage({
       </div>
     </div>
   );
-}
+});
+
+export default SlideStage;

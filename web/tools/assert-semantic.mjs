@@ -207,6 +207,52 @@ check(
     return value >= 1.2 && value <= 1.5;
   })(),
 );
+// 总览（缩略图墙）：2026-10-10 之前只有父窗口 post('overview') 与提示文案，运行时没实现，按 O 无反应
+check(
+  '运行时实现总览：overview 动作 / O 键 / 克隆缩略图都在',
+  html.includes("action === 'overview'") &&
+    html.includes('function buildOverview') &&
+    html.includes('function toggleOverview') &&
+    html.includes('layoutThumbs'),
+);
+check(
+  '总览缩略图复用舞台令牌（容器带 deck 类 → 版式与字号一致）',
+  html.includes('thumb-canvas deck'),
+);
+check(
+  '总览缩略图固定 16:9 并按左上角对齐（base.css 的 .deck 是 center center）',
+  /\.overview \.thumb\s*\{[^}]*aspect-ratio:\s*16 \/ 9/.test(layoutsCss) &&
+    /\.overview \.thumb-canvas\s*\{[^}]*transform-origin:\s*unset|\.overview \.thumb-canvas\s*\{[^}]*top:\s*0/.test(
+      layoutsCss,
+    ),
+);
+check(
+  '总览开着时 Esc 先关总览（再按一次才退出放映）',
+  html.includes('if (isOverviewOpen()) { closeOverview(); return; }') && html.includes('closeOverview'),
+);
+check(
+  '总览开着时"点两侧翻页"不生效（否则点缩略图会被再翻一页）',
+  html.includes("if (isOverviewOpen()) return;") && html.includes('event.stopPropagation();'),
+);
+check(
+  '宿主页面的 Esc 交给文档判（escape 动作）',
+  html.includes("data.action === 'escape'"),
+);
+// 运行时是**模板字符串**：注释里出现反引号会让字符串提前闭合、整段脚本错乱（2026-10-10 实测踩到，
+// 表现为总览打开但缩略图缩成一条线）。这条断言直接查源码里那段模板串。
+const stageSrc = readFileSync(join(webRoot, 'src/slides/semantic/stage.ts'), 'utf8');
+const runtimeStart = stageSrc.indexOf('return `(function () {') + 'return `'.length;
+const runtimeEnd = stageSrc.indexOf('})();`;');
+const runtimeBody = stageSrc.slice(runtimeStart, runtimeEnd);
+check(
+  '运行时模板串内没有裸反引号（否则脚本被提前截断）',
+  runtimeBody.length > 2000 && !runtimeBody.includes('`'),
+  `模板串 ${runtimeBody.length} 字符`,
+);
+check(
+  '运行时脚本首尾完整（就绪回调在末尾）',
+  html.includes('(function () {') && html.includes('document.fonts.ready') && html.includes('requestAnimationFrame(layoutThumbs)'),
+);
 
 // ---------------- 7. 旧模型适配器（平台既有 deck 的迁移路径）----------------
 const legacyPages = legacyDeckToPages(LEGACY_SLIDES);
