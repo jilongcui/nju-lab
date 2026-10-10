@@ -17,17 +17,28 @@
 /*
  * 可调令牌（由课程模板调参覆盖，见 semantic/legacy.ts 的 designToTokenOverrides）：
  *   --ly-scale 字号阶梯（compact 0.93 / standard 1 / large 1.08）
+ *   --fs-boost 字号整体倍率（**画布级**，所有 px 字号都乘它；见下）
  *   --ly-gap   疏密（compact 0.82 / cozy 1 / loose 1.22）
  *   --ly-card-* 卡片风格（soft 默认 / none 无底无框 / outline 只描边）
  * 版式 CSS 一律读这些变量 —— 于是「模板调参」在新渲染器上照样生效。
+ *
+ * 为什么要有 --fs-boost（2026-10-10 实测补）：
+ *   舞台是固定 1920×1080 画布 + `transform: scale` 适配容器，字号以**画布像素**为单位标定。
+ *   而 reveal 的逻辑画布是 960×700、正文基准 42px —— 同一句话 reveal 的字占画布宽约 4.4%，
+ *   我们原先只占约 1.1%，上屏自然小一大圈（容器 1078px 时 21px 只剩 ~11px）。
+ *   原先只有 5 处字号挂了 --ly-scale，另有 55 处（本文件）+ 15 处（vendor base.css）写死 px，
+ *   连「模板调参」的字号档位都调不动它们。现在**所有 px 字号一律写成 calc(Npx * var(--fs-boost, 1))**，
+ *   整体观感用这一个值调（默认 1.33 ≈ 与 reveal 观感靠近），且留出 per-deck 覆盖的口子。
+ *   ⚠️ 新增字号务必沿用这个写法，断言 assert-semantic.mjs 会拦裸 px。
  */
 .deck {
   --ly-scale: 1;
+  --fs-boost: 1.33;
   --ly-gap: 1;
   --ly-card-bg: var(--surface);
   --ly-card-border: 1px solid var(--border);
   --ly-card-shadow: var(--shadow);
-  font-size: calc(21px * var(--ly-scale));
+  font-size: calc(21px * var(--ly-scale) * var(--fs-boost, 1));
 }
 
 .ly-card,
@@ -56,19 +67,19 @@
   margin-bottom: 30px;
 }
 .ly .kicker {
-  font-size: 17px;
+  font-size: calc(17px * var(--fs-boost, 1));
   letter-spacing: 0.18em;
   margin: 0;
 }
 .ly h2.ly-title {
-  font-size: calc(54px * var(--ly-scale));
+  font-size: calc(54px * var(--ly-scale) * var(--fs-boost, 1));
   line-height: 1.1;
   font-weight: 750;
   letter-spacing: -0.02em;
   margin: 0;
 }
 .ly .ly-lede {
-  font-size: calc(25px * var(--ly-scale));
+  font-size: calc(25px * var(--ly-scale) * var(--fs-boost, 1));
   line-height: 1.5;
   color: var(--text-2);
   font-weight: 300;
@@ -81,7 +92,7 @@
 }
 .ly-note {
   margin-top: 22px;
-  font-size: 20px;
+  font-size: calc(20px * var(--fs-boost, 1));
   color: var(--text-2);
   border-left: 3px solid var(--accent);
   padding-left: 16px;
@@ -110,7 +121,7 @@
   z-index: -1;
 }
 .ly-cover .ly-cover-kicker {
-  font-size: 19px;
+  font-size: calc(19px * var(--fs-boost, 1));
   letter-spacing: 0.24em;
   text-transform: uppercase;
   color: var(--accent);
@@ -119,7 +130,7 @@
 }
 .ly-cover h1 {
   font-family: var(--font-display);
-  font-size: 92px;
+  font-size: calc(92px * var(--fs-boost, 1));
   line-height: 1.08;
   font-weight: 800;
   letter-spacing: -0.025em;
@@ -127,7 +138,7 @@
   max-width: 1500px;
 }
 .ly-cover .ly-cover-sub {
-  font-size: 27px;
+  font-size: calc(27px * var(--fs-boost, 1));
   line-height: 1.5;
   color: var(--text-2);
   font-weight: 300;
@@ -147,7 +158,7 @@
   margin-top: 8px;
 }
 .ly-pills .pill {
-  font-size: 17px;
+  font-size: calc(17px * var(--fs-boost, 1));
   padding: 8px 18px;
 }
 
@@ -158,7 +169,7 @@
   gap: 18px;
 }
 .ly-section .ly-section-num {
-  font-size: 132px;
+  font-size: calc(132px * var(--fs-boost, 1));
   line-height: 0.9;
   font-weight: 900;
   letter-spacing: -0.05em;
@@ -167,7 +178,7 @@
 }
 .ly-section h1 {
   font-family: var(--font-display);
-  font-size: 76px;
+  font-size: calc(76px * var(--fs-boost, 1));
   line-height: 1.1;
   font-weight: 780;
   letter-spacing: -0.02em;
@@ -180,7 +191,7 @@
   margin-top: 10px;
 }
 .ly-teaser span {
-  font-size: 19px;
+  font-size: calc(19px * var(--fs-boost, 1));
   color: var(--text-2);
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -202,7 +213,7 @@
   border-radius: var(--radius);
 }
 .ly-toc-num {
-  font-size: 34px;
+  font-size: calc(34px * var(--fs-boost, 1));
   font-weight: 800;
   line-height: 1;
   color: var(--accent);
@@ -210,12 +221,12 @@
   min-width: 54px;
 }
 .ly-toc-item h4 {
-  font-size: 26px;
+  font-size: calc(26px * var(--fs-boost, 1));
   margin: 0 0 6px;
   line-height: 1.3;
 }
 .ly-toc-item p {
-  font-size: 19px;
+  font-size: calc(19px * var(--fs-boost, 1));
   color: var(--text-2);
   margin: 0;
   line-height: 1.5;
@@ -223,7 +234,7 @@
 
 /* ---------- 主张 + 证据 ---------- */
 .ly-claim {
-  font-size: calc(34px * var(--ly-scale));
+  font-size: calc(34px * var(--ly-scale) * var(--fs-boost, 1));
   line-height: 1.4;
   font-weight: 500;
   margin: 0 0 28px;
@@ -248,11 +259,11 @@
   padding: calc(22px * var(--ly-gap)) calc(26px * var(--ly-gap));
   border-left: 5px solid var(--accent);
   border-radius: var(--radius-sm);
-  font-size: calc(23px * var(--ly-scale));
+  font-size: calc(23px * var(--ly-scale) * var(--fs-boost, 1));
   line-height: 1.5;
 }
 .ly-ev-i {
-  font-size: 19px;
+  font-size: calc(19px * var(--fs-boost, 1));
   font-weight: 800;
   color: var(--accent);
   font-variant-numeric: tabular-nums;
@@ -274,12 +285,12 @@
   border-radius: var(--radius);
 }
 .ly-card h4 {
-  font-size: 26px;
+  font-size: calc(26px * var(--fs-boost, 1));
   margin: 0 0 10px;
   line-height: 1.3;
 }
 .ly-card p {
-  font-size: 20px;
+  font-size: calc(20px * var(--fs-boost, 1));
   line-height: 1.55;
   color: var(--text-2);
   margin: 0;
@@ -287,7 +298,7 @@
 .ly-card .ly-tag {
   display: inline-block;
   margin-top: 14px;
-  font-size: 16px;
+  font-size: calc(16px * var(--fs-boost, 1));
   padding: 5px 14px;
   border-radius: 999px;
   background: var(--surface-2);
@@ -313,13 +324,13 @@
 .ly-compare .ly-col.accent { border-top: 6px solid var(--accent); }
 .ly-compare .ly-col.neutral { border-top: 6px solid var(--border-strong); }
 .ly-compare .ly-col h4 {
-  font-size: 28px;
+  font-size: calc(28px * var(--fs-boost, 1));
   margin: 0 0 14px;
 }
 .ly-compare .ly-col ul {
   margin: 0;
   padding-left: 26px;
-  font-size: 21px;
+  font-size: calc(21px * var(--fs-boost, 1));
   line-height: 1.75;
   color: var(--text-2);
 }
@@ -329,7 +340,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 52px;
+  font-size: calc(52px * var(--fs-boost, 1));
   font-weight: 300;
   color: var(--text-3);
 }
@@ -348,7 +359,7 @@
   text-align: center;
 }
 .ly-metric-v {
-  font-size: 82px;
+  font-size: calc(82px * var(--fs-boost, 1));
   line-height: 1;
   font-weight: 800;
   letter-spacing: -0.03em;
@@ -358,12 +369,12 @@
 .ly-metric.up .ly-metric-v { color: var(--good); }
 .ly-metric.down .ly-metric-v { color: var(--bad); }
 .ly-metric-l {
-  font-size: 22px;
+  font-size: calc(22px * var(--fs-boost, 1));
   font-weight: 600;
   margin-top: 16px;
 }
 .ly-metric-d {
-  font-size: 17px;
+  font-size: calc(17px * var(--fs-boost, 1));
   color: var(--text-3);
   margin-top: 8px;
   font-variant-numeric: tabular-nums;
@@ -373,7 +384,7 @@
 .ly-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 20px;
+  font-size: calc(20px * var(--fs-boost, 1));
   background: var(--surface);
   border-radius: var(--radius);
   overflow: hidden;
@@ -386,7 +397,7 @@
   border-bottom: 1px solid var(--border);
 }
 .ly-table th {
-  font-size: 15px;
+  font-size: calc(15px * var(--fs-boost, 1));
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -432,14 +443,14 @@
   align-items: center;
   justify-content: center;
   font-weight: 800;
-  font-size: 21px;
+  font-size: calc(21px * var(--fs-boost, 1));
 }
 .ly-step h4 {
-  font-size: 24px;
+  font-size: calc(24px * var(--fs-boost, 1));
   margin: 0 0 10px;
 }
 .ly-step p {
-  font-size: 19px;
+  font-size: calc(19px * var(--fs-boost, 1));
   line-height: 1.55;
   color: var(--text-2);
   margin: 0;
@@ -447,7 +458,7 @@
 .ly-step .ly-tag {
   display: inline-block;
   margin-top: 14px;
-  font-size: 15px;
+  font-size: calc(15px * var(--fs-boost, 1));
   padding: 4px 12px;
   border-radius: 999px;
   background: var(--surface-2);
@@ -477,18 +488,18 @@
   box-shadow: 0 0 0 4px var(--accent-soft), var(--shadow);
 }
 .ly-flow-node .ly-flow-k {
-  font-size: 15px;
+  font-size: calc(15px * var(--fs-boost, 1));
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-3);
   font-weight: 700;
 }
 .ly-flow-node h4 {
-  font-size: 24px;
+  font-size: calc(24px * var(--fs-boost, 1));
   margin: 8px 0 8px;
 }
 .ly-flow-node p {
-  font-size: 17px;
+  font-size: calc(17px * var(--fs-boost, 1));
   line-height: 1.5;
   color: var(--text-2);
   margin: 0;
@@ -541,7 +552,7 @@
   border-radius: var(--radius);
   background: var(--surface-2);
   border: 1px solid var(--border);
-  font-size: 17px;
+  font-size: calc(17px * var(--fs-boost, 1));
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -568,11 +579,11 @@
   box-shadow: var(--shadow);
 }
 .ly-cell h4 {
-  font-size: 21px;
+  font-size: calc(21px * var(--fs-boost, 1));
   margin: 0 0 6px;
 }
 .ly-cell p {
-  font-size: 16px;
+  font-size: calc(16px * var(--fs-boost, 1));
   line-height: 1.45;
   color: var(--text-3);
   margin: 0;
@@ -612,11 +623,11 @@
   width: 420px;
 }
 .ly-rel-n h4 {
-  font-size: 23px;
+  font-size: calc(23px * var(--fs-boost, 1));
   margin: 0 0 6px;
 }
 .ly-rel-n p {
-  font-size: 17px;
+  font-size: calc(17px * var(--fs-boost, 1));
   line-height: 1.5;
   color: var(--text-3);
   margin: 0;
@@ -632,7 +643,7 @@
 }
 .ly-rel-n.ly-rel-center h4 {
   color: var(--accent-ink);
-  font-size: 30px;
+  font-size: calc(30px * var(--fs-boost, 1));
   margin: 0;
 }
 .ly-rel-n.ly-rel-center p {
@@ -666,7 +677,7 @@
   text-align: center;
 }
 .ly-tl-at {
-  font-size: 19px;
+  font-size: calc(19px * var(--fs-boost, 1));
   font-weight: 700;
   letter-spacing: 0.1em;
   color: var(--text-3);
@@ -700,12 +711,12 @@
   border-top: 4px solid var(--accent);
 }
 .ly-tl-card h4 {
-  font-size: 22px;
+  font-size: calc(22px * var(--fs-boost, 1));
   margin: 0 0 8px;
   line-height: 1.3;
 }
 .ly-tl-card p {
-  font-size: 17px;
+  font-size: calc(17px * var(--fs-boost, 1));
   line-height: 1.5;
   color: var(--text-2);
   margin: 0;
@@ -721,7 +732,7 @@
 }
 .ly-quote .ly-quote-mark {
   font-family: var(--font-serif);
-  font-size: 130px;
+  font-size: calc(130px * var(--fs-boost, 1));
   line-height: 0.7;
   color: var(--accent);
   opacity: 0.55;
@@ -729,13 +740,13 @@
 .ly-quote blockquote {
   margin: 0;
   font-family: var(--font-serif);
-  font-size: 50px;
+  font-size: calc(50px * var(--fs-boost, 1));
   line-height: 1.35;
   font-weight: 600;
   max-width: 1400px;
 }
 .ly-quote .ly-quote-cite {
-  font-size: 21px;
+  font-size: calc(21px * var(--fs-boost, 1));
   color: var(--text-3);
   letter-spacing: 0.08em;
 }
@@ -766,14 +777,14 @@
 .ly-code-bar span {
   margin-left: 12px;
   font-family: var(--font-mono);
-  font-size: 16px;
+  font-size: calc(16px * var(--fs-boost, 1));
   color: var(--text-3);
 }
 .ly-code pre {
   margin: 0;
   padding: 26px 30px;
   font-family: var(--font-mono);
-  font-size: 21px;
+  font-size: calc(21px * var(--fs-boost, 1));
   line-height: 1.65;
   white-space: pre;
   overflow: hidden;
@@ -788,7 +799,7 @@
 }
 .ly-code-cap {
   margin-top: 16px;
-  font-size: 19px;
+  font-size: calc(19px * var(--fs-boost, 1));
   color: var(--text-2);
 }
 
@@ -832,7 +843,7 @@
 .ly-gallery.cols-4 { grid-template-columns: repeat(4, 1fr); }
 .ly-gallery-cell { min-width: 0; }
 .ly-gallery .img-frame { aspect-ratio: 16/10; }
-.ly-gallery-cell .img-cap { font-size: 17px; }
+.ly-gallery-cell .img-cap { font-size: calc(17px * var(--fs-boost, 1)); }
 .ly-img-missing {
   display: flex;
   align-items: center;
@@ -843,7 +854,7 @@
   border-radius: var(--radius);
   background: var(--surface-2);
   color: var(--text-3);
-  font-size: 18px;
+  font-size: calc(18px * var(--fs-boost, 1));
 }
 
 /* ---------- 数据图（自绘 SVG） ---------- */
@@ -860,10 +871,10 @@
 }
 .ly-chart-grid { stroke: var(--border); stroke-width: 1; }
 .ly-chart-axis-line { stroke: var(--border-strong); stroke-width: 1.5; }
-.ly-chart-axis { fill: var(--text-3); font-size: 18px; font-variant-numeric: tabular-nums; }
-.ly-chart-xlabel { fill: var(--text-2); font-size: 19px; font-weight: 600; }
+.ly-chart-axis { fill: var(--text-3); font-size: calc(18px * var(--fs-boost, 1)); font-variant-numeric: tabular-nums; }
+.ly-chart-xlabel { fill: var(--text-2); font-size: calc(19px * var(--fs-boost, 1)); font-weight: 600; }
 .ly-chart-xlabel.hl { fill: var(--accent); }
-.ly-chart-value { fill: var(--text-2); font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ly-chart-value { fill: var(--text-2); font-size: calc(19px * var(--fs-boost, 1)); font-weight: 700; font-variant-numeric: tabular-nums; }
 .ly-chart-value.hl { fill: var(--accent); }
 .ly-chart-bar { opacity: 0.9; }
 .ly-chart-bar.hl { opacity: 1; }
@@ -874,7 +885,7 @@
   display: flex;
   gap: 26px;
   justify-content: center;
-  font-size: 18px;
+  font-size: calc(18px * var(--fs-boost, 1));
   color: var(--text-2);
 }
 .ly-chart-legend i {
@@ -903,7 +914,7 @@
   grid-template-columns: 18px 1fr auto auto;
   gap: 14px;
   align-items: center;
-  font-size: 21px;
+  font-size: calc(21px * var(--fs-boost, 1));
 }
 .ly-donut-item i { width: 16px; height: 16px; border-radius: 4px; display: block; }
 .ly-donut-label { color: var(--text-1); }
@@ -918,7 +929,7 @@
 }
 .ly-formula math { font-size: 1.9em; }
 .ly-formula .katex { font-size: 1.5em; }
-.ly-formula-fallback { font-size: 26px; }
+.ly-formula-fallback { font-size: calc(26px * var(--fs-boost, 1)); }
 
 /* ---------- 页级背景（整页图 + 压暗遮罩） ---------- */
 .ly-bg-scrim {
@@ -961,7 +972,7 @@
   display: flex;
   align-items: baseline;
   gap: 18px;
-  font-size: 26px;
+  font-size: calc(26px * var(--fs-boost, 1));
   line-height: 1.5;
   padding: 20px 26px;
   background: var(--surface);

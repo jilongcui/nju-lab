@@ -1,4 +1,7 @@
 /* html-ppt :: base.css — reset + shared tokens + layout primitives */
+/* ⚠️ 本平台改动（2026-10-10）：所有 `font-size:Npx` 已改写为 `calc(Npx * var(--fs-boost, 1))`，
+ *    与 semantic/layouts.css 的字号倍率同源（原因见 layouts.css 顶部「为什么要有 --fs-boost」）。
+ *    除字号与既有 print 块外，本文件按原样保留。 */
 /* Default tokens. Themes in assets/themes/*.css override the :root block. */
 :root {
   --bg: #ffffff;
@@ -93,13 +96,13 @@ body.single .slide{position:relative;width:100%;height:100%;opacity:1;transform:
 body[data-fit="fluid"].single .slide{width:100vw;height:100vh}
 
 /* ================= TYPOGRAPHY ================= */
-.eyebrow{font-size:13px;font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--text-3)}
-.kicker{font-size:14px;font-weight:600;color:var(--accent);letter-spacing:.08em;text-transform:uppercase}
-h1.title,.h1{font-family:var(--font-display);font-size:72px;line-height:1.05;font-weight:800;letter-spacing:var(--letter-tight);margin:0 0 18px;color:var(--text-1)}
-h2.title,.h2{font-family:var(--font-display);font-size:54px;line-height:1.1;font-weight:700;letter-spacing:var(--letter-tight);margin:0 0 14px}
-h3,.h3{font-size:32px;line-height:1.2;font-weight:600;letter-spacing:var(--letter-normal);margin:0 0 10px}
-h4,.h4{font-size:22px;line-height:1.3;font-weight:600;margin:0 0 8px}
-.lede{font-size:22px;line-height:1.55;color:var(--text-2);font-weight:300;max-width:62ch}
+.eyebrow{font-size: calc(13px * var(--fs-boost, 1));font-weight:500;letter-spacing:.16em;text-transform:uppercase;color:var(--text-3)}
+.kicker{font-size: calc(14px * var(--fs-boost, 1));font-weight:600;color:var(--accent);letter-spacing:.08em;text-transform:uppercase}
+h1.title,.h1{font-family:var(--font-display);font-size: calc(72px * var(--fs-boost, 1));line-height:1.05;font-weight:800;letter-spacing:var(--letter-tight);margin:0 0 18px;color:var(--text-1)}
+h2.title,.h2{font-family:var(--font-display);font-size: calc(54px * var(--fs-boost, 1));line-height:1.1;font-weight:700;letter-spacing:var(--letter-tight);margin:0 0 14px}
+h3,.h3{font-size: calc(32px * var(--fs-boost, 1));line-height:1.2;font-weight:600;letter-spacing:var(--letter-normal);margin:0 0 10px}
+h4,.h4{font-size: calc(22px * var(--fs-boost, 1));line-height:1.3;font-weight:600;margin:0 0 8px}
+.lede{font-size: calc(22px * var(--fs-boost, 1));line-height:1.55;color:var(--text-2);font-weight:300;max-width:62ch}
 .dim{color:var(--text-2)}
 .dim2{color:var(--text-3)}
 .mono{font-family:var(--font-mono)}
@@ -129,7 +132,7 @@ h4,.h4{font-size:22px;line-height:1.3;font-weight:600;margin:0 0 8px}
 .card-hover{transition:transform .3s var(--ease),box-shadow .3s var(--ease)}
 .card-hover:hover{transform:translateY(-4px);box-shadow:var(--shadow-lg)}
 
-.pill{display:inline-block;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:500;
+.pill{display:inline-block;padding:4px 12px;border-radius:999px;font-size: calc(12px * var(--fs-boost, 1));font-weight:500;
   background:var(--surface-2);color:var(--text-2);border:1px solid var(--border)}
 .pill-accent{background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 28%,transparent)}
 
@@ -156,16 +159,16 @@ h4,.h4{font-size:22px;line-height:1.3;font-weight:600;margin:0 0 8px}
 .img-frame.fill{height:100%;aspect-ratio:auto}
 .img-scrim{position:absolute;inset:0;
   background:linear-gradient(180deg,transparent 42%,rgba(8,10,20,.72))}
-.img-cap{margin:10px 2px 0;font-size:14px;line-height:1.5;color:var(--text-3)}
+.img-cap{margin:10px 2px 0;font-size: calc(14px * var(--fs-boost, 1));line-height:1.5;color:var(--text-3)}
 .img-tag{position:absolute;top:14px;left:14px;padding:5px 12px;border-radius:999px;
-  background:rgba(10,12,20,.55);color:#fff;font-size:12px;letter-spacing:.06em;
+  background:rgba(10,12,20,.55);color:#fff;font-size: calc(12px * var(--fs-boost, 1));letter-spacing:.06em;
   text-transform:uppercase;backdrop-filter:blur(6px)}
 
 /* ================= CHROME (header/footer/progress) ================= */
 .deck-header{position:absolute;top:24px;left:40px;right:40px;display:flex;align-items:center;justify-content:space-between;
-  font-size:12px;color:var(--text-3);letter-spacing:.12em;text-transform:uppercase;z-index:10;pointer-events:none}
+  font-size: calc(12px * var(--fs-boost, 1));color:var(--text-3);letter-spacing:.12em;text-transform:uppercase;z-index:10;pointer-events:none}
 .deck-footer{position:absolute;bottom:24px;left:40px;right:40px;display:flex;align-items:center;justify-content:space-between;
-  font-size:12px;color:var(--text-3);z-index:10;pointer-events:none}
+  font-size: calc(12px * var(--fs-boost, 1));color:var(--text-3);z-index:10;pointer-events:none}
 .slide-number::before{content:attr(data-current)}
 .slide-number::after{content:" / " attr(data-total)}
 .progress-bar{position:fixed;left:0;right:0;bottom:0;height:3px;background:transparent;z-index:20}
@@ -193,7 +196,7 @@ h4,.h4{font-size:22px;line-height:1.3;font-weight:600;margin:0 0 8px}
  * from the audience. */
 .notes,.speaker-notes{display:none!important}
 .notes-overlay{position:fixed;inset:auto 0 0 0;max-height:42vh;background:rgba(20,22,30,.95);color:#e8ebf4;
-  padding:20px 32px;font-size:16px;line-height:1.6;border-top:1px solid rgba(255,255,255,.1);transform:translateY(100%);
+  padding:20px 32px;font-size: calc(16px * var(--fs-boost, 1));line-height:1.6;border-top:1px solid rgba(255,255,255,.1);transform:translateY(100%);
   transition:transform .3s var(--ease);z-index:40;overflow:auto;font-family:var(--font-sans)}
 .notes-overlay.open{transform:translateY(0)}
 .overview{position:fixed;inset:0;background:rgba(10,12,18,.92);backdrop-filter:blur(12px);z-index:50;
@@ -201,9 +204,9 @@ h4,.h4{font-size:22px;line-height:1.3;font-weight:600;margin:0 0 8px}
 .overview.open{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;align-content:start}
 .overview .thumb{background:var(--surface);border:1px solid var(--border);border-radius:12px;
   aspect-ratio:16/9;overflow:hidden;cursor:pointer;position:relative;color:var(--text-1);padding:16px;
-  font-size:11px;transition:transform .2s var(--ease)}
+  font-size: calc(11px * var(--fs-boost, 1));transition:transform .2s var(--ease)}
 .overview .thumb:hover{transform:scale(1.04)}
-.overview .thumb .n{position:absolute;top:8px;left:10px;font-weight:700;font-size:14px;color:var(--text-3)}
+.overview .thumb .n{position:absolute;top:8px;left:10px;font-weight:700;font-size: calc(14px * var(--fs-boost, 1));color:var(--text-3)}
 .overview .thumb .t{position:absolute;bottom:10px;left:14px;right:14px;font-weight:600;color:var(--text-1)}
 
 /* ================= PRESENTER VIEW ================= */

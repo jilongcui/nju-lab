@@ -8,9 +8,12 @@
 - 版本：commit `fd1629067909ff55b36b905476de4e5f26062a1f`（2026-09-14）
 - 许可：MIT（见本目录 `LICENSE`，Copyright (c) 2026 lewis <sudolewis@gmail.com>）
 - 取用范围：
-  - `base.css` —— 原样保留（设计令牌体系、固定 1920×1080 画布与缩放适配、排版阶梯、
-    卡片/网格/图片框/页眉页脚/进度条/讲者备注等组件类）；它在 HTML 中**先加载**，
+  - `base.css` —— 组件类与设计令牌体系原样保留（固定 1920×1080 画布与缩放适配、排版阶梯、
+    卡片/网格/图片框/页眉页脚/进度条/讲者备注等）；它在 HTML 中**先加载**，
     我们的主题与版式在它之后注入。
+    **本平台改动（2026-10-10）**：该文件内 15 处 `font-size:Npx` 已改写为
+    `calc(Npx * var(--fs-boost, 1))`，与 `semantic/layouts.css` 用同一个字号倍率令牌
+    （原因：1920 画布下按 px 标定的字号上屏偏小，详见 `layouts.css` 顶部说明）。
   - `themes/*.css` —— 原样保留（`academic-paper`、`swiss-grid`、`editorial-serif`、`bauhaus`
     等 token 主题文件，每套 0.7–1.4KB）。
 - **本平台的改动与补充**（不在原文件内，见 `../semantic/`）：

@@ -188,6 +188,25 @@ check(
   /\.deck\s*\{[^}]*--ly-scale:\s*1;/.test(layoutsCss) &&
     /\.deck\s*\{[^}]*--ly-card-bg:/.test(layoutsCss),
 );
+// 2026-10-10 实测补：字号写死 px 会绕过倍率（原先 55 处 + vendor 15 处），
+// 在 1920 画布上再缩到容器就只剩十来像素 —— 用户直接反馈「文字太小」。
+check('字号整体倍率 --fs-boost 定义在 .deck 上（画布级）', /\.deck\s*\{[^}]*--fs-boost:\s*[0-9.]+;/.test(layoutsCss));
+const typeCss = [
+  ['semantic/layouts.css', layoutsCss],
+  ['vendor/html-ppt/base.css', readFileSync(join(webRoot, 'src/slides/vendor/html-ppt/base.css'), 'utf8')],
+];
+const bareFontPx = typeCss.flatMap(([name, css]) =>
+  [...css.matchAll(/font-size:\s*([0-9.]+)px\b/g)].map((m) => `${name}:${m[1]}px`),
+);
+check('所有 px 字号都乘 --fs-boost（没有写死 px 的字号）', bareFontPx.length === 0, bareFontPx.slice(0, 6).join(' '));
+check(
+  '字号倍率在合理区间（1.2–1.5：上屏可读，且离线 13 页四档实测不越界）',
+  (() => {
+    const m = layoutsCss.match(/--fs-boost:\s*([0-9.]+);/);
+    const value = m ? Number(m[1]) : 0;
+    return value >= 1.2 && value <= 1.5;
+  })(),
+);
 
 // ---------------- 7. 旧模型适配器（平台既有 deck 的迁移路径）----------------
 const legacyPages = legacyDeckToPages(LEGACY_SLIDES);
@@ -411,7 +430,7 @@ const tunedCss = themeCss(DECK_THEMES[0], tuned);
 check('调参令牌进入文档 CSS', tunedCss.includes('--ly-scale: 1.08;') && tunedCss.includes('--ly-gap: 1.22;'));
 check(
   '版式 CSS 一律读令牌（字号/间距/卡片都能被调参覆盖）',
-  /font-size: calc\(54px \* var\(--ly-scale\)\)/.test(layoutsCss) &&
+  /font-size: calc\(54px \* var\(--ly-scale\) \* var\(--fs-boost, 1\)\)/.test(layoutsCss) &&
     /gap: calc\(18px \* var\(--ly-gap\)\)/.test(layoutsCss) &&
     /background: var\(--ly-card-bg\)/.test(layoutsCss),
 );
