@@ -12,12 +12,14 @@
 ## 导航
 
 - 运行态事实、服务与部署现状：`HANDOFF.md`
+- **下一批实验的落地计划（还有哪几章没实验、按什么批次做）**：[`docs/PLAN-2026-10-experiment-roadmap.md`](docs/PLAN-2026-10-experiment-roadmap.md)
 - **出题教师 —— 要加新实验先看这份**：[`docs/EXPERIMENT-CREATION-GUIDE.md`](docs/EXPERIMENT-CREATION-GUIDE.md)：创建实验的完整思路（为什么做这一系列实验、从需求推导题目的顺序、十一步照做含命令、判据分层与防退化、实测踩过的坑、发布前检查清单）
 - 设计框架 `docs/EXPERIMENT-DESIGN-FRAMEWORK.md`、实验包规范 `docs/EXPERIMENT-PACKAGE-SPEC.md`
 - 客户端设计：`nju-lab-client-design.md`；其他设计：`docs/DESIGN-*.md`
 - 验收记录：`docs/ACCEPTANCE-*.md`（**历史快照，勿改**）
 - 本地构件（插件 / profile / kit）：`dsh/`
-- 实验包（三个已发布的 + `csv-cleaner`）：`server/fixtures/<fx>/`，目录结构与命名见 CREATION-GUIDE §2
+- 实验包（可直接复制改名）：`server/fixtures/<fx>/` —— **最新样板** `sql-crud`（口径钉死 + 逐字段比对）、
+  `vector-search`（检索 + 对照 + 指标）、`kg-alerts`（建图 + 多跳 + 本体校验）；更早的样板见 CREATION-GUIDE §6
 - 项目 skill（可复用的 agent 操作，如更新课程章节正文）：`.kimi-code/skills/`
 
 ## 纪律
