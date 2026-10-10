@@ -1,0 +1,76 @@
+{
+  "entity_types": {
+    "二甲双胍": "Drug",
+    "华法林": "Drug",
+    "阿司匹林": "Drug",
+    "布洛芬": "Drug",
+    "氯吡格雷": "Drug",
+    "胰岛素": "Drug",
+    "地高辛": "Drug",
+    "呋塞米": "Drug",
+    "卡托普利": "Drug",
+    "美托洛尔": "Drug",
+    "辛伐他汀": "Drug",
+    "阿莫西林": "Drug",
+    "2型糖尿病": "Disease",
+    "严重肾功能不全": "Disease",
+    "冠心病": "Disease",
+    "高血压": "Disease",
+    "心力衰竭": "Disease",
+    "心房颤动": "Disease",
+    "消化道出血": "Disease",
+    "痛风": "Disease",
+    "哮喘": "Disease",
+    "甲状腺功能减退": "Disease",
+    "出血": "Symptom",
+    "低血糖": "Symptom",
+    "干咳": "Symptom",
+    "心动过缓": "Symptom",
+    "皮疹": "Symptom",
+    "胃肠道不适": "Symptom",
+    "P001": "Patient",
+    "P002": "Patient",
+    "P003": "Patient",
+    "P004": "Patient",
+    "P005": "Patient",
+    "P006": "Patient",
+    "P007": "Patient",
+    "P008": "Patient",
+    "P009": "Patient",
+    "P010": "Patient",
+    "P011": "Patient",
+    "P012": "Patient",
+    "P013": "Patient"
+  },
+  "relation_schema": {
+    "禁忌证": {
+      "from": "Drug",
+      "to": "Disease"
+    },
+    "相互作用": {
+      "from": "Drug",
+      "to": "Drug"
+    },
+    "不良反应": {
+      "from": "Drug",
+      "to": "Symptom"
+    },
+    "患有": {
+      "from": "Patient",
+      "to": "Disease"
+    },
+    "服用": {
+      "from": "Patient",
+      "to": "Drug"
+    },
+    "医嘱使用": {
+      "from": "Patient",
+      "to": "Drug"
+    },
+    "过敏": {
+      "from": "Patient",
+      "to": "Drug"
+    }
+  },
+  "note": "图更新要按 relation_schema 校验：head 的类型必须是 from、tail 的类型必须是 to，否则拒绝该条更新"
+}

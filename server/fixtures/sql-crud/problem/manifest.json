@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "name": "sql-crud",
+  "title": "关系数据库实验：检验数据登记与查询（建库 + 增删改查 + SQL 统计）",
+  "outputFile": "output.json",
+  "inputs": ["patients.csv", "visits.csv", "labs.csv", "corrections.json"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['profile','schema','loaded','dropped','crud','query_results','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "原始行数报对（真的读过三张表）",
+      "expr": "out.profile.raw_rows.patients === expected.profile.raw_rows.patients && out.profile.raw_rows.visits === expected.profile.raw_rows.visits && out.profile.raw_rows.labs === expected.profile.raw_rows.labs"
+    },
+    {
+      "name": "清洗口径一致：入库行数",
+      "expr": "out.loaded.patients === expected.loaded.patients && out.loaded.visits === expected.loaded.visits && out.loaded.labs === expected.loaded.labs"
+    },
+    {
+      "name": "清洗口径一致：丢弃的脏行计数",
+      "expr": "out.dropped.invalid === expected.dropped.invalid && out.dropped.duplicates === expected.dropped.duplicates"
+    },
+    {
+      "name": "表结构是关系式的（每表有主键、至少两张表声明了外键）",
+      "expr": "Array.isArray(out.schema.tables) && out.schema.tables.length >= 3 && out.schema.tables.filter((t) => Array.isArray(t.primary_key) && t.primary_key.length > 0).length >= 3 && out.schema.tables.filter((t) => Array.isArray(t.foreign_keys) && t.foreign_keys.length > 0).length >= 2"
+    },
+    {
+      "name": "外键约束真的生效（引用不存在就诊的报告被拒绝）",
+      "expr": "out.crud.rejected_orphan_labs === expected.crud.rejected_orphan_labs && out.crud.rejected_orphan_labs >= 1"
+    },
+    {
+      "name": "增删改都真的落到库里",
+      "expr": "out.crud.deleted_labs === expected.crud.deleted_labs && out.crud.updated_visits === expected.crud.updated_visits && out.crud.inserted_visits === expected.crud.inserted_visits && out.crud.inserted_labs === expected.crud.inserted_labs && out.crud.final_labs === expected.crud.final_labs && out.crud.final_visits === expected.crud.final_visits"
+    },
+    {
+      "name": "q1 超标患者名单正确（三表 JOIN + 排序）",
+      "expr": "JSON.stringify(out.query_results.q1_hba1c_patients) === JSON.stringify(expected.query_results.q1_hba1c_patients)"
+    },
+    {
+      "name": "q2 各科室统计正确（GROUP BY，按科室名升序）",
+      "expr": "Array.isArray(out.query_results.q2_by_department) && out.query_results.q2_by_department.length === expected.query_results.q2_by_department.length && out.query_results.q2_by_department.every((row) => expected.query_results.q2_by_department.some((e) => e.department === row.department && e.n_patients === row.n_patients))"
+    },
+    {
+      "name": "q3 检验次数统计正确（GROUP BY + HAVING）",
+      "expr": "JSON.stringify(out.query_results.q3_frequent_patients) === JSON.stringify(expected.query_results.q3_frequent_patients)"
+    },
+    {
+      "name": "图与说明齐全（至少 1 张，含一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 1 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "说清设计（notes ≥ 40 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 40"
+    }
+  ],
+  "requires": { "python": ["sqlite3", "matplotlib"] }
+}

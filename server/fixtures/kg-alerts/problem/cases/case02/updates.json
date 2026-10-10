@@ -1,0 +1,48 @@
+{
+  "note": "用药审查前的图更新：补录一位新患者 / 撤销一条医嘱 / 更正一条错误关系 / 一条违反本体的更新（必须被拒绝）",
+  "add_triples": [
+    {
+      "head": "P013",
+      "relation": "患有",
+      "tail": "高血压"
+    },
+    {
+      "head": "P013",
+      "relation": "服用",
+      "tail": "华法林"
+    },
+    {
+      "head": "P013",
+      "relation": "服用",
+      "tail": "阿司匹林"
+    }
+  ],
+  "remove_triples": [
+    {
+      "head": "P002",
+      "relation": "服用",
+      "tail": "二甲双胍"
+    }
+  ],
+  "replace_triples": [
+    {
+      "old": {
+        "head": "P010",
+        "relation": "服用",
+        "tail": "阿司匹林"
+      },
+      "new": {
+        "head": "P010",
+        "relation": "服用",
+        "tail": "二甲双胍"
+      }
+    }
+  ],
+  "invalid_triples": [
+    {
+      "head": "P010",
+      "relation": "禁忌证",
+      "tail": "高血压"
+    }
+  ]
+}

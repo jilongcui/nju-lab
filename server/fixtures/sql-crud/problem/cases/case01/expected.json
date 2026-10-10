@@ -1,0 +1,153 @@
+{
+  "note": "参考水平（不是标准答案）：清洗口径与查询口径已在 task.md 里钉死，所以数值是确定的 —— 这几项用于核对学生的清洗是否与口径一致、更正是否真的落到库里、查询结果对不对。硬性判据见 manifest.json 的 assertions，语义判据见 judge.md。",
+  "profile": {
+    "raw_rows": {
+      "patients": 42,
+      "visits": 49,
+      "labs": 121
+    }
+  },
+  "dropped": {
+    "invalid": 19,
+    "duplicates": 10
+  },
+  "loaded": {
+    "patients": 39,
+    "visits": 43,
+    "labs": 101
+  },
+  "crud": {
+    "deleted_labs": 2,
+    "updated_visits": 1,
+    "inserted_visits": 1,
+    "inserted_labs": 1,
+    "rejected_orphan_labs": 1,
+    "final_visits": 44,
+    "final_labs": 100
+  },
+  "query_results": {
+    "q1_hba1c_patients": [
+      "P0011",
+      "P0012",
+      "P0014",
+      "P0015",
+      "P0016",
+      "P0017",
+      "P0019",
+      "P0026",
+      "P0028",
+      "P0029",
+      "P0031",
+      "P0033",
+      "P0039"
+    ],
+    "q2_by_department": [
+      {
+        "department": "内分泌科",
+        "n_patients": 10
+      },
+      {
+        "department": "心内科",
+        "n_patients": 2
+      },
+      {
+        "department": "肾内科",
+        "n_patients": 1
+      }
+    ],
+    "q3_frequent_patients": [
+      {
+        "patient_id": "P0004",
+        "n_labs": 4
+      },
+      {
+        "patient_id": "P0005",
+        "n_labs": 3
+      },
+      {
+        "patient_id": "P0007",
+        "n_labs": 3
+      },
+      {
+        "patient_id": "P0010",
+        "n_labs": 4
+      },
+      {
+        "patient_id": "P0011",
+        "n_labs": 5
+      },
+      {
+        "patient_id": "P0012",
+        "n_labs": 3
+      },
+      {
+        "patient_id": "P0013",
+        "n_labs": 3
+      },
+      {
+        "patient_id": "P0014",
+        "n_labs": 3
+      },
+      {
+        "patient_id": "P0015",
+        "n_labs": 3
+      },
+      {
+        "patient_id": "P0017",
+        "n_labs": 3
+      },
+      {
+        "patient_id": "P0019",
+        "n_labs": 4
+      },
+      {
+        "patient_id": "P0020",
+        "n_labs": 3
+      },
+      {
+        "patient_id": "P0023",
+        "n_labs": 3
+      },
+      {
+        "patient_id": "P0024",
+        "n_labs": 3
+      },
+      {
+        "patient_id": "P0025",
+        "n_labs": 4
+      },
+      {
+        "patient_id": "P0026",
+        "n_labs": 4
+      },
+      {
+        "patient_id": "P0028",
+        "n_labs": 3
+      },
+      {
+        "patient_id": "P0029",
+        "n_labs": 3
+      },
+      {
+        "patient_id": "P0031",
+        "n_labs": 7
+      },
+      {
+        "patient_id": "P0033",
+        "n_labs": 6
+      },
+      {
+        "patient_id": "P0036",
+        "n_labs": 3
+      },
+      {
+        "patient_id": "P0037",
+        "n_labs": 4
+      }
+    ]
+  },
+  "accept": {
+    "hba1c_threshold": 7.0,
+    "min_figures": 1
+  }
+}

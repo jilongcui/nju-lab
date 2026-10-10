@@ -1,0 +1,38 @@
+{
+  "note": "临床数据更正单：撤回误报的检验报告 / 更正就诊科室 / 补录一次就诊与检验",
+  "retract_labs": [
+    "R0129",
+    "R0141"
+  ],
+  "update_visit_departments": [
+    {
+      "visit_id": "V0044",
+      "new_department": "内分泌科"
+    }
+  ],
+  "add_visits": [
+    {
+      "visit_id": "V9058",
+      "patient_id": "P0026",
+      "department": "内分泌科",
+      "visit_date": "2026-04-26",
+      "diagnosis": "2型糖尿病"
+    }
+  ],
+  "add_labs": [
+    {
+      "report_id": "R9001",
+      "visit_id": "V9058",
+      "item": "HbA1c",
+      "value": 8.4,
+      "unit": "%"
+    },
+    {
+      "report_id": "R9002",
+      "visit_id": "V9998",
+      "item": "HbA1c",
+      "value": 7.7,
+      "unit": "%"
+    }
+  ]
+}

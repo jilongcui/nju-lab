@@ -1,0 +1,201 @@
+{
+  "note": "参考水平（不是标准答案）：向量化与检索口径已在 task.md 里钉死，所以 Top-K 与召回率是确定的。这几项用于核对学生的向量化/检索是否与口径一致、更新单是否真的改到索引上。硬性判据见 manifest.json 的 assertions，语义判据见 judge.md。",
+  "index": {
+    "dim": 14,
+    "n_docs": 60
+  },
+  "retrieval": [
+    {
+      "query_id": "q1",
+      "top_ids": [
+        "D029",
+        "D034",
+        "D046"
+      ]
+    },
+    {
+      "query_id": "q2",
+      "top_ids": [
+        "D017",
+        "D019",
+        "D037"
+      ]
+    },
+    {
+      "query_id": "q3",
+      "top_ids": [
+        "D029",
+        "D034",
+        "D046"
+      ]
+    },
+    {
+      "query_id": "q4",
+      "top_ids": []
+    },
+    {
+      "query_id": "q5",
+      "top_ids": [
+        "D001",
+        "D020",
+        "D041"
+      ]
+    },
+    {
+      "query_id": "q6",
+      "top_ids": [
+        "D015",
+        "D058",
+        "D030"
+      ]
+    },
+    {
+      "query_id": "q7",
+      "top_ids": [
+        "D024",
+        "D026",
+        "D028"
+      ]
+    },
+    {
+      "query_id": "q8",
+      "top_ids": []
+    },
+    {
+      "query_id": "q9",
+      "top_ids": [
+        "D024",
+        "D026",
+        "D028"
+      ]
+    },
+    {
+      "query_id": "q10",
+      "top_ids": [
+        "D029",
+        "D034",
+        "D046"
+      ]
+    },
+    {
+      "query_id": "q11",
+      "top_ids": [
+        "D018",
+        "D012",
+        "D032"
+      ]
+    },
+    {
+      "query_id": "q12",
+      "top_ids": []
+    }
+  ],
+  "keyword_baseline": [
+    {
+      "query_id": "q1",
+      "top_ids": [
+        "D011",
+        "D040",
+        "D042"
+      ]
+    },
+    {
+      "query_id": "q2",
+      "top_ids": []
+    },
+    {
+      "query_id": "q3",
+      "top_ids": [
+        "D029",
+        "D043"
+      ]
+    },
+    {
+      "query_id": "q4",
+      "top_ids": []
+    },
+    {
+      "query_id": "q5",
+      "top_ids": [
+        "D020",
+        "D041",
+        "D001"
+      ]
+    },
+    {
+      "query_id": "q6",
+      "top_ids": []
+    },
+    {
+      "query_id": "q7",
+      "top_ids": []
+    },
+    {
+      "query_id": "q8",
+      "top_ids": []
+    },
+    {
+      "query_id": "q9",
+      "top_ids": [
+        "D023",
+        "D024",
+        "D026"
+      ]
+    },
+    {
+      "query_id": "q10",
+      "top_ids": [
+        "D029",
+        "D043"
+      ]
+    },
+    {
+      "query_id": "q11",
+      "top_ids": []
+    },
+    {
+      "query_id": "q12",
+      "top_ids": []
+    }
+  ],
+  "metrics": {
+    "recall_at_3_vector": 0.4345,
+    "recall_at_3_keyword": 0.1921,
+    "n_queries_evaluated": 9
+  },
+  "crud": {
+    "added": 1,
+    "updated": 1,
+    "deleted": 1,
+    "n_docs_final": 60,
+    "post_retrieval": [
+      {
+        "query_id": "q1",
+        "top_ids": [
+          "D029",
+          "D034",
+          "D046"
+        ]
+      },
+      {
+        "query_id": "q2",
+        "top_ids": [
+          "D017",
+          "D019",
+          "D037"
+        ]
+      }
+    ],
+    "filtered": {
+      "query_id": "q10",
+      "dept": "呼吸科",
+      "top_ids": [
+        "D011"
+      ]
+    }
+  },
+  "accept": {
+    "top_k": 3,
+    "vector_must_beat_keyword": true
+  }
+}

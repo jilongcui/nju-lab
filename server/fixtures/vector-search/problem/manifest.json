@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "name": "vector-search",
+  "title": "向量数据库实验：相似病例语义检索（向量化 + Top-K + 增删改查）",
+  "outputFile": "output.json",
+  "inputs": ["corpus.csv", "queries.csv", "concepts.json", "updates.json"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['index','retrieval','keyword_baseline','metrics','crud','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "向量维度与语料条数按词表报对",
+      "expr": "out.index.dim === expected.index.dim && out.index.n_docs === expected.index.n_docs && out.index.n_docs_after_crud === expected.crud.n_docs_final"
+    },
+    {
+      "name": "向量检索 Top-3 与口径一致（逐条查询）",
+      "expr": "JSON.stringify(out.retrieval.map((r) => [r.query_id, r.top_k.map((x) => x.doc_id)])) === JSON.stringify(expected.retrieval.map((r) => [r.query_id, r.top_ids]))"
+    },
+    {
+      "name": "相似度按降序排列（检索结果有序）",
+      "expr": "Array.isArray(out.retrieval) && out.retrieval.every((r) => Array.isArray(r.top_k) && r.top_k.every((x, i, a) => typeof x.score === 'number' && (i === 0 || a[i - 1].score >= x.score)))"
+    },
+    {
+      "name": "关键词对照检索 Top-3 与口径一致",
+      "expr": "JSON.stringify(out.keyword_baseline.map((r) => [r.query_id, r.top_k.map((x) => x.doc_id)])) === JSON.stringify(expected.keyword_baseline.map((r) => [r.query_id, r.top_ids]))"
+    },
+    {
+      "name": "两种检索的 recall@3 与口径一致（四舍五入 4 位）",
+      "expr": "abs(out.metrics.recall_at_3_vector - expected.metrics.recall_at_3_vector) < 0.001 && abs(out.metrics.recall_at_3_keyword - expected.metrics.recall_at_3_keyword) < 0.001 && out.metrics.n_queries_evaluated === expected.metrics.n_queries_evaluated"
+    },
+    {
+      "name": "语义检索必须优于关键词检索（这是本实验要看到的现象）",
+      "expr": "out.metrics.recall_at_3_vector > out.metrics.recall_at_3_keyword"
+    },
+    {
+      "name": "增删改都落到索引上（条数与最终条数）",
+      "expr": "out.crud.added === expected.crud.added && out.crud.updated === expected.crud.updated && out.crud.deleted === expected.crud.deleted && out.crud.n_docs_final === expected.crud.n_docs_final"
+    },
+    {
+      "name": "更新之后的检索结果与口径一致（改写后向量确实重算）",
+      "expr": "JSON.stringify(out.crud.post_retrieval.map((r) => [r.query_id, r.top_k.map((x) => x.doc_id)])) === JSON.stringify(expected.crud.post_retrieval.map((r) => [r.query_id, r.top_ids]))"
+    },
+    {
+      "name": "带科室过滤的检索与口径一致",
+      "expr": "out.crud.filtered.dept === expected.crud.filtered.dept && out.crud.filtered.query_id === expected.crud.filtered.query_id && JSON.stringify(out.crud.filtered.top_k.map((x) => x.doc_id)) === JSON.stringify(expected.crud.filtered.top_ids)"
+    },
+    {
+      "name": "图与说明齐全（至少 1 张，含一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 1 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "说清机制（notes ≥ 40 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 40"
+    }
+  ],
+  "requires": { "python": ["math", "matplotlib"] }
+}

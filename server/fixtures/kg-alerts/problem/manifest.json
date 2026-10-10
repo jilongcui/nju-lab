@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "name": "kg-alerts",
+  "title": "知识图谱实验：用药安全预警（三元组建图 + 多跳查询 + 本体校验）",
+  "outputFile": "output.json",
+  "inputs": ["triples.csv", "ontology.json", "updates.json"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['graph','crud','alerts_before','alerts_after','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "图的规模与类型统计正确",
+      "expr": "out.graph.n_nodes === expected.graph.n_nodes && out.graph.n_edges === expected.graph.n_edges && JSON.stringify(Object.entries(out.graph.entity_types).sort()) === JSON.stringify(Object.entries(expected.graph.entity_types).sort()) && JSON.stringify(Object.entries(out.graph.relation_counts).sort()) === JSON.stringify(Object.entries(expected.graph.relation_counts).sort())"
+    },
+    {
+      "name": "图更新都落到图上（新增/撤销/更正/最终规模）",
+      "expr": "out.crud.added_edges === expected.crud.added_edges && out.crud.added_nodes === expected.crud.added_nodes && out.crud.removed_edges === expected.crud.removed_edges && out.crud.updated_edges === expected.crud.updated_edges && out.crud.final_n_nodes === expected.crud.final_n_nodes && out.crud.final_n_edges === expected.crud.final_n_edges"
+    },
+    {
+      "name": "本体校验真的生效（违反本体的更新被拒绝）",
+      "expr": "out.crud.rejected_updates === expected.crud.rejected_updates && out.crud.rejected_updates >= 1"
+    },
+    {
+      "name": "每一条预警都带完整推理路径（≥3 个三元组）",
+      "expr": "['contraindication','interaction'].every((k) => Array.isArray(out.alerts_before[k]) && out.alerts_before[k].every((a) => Array.isArray(a.path) && a.path.length >= 3 && a.path.every((t) => Array.isArray(t) && t.length === 3)))"
+    },
+    {
+      "name": "更新前的禁忌证预警与口径一致（含路径）",
+      "expr": "JSON.stringify(out.alerts_before.contraindication.map((a) => [a.patient, a.drug, a.with, a.path])) === JSON.stringify(expected.alerts_before.contraindication.map((a) => [a.patient, a.drug, a.with, a.path]))"
+    },
+    {
+      "name": "更新前的相互作用预警与口径一致（含路径）",
+      "expr": "JSON.stringify(out.alerts_before.interaction.map((a) => [a.patient, a.drug, a.drug2, a.path])) === JSON.stringify(expected.alerts_before.interaction.map((a) => [a.patient, a.drug, a.drug2, a.path]))"
+    },
+    {
+      "name": "更新后的禁忌证预警与口径一致（撤销医嘱要反映出来）",
+      "expr": "JSON.stringify(out.alerts_after.contraindication.map((a) => [a.patient, a.drug, a.with, a.path])) === JSON.stringify(expected.alerts_after.contraindication.map((a) => [a.patient, a.drug, a.with, a.path]))"
+    },
+    {
+      "name": "更新后的相互作用预警与口径一致（补录要反映出来）",
+      "expr": "JSON.stringify(out.alerts_after.interaction.map((a) => [a.patient, a.drug, a.drug2, a.path])) === JSON.stringify(expected.alerts_after.interaction.map((a) => [a.patient, a.drug, a.drug2, a.path]))"
+    },
+    {
+      "name": "图与说明齐全（至少 1 张，含一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 1 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "说清可解释性与局限（notes ≥ 40 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 40"
+    }
+  ],
+  "requires": { "python": ["networkx", "matplotlib"] }
+}

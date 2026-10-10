@@ -1,0 +1,150 @@
+{
+  "note": "参考水平（不是标准答案）：向量化与检索口径已在 task.md 里钉死，所以 Top-K 与召回率是确定的。这几项用于核对学生的向量化/检索是否与口径一致、更新单是否真的改到索引上。硬性判据见 manifest.json 的 assertions，语义判据见 judge.md。",
+  "index": {
+    "dim": 12,
+    "n_docs": 40
+  },
+  "retrieval": [
+    {
+      "query_id": "q1",
+      "top_ids": [
+        "D010",
+        "D028",
+        "D016"
+      ]
+    },
+    {
+      "query_id": "q2",
+      "top_ids": [
+        "D009",
+        "D033",
+        "D023"
+      ]
+    },
+    {
+      "query_id": "q3",
+      "top_ids": [
+        "D012",
+        "D020",
+        "D024"
+      ]
+    },
+    {
+      "query_id": "q4",
+      "top_ids": []
+    },
+    {
+      "query_id": "q5",
+      "top_ids": [
+        "D005",
+        "D013",
+        "D034"
+      ]
+    },
+    {
+      "query_id": "q6",
+      "top_ids": [
+        "D021",
+        "D038"
+      ]
+    },
+    {
+      "query_id": "q7",
+      "top_ids": [
+        "D001",
+        "D015",
+        "D025"
+      ]
+    },
+    {
+      "query_id": "q8",
+      "top_ids": []
+    }
+  ],
+  "keyword_baseline": [
+    {
+      "query_id": "q1",
+      "top_ids": [
+        "D028",
+        "D032",
+        "D010"
+      ]
+    },
+    {
+      "query_id": "q2",
+      "top_ids": []
+    },
+    {
+      "query_id": "q3",
+      "top_ids": []
+    },
+    {
+      "query_id": "q4",
+      "top_ids": [
+        "D006",
+        "D016",
+        "D018"
+      ]
+    },
+    {
+      "query_id": "q5",
+      "top_ids": [
+        "D027",
+        "D009",
+        "D038"
+      ]
+    },
+    {
+      "query_id": "q6",
+      "top_ids": []
+    },
+    {
+      "query_id": "q7",
+      "top_ids": []
+    },
+    {
+      "query_id": "q8",
+      "top_ids": []
+    }
+  ],
+  "metrics": {
+    "recall_at_3_vector": 0.6464,
+    "recall_at_3_keyword": 0.1278,
+    "n_queries_evaluated": 6
+  },
+  "crud": {
+    "added": 1,
+    "updated": 1,
+    "deleted": 1,
+    "n_docs_final": 40,
+    "post_retrieval": [
+      {
+        "query_id": "q1",
+        "top_ids": [
+          "D028",
+          "D016",
+          "D018"
+        ]
+      },
+      {
+        "query_id": "q2",
+        "top_ids": [
+          "D009",
+          "D033",
+          "D041"
+        ]
+      }
+    ],
+    "filtered": {
+      "query_id": "q5",
+      "dept": "内分泌科",
+      "top_ids": [
+        "D005"
+      ]
+    }
+  },
+  "accept": {
+    "top_k": 3,
+    "vector_must_beat_keyword": true
+  }
+}

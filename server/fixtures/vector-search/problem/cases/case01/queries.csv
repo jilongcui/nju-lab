@@ -1,0 +1,9 @@
+query_id,text,kind,relevant_doc_ids
+q1,患者情况：二甲双胍,same_words,D010|D016|D018|D028|D032
+q2,患者情况：意识丧失伴肢体抽动,paraphrase,D008|D009|D023|D025|D027|D033|D038
+q3,现病史：冠状动脉闭塞,paraphrase,D002|D012|D020|D024|D027
+q4,孕期营养补充与随访安排,unrelated,
+q5,咨询内容：喘息发作,same_words,D005|D013|D017|D026|D027|D034
+q6,本次就诊提示：收缩压超标,paraphrase,D021|D038
+q7,病例摘要：出汗心慌手抖,paraphrase,D001|D006|D015|D025
+q8,术后伤口换药与拆线时间,unrelated,

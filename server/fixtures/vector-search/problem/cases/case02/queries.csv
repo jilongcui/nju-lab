@@ -1,0 +1,13 @@
+query_id,text,kind,relevant_doc_ids
+q1,现病史：血糖控制不佳,same_words,D011|D029|D034|D040|D042|D043|D046|D048|D049|D055
+q2,咨询内容：eGFR 下降,paraphrase,D008|D013|D017|D019|D037|D038|D041|D049
+q3,本次就诊提示：糖代谢异常,paraphrase,D011|D029|D034|D040|D042|D043|D046|D048|D049|D055
+q4,体检套餐项目如何选择,unrelated,
+q5,本次就诊提示：降糖药二甲双胍,same_words,D001|D004|D020|D032|D041
+q6,病例摘要：呕血与柏油样便,paraphrase,D010|D011|D015|D030|D043|D054|D058
+q7,病例摘要：不能站立行走,paraphrase,D002|D023|D024|D026|D028|D047|D055
+q8,术后伤口换药与拆线时间,unrelated,
+q9,现病史：跌倒后髋部疼痛,same_words,D002|D023|D024|D026|D028|D047|D055
+q10,老人主诉：糖代谢异常,paraphrase,D011|D029|D034|D040|D042|D043|D046|D048|D049|D055
+q11,病例摘要：夜间憋气伴哮鸣音,paraphrase,D006|D012|D018|D032
+q12,体检套餐项目如何选择,unrelated,

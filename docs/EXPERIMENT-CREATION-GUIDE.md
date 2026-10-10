@@ -18,6 +18,10 @@
    （学生端 LLM 因此设成「**引导监督模式**」：带他走完流程、看住每一步别被跳过；
    但**不把"关键决定必须自己拍板"当门槛** —— 本阶段是**学习过程，不是考察过程**，
    他拿不准时模型可以直接给建议甚至替他定。见 FRAMEWORK §3.5 第 8 件。）
+   **流程随实验类型分支**：机器学习/深度学习走「看需求 → 看数据并画图 → 定基线 → 训练 → 评估并画图 → 结论」；
+   数据库/知识库类（关系库 / 向量库 / 图谱）走「看需求 → 摸清数据（或看懂词表/本体）→ **搭结构与环境** →
+   **增删改查** → 验证查询（JOIN / 相似度 / 多跳）→ 结论」—— 后者尤其要强调
+   **运行环境必须由脚本可复现地搭出来**（容器里没有现成的数据库服务，也没有外网）。
 3. **题目必须应用驱动**：有真实业务需求 + 达标线，而不是"练某个 API"。
    学生做的是"解决一个具体问题"，模型只是他选用的工具。
 4. **学生带得走**：实验结束后，学生手里是一套可迁移的流程
@@ -117,7 +121,7 @@ def regen_expected(): ...                  # 重算 cases/*/expected.json（图�
 
 ```sh
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/server/fixtures/<fx>:/w" \
-  --entrypoint python3 nju-lab-verify:0.2.0-rc.2-pkg5 \
+  --entrypoint python3 nju-lab-verify:0.2.0-rc.2-pkg6 \
   /w/problem/reference/scripts/train.py --regen-expected
 ```
 
@@ -175,14 +179,14 @@ cd server/fixtures/<fx>
 (cd problem && zip -qr ../problem.zip .) && (cd skill-template && zip -qr ../skill-template.zip .)
 
 # ① 包结构自检（断言条数 / 依赖可用性），几秒完成
-docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg5 \
+docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg6 \
   --check --skill /p/skill-template.zip --problem /p/problem.zip
 
 # ② 参考实现复验：必须 2/2 通过（这一步证明"题目可解 + 判据不误杀"）
 cd /home/ubuntu/nju-lab && mkdir -p .verify-scratch/out
 docker run --rm --env-file server/.env --memory 2g -e VERIFY_REASONING_EFFORT=low \
   -v "$PWD/server/fixtures/<fx>:/p:ro" -v "$PWD/.verify-scratch/out:/outputs" \
-  nju-lab-verify:0.2.0-rc.2-pkg5 --skill /p/problem/reference --problem /p/problem.zip \
+  nju-lab-verify:0.2.0-rc.2-pkg6 --skill /p/problem/reference --problem /p/problem.zip \
   --out /outputs/<fx>.json --timeout-ms 300000
 ```
 
@@ -291,6 +295,34 @@ judge 的 `max_tokens` 已调到 2048 并有短 JSON 重试 —— 别把判据�
 > 也遵循同一套流程与判据形态（各 13 条断言，`schemaVersion: 1`）—— 换的只是领域与数据，
 > "应用需求 → 六步 → 判据分层"这条链子不变。这正说明**方法论是稳定的**，新实验照着这套走即可。
 
-**怎么选**：新的实验优先考虑"和上面三个**不重复的任务类型或指标视角**"（例如聚类、异常检测、
-时间序列预测），但**只要沿用同一套六步流程与判据分层**，学生就能把已有的思路迁移过去 ——
+### 数据库 / 知识库章（2026-11 新增）：流程换一条，机制不变
+
+课程《分子医学人工智能理论与实验》第 6/7/8 章（关系数据库 / 向量数据库 / 知识图谱）下的三个实验
+`sql-crud` / `vector-search` / `kg-alerts` 是**另一条流程**、但**同一套机制**：
+
+| | `sql-crud` | `vector-search` | `kg-alerts` |
+| --- | --- | --- | --- |
+| 任务类型 | 建库 + SQL 增删改查 | 向量化 + Top-K + 对照 | 三元组建图 + 多跳预警 |
+| 应用场景 | 检验科数据登记与查询 | 相似病例语义检索 | 用药安全审查 |
+| 流程 | 需求 → 摸清数据 → 建库建表 → 清洗入库 → 增删改查 → 三表 JOIN 查询 | 需求 → 看懂词表 → 建向量库 → 检索（余弦）→ 增删改查（改写要重算向量）→ 对照评估 | 需求 → 看懂本体 → 建图 → 多跳预警（带路径）→ 图更新（本体校验）→ 更新后再查 |
+| 判据特色 | **外键真的拒绝**孤儿报告（`rejected_orphan_labs === 1`） | **改写后向量必须重算**（`post_retrieval` 要对） | **本体校验拒绝**非法更新（`rejected_updates === 1`） |
+| 断言条数 | 12 | 12 | 11 |
+| 参考实现成绩 | 入库 39/43/101（case01） | recall@3 0.65 vs 关键词 0.13 | 预警 5→4 / 5→6（case01） |
+
+三条经验（写新实验时照做）：
+
+1. **零新增依赖**：工作台与复验容器都在 `--internal` 网络里、**没有外网**，运行环境只能是
+   "镜像预装 + 学生脚本自己搭"。这三个实验分别用 `sqlite3`（标准库）、`math` + 词表计数、
+   `networkx`（镜像已有）—— **先查预装集，再定技术方案**。
+2. **口径钉死 = 逐字段可比**：这类实验不需要"达标线"，而是把清洗/更新/查询口径写死在 `task.md`，
+   于是结果唯一确定，`assertions` 可以逐条比对（比 ML 类更好判）。`sql-crud` 是最接近
+   "口径驱动 + 参考实现随包下发"的样板，照它抄。
+3. **把"约束会拒绝坏数据"设计成判据**：外键、本体校验让某些操作**失败** —— 让学生如实记录
+   被拒绝的条数，比让他"跑通"更能说明他真的建了约束。造题时**故意放一条非法输入**进 case。
+
+**怎么选**：新的实验优先考虑"和上面这些**不重复的任务类型或指标视角**"（例如聚类、异常检测、
+时间序列预测），但**只要沿用同一套流程骨架与判据分层**，学生就能把已有的思路迁移过去 ——
 这正是我们做这一系列实验的目的。
+
+> 流程本身**按实验类型分两条**（ML/深度学习一条、数据库/知识库一条），判据分层、材料形态、
+> 上线流程**完全共用** —— 所以加新类型时**平台代码一行都不用改**（见 `EXPERIMENT-PACKAGE-SPEC.md` §6）。
