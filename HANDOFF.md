@@ -5,6 +5,36 @@
 
 ## 0. 一句话现状
 
+**2026-10-11（幻灯片 v2 全量上线）：语义内容模型 + 固定舞台渲染器替换 reveal，课程 14 章幻灯片全部生成完毕**
+
+- **为什么换**：旧渲染器是 reveal + 16 种版式枚举 —— 模型要同时想「讲什么」和「用哪种版式」，
+  输出常退化成一水儿 bullets。新版把两者**解耦**：生成侧只产出**语义内容**（intent + 块 + 讲稿），
+  渲染侧用**固定 1920×1080 舞台 + `transform: scale`**，版式在任何窗口尺寸下完全一致。
+  设计见 `docs/DESIGN-2026-10-10-slides-semantic-html.md`，渲染层在 `web/src/slides/semantic/`。
+- **不需要数据库迁移**：v1/v2 共用 `slide_decks.slides` JSON 列，靠**结构自辨识**（每页有 `intent` 即 v2）；
+  历史 deck 由 `semantic/legacy.ts` 适配器渲染（教师无需重生成）。双层回退：生成侧 `SLIDES_SEMANTIC=0`、
+  渲染侧 `VITE_SLIDES_RENDERER=reveal`。
+- **本次上线 9 个提交**：`5852b07`（调研规划）→ `31daf79`（P0 渲染层）→ `e52ac5e`（P1 接平台）→
+  `60b6e53`（P2 前置）→ `47ae52d`（P2b 生成侧切语义模型 + 编辑面收窄）→ `52dc054`（P4 图表/公式/背景/PDF 导出）
+  → `f297f98`（修 intent 与内容块类型混淆）→ `1e651bb`（字号倍率 `--fs-boost`）→ `f9af65f`（学生端四项修复）。
+- **⚠️ 部署纪律（本次踩到的坑）**：代码改完必须**同时**更新两处，否则线上仍跑老幻灯片 ——
+  ① 前端产物：`bash deploy/deploy-web-lab.sh`（`VITE_BASE=/lab/`，先 assets 后 index.html，自带 md5 自检）；
+  ② 服务端进程：`cd server && npm run build` + `kill $(systemctl show nju-lab -p MainPID --value)`
+  （systemd `Restart=always` 拉起）。**前端产物不会随 git 自动更新 —— 只提交代码等于没上线。**
+- **课程 14 章幻灯片全部是 v2 语义 deck**（2026-10-11 实测）：deepseek-flash，每章 2–6 万 tokens、
+  40–130 秒，页数 15–20、覆盖 10–15 种版式、**0 警告、0 缺失**。旧的那批**内容错位** deck
+  （第 5 章挂着「提示工程介绍」、第 6 章挂着「思维链 COT」——9 月底按当时的章节内容生成的）已按当前正文重建。
+- **学生端四项修复**（`f9af65f`）：① 提示条移到演示**下方**（原先在上方挤压画面）；② 右侧附栏补
+  **课程章节目录**（当前章高亮、可跳转）；③ 加「放映」（全屏）与「总览」；④ 修「点『幻灯片』后 ←/→ 被
+  antd Segmented 当成切换选项、跳回『文档』」。其中**「总览」此前是空头承诺**（运行时只处理 next/prev/goto），
+  本次才真正实现（运行时克隆每页 DOM 等比缩放成缩略图，不依赖截图能力）。
+- **验证**：`node web/tools/assert-semantic.mjs` **79/79**；`node server/tools/assert-semantic-schema.mjs` **24/24**；
+  `PLAYWRIGHT_BROWSERS_PATH=… node web/tools/verify-chapter-slides.mjs` **21/21**（真实浏览器链路）。
+- **两个易踩的实现坑（均已加断言拦截）**：① `layouts.css` / `stage.ts` 的**注释**里出现 `*/` 或反引号，
+  会让 CSS 注释或运行时**模板字符串提前闭合**，后续规则/整段脚本静默失效（现象分别是「字号退化」与
+  「总览打开但缩略图缩成一条线」）；② 字号写死 px 会绕过 `--fs-boost`（原先 55 + 15 处），
+  整体观感就调不动 —— 新增字号务必写 `calc(Npx * var(--fs-boost, 1))`。
+
 **2026-10（批次 2：第 4 / 16 / 19 章）：三个实验包 + 三章正文修订 + 平台上线（均已实测）** ——
 **用户要求**：按 `docs/PLAN-2026-10-experiment-roadmap.md` 的**批次 2**（4 LLM 原理 → 16 记忆系统 →
 19 智能体综合实践）依次落地。**用户选定三件口径（路线图 §6 第 7/8/9 项）**：
