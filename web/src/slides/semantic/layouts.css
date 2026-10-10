@@ -786,6 +786,14 @@
 .ly-media .img-frame { aspect-ratio: var(--ly-ratio, 16/9); }
 .ly-media.inline .img-frame { max-width: 1180px; }
 
+/* 兜底区：intent 主渲染之后仍未被消费的块（绝不丢内容） */
+.ly-extra {
+  margin-top: 26px;
+}
+.ly-extra > * + * {
+  margin-top: 20px;
+}
+
 /* ---------- 大图 / 多图网格 / 占位 ---------- */
 .ly-media.inline .ly-img-missing { min-height: 420px; }
 .ly-media.full .ly-img-missing { min-height: 520px; }

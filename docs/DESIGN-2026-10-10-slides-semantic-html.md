@@ -3,7 +3,8 @@
 > 目标读者：接手实现的人。现状功能指南见 `docs/SLIDES.md`，历史设计见
 > `docs/DESIGN-2026-09-29-chapter-slides.md`、`docs/DESIGN-2026-09-30-slides-images.md`。
 > 本文是**规划 + 落地记录**：§1–§8 是规划（`[已核实]` = 实际 clone 仓库看到的事实），
-> §9 = P0（渲染层），§10 = P1（接入平台），均为 2026-10-10 当天实现并验证。
+> §9 = P0（渲染层），§10 = P1（接入平台），§11 = P2 前置验证（语义 prompt 离线端到端），
+> 均为 2026-10-10 当天实现并验证。
 
 ## 0. 一句话与结论
 
@@ -350,3 +351,63 @@ MD 视图**降级为只读预览 + 应急文本修正**（保留 `toMarkdown`/`p
 2. `postProcessSlides` 从"形状校验"升级为**块级预算校验**；mock 生成器同步产语义页；
 3. 教师端把"MD/JSON 双视图"降级为只读预览 + 应急修正，主操作改为「换主题 / 换版式 / 重生成单页」；
 4. 溢出实测断言（每页内容高度 ≤1080、无重叠）纳入 `verify-slides.mjs`。
+
+
+---
+
+## 11. P2 前置验证：语义 prompt 端到端跑通（2026-10-10，已实测）
+
+> 结论：**生成侧改造方向已验证可行**。先用真实模型离线跑通（不碰 server、不碰生产库），
+> 再决定是否把 prompt 搬进 `slides.generator.ts`（那一步会改变教师端生成结果，需单独确认）。
+
+### 11.1 工具
+
+`web/tools/gen-semantic-deck.mjs` —— 章节正文 →（两阶段 LLM）→ 语义 deck → 渲染截图：
+
+```
+node web/tools/gen-semantic-deck.mjs [--source=server/fixtures/<某实验>/README.md] [--reuse]
+```
+
+- 阶段一（大纲）：产出 `intent + title + lede + keyPoint + plan` 的**页面计划**；
+- 阶段二（扩写）：4 页一批填 `blocks`（含讲稿 `notes`），缺内容用骨架兜底 → **页数/页序永不漂移**；
+- `--reuse` 复用上次落盘的 `deck.json`：调 prompt 时反复重跑**不再花模型钱**。
+
+### 11.2 实测（素材：`server/fixtures/attention-ablation/README.md`，6.9k 字符）
+
+- **19 页 / 11 种 intent**：`cover → toc → section → claim → table → section → sequence → pillars(relation)
+  → contrast → flow → section → contrast → metric → section → metric → sequence → example → pillars → summary`；
+- 出现了**旧模型给不出的图示页**：`relation`（Q/K/V 与注意力权重的关系图，中心 + 卫星 + 曲线）、
+  `flow`（X → Q/K/V → QKᵀ → ÷√d → 掩码 → softmax 的管线）、`table`（三档消融 × 两个 case 的完整数值表）；
+- 内容保真：数字全部来自正文（0.2761/0.4329、2.2074/1.7238、0.4725、0.3149/0.5296…），
+  讲稿是成段的课堂口播稿而非要点重述；
+- 成本：一次完整两阶段约 **27k prompt tokens + 10k completion tokens**，5 批各 7–10 秒（deepseek-flash）。
+
+### 11.3 这轮抓到的两个问题（都已修 + 加断言）
+
+1. **模型输出的 JSON 不总是合法**：字符串内部出现未转义的英文双引号（中文语料里高频），
+   `notes` 偶被写成字符串数组 → 解析直接失败。
+   修法：`parseLooseJson`（逐字符扫描，字符串内"看起来像内容引号"的补转义）+ prompt 明确
+   "内部引号用「」、notes 是单个字符串"。**server 侧落地必须带同样兜底**（`slides.generator.ts`
+   已有 `parseJsonLoose` / `salvageTruncatedJson` 的先例）。
+2. **渲染层会静默丢块**（真缺陷）：模型偶尔给出 intent 与块不匹配的组合（实测 `contrast` 页多带一张
+   `table`、`pillars` 页用 `relation` 表达），原实现按 intent 只渲染匹配的块，**其余块被悄悄丢掉** ——
+   表格、代码、图整块消失。
+   修法：渲染层引入 `CONSUMED`（每种 intent 主渲染吃掉的块类型）+ **兜底渲染**剩余块；
+   并加 3 条断言（多带的 table/note 照常出现、`pillars` 配 `relation` 仍出关系图）。
+   同时在 prompt 里写死「intent ↔ blocks 对应表」降低发生概率。**渲染层永远兜底，不依赖 prompt 自觉。**
+
+### 11.4 观察：图示页取决于素材结构
+
+同一套 prompt，实验说明类素材（`attention-ablation/README.md`）出的是 `relation`/`flow`；
+时间线（`timeline`）与分层架构（`arch`）没有出现 —— 因为该素材本身没有"阶段演化""层 × 组件"的叙述。
+**这不是 prompt 失效**：选型规则明确要求"确有相应结构才用"，硬凑反而会做出与内容不符的页。
+
+### 11.5 P2b 落地清单（尚未执行，需要先确认）
+
+| 步骤 | 内容 | 风险 |
+|---|---|---|
+| 1 | `server/src/slides` 新增语义 schema + 校验（与前端 `semantic/types.ts` 对齐），`slides` 列加 `schemaVersion` | 低（纯增量） |
+| 2 | prompt 搬进 `slides.generator.ts`（两阶段改为产 `intent + blocks`），**`SLIDES_PROMPT_VERSION` +1** | **中：改变教师端生成结果** |
+| 3 | 前端 `SlideStage` 按 `schemaVersion` 直接渲染 `Page[]`（不再走适配器） | 低 |
+| 4 | MD 投影（`deck-markdown.ts`）适配新模型，或按"编辑面收窄"降级为只读预览 | 中 |
+| 5 | mock 生成器同步产语义页；`review-decks.mjs` 跑一轮真实盲评（对比新旧 prompt） | 低 + 少量模型成本 |

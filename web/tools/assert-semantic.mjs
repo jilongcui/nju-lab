@@ -245,6 +245,34 @@ check(
 );
 check('适配器：token 覆盖传进主题 CSS 后生效', themeCss(DECK_THEMES[0], tokens).includes('--accent: #6a3d9a;'));
 
+// ---------------- 8. 兜底：intent 与块不匹配时绝不丢内容 ----------------
+// 生成侧偶尔会给出「intent 与块不匹配」的组合（实测：contrast 页多带一张 table、
+// pillars 页用 relation 表达）。渲染层必须照常渲染，不许静默丢弃。
+const mixed = [
+  {
+    intent: 'contrast',
+    title: '主渲染 + 兜底',
+    blocks: [
+      { kind: 'compare', left: { title: 'A', tone: 'accent', items: ['a1'] }, right: { title: 'B', tone: 'accent', items: ['b1'] } },
+      { kind: 'table', head: ['列'], rows: [['值']] },
+      { kind: 'note', text: '这是一句补充说明' },
+    ],
+  },
+  {
+    intent: 'pillars',
+    title: '意图与块不匹配',
+    blocks: [{ kind: 'relation', nodes: [{ label: '中心', center: true }, { label: '卫星' }] }],
+  },
+];
+const mixedHtml = buildSemanticDeckHtml({ pages: mixed, meta: META, themeId: 'builtin-platform-blue' });
+const mixedDoc = new JSDOM(mixedHtml).window.document;
+check('兜底：contrast 页多带的 table 照常渲染（不丢内容）', mixedDoc.querySelectorAll('.ly-table').length === 1);
+check('兜底：多带的 note 照常渲染', mixedDoc.querySelectorAll('.ly-note').length === 1);
+check(
+  '兜底：pillars 意图配 relation 块时仍画关系图',
+  mixedDoc.querySelectorAll('.ly-rel-center').length === 1 && mixedDoc.querySelectorAll('.ly-rel svg path').length === 1,
+);
+
 // ---------------- 汇总 ----------------
 const failed = results.filter(([, ok]) => !ok);
 console.log(`\n${results.length - failed.length}/${results.length} 通过`);

@@ -95,11 +95,13 @@ function renderCover(page: Page): string {
 
 function renderSection(page: Page): string {
   const teaser = blockOf(page, 'evidence');
+  const note = blockOf(page, 'note');
+  const lede = page.lede || note?.text || '';
   return `<div class="ly ly-section">
   ${page.number ? `<div class="ly-section-num">${escapeHtml(page.number)}</div>` : ''}
   ${page.kicker ? `<p class="kicker">${escapeHtml(page.kicker)}</p>` : ''}
   <h1>${inline(page.title ?? '')}</h1>
-  ${page.lede ? `<p class="ly-lede">${inline(page.lede)}</p>` : ''}
+  ${lede ? `<p class="ly-lede">${inline(lede)}</p>` : ''}
   ${
     teaser?.items.length
       ? `<div class="ly-teaser">${teaser.items.map((item) => `<span>${escapeHtml(item)}</span>`).join('')}</div>`
@@ -407,6 +409,49 @@ function renderSummary(page: Page): string {
     .join('')}</div>`;
 }
 
+/**
+ * 每种 intent **主渲染**用掉的块类型。其余块由兜底统一补渲染 ——
+ * 渲染层绝不静默丢内容（生成侧偶尔会给出 intent 与块不匹配的组合，
+ * 例如 `contrast` 页多带一张 `table`：那张表必须照常出现）。
+ */
+const CONSUMED: Record<Page['intent'], Block['kind'][]> = {
+  cover: ['evidence', 'note'],
+  toc: ['sequence'],
+  section: ['evidence', 'note'],
+  claim: ['claim', 'evidence'],
+  contrast: ['compare'],
+  pillars: ['sequence', 'evidence'],
+  metric: ['metric'],
+  sequence: ['sequence'],
+  flow: ['flow'],
+  arch: ['arch'],
+  relation: ['relation'],
+  timeline: ['timeline'],
+  table: ['table'],
+  example: ['code'],
+  quote: ['quote'],
+  image: ['image', 'evidence'],
+  summary: ['evidence', 'claim'],
+};
+
+/** 单个块 → 借用对应 intent 的渲染器（不渲染页头） */
+const BLOCK_INTENT: Record<Block['kind'], Page['intent']> = {
+  claim: 'claim',
+  evidence: 'claim',
+  metric: 'metric',
+  sequence: 'sequence',
+  flow: 'flow',
+  arch: 'arch',
+  relation: 'relation',
+  timeline: 'timeline',
+  compare: 'contrast',
+  table: 'table',
+  code: 'example',
+  quote: 'quote',
+  image: 'image',
+  note: 'claim',
+};
+
 const RENDERERS: Record<Page['intent'], (page: Page, ctx: RenderContext) => string> = {
   cover: renderCover,
   toc: renderToc,
@@ -430,7 +475,19 @@ const RENDERERS: Record<Page['intent'], (page: Page, ctx: RenderContext) => stri
 function renderBody(page: Page, ctx: RenderContext): string {
   const renderer = RENDERERS[page.intent] ?? renderClaim;
   const inner = renderer(page, ctx);
-  return inner.startsWith('<div class="ly ly-') ? inner : `<div class="ly">${inner}</div>`;
+  const consumed = CONSUMED[page.intent] ?? [];
+  const leftovers = page.blocks.filter((block) => !consumed.includes(block.kind));
+  const extra = leftovers.length
+    ? `<div class="ly-extra">${leftovers
+        .map((block) => {
+          if (block.kind === 'note') return `<p class="ly-note">${inline(block.text)}</p>`;
+          const blockRenderer = RENDERERS[BLOCK_INTENT[block.kind]];
+          return blockRenderer ? blockRenderer({ intent: BLOCK_INTENT[block.kind], blocks: [block] }, ctx) : '';
+        })
+        .join('')}</div>`
+    : '';
+  const body = inner + extra;
+  return body.startsWith('<div class="ly ly-') ? body : `<div class="ly">${body}</div>`;
 }
 
 /** 单页 → `<section class="slide">` */
