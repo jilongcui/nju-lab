@@ -72,6 +72,31 @@ export interface SemanticPage {
 const INTENT_SET = new Set<string>(SEMANTIC_INTENTS);
 const BLOCK_SET = new Set<string>(SEMANTIC_BLOCK_KINDS);
 
+/**
+ * 内容块类型 → 它归属的版式（与前端 `semantic/render.ts` 的 `BLOCK_INTENT` 同源，改一处要同步另一处）。
+ *
+ * 用途：模型偶尔把**块类型**当成 intent 写（2026-10-10 实测：第 7 章真实生成出现 `intent: "formula"`），
+ * 按这里的归属纠正到它本来想表达的页型，比一律降级成 claim 更贴近原意。
+ */
+const BLOCK_TO_INTENT: Record<string, SemanticIntent> = {
+  claim: 'claim',
+  evidence: 'claim',
+  metric: 'metric',
+  sequence: 'sequence',
+  flow: 'flow',
+  arch: 'arch',
+  relation: 'relation',
+  timeline: 'timeline',
+  compare: 'contrast',
+  table: 'table',
+  code: 'example',
+  quote: 'quote',
+  chart: 'data',
+  formula: 'claim',
+  image: 'image',
+  note: 'claim',
+};
+
 /** 块级预算：固定 1920×1080 画布下这些是**可计算**的，超了裁剪并记 warning */
 const BUDGET = {
   evidenceItems: 5,
@@ -362,8 +387,20 @@ export function validateSemanticPages(
       warnings.push(`第 ${pageNo} 页结构非法，已跳过`);
       return;
     }
-    const intent = typeof item.intent === 'string' && INTENT_SET.has(item.intent) ? (item.intent as SemanticIntent) : 'claim';
-    if (intent !== item.intent) warnings.push(`第 ${pageNo} 页 intent 非法（${String(item.intent)}），已按 claim 处理`);
+    // intent 是「版式」；模型偶尔把内容块类型（实测 formula）写成 intent —— 先按块→版式的归属纠正，
+    // 剩下的未知值才回落 claim。两种情况都记 warning，教师端「生成提示」里能看到。
+    const rawIntent = typeof item.intent === 'string' ? item.intent.trim() : '';
+    const mappedIntent = BLOCK_TO_INTENT[rawIntent];
+    const intent: SemanticIntent = INTENT_SET.has(rawIntent)
+      ? (rawIntent as SemanticIntent)
+      : mappedIntent ?? 'claim';
+    if (intent !== rawIntent) {
+      warnings.push(
+        mappedIntent
+          ? `第 ${pageNo} 页 intent「${rawIntent}」是内容块类型，已按版式「${intent}」处理`
+          : `第 ${pageNo} 页 intent 非法（${rawIntent || '空'}），已按 claim 处理`,
+      );
+    }
     const blocks = (Array.isArray(item.blocks) ? item.blocks : [])
       .map((block) => normalizeBlock(block, warnings, pageNo))
       .filter((block): block is SemanticBlock => !!block);
@@ -465,6 +502,7 @@ export const SEMANTIC_OUTLINE_SYSTEM = [
   '只输出一个 JSON 对象，不要任何解释文字。结构：',
   '{"deckTitle": string, "pages": [{"intent": string, "kicker": string, "title": string, "lede": string, "keyPoint": string, "plan": string[]}]}',
   `intent 只能取：${SEMANTIC_INTENTS.join(' | ')}。`,
+  '**intent 是「版式」，只能取上面这一串；claim/evidence/metric/sequence/flow/arch/relation/timeline/compare/table/chart/formula/code/quote/note 是「内容块类型」，只能出现在 plan 里，绝不许当 intent 用。**',
   'plan 是本页要用的内容块类型，从 claim/evidence/metric/sequence/flow/arch/relation/timeline/compare/table/chart/formula/code/quote/note 里选 1–2 个。',
   '',
   '【整体结构】',
@@ -478,7 +516,7 @@ export const SEMANTIC_OUTLINE_SYSTEM = [
   '正文里有 1–4 个关键数字 → metric；有先后顺序的步骤/操作 → sequence；数据在环节间流动的管线 → flow；',
   '分层结构（层 × 组件，如系统栈）→ arch；概念之间的关系（谁依赖谁、一个中心带几个相关概念）→ relation；',
   '时间演化/路线图 → timeline；需要严格对齐的多列数值 → table；**正文里有可以画成图的数值序列就用 data（柱/折线/环形）**；',
-  '公式推导 → formula；代码或命令 → example；一句话点睛 → quote。',
+  '有公式推导 → claim（plan 里写 formula 块）；代码或命令 → example；一句话点睛 → quote。',
   '4) 一份 deck 至少要出现 3 种不同的内容页 intent（不许全是 claim）；relation/flow/arch/timeline 这类"图示页"',
   '只在正文确有相应结构时使用，**不要为了好看硬凑**。',
   `5) 总页数不超过 ${20} 页（含首尾）。`,
@@ -524,9 +562,10 @@ export const SEMANTIC_EXPAND_SYSTEM = [
   '5) 页面上只写给学员看的内容；面向讲者的话一律进 notes。',
   '6) notes 是**一个字符串**（不是数组），3–6 句连成一段。',
   '7) 字符串内部不要使用英文双引号；需要引用时用中文引号「」。',
-  '8) 【intent 与 blocks 必须匹配】cover→evidence；toc→sequence；section→evidence（本节导读，可省）；',
-  'claim→claim + evidence；contrast→compare；pillars→sequence 或 evidence；metric→metric；sequence→sequence；',
-  'flow→flow；arch→arch；relation→relation；timeline→timeline；table→table；data→chart；formula→formula；',
+  '8) 【intent 与 blocks 必须匹配，且箭头左边**只能**是上面的 intent 白名单，右边才是块类型】',
+  'cover→evidence；toc→sequence；section→evidence（本节导读，可省）；',
+  'claim→claim + evidence（本页有公式时再加 formula）；contrast→compare；pillars→sequence 或 evidence；metric→metric；sequence→sequence；',
+  'flow→flow；arch→arch；relation→relation；timeline→timeline；table→table；data→chart；',
   'example→code；quote→quote；',
   'summary→claim 或 evidence。除 note（本页补充说明）外，**不要在同一页混入别的块类型**。',
 ].join('\n');

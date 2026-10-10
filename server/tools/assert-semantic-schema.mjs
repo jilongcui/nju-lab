@@ -5,6 +5,8 @@
  * 用法：`node server/tools/assert-semantic-schema.mjs`（Node 24 直接跑 TS，无需构建）
  * 覆盖：
  *   · 合法页通过；intent 非法 → 降级为 claim 并记 warning
+ *   · 模型把「内容块类型」当 intent 写（实测 formula/chart/compare）→ 按归属版式纠正并记 warning
+ *   · 展示给模型的 intent 白名单与块类型不重叠（写错这处正是上面那批 warning 的来源）
  *   · 块级预算：evidence ≤5、metric ≤4、relation ≤6、table ≤6 行、code ≤20 行
  *   · 语义不变式：relation 中心节点有且仅有一个；flow 高亮最多一个
  *   · 非法块（未知 kind / 图片引用不合规 / 空数组）一律丢弃并记 warning，绝不产出畸形页
@@ -15,6 +17,10 @@
 import {
   isSemanticDeck,
   parseLooseJson,
+  SEMANTIC_BLOCK_KINDS,
+  SEMANTIC_EXPAND_SYSTEM,
+  SEMANTIC_INTENTS,
+  SEMANTIC_OUTLINE_SYSTEM,
   semanticToMarkdown,
   validateSemanticPages,
 } from '../src/slides/semantic.schema.ts';
@@ -61,9 +67,45 @@ const good = validateSemanticPages(
 check('合法页全部通过（无 warning）', good.pages.length === 2 && good.warnings.length === 0, `warnings=${good.warnings.length}`);
 check('页面 id/字段按白名单保留', good.pages[0].intent === 'claim' && good.pages[0].blocks.length === 2);
 
-// ---------------- 2. intent 非法 → claim ----------------
+// ---------------- 2. intent 非法 → claim；块类型误当 intent → 按归属版式纠正 ----------------
 const badIntent = validateSemanticPages([{ intent: 'whatever', blocks: [{ kind: 'claim', text: 'x' }] }], LIMITS);
 check('intent 非法降级为 claim 并记 warning', badIntent.pages[0].intent === 'claim' && badIntent.warnings.length === 1);
+
+// 2026-10-10 第 7 章真实生成实测：模型把内容块类型 formula 写成了 intent —— 纠正到归属版式，而不是一律 claim
+const blockAsIntent = validateSemanticPages(
+  [
+    { intent: 'formula', blocks: [{ kind: 'formula', tex: 'a^2+b^2=c^2' }] },
+    { intent: 'chart', blocks: [{ kind: 'chart', chart: 'bar', labels: ['A', 'B'], series: [{ name: 's', values: [1, 2] }] }] },
+    { intent: 'compare', blocks: [{ kind: 'compare', left: { title: '左', items: ['a'] }, right: { title: '右', items: ['b'] } }] },
+  ],
+  LIMITS,
+);
+check('块类型当 intent：formula → claim', blockAsIntent.pages[0].intent === 'claim');
+check('块类型当 intent：chart → data', blockAsIntent.pages[1].intent === 'data');
+check('块类型当 intent：compare → contrast', blockAsIntent.pages[2].intent === 'contrast');
+check(
+  'warning 写明「内容块类型」而不是笼统的非法',
+  blockAsIntent.warnings.length === 3 && blockAsIntent.warnings.every((w) => w.includes('内容块类型')),
+  blockAsIntent.warnings.join(' / '),
+);
+// 提示词不许再把块类型列成 intent（这处写错正是上面那批 warning 的来源）。
+// 注意：intent 与块类型**同名重叠是设计如此**（claim/table/quote/image…），所以只查「纯块类型」——
+// 即 evidence/compare/chart/formula/code/note 这些**永远不能出现在 intent 位置**的名字。
+const pureBlocks = SEMANTIC_BLOCK_KINDS.filter((kind) => !SEMANTIC_INTENTS.includes(kind));
+check(
+  '纯块类型（evidence/compare/chart/formula/code/note）没被写成 intent',
+  pureBlocks.join(',') === 'evidence,compare,chart,formula,code,note' &&
+    !SEMANTIC_OUTLINE_SYSTEM.includes('推导 → formula') &&
+    !SEMANTIC_EXPAND_SYSTEM.includes('formula→formula'),
+  pureBlocks.join(','),
+);
+// 扩写铁律「X→块」的箭头左边必须全是合法 intent：左边写错，模型就会照着输出非法 intent
+const arrowLeft = [...SEMANTIC_EXPAND_SYSTEM.matchAll(/([a-z]+)→/g)].map((m) => m[1]);
+check(
+  '扩写铁律里箭头左边全是合法 intent',
+  arrowLeft.length >= 10 && arrowLeft.every((name) => SEMANTIC_INTENTS.includes(name)),
+  arrowLeft.join(' '),
+);
 
 // ---------------- 3. 块级预算 ----------------
 const over = validateSemanticPages(
