@@ -152,7 +152,7 @@ treatment：题干 + 输入文件 + 学生的 Skill → 与同目录的 expected
    数值受库版本影响（sklearn 主版本变了，指标会变），`ml-basics` 的做法是：
    ```sh
    docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/w" --entrypoint python3 \
-     nju-lab-verify:0.2.0-rc.2-pkg4 /w/skill-solution/scripts/train.py --regen-cases
+     nju-lab-verify:0.2.0-rc.2-pkg6 /w/skill-solution/scripts/train.py --regen-cases
    ```
 
 ### 2.4 难度与区分度（教学优先时，这一节可以放轻）
@@ -321,7 +321,7 @@ python3 scripts/xxx.py <输入> <输出>
 { "requires": { "python": ["sklearn", "pandas", "numpy"] } }
 ```
 
-当前镜像 `nju-lab-verify:0.2.0-rc.2-pkg4` 的预装集（完整清单见 `docs/EXPERIMENT-PACKAGE-SPEC.md` §4）：
+当前镜像 `nju-lab-verify:0.2.0-rc.2-pkg6` 的预装集（完整清单见 `docs/EXPERIMENT-PACKAGE-SPEC.md` §4）：
 
 ```
 pandas · numpy · scipy · scikit-learn · statsmodels · matplotlib · torch(CPU) · openpyxl
@@ -334,7 +334,7 @@ requests · beautifulsoup4 · lxml · PyYAML · tabulate · pytest    +  命令 
 ### 3.3 上传前自检（不烧 token）
 
 ```sh
-docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg4 \
+docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg6 \
   --check --skill /p/skill-template.zip --problem /p/problem.zip
 ```
 

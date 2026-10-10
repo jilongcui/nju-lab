@@ -158,7 +158,10 @@ problem/
 - 自检通过 → 正常复验，结果 JSON 里带 `dependencyCheck`。
 - 自检失败 → **直接失败并明确报错**（不会跑到一半才发现脚本 ImportError）。
 
-当前镜像 `nju-lab-verify:0.2.0-rc.2-pkg4` 的预装集（`python3` + 系统命令）：
+当前镜像 `nju-lab-verify:0.2.0-rc.2-pkg6` 的预装集（`python3` + 系统命令）：
+
+> 版本沿革：`pkg4 → pkg6` 期间**预装集没有变化**（`pkg5 → pkg6` 只覆盖了
+> `run-eval.mjs` 的 judge token 预算），所以下面这张表对当前镜像仍然成立。
 
 | 类别 | 内容 |
 |---|---|
@@ -205,12 +208,12 @@ rm -f skill-template.zip problem.zip
 (cd problem        && zip -qr ../problem.zip .)
 
 # 1) 上传前自检（不跑模型、不烧 token）：结构 + 依赖
-docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg4 \
+docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg6 \
   --check --skill /p/skill-template.zip --problem /p/problem.zip
 
 # 1b) 教师侧自检闭环：拿参考实现跑一遍复验（应全部通过 = 题目可解）
 docker run --rm --env-file server/.env -v "$PWD:/p:ro" -v /tmp/out:/outputs \
-  nju-lab-verify:0.2.0-rc.2-pkg4 \
+  nju-lab-verify:0.2.0-rc.2-pkg6 \
   --skill /p/problem/reference --problem /p/problem.zip --out /outputs/result.json
 
 # 2) 上传拿 fileId（教师 token）

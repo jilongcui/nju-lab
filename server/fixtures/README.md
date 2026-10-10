@@ -102,7 +102,7 @@ rm -f skill-template.zip problem.zip
 (cd problem        && zip -qr ../problem.zip .)          # zip 根即 cases/ 与 manifest.json
 
 # 上传前自检（不烧 token）：结构 + 依赖
-docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg4 \
+docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg6 \
   --check --skill /p/skill-template.zip --problem /p/problem.zip
 ```
 

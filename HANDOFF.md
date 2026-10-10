@@ -65,9 +65,22 @@
 
   · 三个项目发布时已给学生分发 `assignments`（1 位学生 3 条 `pending`）。
   · **验证**：用教师 token 下载 6 个 fileId 与本地 zip 逐字节比对，**全部一致** ✅。
-  · 未做：提交 → 复验 → 批改这段闭环（由真实学生或教师真账号走）；`deadline` 未设。
-- **文档小尾巴**：FRAMEWORK / PACKAGE-SPEC 里的镜像 tag 仍写着 `pkg4`（历史示例），本轮只同步了
-  `docs/EXPERIMENT-CREATION-GUIDE.md`（pkg5 → pkg6）；需要时另行同步。
+  · **闭环验证（2026-10-10，用测试账号 student1 走的真实链路，不是本地模拟）**：
+    ① 用**真实插件**（`dsh/nju-lab-client/lib/host/index.js` 的 `apply` + `nju_lab_claim` /
+    `nju_lab_submit`，直接打真实平台）把三个实验各提交一次 —— 模板与题目包下载 **sha256 校验通过**、
+    打包 + `.dshc` + 上传 + 提交都成功；
+    ② **解锁规则实测生效**：完成第 1~5 章前第 6 章实验 `unlocked=false` → 完成第 6 章后第 7 章才解锁，
+    以此类推（`POST /api/chapters/:id/complete` 是学生可用的正常功能，测试里就是这样推进的）；
+    ③ 教师 `POST /api/submissions/:id/verify` 触发**平台侧容器复验**：三个实验 `successRate=1`、
+    `exitCode=0`、单 case 43~67s，`integrityCheck = {capsuleHashVerified: true,
+    selfReportVsRerun: "consistent", filesMatched: 2}`；教师 `grade` 也走通（teacherScore 95），
+    学生端能读到反馈 ✅。
+    · ⚠️ 平台当前 `server/.env` 里 **`VERIFY_MAX_CASES=1`**，所以**平台侧每个提交只跑 case01**
+    （本地教师自检跑的是 2/2）。要让平台跑全部 case，把该值改成 `0`（成本控制开关，本次未动）。
+  · 未做：`deadline` 未设；上述提交留在测试账号（student1）名下，作为链路证据。
+- **文档同步（2026-10-10 续）**：FRAMEWORK / PACKAGE-SPEC / `server/README.md` / `fixtures/README.md`
+  里的镜像 tag 从 `pkg4` 统一为当前的 `pkg6`（PACKAGE-SPEC §4 补了"预装集未变"的版本沿革说明）；
+  各**历史实验自带 README 里带日期的实测记录仍保留 pkg4**（AGENTS.md 纪律：历史快照不改）。
 - **纪律**：`docs/ACCEPTANCE-*.md`、带日期的实测快照、已存在的镜像制品名一律保留原样；
   三个新实验的 `tools/`（造题工具）**不打包、不下发**。
 
