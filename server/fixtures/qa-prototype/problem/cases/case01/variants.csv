@@ -1,0 +1,5 @@
+variant_id,gene_symbol,variant_type,clinical_significance
+V-01,BRCA1,germline_mutation,pathogenic
+V-02,BRCA2,germline_mutation,pathogenic
+V-03,PARP1,somatic_mutation,likely_benign
+V-04,HER2,amplification,pathogenic

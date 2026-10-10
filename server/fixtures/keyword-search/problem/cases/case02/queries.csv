@@ -1,0 +1,9 @@
+query_id,query,type
+"Q01","olaparib brca1 ovarian cancer","same_word"
+"Q02","vancomycin nephrotoxicity trough concentrations","same_word"
+"Q03","metformin insulin sensitivity","same_word"
+"Q04","pulmonary embolism computed tomography","same_word"
+"Q05","which drug is given to women whose ovarian tumour carries a faulty gene?","paraphrase"
+"Q06","which blood result is so abnormal that it needs an urgent call to the ward?","paraphrase"
+"Q07","how can the risk of another blockage of a heart vessel be lowered after the first one?","paraphrase"
+"Q08","what is the usual first oral treatment when blood sugar stays high?","paraphrase"

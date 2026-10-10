@@ -1,0 +1,81 @@
+{
+  "note": "参考水平（不是标准答案）：路由、关键事实与出处都已经确定 —— 用于核对学生的方案有没有「每个问题走对路」「事实取对」「出处带出来」。硬性判据见 manifest.json 的 assertions，语义判据见 judge.md。",
+  "n_questions": 5,
+  "route_counts": {
+    "sql": 1,
+    "keyword": 1,
+    "vector": 1,
+    "graph": 2
+  },
+  "answers": [
+    {
+      "question_id": "Q01",
+      "route": "sql",
+      "key_facts": {
+        "trial_id": "T-102",
+        "phase": "III",
+        "orr_pct": 62.4
+      },
+      "sources_kinds": [
+        "sql"
+      ]
+    },
+    {
+      "question_id": "Q02",
+      "route": "keyword",
+      "key_facts": {
+        "passage_ids": [
+          "P-01"
+        ]
+      },
+      "sources_kinds": [
+        "keyword"
+      ]
+    },
+    {
+      "question_id": "Q03",
+      "route": "vector",
+      "key_facts": {
+        "passage_ids": [
+          "P-03"
+        ]
+      },
+      "sources_kinds": [
+        "vector"
+      ]
+    },
+    {
+      "question_id": "Q04",
+      "route": "graph",
+      "key_facts": {
+        "drugs": [
+          "niraparib",
+          "olaparib",
+          "talazoparib"
+        ],
+        "hops": 3
+      },
+      "sources_kinds": [
+        "graph"
+      ],
+      "path": [
+        "BRCA1|loss_of_function|同源重组修复缺陷",
+        "同源重组修复缺陷|synthetic_lethal_with|PARP抑制剂",
+        "PARP抑制剂|includes|olaparib"
+      ]
+    },
+    {
+      "question_id": "Q05",
+      "route": "graph",
+      "key_facts": {
+        "indication": "铂敏感复发卵巢癌",
+        "trial_id": "T-101",
+        "orr_pct": 45.0
+      },
+      "sources_kinds": [
+        "graph",
+        "sql"
+      ]
+    }
+  ]
+}

@@ -7,7 +7,7 @@
 
 /** 工作台镜像（构建见 `server/workspace-image/`） */
 export const WORKSPACE_IMAGE =
-  process.env.WORKSPACE_IMAGE || 'nju-lab-workspace:0.2.0-rc.2-pkg7';
+  process.env.WORKSPACE_IMAGE || 'nju-lab-workspace:0.2.0-rc.2-pkg8';
 
 /** 每容器资源限额（实测 web 空闲约 233MB，1g 余量充足） */
 export const WORKSPACE_MEMORY = process.env.WORKSPACE_MEMORY || '1g';

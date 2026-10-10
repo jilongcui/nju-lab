@@ -1,0 +1,6 @@
+drug_name,drug_class,target,approval_status
+olaparib,PARP_inhibitor,PARP1,approved
+niraparib,PARP_inhibitor,PARP1,approved
+talazoparib,PARP_inhibitor,PARP1,approved
+carboplatin,platinum_agent,DNA,approved
+trastuzumab,HER2_antibody,HER2,approved

@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "name": "keyword-search",
+  "title": "知识库实验：倒排索引 + BM25 检索（含字符 2-gram 对照与 recall@3）",
+  "outputFile": "output.json",
+  "inputs": ["corpus.csv", "queries.csv", "qrels.csv"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['index','retrieval','baseline','metrics','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "索引规模报对（文档数 / 词表大小）",
+      "expr": "out.index.n_docs === expected.index.n_docs && out.index.vocab_size === expected.index.vocab_size"
+    },
+    {
+      "name": "索引口径一致（postings 校验和）",
+      "expr": "out.index.postings_checksum === expected.index.postings_checksum"
+    },
+    {
+      "name": "BM25 检索名单正确（每个查询的 Top-3 与顺序）",
+      "expr": "JSON.stringify(out.retrieval.map((r) => [r.query_id, r.top_k.map((x) => x.doc_id)])) === JSON.stringify(expected.retrieval.map((r) => [r.query_id, r.top_k]))"
+    },
+    {
+      "name": "2-gram 基线名单正确（口径钉死：原始计数、不归一化）",
+      "expr": "JSON.stringify(out.baseline.map((b) => [b.query_id, b.top_ids])) === JSON.stringify(expected.baseline.map((b) => [b.query_id, b.top_ids]))"
+    },
+    {
+      "name": "BM25 的 recall@3 算对",
+      "expr": "abs(out.metrics.recall_at_3_bm25 - expected.metrics.recall_at_3_bm25) < 1e-6"
+    },
+    {
+      "name": "基线（字符 2-gram）的 recall@3 算对",
+      "expr": "abs(out.metrics.recall_at_3_bigram - expected.metrics.recall_at_3_bigram) < 1e-6"
+    },
+    {
+      "name": "按查询类型分组的指标算对",
+      "expr": "['same_word','paraphrase'].every((t) => out.metrics.by_type && out.metrics.by_type[t] && abs(out.metrics.by_type[t].bm25 - expected.metrics.by_type[t].bm25) < 1e-6 && abs(out.metrics.by_type[t].bigram - expected.metrics.by_type[t].bigram) < 1e-6)"
+    },
+    {
+      "name": "对照成立：BM25 明显好于字符 2-gram 基线",
+      "expr": "out.metrics.recall_at_3_bm25 > out.metrics.recall_at_3_bigram"
+    },
+    {
+      "name": "分数自洽（每个查询的 Top-3 分数为正且降序）",
+      "expr": "out.retrieval.every((r) => Array.isArray(r.top_k) && r.top_k.every((x, i, a) => typeof x.score === 'number' && x.score > 0 && (i === 0 || a[i - 1].score >= x.score)))"
+    },
+    {
+      "name": "图与说明齐全（至少 1 张，含一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 1 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "说清机制与边界（notes ≥ 60 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 60"
+    }
+  ],
+  "requires": { "python": ["matplotlib"] }
+}

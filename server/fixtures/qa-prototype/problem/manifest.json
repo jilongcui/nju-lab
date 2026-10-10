@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "name": "qa-prototype",
+  "title": "综合实践：分子医学知识问答原型（四形态各用一次 + 出处可溯源）",
+  "outputFile": "output.json",
+  "inputs": [
+    "genes.csv",
+    "variants.csv",
+    "drugs.csv",
+    "trials.csv",
+    "passages.csv",
+    "edges.csv",
+    "questions.csv"
+  ],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['answers','route_counts','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "每题都答了（数量与题目顺序一致）",
+      "expr": "out.answers.length === expected.n_questions && JSON.stringify(out.answers.map((a) => a.question_id)) === JSON.stringify(expected.answers.map((e) => e.question_id))"
+    },
+    {
+      "name": "每题都走对了路（route）",
+      "expr": "expected.answers.every((e) => { const a = out.answers.find((x) => x.question_id === e.question_id); return a && a.route === e.route; })"
+    },
+    {
+      "name": "每题的关键事实正确（key_facts 逐题比对）",
+      "expr": "expected.answers.every((e) => { const a = out.answers.find((x) => x.question_id === e.question_id); return a && JSON.stringify(a.key_facts) === JSON.stringify(e.key_facts); })"
+    },
+    {
+      "name": "出处齐全（kind 组合正确且 ref 非空）",
+      "expr": "expected.answers.every((e) => { const a = out.answers.find((x) => x.question_id === e.question_id); return a && Array.isArray(a.sources) && JSON.stringify(a.sources.map((s) => s.kind).sort()) === JSON.stringify(e.sources_kinds) && a.sources.every((s) => typeof s.ref === 'string' && s.ref.trim() !== ''); })"
+    },
+    {
+      "name": "推理链完整且正确（Q04 的三元组链）",
+      "expr": "JSON.stringify(out.answers.find((a) => a.question_id === 'Q04').sources.find((s) => s.kind === 'graph').path) === JSON.stringify(expected.answers.find((e) => e.question_id === 'Q04').path)"
+    },
+    {
+      "name": "路由分布与参考一致（route_counts）",
+      "expr": "['sql','keyword','vector','graph','graph+sql'].every((k) => (out.route_counts[k] || 0) === (expected.route_counts[k] || 0))"
+    },
+    {
+      "name": "四种形态都真的用上了（每种至少一题）",
+      "expr": "['sql','keyword','vector','graph'].every((k) => out.route_counts[k] >= 1) && out.answers.every((a) => ['sql','keyword','vector','graph','graph+sql'].includes(a.route))"
+    },
+    {
+      "name": "把握度字段合法（0~1）",
+      "expr": "out.answers.every((a) => typeof a.confidence === 'number' && a.confidence >= 0 && a.confidence <= 1)"
+    },
+    {
+      "name": "答案有实质内容（每题 answer ≥ 10 字）",
+      "expr": "out.answers.every((a) => typeof a.answer === 'string' && a.answer.trim().length >= 10)"
+    },
+    {
+      "name": "图与说明齐全（至少 1 张，含一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 1 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "说清路由理由与局限（notes ≥ 60 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 60"
+    }
+  ],
+  "requires": { "python": ["matplotlib"] }
+}

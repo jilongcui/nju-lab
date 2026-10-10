@@ -5,6 +5,67 @@
 
 ## 0. 一句话现状
 
+**2026-10（批次 1：第 18 / 5 / 9 章）：三个实验 + 学生端第三条引导分支 + 平台上线（均已实测）** ——
+**用户要求**：按 `docs/PLAN-2026-10-experiment-roadmap.md` 的**批次 1**（18 技能 → 5 知识库 → 9 综合实践）
+依次落地；**一路做到平台上传 + 绑定章节 + 发布**；学生端引导**新增第三条「智能体 / 技能类」分支**。
+
+- **三个实验包**（`server/fixtures/`，形态与既有实验一致：模板 + 题目包 + 参考实现随包下发 + 骨架留 TODO）：
+
+  | 实验 | 应用 | 断言 | 参考实现复验（本机实测 2026-10-10） |
+  |---|---|---|---|
+  | `lab-report-reader` | 检验报告解读 Skill（口径比对 + 危急值拦截 + 技能卡） | 12 | **2/2 pass、硬性 12/12**，单轮 68s / 55s |
+  | `keyword-search` | 文献库关键词检索（倒排索引 + BM25 + 字符 2-gram 对照） | 12 | **2/2 pass、硬性 12/12**，单轮 98s / 35s |
+  | `qa-prototype` | 分子医学知识问答原型（四形态各用一次 + 出处可溯源） | 12 | **2/2 pass、硬性 12/12**，单轮 85s / 99s |
+
+  实测口径（各实验 `README.md` 有完整表）：`lab-report-reader` case01 报告单 15 行 → 13 项（12 可判定 + 1 表外）、
+  丢弃 1 非法 + 1 重复、危急值 3 个（`K` 6.2 / `PLT` 28 / `WBC` 1.2）、含 2 个"恰好等于边界"的项；
+  `keyword-search` BM25 `recall@3` **0.875 / 0.75** vs 字符 2-gram **0.0 / 0.0**（校验和 `5cf9366e3cbe` / `2b737e9fc1ed`）；
+  `qa-prototype` 路由分布 sql 1 / keyword 1 / vector 1 / graph 2，Q04 是 3 跳链（`BRCA1` → … → `olaparib`）。
+  三个包 `--check` 均 ok（退出码 0）。
+
+- **关键设计决策（写新实验时照做）**：① **口径钉死 → 逐字段可比**（技能类的 `skill_card`、检索类的
+  `postings_checksum`、综合题的逐题 `key_facts` 都是钉死的字段，判据才逐条可比）；② **把"不确定"与
+  "安全边界"做成判据**（参考区间表里没有的项目必须判 `unknown`、危急值必须进 `critical_alerts` 并写出依据阈值、
+  不许下诊断断言）；③ **对照组本身是要交的东西**（`recall_at_3_bm25 > recall_at_3_bigram` 是硬性断言，
+  而差距来自语料结构：每个主题 1 篇短精准 + 3 篇长综述）；④ 全程**零新增镜像依赖**。
+
+- **学生端引导（`dsh/nju-lab-client/src/host/guidance.ts`）**：常驻段与 skill 手册**新增第三条分支**
+  「智能体 / 技能类」（看清需求 → 摸清材料与判定口径 → 搭最小闭环（`SKILL.md` + `scripts/`）→ 逐个模块跑一遍 →
+  用例自测 + 补「能力边界 / 实测档案」→ 结论），并加了三条提醒（`description` 是触发路由、
+  确定性任务下沉脚本、安全边界要落成输出字段）。`npm run typecheck` / `build` / `test` 通过
+  （**59 pass / 0 fail / 6 skip**，与既往一致）。
+
+- **产物与部署（已实测）**：
+  - 新建 **`nju-lab-workspace:0.2.0-rc.2-pkg8`**（`docker build -f server/workspace-image/Dockerfile -t … .`）；
+    容器内 `lib/host/index.js` 含新文案（`智能体 / 技能类` 命中、`数据库 / 知识库类` 4 处、`引导监督模式` 2 处）；
+    **pkg7 保留作回滚点**；
+  - `workspace.config.ts` 默认镜像切到 **pkg8** → `server` `npm run build` + kill 重启（systemd `Restart=always`
+    拉起新 PID 1901176）；冒烟：`/lab/` **200**、起工作台容器打印 `[nju-lab-client] host half loaded` +
+    `WORKSPACE_READY port=9090` ✓；
+  - **学生 kit**：`cd dsh/kit && PLATFORM_URL=http://medai.nju.edu.cn/lab ./build-kit.sh` →
+    `kit-version=20261010-1456-ef6e154`；已备份旧版（`…zip.20261010-1010-97f36b6.bak`）后投放到
+    `/var/www/lab/kit/nju-lab-student-kit.zip`（HTTP 200、与本地产物逐字节一致）。
+
+- **已上线（2026-10-10，教师账号上传 + 绑定 + 发布）**：三个项目分别挂在课程《分子医学人工智能理论与实验》的
+  **第 18 / 5 / 9 章**下，`status=published`、`unlockRule=NULL`（默认解锁规则）、
+  `evalConfig = {model: deepseek-flash, reasoningEffort: low, timeoutSeconds: 600}`、
+  `rubric` = 复验通过率 50 / 能力边界与踩坑记录 30 / 判据语义项 20：
+
+  | 项目 | id | 章节 | 题目包 sha256（前 12 位） | Skill 模板 sha256（前 12 位） |
+  |---|---|---|---|---|
+  | 技能实验：检验报告解读 Skill（口径比对 + 危急值拦截 + 技能卡） | `72a0cbb7-7067-4e59-bf3b-b17fc6e6976b` | 第 18 章 | `a314355bcdb4` | `9bb65fd78915` |
+  | 知识库实验：倒排索引 + BM25 检索（含字符 2-gram 对照与 recall@3） | `b27248e8-76dc-4518-ad01-0758a40e433b` | 第 5 章 | `b5a728f2495e` | `e4f57bfa60ca` |
+  | 综合实践：分子医学知识问答原型（四形态各用一次 + 出处可溯源） | `2ea22105-7c73-41fe-a93f-eb66eff3a400` | 第 9 章 | `90be4011e5b1` | `f57dfa31308d` |
+
+- **章节正文修订（2026-10-10，教师向内容维护，非历史快照）**：第 18 章补「hooks 是宿主平台的能力」课堂说明
+  （实验里用 `critical_alerts` + 就医提示代替拦截）、动手实践第 2 条改成"危急值提示"；第 9 章把
+  Neo4j / Milvus / Qdrant 换成 `networkx` + 字符 2-gram 等价实现；第 7/8 章各加一句"实验里用离线可复现的
+  等价实现，见本章实验"。
+- **未做**：路线图批次 2（第 4 / 16 / 19 章）与批次 3（第 17 章）未开工；`VERIFY_MAX_CASES` 仍为 `1`
+  （平台只跑 case01）；测试账号遗留数据未清理。
+
+---
+
 **2026-11（数据库章）：第 6/7/8 章（关系数据库 / 向量数据库 / 知识图谱）各落地一个实验 —— 三个实验包 + 学生端引导分支 + 平台上线（均已实测）** ——
 **用户要求**："在关系数据库、向量数据库、知识图谱课程下增加新的实验课程，目的是入门 —— 通过我们的 dsh
 智能体搭建基本的运行环境，然后通过课程教练辅助用户实现对数据的增删改查"。**用户选定三件事**：

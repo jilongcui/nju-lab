@@ -1,0 +1,9 @@
+query_id,query,type
+"Q01","olaparib brca1 ovarian cancer","same_word"
+"Q02","aspirin platelet aggregation myocardial infarction","same_word"
+"Q03","metformin insulin sensitivity type 2 diabetes","same_word"
+"Q04","lactic acidosis metformin","same_word"
+"Q05","which drug is given to women whose ovarian tumour carries a faulty gene?","paraphrase"
+"Q06","how can the risk of another blockage of a heart vessel be lowered after the first one?","paraphrase"
+"Q07","what is the usual first oral treatment when blood sugar stays high?","paraphrase"
+"Q08","which oral agent works by making the body respond better to its own hormone?","paraphrase"

@@ -1,0 +1,5 @@
+trial_id,drug_name,indication,phase,orr_pct
+T-101,niraparib,卵巢癌,II,45.0
+T-102,olaparib,卵巢癌,III,62.4
+T-103,talazoparib,乳腺癌,III,55.1
+T-104,carboplatin,卵巢癌,III,58.3

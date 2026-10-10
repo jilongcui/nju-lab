@@ -8,6 +8,7 @@ dsh/nju-lab-client/lib/
 *.local
 
 # 运行时产物
+.verify-scratch/
 server/uploads/
 dsh/verify-poc/runs/
 dsh/nju-lab-client/nju-lab/

@@ -1,0 +1,154 @@
+{
+  "note": "参考水平（不是标准答案）：分词、BM25 参数、Top-K 并列规则都已在 task.md 里钉死，所以索引校验和、检索名单与两个 recall 都是确定的 —— 用于核对学生的索引口径、排名与对照是否算对。硬性判据见 manifest.json 的 assertions，语义判据见 judge.md。",
+  "index": {
+    "n_docs": 12,
+    "vocab_size": 154,
+    "postings_checksum": "5cf9366e3cbe"
+  },
+  "retrieval": [
+    {
+      "query_id": "Q01",
+      "top_k": [
+        "D01",
+        "D02",
+        "D04"
+      ]
+    },
+    {
+      "query_id": "Q02",
+      "top_k": [
+        "D05",
+        "D06",
+        "D08"
+      ]
+    },
+    {
+      "query_id": "Q03",
+      "top_k": [
+        "D09",
+        "D10",
+        "D12"
+      ]
+    },
+    {
+      "query_id": "Q04",
+      "top_k": [
+        "D09",
+        "D10",
+        "D12"
+      ]
+    },
+    {
+      "query_id": "Q05",
+      "top_k": [
+        "D01",
+        "D02",
+        "D04"
+      ]
+    },
+    {
+      "query_id": "Q06",
+      "top_k": [
+        "D07",
+        "D12",
+        "D09"
+      ]
+    },
+    {
+      "query_id": "Q07",
+      "top_k": [
+        "D11",
+        "D09",
+        "D10"
+      ]
+    },
+    {
+      "query_id": "Q08",
+      "top_k": [
+        "D09",
+        "D10",
+        "D12"
+      ]
+    }
+  ],
+  "baseline": [
+    {
+      "query_id": "Q01",
+      "top_ids": [
+        "D08",
+        "D03",
+        "D04"
+      ]
+    },
+    {
+      "query_id": "Q02",
+      "top_ids": [
+        "D07",
+        "D08",
+        "D03"
+      ]
+    },
+    {
+      "query_id": "Q03",
+      "top_ids": [
+        "D07",
+        "D11",
+        "D12"
+      ]
+    },
+    {
+      "query_id": "Q04",
+      "top_ids": [
+        "D11",
+        "D07",
+        "D12"
+      ]
+    },
+    {
+      "query_id": "Q05",
+      "top_ids": [
+        "D11",
+        "D03",
+        "D04"
+      ]
+    },
+    {
+      "query_id": "Q06",
+      "top_ids": [
+        "D07",
+        "D08",
+        "D04"
+      ]
+    },
+    {
+      "query_id": "Q07",
+      "top_ids": [
+        "D07",
+        "D04",
+        "D08"
+      ]
+    },
+    {
+      "query_id": "Q08",
+      "top_ids": [
+        "D07",
+        "D08",
+        "D04"
+      ]
+    }
+  ],
+  "metrics": {
+    "recall_at_3_bm25": 0.875,
+    "recall_at_3_bigram": 0.0,
+    "by_type": {
+      "same_word": {
+        "bm25": 1.0,
+        "bigram": 0.0
+      },
+      "paraphrase": {
+        "bm25": 0.75,
+        "bigram": 0.0
+      }
+    }
+  }
+}

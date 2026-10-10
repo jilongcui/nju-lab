@@ -1,0 +1,13 @@
+item,unit,ref_low,ref_high,critical_low,critical_high
+ALT,U/L,7,40,,500
+AST,U/L,13,35,,500
+CRP,mg/L,0,8,,100
+CREA,umol/L,44,106,,530
+GLU,mmol/L,3.9,6.1,2.8,22.2
+HBA1C,%,4.0,6.0,,
+HGB,g/L,115,150,70,
+K,mmol/L,3.5,5.3,2.8,6.2
+LDL,mmol/L,,3.4,,
+PLT,10^9/L,125,350,30,1000
+TSH,mIU/L,0.35,4.94,,
+WBC,10^9/L,3.5,9.5,1.5,30

@@ -1,0 +1,115 @@
+{
+  "note": "参考水平（不是标准答案）：判定口径已在 task.md 里钉死，所以这些值是确定的 —— 用于核对学生的清洗口径、逐项判定、危急值集合与「表外项目判 unknown」是否正确。硬性判据见 manifest.json 的 assertions，语义判据见 judge.md。",
+  "n_report_rows": 19,
+  "n_items": 16,
+  "dropped": {
+    "invalid": 1,
+    "duplicates": 2
+  },
+  "items": [
+    {
+      "item": "ALT",
+      "value": 55.0,
+      "flag": "high",
+      "critical": false
+    },
+    {
+      "item": "AMY",
+      "value": 128.0,
+      "flag": "high",
+      "critical": false
+    },
+    {
+      "item": "AST",
+      "value": 31.0,
+      "flag": "normal",
+      "critical": false
+    },
+    {
+      "item": "CA",
+      "value": 1.55,
+      "flag": "low",
+      "critical": true
+    },
+    {
+      "item": "CREA",
+      "value": 560.0,
+      "flag": "high",
+      "critical": true
+    },
+    {
+      "item": "CRP",
+      "value": 0.8,
+      "flag": "normal",
+      "critical": false
+    },
+    {
+      "item": "FERR",
+      "value": 210.0,
+      "flag": "unknown",
+      "critical": false
+    },
+    {
+      "item": "GLU",
+      "value": 26.0,
+      "flag": "high",
+      "critical": true
+    },
+    {
+      "item": "HBA1C",
+      "value": 6.9,
+      "flag": "high",
+      "critical": false
+    },
+    {
+      "item": "HGB",
+      "value": 143.0,
+      "flag": "normal",
+      "critical": false
+    },
+    {
+      "item": "K",
+      "value": 3.5,
+      "flag": "normal",
+      "critical": false
+    },
+    {
+      "item": "LDL",
+      "value": 4.8,
+      "flag": "high",
+      "critical": false
+    },
+    {
+      "item": "PLT",
+      "value": 380.0,
+      "flag": "high",
+      "critical": false
+    },
+    {
+      "item": "TBIL",
+      "value": 19.0,
+      "flag": "normal",
+      "critical": false
+    },
+    {
+      "item": "TSH",
+      "value": 0.35,
+      "flag": "normal",
+      "critical": false
+    },
+    {
+      "item": "WBC",
+      "value": 9.5,
+      "flag": "normal",
+      "critical": false
+    }
+  ],
+  "critical_item_names": [
+    "CA",
+    "CREA",
+    "GLU"
+  ],
+  "unknown_items": [
+    "FERR"
+  ]
+}

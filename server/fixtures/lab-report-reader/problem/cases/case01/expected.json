@@ -1,0 +1,97 @@
+{
+  "note": "参考水平（不是标准答案）：判定口径已在 task.md 里钉死，所以这些值是确定的 —— 用于核对学生的清洗口径、逐项判定、危急值集合与「表外项目判 unknown」是否正确。硬性判据见 manifest.json 的 assertions，语义判据见 judge.md。",
+  "n_report_rows": 15,
+  "n_items": 13,
+  "dropped": {
+    "invalid": 1,
+    "duplicates": 1
+  },
+  "items": [
+    {
+      "item": "ALT",
+      "value": 38.0,
+      "flag": "normal",
+      "critical": false
+    },
+    {
+      "item": "AST",
+      "value": 52.0,
+      "flag": "high",
+      "critical": false
+    },
+    {
+      "item": "BIL-T",
+      "value": 12.0,
+      "flag": "unknown",
+      "critical": false
+    },
+    {
+      "item": "CREA",
+      "value": 118.0,
+      "flag": "high",
+      "critical": false
+    },
+    {
+      "item": "CRP",
+      "value": 6.2,
+      "flag": "normal",
+      "critical": false
+    },
+    {
+      "item": "GLU",
+      "value": 6.4,
+      "flag": "high",
+      "critical": false
+    },
+    {
+      "item": "HBA1C",
+      "value": 8.2,
+      "flag": "high",
+      "critical": false
+    },
+    {
+      "item": "HGB",
+      "value": 108.0,
+      "flag": "low",
+      "critical": false
+    },
+    {
+      "item": "K",
+      "value": 6.2,
+      "flag": "high",
+      "critical": true
+    },
+    {
+      "item": "LDL",
+      "value": 3.4,
+      "flag": "normal",
+      "critical": false
+    },
+    {
+      "item": "PLT",
+      "value": 28.0,
+      "flag": "low",
+      "critical": true
+    },
+    {
+      "item": "TSH",
+      "value": 4.94,
+      "flag": "normal",
+      "critical": false
+    },
+    {
+      "item": "WBC",
+      "value": 1.2,
+      "flag": "low",
+      "critical": true
+    }
+  ],
+  "critical_item_names": [
+    "K",
+    "PLT",
+    "WBC"
+  ],
+  "unknown_items": [
+    "BIL-T"
+  ]
+}

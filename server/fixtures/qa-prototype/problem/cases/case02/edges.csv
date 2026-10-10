@@ -1,0 +1,11 @@
+head,relation,tail
+BRCA1,germline_mutation,卵巢癌
+BRCA1,loss_of_function,同源重组修复缺陷
+同源重组修复缺陷,sensitizes_to,铂类药物
+同源重组修复缺陷,synthetic_lethal_with,PARP抑制剂
+PARP抑制剂,includes,olaparib
+PARP抑制剂,includes,niraparib
+PARP抑制剂,includes,talazoparib
+olaparib,approved_for,BRCA突变卵巢癌
+niraparib,approved_for,铂敏感复发卵巢癌
+talazoparib,approved_for,BRCA突变乳腺癌

@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "name": "lab-report-reader",
+  "title": "技能实验：检验报告解读 Skill（口径比对 + 危急值拦截 + 技能卡）",
+  "outputFile": "output.json",
+  "inputs": ["lab_report.csv", "reference_ranges.csv", "patient.json"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['skill_card','items','critical_alerts','unknown_items','dropped','summary','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "逐项判定正确（item + flag + critical + value，含边界值与排序）",
+      "expr": "JSON.stringify(out.items.map((i) => [i.item, i.flag, i.critical, round(i.value * 100) / 100])) === JSON.stringify(expected.items.map((i) => [i.item, i.flag, i.critical, round(i.value * 100) / 100]))"
+    },
+    {
+      "name": "flag 取值合法且不是「全判正常」",
+      "expr": "out.items.every((i) => ['normal', 'high', 'low', 'unknown'].includes(i.flag)) && out.items.some((i) => i.flag !== 'normal')"
+    },
+    {
+      "name": "危急值清单正确（名单与顺序）",
+      "expr": "JSON.stringify(out.critical_alerts.map((a) => a.item)) === JSON.stringify(expected.critical_item_names)"
+    },
+    {
+      "name": "危急值抓得全（与本 case 的危急值条数一致且至少一条）",
+      "expr": "out.items.filter((i) => i.critical === true).length === expected.critical_item_names.length && expected.critical_item_names.length >= 1"
+    },
+    {
+      "name": "清洗口径一致（丢弃计数）",
+      "expr": "out.dropped.invalid === expected.dropped.invalid && out.dropped.duplicates === expected.dropped.duplicates"
+    },
+    {
+      "name": "不确定的项如实报为 unknown（名单一致）",
+      "expr": "JSON.stringify(out.unknown_items) === JSON.stringify(expected.unknown_items) && out.unknown_items.every((n) => out.items.some((i) => i.item === n && i.flag === 'unknown'))"
+    },
+    {
+      "name": "表外项目不猜区间（ref_low / ref_high 为 null）",
+      "expr": "out.items.filter((i) => i.flag === 'unknown').every((i) => i.ref_low === null && i.ref_high === null)"
+    },
+    {
+      "name": "技能卡齐全（description ≥ 40 字、不适用场景 ≥ 2 条、安全规则 ≥ 1 条）",
+      "expr": "out.skill_card && typeof out.skill_card.description === 'string' && out.skill_card.description.trim().length >= 40 && Array.isArray(out.skill_card.triggers) && out.skill_card.triggers.length >= 1 && Array.isArray(out.skill_card.not_applicable) && out.skill_card.not_applicable.length >= 2 && Array.isArray(out.skill_card.safety_rules) && out.skill_card.safety_rules.length >= 1"
+    },
+    {
+      "name": "每条危急值都写清依据（reason ≥ 10 字）",
+      "expr": "out.critical_alerts.every((a) => typeof a.reason === 'string' && a.reason.trim().length >= 10)"
+    },
+    {
+      "name": "图与说明齐全（至少 1 张，含一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 1 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "说清结论与口径（summary ≥ 60 字、notes ≥ 60 字）",
+      "expr": "typeof out.summary === 'string' && out.summary.trim().length >= 60 && typeof out.notes === 'string' && out.notes.trim().length >= 60"
+    }
+  ],
+  "requires": { "python": ["matplotlib"] }
+}
