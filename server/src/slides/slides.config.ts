@@ -111,6 +111,13 @@ export const SLIDES_LLM_TIMEOUT_MS = num('SLIDES_LLM_TIMEOUT_MS', 300_000);
  */
 export const SLIDES_PROMPT_VERSION = 'v8';
 
+/**
+ * 生成语义模型（v2）：新生成的 deck 直接产出 `intent + blocks`（见 semantic.schema.ts），
+ * 版式由渲染层映射 —— 这是 2026-10-10 起的产品口径。
+ * 置 `SLIDES_SEMANTIC=0` 可回退到旧模型（16 种版式枚举）生成，用于应急。
+ */
+export const SLIDES_SEMANTIC = process.env.SLIDES_SEMANTIC !== '0';
+
 export const SLIDES_LIMITS = {
   maxSlides: SLIDES_MAX_SLIDES,
   maxBullets: SLIDES_MAX_BULLETS,

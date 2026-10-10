@@ -6,7 +6,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { DeckConfig, SlideJson } from './deck.schema';
+import { DeckConfig, DeckSlide } from './deck.schema';
 
 /**
  * deck 状态机（与平台既有的 `verifying` 一类状态机同风格）。
@@ -45,7 +45,7 @@ export class SlideDeck {
 
   /** 内容真源 */
   @Column({ type: 'json', nullable: true })
-  slides: SlideJson[] | null;
+  slides: DeckSlide[] | null;
 
   /** Markdown 投影（由 slides 生成/教师编辑后的缓存） */
   @Column({ type: 'longtext', nullable: true })

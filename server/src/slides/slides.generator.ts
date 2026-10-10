@@ -6,7 +6,16 @@ import {
   normalizeSlides,
   validateSlide,
   validateSlides,
+  DeckSlide,
 } from './deck.schema';
+import {
+  isRecord,
+  parseLooseJson,
+  SEMANTIC_EXPAND_SYSTEM,
+  SEMANTIC_OUTLINE_SYSTEM,
+  validateSemanticPages,
+  type SemanticPage,
+} from './semantic.schema';
 import { chatJson, parseJsonLoose } from './llm.client';
 import {
   SLIDES_BULLET_MAX_CHARS,
@@ -16,6 +25,7 @@ import {
   SLIDES_MAX_TOKENS,
   SLIDES_OUTLINE_MODEL,
   SLIDES_SECTION_TEASER_MAX,
+  SLIDES_SEMANTIC,
   SLIDES_SOURCE_MAX_CHARS,
   SLIDES_TITLE_MAX_CHARS,
   SlidesGeneratorMode,
@@ -58,7 +68,7 @@ export function extractChapterImages(
 
 export interface GenerateOutcome {
   deckTitle: string;
-  slides: SlideJson[];
+  slides: DeckSlide[];
   model: string | null;
   tokens: { promptTokens: number; completionTokens: number } | null;
   /** 局部降级等非致命问题，随结果一起返回给教师看 */
@@ -312,6 +322,220 @@ export function postProcessSlides(slides: SlideJson[], warnings: string[]): Slid
  * 不调用任何外部服务，用于开发、测试与演示（也是 mock 模式下的端到端验证路径）。
  * 覆盖全部版式（agenda/steps/stat/compare…）：它是版式回归的**零成本**路径 —— 改渲染层后用它出图即可。
  */
+
+// ---------------------------------------------------------------- mock 的语义版
+
+/**
+ * mock 生成器的语义产出：**覆盖全部 intent**（新版式回归的零成本路径，
+ * 与 `docs/SLIDES.md` 里"mock 同步产出全部版式"的既有约定同思路）。
+ */
+function mockSemanticPages(source: DeckSource): SemanticPage[] {
+  const course = source.courseTitle || '课程名称';
+  const chapter = source.chapterTitle || '本章标题';
+  return [
+    {
+      intent: 'cover',
+      kicker: course,
+      title: chapter,
+      subtitle: 'mock 生成器产出的语义 deck：零 token、覆盖全部版式，用于开发与回归。',
+      blocks: [{ kind: 'evidence', items: ['语义模型', '零 token', '覆盖全部版式'] }],
+      notes: '这是 mock 生成器的封面页口播。',
+    },
+    {
+      intent: 'toc',
+      kicker: '本章脉络',
+      title: '四个部分',
+      blocks: [
+        {
+          kind: 'sequence',
+          items: [{ title: '背景与问题' }, { title: '方法与实现' }, { title: '数据与结果' }, { title: '小结与延伸' }],
+        },
+      ],
+    },
+    {
+      intent: 'section',
+      number: '01',
+      kicker: '第一部分',
+      title: '背景与问题',
+      lede: '这一节的 mock 说明：分节页用大编号 + 一句话交代本节要讲清什么。',
+      blocks: [{ kind: 'evidence', items: ['为什么要做', '现在卡在哪', '本章要解决什么'] }],
+    },
+    {
+      intent: 'claim',
+      kicker: '核心论断',
+      title: '一页只讲一件事',
+      blocks: [
+        { kind: 'claim', text: '把「讲什么」和「怎么排版」分开，两件事都会做得更好。' },
+        {
+          kind: 'evidence',
+          items: ['内容只表达意图与要点', '版式由渲染层按意图映射', '换主题、换版式都不需要重新生成'],
+        },
+      ],
+      notes: 'mock 讲稿：这一页强调内容与版式解耦。',
+    },
+    {
+      intent: 'contrast',
+      kicker: '对照',
+      title: '两种做法的差别',
+      blocks: [
+        {
+          kind: 'compare',
+          left: { title: '按版式填字', items: ['先选版式再想内容', '长内容只能缩字号', '版式一换就要重做'], tone: 'accent' },
+          right: { title: '按意图表达', items: ['先想清楚这一页要做什么', '内容块决定表现形式', '换主题换版式零成本'], tone: 'up' },
+        },
+      ],
+    },
+    {
+      intent: 'metric',
+      kicker: '关键数字',
+      title: '三个数字说明问题',
+      lede: 'mock 数据仅用于演示版式，不代表任何真实实验结果。',
+      blocks: [
+        {
+          kind: 'metric',
+          items: [
+            { value: '0.8', label: '检索命中率', detail: 'mock：recall@3' },
+            { value: '0.7', label: '摘要命中率', detail: 'mock' },
+            { value: '0.3', label: '滑动窗口命中率', detail: 'mock', tone: 'down' },
+          ],
+        },
+      ],
+    },
+    {
+      intent: 'sequence',
+      kicker: '操作步骤',
+      title: '四步走完',
+      blocks: [
+        {
+          kind: 'sequence',
+          items: [
+            { title: '准备素材', desc: '把章节正文整理成输入', tag: '输入' },
+            { title: '出页面计划', desc: '先定意图与要点', tag: '大纲' },
+            { title: '填充内容块', desc: '按批扩写', tag: '扩写' },
+            { title: '换主题与版式', desc: '零 token 调整观感', tag: '发布' },
+          ],
+        },
+      ],
+    },
+    {
+      intent: 'flow',
+      kicker: '管线',
+      title: '内容在环节间流动',
+      blocks: [
+        {
+          kind: 'flow',
+          nodes: [
+            { title: '章节正文', desc: 'Markdown 素材' },
+            { title: '页面计划', desc: '意图 + 要点' },
+            { title: '内容块', desc: '结构化数据', highlight: true },
+            { title: '渲染层', desc: '意图 → 版式' },
+            { title: '在线放映', desc: '固定画布' },
+          ],
+        },
+      ],
+    },
+    {
+      intent: 'relation',
+      kicker: '关系',
+      title: '一个中心，三个相关概念',
+      blocks: [
+        {
+          kind: 'relation',
+          nodes: [
+            { label: '语义页模型', desc: '每页表达一个教学动作', center: true },
+            { label: '内容块', desc: '结构化数据，不含图形' },
+            { label: '版式组件', desc: '把块画成图与卡' },
+            { label: '主题令牌', desc: '决定颜色与字体' },
+          ],
+        },
+      ],
+    },
+    {
+      intent: 'timeline',
+      kicker: '演化',
+      title: '三个阶段的路线',
+      blocks: [
+        {
+          kind: 'timeline',
+          points: [
+            { at: '第一阶段', title: '跑通渲染', desc: '固定画布 + 版式系统' },
+            { at: '第二阶段', title: '接入平台', desc: '旧 deck 适配 + 默认切换', highlight: true },
+            { at: '第三阶段', title: '生成侧改造', desc: '直接产出语义页' },
+          ],
+        },
+      ],
+    },
+    {
+      intent: 'arch',
+      kicker: '分层',
+      title: '三层结构',
+      blocks: [
+        {
+          kind: 'arch',
+          levels: [
+            { name: '内容层', cells: [{ title: '意图 intent', desc: '这页要做什么' }, { title: '内容块 blocks', desc: '结构化数据' }] },
+            {
+              name: '版式层',
+              highlight: true,
+              cells: [{ title: '版式组件', desc: '关系图 / 管线 / 时间线' }, { title: '网格与卡片', desc: '固定画布标定' }],
+            },
+            { name: '主题层', cells: [{ title: '设计令牌', desc: '颜色 / 字体 / 圆角' }, { title: '内置主题', desc: '一键换装' }] },
+          ],
+        },
+      ],
+    },
+    {
+      intent: 'table',
+      kicker: '数据表',
+      title: '对齐的数值用表格',
+      blocks: [
+        {
+          kind: 'table',
+          head: ['配置', '指标 A', '指标 B', '结论'],
+          align: ['l', 'r', 'r', 'l'],
+          rows: [
+            ['mock-基准', '0.2761', '2.2074', '基准'],
+            ['mock-变体一', '0.4329', '1.7238', '更集中'],
+            ['mock-变体二', '0.2103', '3.1066', '更分散'],
+          ],
+        },
+        { kind: 'note', text: '表中数字为 mock 占位，仅用于验证表格版式的对齐与密度。' },
+      ],
+    },
+    {
+      intent: 'example',
+      kicker: '代码示例',
+      title: '代码块也会换主题',
+      blocks: [
+        {
+          kind: 'code',
+          lang: 'python',
+          content: `def render(page):\n    # 版式由 intent 决定，模型不写 HTML\n    return LAYOUTS[page["intent"]](page)\n`,
+          caption: 'mock 代码块：等宽字体与行距都由主题令牌控制。',
+        },
+      ],
+    },
+    {
+      intent: 'quote',
+      kicker: '点睛',
+      title: '',
+      blocks: [{ kind: 'quote', text: '把不需要的东西拿掉，剩下的才是设计。', cite: 'mock 引用' }],
+    },
+    {
+      intent: 'summary',
+      kicker: '小结',
+      title: '三句话收尾',
+      blocks: [
+        {
+          kind: 'evidence',
+          items: ['内容只表达意图与要点', '版式与主题由渲染层决定', '换主题、换版式都不花 token'],
+        },
+      ],
+      notes: 'mock 讲稿：把三句话和前面每一页对应起来。',
+    },
+  ];
+}
+
 export class MockDeckGenerator implements DeckGenerator {
   readonly mode = 'mock' as const;
 
@@ -469,12 +693,18 @@ export class MockDeckGenerator implements DeckGenerator {
  * 也可以从现有 deck 抽出来做「单页重生成」—— 两种来源走同一套扩写/校验/兜底。
  */
 export interface OutlineSlide {
+  /** 旧模型的版式名；语义模式下固定传 'semantic' */
   layout: string;
+  /** 语义模式：本页的教学意图（intent） */
+  intent?: string;
   kicker?: string;
   title?: string;
+  lede?: string;
   /** 本页要让学员记住什么（大纲阶段的"锚"，扩写时回传给模型防漂移；不上屏） */
   keyPoint?: string;
   bullets?: string[];
+  /** 语义模式：本页计划要用的块类型 */
+  plan?: string[];
 }
 
 interface OutlineResult {
@@ -484,7 +714,7 @@ interface OutlineResult {
 
 /** 单批扩写的结果（整份生成按批累加，单页重生成直接用） */
 export interface ExpandBatchResult {
-  slides: SlideJson[];
+  slides: DeckSlide[];
   warnings: string[];
   promptTokens: number;
   completionTokens: number;
@@ -513,6 +743,16 @@ export class LlmDeckGenerator implements DeckGenerator {
   readonly mode = 'llm' as const;
 
   async generate(source: DeckSource): Promise<GenerateOutcome> {
+    // 语义模式（默认）：mock 也产出 v2，保证开发/回归路径与生产一致
+    if (SLIDES_SEMANTIC) {
+      return {
+        deckTitle: source.chapterTitle || 'mock deck',
+        slides: mockSemanticPages(source),
+        model: null,
+        tokens: null,
+        warnings: [],
+      };
+    }
     const content = truncate(source.chapterContent || '（本章暂无正文）', SLIDES_SOURCE_MAX_CHARS);
     const warnings: string[] = [];
     const availableImages = source.availableImages ?? [];
@@ -556,7 +796,7 @@ export class LlmDeckGenerator implements DeckGenerator {
       warnings.push(...result.warnings);
       promptTokens += result.promptTokens;
       completionTokens += result.completionTokens;
-      expanded.push(...result.slides);
+      expanded.push(...(result.slides as SlideJson[]));
     }
 
     const cleaned = postProcessSlides(expanded, warnings);
@@ -888,6 +1128,187 @@ export class LlmDeckGenerator implements DeckGenerator {
   }
 }
 
+
+// ---------------------------------------------------------------- 语义生成器（v2，默认）
+
+/**
+ * 语义模式的 LLM 生成器：两阶段与旧路径一致（先大纲、再分批扩写），
+ * 但产出的是 `intent + blocks`（见 semantic.schema.ts），版式交给渲染层映射。
+ *
+ * 与旧路径的差别只在三处：
+ *   1) prompt 换成"意图 + 内容块"（能表达关系图/管线/时间线，不再只能选 16 个格子）；
+ *   2) 归一化走 `validateSemanticPages`（页数/块级预算/intent 白名单，非法块丢弃并记 warning）；
+ *   3) 批内缺页用**计划骨架**兜底（页数、页序永不漂移）。
+ */
+export class SemanticLlmDeckGenerator implements DeckGenerator {
+  readonly mode: SlidesGeneratorMode = 'llm';
+
+  async generate(source: DeckSource): Promise<GenerateOutcome> {
+    const content = truncate(source.chapterContent || '（本章暂无正文）', SLIDES_SOURCE_MAX_CHARS);
+    const warnings: string[] = [];
+
+    // 阶段一：页面计划（失败 = 整份失败，重试一次；与旧路径同口径）
+    let outlineResponse: Awaited<ReturnType<typeof chatJson>> | null = null;
+    let lastOutlineError: Error | null = null;
+    for (let attempt = 0; attempt < 2 && !outlineResponse; attempt++) {
+      try {
+        const response = await chatJson(
+          [
+            { role: 'system', content: SEMANTIC_OUTLINE_SYSTEM },
+            { role: 'user', content: this.outlineUserPrompt(source, content) },
+          ],
+          { maxTokens: SLIDES_MAX_TOKENS, temperature: 0.3, model: SLIDES_OUTLINE_MODEL || undefined },
+        );
+        this.parseOutline(response.content); // 先解析再算成功
+        outlineResponse = response;
+      } catch (error) {
+        lastOutlineError = error as Error;
+        if (attempt === 0) warnings.push(`大纲首次生成失败（${lastOutlineError.message}），已重试`);
+      }
+    }
+    if (!outlineResponse) throw lastOutlineError ?? new Error('大纲生成失败');
+
+    const outline = this.parseOutline(outlineResponse.content);
+    const planCount = outline.slides.length;
+    let promptTokens = outlineResponse.usage?.promptTokens ?? 0;
+    let completionTokens = outlineResponse.usage?.completionTokens ?? 0;
+    if (planCount > SLIDES_LIMITS.maxSlides) {
+      warnings.push(`大纲给出 ${planCount} 页，超过上限 ${SLIDES_LIMITS.maxSlides}，已截断`);
+    }
+    const plan = outline.slides.slice(0, SLIDES_LIMITS.maxSlides);
+
+    // 阶段二：分批扩写（批内缺页用计划骨架兜底）
+    const pages: SemanticPage[] = [];
+    for (let start = 0; start < plan.length; start += SLIDES_EXPAND_BATCH) {
+      const batch = plan.slice(start, start + SLIDES_EXPAND_BATCH);
+      const result = await this.expandBatch(source, batch, start);
+      promptTokens += result.promptTokens;
+      completionTokens += result.completionTokens;
+      warnings.push(...result.warnings);
+      pages.push(...(result.slides as SemanticPage[]));
+    }
+
+    const { pages: validated, warnings: schemaWarnings } = validateSemanticPages(pages, {
+      maxPages: SLIDES_LIMITS.maxSlides,
+      maxNotes: SLIDES_LIMITS.maxNotes,
+    });
+    warnings.push(...schemaWarnings);
+
+    return {
+      deckTitle: outline.deckTitle || source.chapterTitle,
+      slides: validated,
+      model: outlineResponse.model,
+      tokens: { promptTokens, completionTokens },
+      warnings,
+    };
+  }
+
+  /** 单批扩写（整份生成按批调用；「重生成当前页」传 1 页） */
+  async expandBatch(source: DeckSource, batch: OutlineSlide[], startIndex = 0): Promise<ExpandBatchResult> {
+    const content = truncate(source.chapterContent || '（本章暂无正文）', SLIDES_SOURCE_MAX_CHARS);
+    const warnings: string[] = [];
+    const plan = batch.map((item) => ({
+      intent: item.intent ?? 'claim',
+      kicker: item.kicker ?? '',
+      title: item.title ?? '',
+      lede: item.lede ?? '',
+      keyPoint: item.keyPoint ?? '',
+      plan: item.plan ?? [],
+    }));
+
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let got: unknown[] = [];
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt < 2 && got.length < plan.length; attempt++) {
+      try {
+        const response = await chatJson(
+          [
+            { role: 'system', content: SEMANTIC_EXPAND_SYSTEM },
+            { role: 'user', content: this.expandUserPrompt(content, plan) },
+          ],
+          { maxTokens: SLIDES_MAX_TOKENS, temperature: 0.4, model: SLIDES_EXPAND_MODEL || undefined },
+        );
+        promptTokens += response.usage?.promptTokens ?? 0;
+        completionTokens += response.usage?.completionTokens ?? 0;
+        const parsed: unknown = parseLooseJson(response.content);
+        const pages = isRecord(parsed) && Array.isArray(parsed.pages) ? (parsed.pages as unknown[]) : [];
+        if (pages.length > got.length) got = pages;
+      } catch (error) {
+        lastError = error as Error;
+      }
+    }
+    if (!got.length) {
+      warnings.push(
+        `第 ${startIndex + 1}–${startIndex + plan.length} 页扩写失败（${lastError?.message ?? '返回为空'}），已用计划骨架兜底`,
+      );
+    }
+
+    const pages: SemanticPage[] = plan.map((item, i) => {
+      const raw = got[i];
+      const record = isRecord(raw) ? raw : null;
+      const candidate: Record<string, unknown> = record
+        ? {
+            ...record,
+            intent: item.intent,
+            kicker: item.kicker || record.kicker,
+            title: item.title || record.title,
+          }
+        : { intent: item.intent, kicker: item.kicker, title: item.title, lede: item.lede, blocks: [] };
+      const { pages: validated, warnings: schemaWarnings } = validateSemanticPages([candidate], {
+        maxPages: 1,
+        maxNotes: SLIDES_LIMITS.maxNotes,
+      });
+      warnings.push(...schemaWarnings.map((text) => `第 ${startIndex + i + 1} 页：${text}`));
+      if (validated[0]) return validated[0];
+      // 兜底：计划骨架（页数/页序永不漂移）
+      warnings.push(`第 ${startIndex + i + 1} 页内容缺失，已用计划骨架兜底`);
+      return {
+        intent: (item.intent as SemanticPage['intent']) ?? 'claim',
+        kicker: item.kicker,
+        title: item.title,
+        blocks: [{ kind: 'evidence', items: item.plan?.length ? item.plan : [item.keyPoint || item.title || ''] }],
+      } as SemanticPage;
+    });
+
+    return { slides: pages, warnings, promptTokens, completionTokens };
+  }
+
+  private outlineUserPrompt(source: DeckSource, content: string): string {
+    return [`课程：${source.courseTitle}`, `章节：${source.chapterTitle}`, '', '【章节正文】', content].join('\n');
+  }
+
+  private expandUserPrompt(content: string, plan: unknown): string {
+    return [
+      '【页面计划（必须原样保持 intent/kicker/title，顺序不变）】',
+      JSON.stringify(plan),
+      '',
+      '【章节正文】',
+      content,
+    ].join('\n');
+  }
+
+  private parseOutline(text: string): { deckTitle: string; slides: OutlineSlide[] } {
+    const parsed: unknown = parseLooseJson(text);
+    if (!isRecord(parsed) || !Array.isArray(parsed.pages) || !parsed.pages.length) {
+      throw new Error('大纲 JSON 缺少 pages 数组');
+    }
+    const slides: OutlineSlide[] = parsed.pages.filter(isRecord).map((item) => ({
+      layout: 'semantic',
+      intent: typeof item.intent === 'string' ? item.intent : 'claim',
+      kicker: typeof item.kicker === 'string' ? item.kicker : undefined,
+      title: typeof item.title === 'string' ? item.title : undefined,
+      lede: typeof item.lede === 'string' ? item.lede : undefined,
+      keyPoint: typeof item.keyPoint === 'string' ? item.keyPoint : undefined,
+      plan: Array.isArray(item.plan) ? item.plan.filter((value): value is string => typeof value === 'string') : [],
+    }));
+    if (!slides.length) throw new Error('大纲 JSON 没有可用的页面');
+    return { deckTitle: typeof parsed.deckTitle === 'string' ? parsed.deckTitle : '', slides };
+  }
+}
+
 export function createDeckGenerator(mode: SlidesGeneratorMode): DeckGenerator {
-  return mode === 'llm' ? new LlmDeckGenerator() : new MockDeckGenerator();
+  if (mode !== 'llm') return new MockDeckGenerator();
+  // 默认语义模型（v2）；SLIDES_SEMANTIC=0 回退旧模型
+  return SLIDES_SEMANTIC ? new SemanticLlmDeckGenerator() : new LlmDeckGenerator();
 }

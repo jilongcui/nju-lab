@@ -1,5 +1,5 @@
 import client from '../api/client';
-import type { SlideJson } from '../types';
+import type { DeckSlide } from '../types';
 
 /**
  * 平台文件（`file:<fileId>`）→ data URL。
@@ -19,13 +19,26 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-/** 收集 deck 里所有 `file:` 引用（图片页/多图网格 + 页背景 + 模板 logo） */
+/**
+ * 收集 deck 里所有 `file:` 引用（图片页/多图网格 + 页背景 + 模板 logo）。
+ * 同时支持 v1（`SlideJson.image.url = file:<id>`）与 v2（语义块的 `fileId` 裸 id）。
+ */
 export function collectFileRefs(
-  slides: SlideJson[],
+  slides: DeckSlide[],
   logoFileId?: string | null,
 ): string[] {
   const refs = new Set<string>();
   for (const slide of slides) {
+    if ('blocks' in slide) {
+      for (const block of slide.blocks) {
+        if (block.kind !== 'image') continue;
+        if (typeof block.fileId === 'string' && block.fileId) refs.add(`file:${block.fileId}`);
+        for (const item of (block.items as { fileId?: string }[] | undefined) ?? []) {
+          if (item?.fileId) refs.add(`file:${item.fileId}`);
+        }
+      }
+      continue;
+    }
     if (slide.image?.url?.startsWith('file:')) refs.add(slide.image.url);
     for (const img of slide.images ?? []) {
       if (img.url?.startsWith('file:')) refs.add(img.url);

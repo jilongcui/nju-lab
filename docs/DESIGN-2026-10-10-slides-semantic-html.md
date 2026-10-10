@@ -3,8 +3,8 @@
 > 目标读者：接手实现的人。现状功能指南见 `docs/SLIDES.md`，历史设计见
 > `docs/DESIGN-2026-09-29-chapter-slides.md`、`docs/DESIGN-2026-09-30-slides-images.md`。
 > 本文是**规划 + 落地记录**：§1–§8 是规划（`[已核实]` = 实际 clone 仓库看到的事实），
-> §9 = P0（渲染层），§10 = P1（接入平台），§11 = P2 前置验证（语义 prompt 离线端到端），
-> 均为 2026-10-10 当天实现并验证。
+> §9 = P0（渲染层），§10 = P1（接入平台），§11 = P2 前置验证，§12 = P2b（生成侧切换为默认 +
+> 编辑面收窄），均为 2026-10-10 当天实现并验证。
 
 ## 0. 一句话与结论
 
@@ -411,3 +411,56 @@ node web/tools/gen-semantic-deck.mjs [--source=server/fixtures/<某实验>/READM
 | 3 | 前端 `SlideStage` 按 `schemaVersion` 直接渲染 `Page[]`（不再走适配器） | 低 |
 | 4 | MD 投影（`deck-markdown.ts`）适配新模型，或按"编辑面收窄"降级为只读预览 | 中 |
 | 5 | mock 生成器同步产语义页；`review-decks.mjs` 跑一轮真实盲评（对比新旧 prompt） | 低 + 少量模型成本 |
+
+
+---
+
+## 12. P2b 落地：生成侧切换为默认 + 编辑面收窄（2026-10-10，已实测）
+
+> 用户决策（2026-10-10）：**生成侧直接切成默认**（新生成的 deck 走语义模型 + 图示版式）；
+> **编辑面按设计文档收窄**（教师侧主操作 = 换主题 / 换版式 / 重生成当前页，MD 视图降为只读预览）。
+
+### 12.1 交付物
+
+| 侧 | 文件 | 作用 |
+|---|---|---|
+| server | `src/slides/semantic.schema.ts`（新） | 语义模型类型 + **校验/归一**（intent 白名单、块级预算、语义不变式）+ **已验证的 prompt** + 宽松 JSON 解析 + 只读 Markdown 投影 |
+| server | `src/slides/slides.generator.ts` | 新增 `SemanticLlmDeckGenerator`（两阶段产 `intent + blocks`）；`MockDeckGenerator` 在语义模式下产出**覆盖全部 intent** 的 mock deck；`createDeckGenerator` 默认返回语义生成器 |
+| server | `src/slides/slides.config.ts` | `SLIDES_SEMANTIC`（**默认开启**，`=0` 回退旧模型） |
+| server | `src/slides/slides.service.ts` | Markdown 投影按模型分流；单页重生成走语义分支；**保存路径拦截语义 deck 的 Markdown 回写**；`DeckView` 新增 `semantic` 标记 |
+| server | `src/slides/deck.schema.ts` / `slide-deck.entity.ts` | 新增 `DeckSlide = SlideJson \| SemanticPage`（**共用同一 JSON 列**） |
+| web | `src/types/index.ts` | `SemanticIntent` / `SemanticPage` / `DeckSlide` / 意图中文名清单；`SlideDeckView.semantic` |
+| web | `src/slides/semantic/detect.ts`（新） | `isSemanticDeck`（与服务端同口径的**结构自辨识**） |
+| web | `src/slides/SlideStage.tsx` | v2 deck **直接渲染**（不过适配器）；v1 deck 仍走适配器；`VITE_SLIDES_RENDERER=reveal` 可整体回退旧渲染器 |
+| web | `src/slides/files.ts` | `collectFileRefs` 支持 v2 图片块（`fileId` 裸 id） |
+| web | `src/pages/teacher/ChapterSlides.tsx` | MD 视图**只读** + 说明；JSON 视图保留可写并新增**「本页版式」下拉（换 intent，内容块不动、零 token）**；缩略图标签按模型显示 intent/版式名 |
+
+### 12.2 关键取舍
+
+- **没有数据库迁移**：v2 与 v1 共用 `slide_decks.slides` JSON 列，靠结构自辨识（每页有 `intent` 即 v2）。
+  旧 deck 不会被误判（有断言守着），无需重生成 —— 这是选"结构自辨识"而不是"加版本列"的直接收益。
+- **回退路径双层保留**：生成侧 `SLIDES_SEMANTIC=0`、渲染侧 `VITE_SLIDES_RENDERER=reveal`，两条都可一键回到旧行为。
+- **编辑面收窄的落法**：MD 视图只读（服务端也会拦，返回人话错误）；内容修改走「重生成当前页」；
+  观感修改走「换主题」（模板选择/调参）；版式修改走 JSON 视图的「本页版式」下拉 —— **三项都不烧 token**（换版式与换主题零 token，重生成单页一次调用）。
+
+### 12.3 实测结果
+
+- `node server/tools/assert-semantic-schema.mjs` —— **18/18 通过**（预算裁剪、语义不变式、
+  非法块丢弃、空块不再产出空页、结构自辨识、只读投影、宽松 JSON 修复）。
+- `node web/tools/assert-semantic.mjs` —— **51/51 通过**（新增：v2 直接渲染、图示版式落地、自辨识不误判）。
+- `npx tsc --noEmit`（server 与 web 两侧）与 `npm run build` 均通过；
+  主包仍未变大（新渲染层保持 55.7KB 懒加载 chunk）。
+- **本轮抓到并修掉一个真问题**：空 `claim`/空 `note` 块原先会**渲染出一个只有标题的空页**，
+  现在判为无效块丢弃并记 warning（断言已覆盖）。
+
+### 12.4 部署后验收（真实环境，尚未执行）
+
+1. `SLIDES_GENERATOR=mock` 生成一次 → 肉眼确认 mock 的 15 页覆盖全部版式（零成本）；
+2. 真实生成 1–2 章 → 对照 `docs/REVIEW-slides-rubric.md` 打分（重点看 D5 版式多样与 D7 整体观感）；
+3. 教师端扫码三件事：换主题、换版式（JSON 视图下拉）、重生成当前页；
+4. 学生端只读放映 + 翻页/键盘/Esc（`verify-slides.mjs` 的 11 项断言应全绿——它们只依赖 postMessage 契约）。
+
+### 12.5 仍未做（P4）
+
+数据图表（Chart.js 内联或 SVG 自绘）、KaTeX 公式、PDF 导出、页级背景图（`attrs.background`）。
+另外旧模板调参里的 `density` / `cardStyle` / `fontScale` 三项尚未映射到新 token（语义 deck 的疏密与卡片风格）。

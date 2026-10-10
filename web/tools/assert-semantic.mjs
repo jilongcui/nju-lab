@@ -52,6 +52,7 @@ await esbuild.build({
       `export { PAGES, META } from './tools/fixtures/chapter4-deck';`,
       `export { LEGACY_SLIDES } from './tools/fixtures/legacy-deck';`,
       `export { legacyDeckToPages, designToTokenOverrides } from './src/slides/semantic/legacy';`,
+      `export { isSemanticDeck } from './src/slides/semantic/detect';`,
     ].join('\n'),
     resolveDir: webRoot,
     loader: 'ts',
@@ -64,7 +65,7 @@ await esbuild.build({
   plugins: [rawPlugin],
   logLevel: 'silent',
 });
-const { buildSemanticDeckHtml, CANVAS, DECK_THEMES, themeCss, PAGES, META, LEGACY_SLIDES, legacyDeckToPages, designToTokenOverrides } =
+const { buildSemanticDeckHtml, CANVAS, DECK_THEMES, themeCss, PAGES, META, LEGACY_SLIDES, legacyDeckToPages, designToTokenOverrides, isSemanticDeck } =
   await import(pathToFileURL(bundle).href);
 
 const html = buildSemanticDeckHtml({ pages: PAGES, meta: META, themeId: 'builtin-platform-blue' });
@@ -271,6 +272,38 @@ check('兜底：多带的 note 照常渲染', mixedDoc.querySelectorAll('.ly-not
 check(
   '兜底：pillars 意图配 relation 块时仍画关系图',
   mixedDoc.querySelectorAll('.ly-rel-center').length === 1 && mixedDoc.querySelectorAll('.ly-rel svg path').length === 1,
+);
+
+// ---------------- 9. v2 语义 deck 直接渲染（服务端默认产出）----------------
+// 服务端（generator 的语义模式）产出的是 {intent, blocks} 结构；前端按结构自辨识直接渲染，
+// 不再经过 v1 适配器 —— 这是 2026-10-10 起的默认路径。
+const v2Pages = [
+  { intent: 'cover', kicker: '某课程', title: '语义 deck', subtitle: '直接渲染', blocks: [{ kind: 'evidence', items: ['v2'] }] },
+  { intent: 'relation', title: '关系', blocks: [{ kind: 'relation', nodes: [{ label: '中心', center: true }, { label: 'A' }, { label: 'B' }] }] },
+  { intent: 'flow', title: '管线', blocks: [{ kind: 'flow', nodes: [{ title: 'A' }, { title: 'B', highlight: true }, { title: 'C' }] }] },
+  {
+    intent: 'timeline',
+    title: '时间线',
+    blocks: [{ kind: 'timeline', points: [{ at: 'Q1', title: '一' }, { at: 'Q2', title: '二', highlight: true }, { at: 'Q3', title: '三' }] }],
+  },
+  {
+    intent: 'arch',
+    title: '分层',
+    blocks: [{ kind: 'arch', levels: [{ name: 'L1', cells: [{ title: 'a' }, { title: 'b' }] }, { name: 'L2', cells: [{ title: 'c' }] }] }],
+  },
+  { intent: 'summary', kicker: '小结', title: '三句话', blocks: [{ kind: 'evidence', items: ['一', '二', '三'] }] },
+];
+check('v2 deck 被识别为语义 deck（按结构，不靠版本号）', isSemanticDeck(v2Pages) === true);
+check('v1 deck 不会被误判为语义 deck', isSemanticDeck(LEGACY_SLIDES) === false);
+const v2Html = buildSemanticDeckHtml({ pages: v2Pages, meta: META, themeId: 'builtin-platform-blue' });
+const v2Doc = new JSDOM(v2Html).window.document;
+check('v2 deck 直接渲染：页数一致', v2Doc.querySelectorAll('.slide').length === v2Pages.length);
+check(
+  'v2 deck 直接渲染：图示版式全部落地（关系图/管线/时间线/分层）',
+  v2Doc.querySelectorAll('.ly-rel-center').length === 1 &&
+    v2Doc.querySelectorAll('.ly-flow-node').length === 3 &&
+    v2Doc.querySelectorAll('.ly-tl-item').length === 3 &&
+    v2Doc.querySelectorAll('.ly-tier').length === 2,
 );
 
 // ---------------- 汇总 ----------------

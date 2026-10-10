@@ -17,11 +17,13 @@ import { mergeMarkdown, toMarkdown } from './deck-markdown';
 import {
   DEFAULT_DECK_CONFIG,
   DeckConfig,
+  DeckSlide,
   DeckValidationError,
   SlideJson,
   normalizeSlides,
   validateDeckConfig,
 } from './deck.schema';
+import { isSemanticDeck, semanticToMarkdown, validateSemanticPages, type SemanticPage } from './semantic.schema';
 import { llmDiagnostics } from './llm.client';
 import { SlideDeck, SlideDeckStatus } from './slide-deck.entity';
 import { SlideTemplate } from './slide-template.entity';
@@ -71,7 +73,10 @@ export interface DeckView {
   chapterId: string;
   courseId: string;
   title: string;
-  slides: SlideJson[];
+  /** v2（语义模型）或 v1（旧版式模型）—— 两者共用同一列，前端按此分流渲染与编辑能力 */
+  slides: DeckSlide[];
+  /** true = 语义 deck：Markdown 只是只读预览，编辑面收窄为「换主题 / 重生成当前页」 */
+  semantic: boolean;
   markdown: string;
   templateId: string | null;
   config: Required<DeckConfig> & DeckConfig;
@@ -236,7 +241,10 @@ export class SlidesService {
       const deck = await this.deckRepo.findOne({ where: { id: deckId } });
       if (!deck) return;
       deck.slides = outcome.slides;
-      deck.markdown = toMarkdown(outcome.slides);
+      // 语义 deck 的 Markdown 只是只读预览（不接受回写）；旧 deck 仍是双向投影
+      deck.markdown = isSemanticDeck(outcome.slides)
+        ? semanticToMarkdown(outcome.slides)
+        : toMarkdown(outcome.slides as SlideJson[]);
       deck.title = outcome.deckTitle || deck.title;
       deck.model = outcome.model;
       deck.tokensUsed = outcome.tokens
@@ -288,15 +296,25 @@ export class SlidesService {
     // 与整份生成共用一个频次护栏（单页也是一次 LLM 调用）
     this.assertRateLimit(course.id);
 
+    const semantic = isSemanticDeck(deck.slides);
     const current = deck.slides[index];
-    // cover 封面的 bullets 多为大纲锚点残留（封面=标题+副标题），不回传；section 的要点是
-    // "本节导览"素材（prompt v7 起扩写会把它改写成真正的导览），照常回传给模型参考
-    const outlineItem: OutlineSlide = {
-      layout: current.layout,
-      kicker: current.kicker,
-      title: current.title,
-      bullets: current.layout === 'cover' ? undefined : current.bullets,
-    };
+    // 旧模型：cover 封面的 bullets 多为大纲锚点残留（封面=标题+副标题），不回传；section 的要点是
+    // "本节导览"素材，照常回传给模型参考。
+    // 语义模型（v2）：回传 intent + 标题，模型据此重写这一页的内容块 —— 页序与其余页一律不动。
+    const outlineItem: OutlineSlide = semantic
+      ? {
+          layout: 'semantic',
+          intent: (current as SemanticPage).intent,
+          kicker: current.kicker,
+          title: current.title,
+          lede: (current as { lede?: string }).lede,
+        }
+      : {
+          layout: (current as SlideJson).layout,
+          kicker: current.kicker,
+          title: current.title,
+          bullets: (current as SlideJson).layout === 'cover' ? undefined : (current as SlideJson).bullets,
+        };
     const generator = createDeckGenerator(SLIDES_GENERATOR);
     const result = await generator.expandBatch(
       {
@@ -314,19 +332,22 @@ export class SlidesService {
     if (!regenerated) {
       throw new BadGatewayException(`第 ${index + 1} 页重新生成失败，请重试`);
     }
-    // 分节页眉题强制为「第 N 节」（按它在整份 deck 里的分节序号算，不交给模型编——
-    // 模型看不到其他页，编出来的号会断档；与整份生成的 postProcess 编号同口径）
-    if (regenerated.layout === 'section') {
+    // 旧模型：分节页眉题强制为「第 N 节」（按它在整份 deck 里的分节序号算，不交给模型编——
+    // 模型看不到其他页，编出来的号会断档；与整份生成的 postProcess 编号同口径）。
+    // 语义模型没有这一步：分节页的 kicker 由计划给定。
+    if (!semantic && (regenerated as SlideJson).layout === 'section') {
       const sectionNo = deck.slides
         .slice(0, index + 1)
-        .filter((slide) => slide.layout === 'section').length;
-      regenerated.kicker = `第 ${sectionNo} 节`;
+        .filter((slide) => (slide as SlideJson).layout === 'section').length;
+      (regenerated as SlideJson).kicker = `第 ${sectionNo} 节`;
     }
-    const slides = [...deck.slides];
+    const slides: DeckSlide[] = [...deck.slides];
     // 保留原页 id：缩略图/编辑态以 id 做 key，原位替换不应引起视图抖动
-    slides[index] = { ...regenerated, id: current.id };
+    slides[index] = { ...(regenerated as unknown as Record<string, unknown>), id: current.id } as DeckSlide;
     deck.slides = slides;
-    deck.markdown = toMarkdown(slides);
+    deck.markdown = semantic
+      ? semanticToMarkdown(slides as SemanticPage[])
+      : toMarkdown(slides as SlideJson[]);
     deck.generatedBy = generator.mode;
     deck.warnings = result.warnings.length ? result.warnings.join('\n') : null;
     if (result.promptTokens + result.completionTokens > 0) {
@@ -350,16 +371,31 @@ export class SlidesService {
     const warnings: string[] = [];
     let deck = await this.deckRepo.findOne({ where: { chapterId } });
 
-    let slides: SlideJson[] | undefined;
+    let slides: DeckSlide[] | undefined;
     if (dto.slides !== undefined) {
-      slides = this.guardDeck(() => normalizeSlides(dto.slides as SlideJson[], SLIDES_LIMITS));
+      // JSON 视图（高级入口）保留可写：按结构自辨识走语义校验或旧校验
+      slides = isSemanticDeck(dto.slides)
+        ? this.guardDeck(
+            () =>
+              validateSemanticPages(dto.slides, {
+                maxPages: SLIDES_LIMITS.maxSlides,
+                maxNotes: SLIDES_LIMITS.maxNotes,
+              }).pages,
+          )
+        : this.guardDeck(() => normalizeSlides(dto.slides as SlideJson[], SLIDES_LIMITS));
       if (dto.markdown !== undefined) {
         warnings.push('同时提交了 slides 与 markdown，已以 slides 为准');
       }
     } else if (dto.markdown !== undefined) {
-      const merged = this.guardDeck(() =>
-        mergeMarkdown(deck?.slides ?? [], dto.markdown as string, SLIDES_LIMITS),
-      );
+      // v2 语义 deck：Markdown 只是只读预览，不接受回写（编辑面已收窄为「换主题 / 重生成当前页」）
+      if (isSemanticDeck(deck?.slides)) {
+        throw new BadRequestException(
+          '新版幻灯片（语义模型）不支持编辑 Markdown：请用「换主题」改观感，用「重生成当前页」改内容；高级改动可在 JSON 视图里进行',
+        );
+      }
+      // 能走到这里说明是旧模型 deck（语义 deck 上面已拦），收窄后交给 MD 合并管线
+      const legacySlides = (deck?.slides ?? []) as SlideJson[];
+      const merged = this.guardDeck(() => mergeMarkdown(legacySlides, dto.markdown as string, SLIDES_LIMITS));
       slides = merged.slides;
       warnings.push(...merged.warnings);
     }
@@ -380,7 +416,9 @@ export class SlidesService {
         });
       }
       deck.slides = slides;
-      deck.markdown = toMarkdown(slides);
+      deck.markdown = isSemanticDeck(slides)
+        ? semanticToMarkdown(slides as SemanticPage[])
+        : toMarkdown(slides as SlideJson[]);
       deck.status = SlideDeckStatus.READY;
       deck.generatedBy = 'manual';
       deck.error = null;
@@ -538,6 +576,7 @@ export class SlidesService {
       courseId: deck.courseId,
       title: deck.title,
       slides: deck.slides ?? [],
+      semantic: isSemanticDeck(deck.slides),
       markdown: deck.markdown ?? '',
       templateId: deck.templateId,
       config: { ...DEFAULT_DECK_CONFIG, ...(deck.config ?? {}) },

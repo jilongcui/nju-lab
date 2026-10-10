@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import type { SemanticPage } from './semantic.schema';
 
 /**
  * deck 内容的**结构与校验**（内容真源就是这套 JSON，见
@@ -76,6 +77,12 @@ export interface SlideJson {
   /** 传给 reveal 的页级指令 */
   attrs?: { background?: string; transition?: string; className?: string };
 }
+
+/**
+ * deck 的一页：**语义模型（v2，默认）** 或 **旧版式模型（v1，历史 deck 与回退）**。
+ * 两者共用 `slide_decks.slides` JSON 列，按结构自辨识（有 `intent` 即 v2），无需迁移。
+ */
+export type DeckSlide = SlideJson | SemanticPage;
 
 export interface DeckConfig {
   transition?: 'none' | 'fade' | 'slide' | 'convex' | 'concave' | 'zoom';

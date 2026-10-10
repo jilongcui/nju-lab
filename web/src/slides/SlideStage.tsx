@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Space, Spin, theme } from 'antd';
 import { CloseOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
-import type { SlideDeckConfig, SlideJson, SlideTemplateDesign } from '../types';
+import type { DeckSlide, SlideDeckConfig, SlideJson, SlideTemplateDesign } from '../types';
+import type { Page } from './semantic/types';
 import { buildDeckHtml } from './renderDeck';
 
 /**
@@ -14,7 +15,8 @@ import { buildDeckHtml } from './renderDeck';
  *   · 内容里的图片只允许平台文件（`file:<id>`），由页面层预取成 data URL 传入，文档内不发任何外部请求。
  */
 export interface SlideStageProps {
-  slides: SlideJson[];
+  /** v2 语义页或 v1 旧版式页（服务端两种都可能返回；渲染器按结构自辨识） */
+  slides: DeckSlide[];
   template: { baseTheme: string; css: string };
   config?: SlideDeckConfig;
   footerText?: string | null;
@@ -89,7 +91,8 @@ export default function SlideStage({
     const docPromise =
       effectiveRenderer === 'reveal'
         ? buildDeckHtml({
-            slides,
+            // 旧渲染器只吃 v1（回退路径）；v2 deck 走下面语义分支
+            slides: slides as SlideJson[],
             template,
             config: config ?? {},
             footerText,
@@ -97,12 +100,17 @@ export default function SlideStage({
             imageDataUrls,
           })
         : (async () => {
-            const [{ buildSemanticDeckHtml }, { designToTokenOverrides, legacyDeckToPages }] = await Promise.all([
-              import('./semantic/stage'),
-              import('./semantic/legacy'),
-            ]);
+            const [{ buildSemanticDeckHtml }, { designToTokenOverrides, legacyDeckToPages }, { isSemanticDeck }] =
+              await Promise.all([
+                import('./semantic/stage'),
+                import('./semantic/legacy'),
+                import('./semantic/detect'),
+              ]);
+            // v2 语义 deck 直接渲染；历史 deck（v1）先过适配器，教师无需重生成
+            const pages = isSemanticDeck(slides) ? slides : legacyDeckToPages(slides as SlideJson[]);
             return buildSemanticDeckHtml({
-              pages: legacyDeckToPages(slides),
+              // 服务端返回的语义页与前端 Page 同构（服务端已按 semantic.schema.ts 校验过）
+              pages: pages as Page[],
               meta: { course: meta?.course ?? '', chapter: meta?.chapter ?? '' },
               themeId: slideTheme?.id,
               themeOverrides: designToTokenOverrides(slideTheme?.design),

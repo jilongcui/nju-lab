@@ -542,6 +542,54 @@ export interface SlideDeckConfig {
 }
 
 /** 模板"可视化调参"的结构化值（v1 不允许自由写 CSS） */
+/** 语义模型（v2）的页面意图 —— 由渲染层映射到版式（见 web/src/slides/semantic/） */
+export type SemanticIntent =
+  | 'cover' | 'toc' | 'section' | 'claim' | 'contrast' | 'pillars' | 'metric'
+  | 'sequence' | 'flow' | 'arch' | 'relation' | 'timeline' | 'table' | 'example'
+  | 'quote' | 'image' | 'summary';
+
+/** 语义内容块（结构化数据，图形由渲染层画；模型只提供数据） */
+export interface SemanticBlock {
+  kind: string;
+  [key: string]: unknown;
+}
+
+export interface SemanticPage {
+  id?: string;
+  intent: SemanticIntent;
+  kicker?: string;
+  title?: string;
+  subtitle?: string;
+  lede?: string;
+  number?: string;
+  blocks: SemanticBlock[];
+  notes?: string;
+}
+
+/** deck 的一页：语义模型（v2）或旧版式模型（v1）—— 两者共用同一列，按结构自辨识 */
+export type DeckSlide = SlideJson | SemanticPage;
+
+/** 「换版式」下拉用的 intent 清单（教师可见的中文名） */
+export const SEMANTIC_INTENT_OPTIONS: { value: SemanticIntent; label: string }[] = [
+  { value: 'cover', label: '封面' },
+  { value: 'toc', label: '目录 / 脉络' },
+  { value: 'section', label: '分节页' },
+  { value: 'claim', label: '主张 + 证据' },
+  { value: 'contrast', label: '两栏对照' },
+  { value: 'pillars', label: '并列要素' },
+  { value: 'metric', label: '关键数字' },
+  { value: 'sequence', label: '步骤' },
+  { value: 'flow', label: '流程管线' },
+  { value: 'arch', label: '分层结构' },
+  { value: 'relation', label: '关系图' },
+  { value: 'timeline', label: '时间线' },
+  { value: 'table', label: '数据表' },
+  { value: 'example', label: '代码示例' },
+  { value: 'quote', label: '引用' },
+  { value: 'image', label: '图片页' },
+  { value: 'summary', label: '小结' },
+];
+
 export interface SlideTemplateDesign {
   primary?: string;
   background?: string;
@@ -578,7 +626,10 @@ export interface SlideDeckView {
   chapterId: string;
   courseId: string;
   title: string;
-  slides: SlideJson[];
+  /** v2（语义模型）或 v1（旧版式模型） */
+  slides: DeckSlide[];
+  /** true = 语义 deck：Markdown 只是只读预览，编辑面收窄为「换主题 / 换版式 / 重生成当前页」 */
+  semantic: boolean;
   markdown: string;
   templateId: string | null;
   config: SlideDeckConfig;

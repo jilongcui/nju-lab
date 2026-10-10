@@ -58,11 +58,15 @@ import {
 import type {
   Chapter,
   ChapterSlidesResponse,
+  DeckSlide,
+  SemanticIntent,
+  SemanticPage,
   SlideJson,
   SlideLayout,
   SlideTemplateDesign,
   StoredFileInfo,
 } from '../../types';
+import { SEMANTIC_INTENT_OPTIONS } from '../../types';
 import SlideStage from '../../slides/SlideStage';
 import { collectFileRefs, fetchFileDataUrls } from '../../slides/files';
 import {
@@ -78,6 +82,14 @@ import ImageLibraryPanel from '../../components/ImageLibraryPanel';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
 
 const { Text, Paragraph } = Typography;
+
+/** 缩略图列表里的版式标签：v2 显示 intent 的中文名，v1 显示旧版式名 */
+function slideTag(slide: DeckSlide): string {
+  if ('intent' in slide) {
+    return SEMANTIC_INTENT_OPTIONS.find((option) => option.value === slide.intent)?.label ?? slide.intent;
+  }
+  return LAYOUT_LABEL[slide.layout] ?? slide.layout;
+}
 
 const LAYOUT_LABEL: Record<string, string> = {
   cover: '封面',
@@ -342,6 +354,11 @@ export default function ChapterSlides() {
   };
 
   const handleSaveContent = async (): Promise<boolean> => {
+    // v2 语义 deck 的 Markdown 只是只读预览（服务端也会拦，这里先给出人话提示）
+    if (semanticDeck && mode === 'markdown') {
+      message.info('新版幻灯片不支持编辑 Markdown：改内容请用「重生成当前页」，改观感用「换主题」，换版式用 JSON 视图的版式下拉');
+      return false;
+    }
     if (jsonError) {
       message.error(`JSON 有问题：${jsonError}`);
       return false;
@@ -603,7 +620,27 @@ export default function ChapterSlides() {
   if (loading) return <Skeleton active paragraph={{ rows: 10 }} />;
   if (!data || !chapter) return <Empty description="章节不存在" />;
 
-  const previewSlides: SlideJson[] = deck?.slides ?? [];
+  const previewSlides: DeckSlide[] = deck?.slides ?? [];
+  /** v2 语义 deck：Markdown 只读、编辑面收窄为「换主题 / 换版式 / 重生成当前页」 */
+  const semanticDeck = !!deck?.semantic;
+
+  /** 「换版式」：只改当前页的 intent（内容块不动），保存后由渲染层换一套版式 */
+  const applyIntent = (intent: SemanticIntent) => {
+    try {
+      const slides = JSON.parse(jsonText) as DeckSlide[];
+      const page = slides[currentIndex];
+      if (!page || !('intent' in page)) {
+        message.info('这一页不是新版语义页，无法换版式');
+        return;
+      }
+      (page as SemanticPage).intent = intent;
+      setJsonText(JSON.stringify(slides, null, 2));
+      setEditing(true);
+      message.info('已切换本页版式，点「保存内容」生效（不花 token）');
+    } catch {
+      message.error('JSON 解析失败，请先修正 JSON 再换版式');
+    }
+  };
   const stage = (
     <SlideStage
       slides={previewSlides}
@@ -848,7 +885,7 @@ export default function ChapterSlides() {
                     }}
                   >
                     <Text type="secondary" style={{ fontSize: 12 }}>
-                      {index + 1}. [{LAYOUT_LABEL[slide.layout] ?? slide.layout}]{' '}
+                      {index + 1}. [{slideTag(slide)}]{' '}
                     </Text>
                     <Text style={{ fontSize: 12 }} ellipsis>
                       {slide.title ?? '（无标题）'}
@@ -907,8 +944,31 @@ export default function ChapterSlides() {
                     children: (
                       <Space direction="vertical" style={{ width: '100%' }} size={8}>
                         <Text type="secondary" style={{ fontSize: 12 }}>
-                          结构化编辑：layout / bullets / code / quote / notes / attrs
+                          {semanticDeck
+                            ? '结构化编辑（v2）：intent / blocks / notes —— 换版式改 intent，内容块不用动'
+                            : '结构化编辑：layout / bullets / code / quote / notes / attrs'}
                         </Text>
+                        {semanticDeck && (
+                          <Space size={8}>
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              本页版式
+                            </Text>
+                            <Select
+                              size="small"
+                              style={{ width: 156 }}
+                              value={
+                                'intent' in (previewSlides[currentIndex] ?? {})
+                                  ? (previewSlides[currentIndex] as SemanticPage).intent
+                                  : undefined
+                              }
+                              options={SEMANTIC_INTENT_OPTIONS}
+                              onChange={(value) => applyIntent(value as SemanticIntent)}
+                            />
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              改完点「保存内容」
+                            </Text>
+                          </Space>
+                        )}
                         <Input.TextArea
                           value={jsonText}
                           onChange={(e) => {
@@ -928,18 +988,26 @@ export default function ChapterSlides() {
                     children: (
                       <Space direction="vertical" style={{ width: '100%' }} size={8}>
                         <Text type="secondary" style={{ fontSize: 12 }}>
-                          日常写作：<Text code>&lt;!-- .slide: layout=bullets --&gt;</Text> 设页属性、
-                          <Text code>---</Text> 分页、<Text code>&lt;!-- .notes: … --&gt;</Text> 讲者备注
+                          {semanticDeck
+                            ? '只读预览：新版 deck（语义模型）由「意图 + 内容块」构成，改内容请用「重生成当前页」'
+                            : '日常写作：'}
+                          {!semanticDeck && (
+                            <>
+                              <Text code>&lt;!-- .slide: layout=bullets --&gt;</Text> 设页属性、
+                              <Text code>---</Text> 分页、<Text code>&lt;!-- .notes: … --&gt;</Text> 讲者备注
+                            </>
+                          )}
                         </Text>
                         <Input.TextArea
                           ref={mdAreaRef}
                           value={mdText}
+                          readOnly={semanticDeck}
                           onChange={(e) => {
                             setMdText(e.target.value);
                             setEditing(true);
                           }}
                           autoSize={{ minRows: 16, maxRows: 24 }}
-                          style={{ fontFamily: 'monospace', fontSize: 12 }}
+                          style={{ fontFamily: 'monospace', fontSize: 12, background: semanticDeck ? undefined : undefined }}
                         />
                       </Space>
                     ),
