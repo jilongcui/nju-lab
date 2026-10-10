@@ -1,0 +1,122 @@
+{
+  "note": "参考水平（不是标准答案）：切 token、缩放因子、掩码方向、校验和格式、采样顺序都已在 task.md 里钉死，所以 top_terms、attn_checksum、top_attend、三档消融数值与各系数下的 top1_ratio 都是确定的 —— 用于核对学生的口径，以及「消融的方向性」是否真的成立。硬性判据见 manifest.json 的 assertions，语义判据见 judge.md。",
+  "tokens": {
+    "n_tokens": 31,
+    "n_unique_tokens": 26,
+    "top_terms": [
+      "The",
+      "and",
+      "days"
+    ]
+  },
+  "attention": {
+    "shape": [
+      31,
+      4
+    ],
+    "masked_upper_is_zero": true,
+    "top_attend": [
+      0,
+      1,
+      0,
+      0,
+      3,
+      0,
+      5,
+      4,
+      8,
+      8,
+      3,
+      6,
+      10,
+      12,
+      6,
+      10,
+      6,
+      8,
+      0,
+      18,
+      3,
+      5,
+      21,
+      6,
+      0,
+      0,
+      20,
+      21,
+      12,
+      20,
+      0
+    ],
+    "attn_checksum": "8d16d6b80dda"
+  },
+  "ablation": [
+    {
+      "variant": "full",
+      "max_row_weight": 0.2761,
+      "entropy": 2.2074,
+      "mean_future_weight": 0.0
+    },
+    {
+      "variant": "no_scale",
+      "max_row_weight": 0.4329,
+      "entropy": 1.7238,
+      "mean_future_weight": 0.0
+    },
+    {
+      "variant": "no_mask",
+      "max_row_weight": 0.1267,
+      "entropy": 3.1066,
+      "mean_future_weight": 0.4725
+    }
+  ],
+  "sampling": {
+    "top1_token": "therapy",
+    "top1_prob": 0.5489,
+    "entropy": 1.208,
+    "scales": [
+      {
+        "scale": 0.5,
+        "top1_token": "therapy",
+        "top1_prob": 0.7728,
+        "entropy": 0.6395,
+        "top1_ratio": 0.745,
+        "samples": [
+          "therapy",
+          "therapy",
+          "therapy",
+          "therapy",
+          "therapy"
+        ]
+      },
+      {
+        "scale": 1.0,
+        "top1_token": "therapy",
+        "top1_prob": 0.5489,
+        "entropy": 1.208,
+        "top1_ratio": 0.54,
+        "samples": [
+          "the",
+          "therapy",
+          "therapy",
+          "the",
+          "therapy"
+        ]
+      },
+      {
+        "scale": 2.0,
+        "top1_token": "therapy",
+        "top1_prob": 0.3444,
+        "entropy": 1.7506,
+        "top1_ratio": 0.36,
+        "samples": [
+          "patient",
+          "therapy",
+          "the",
+          "patient",
+          "therapy"
+        ]
+      }
+    ]
+  }
+}

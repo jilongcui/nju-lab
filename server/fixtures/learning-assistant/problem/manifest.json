@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "name": "learning-assistant",
+  "title": "智能体综合实践：分子医学学习助手（四环闭环 + 出处 + 安全边界）",
+  "outputFile": "output.json",
+  "inputs": [
+    "questions.csv",
+    "experiment_data.csv",
+    "passages.csv",
+    "tools.json",
+    "tool_calls.csv",
+    "report_template.json"
+  ],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['report','tool_calls','memory','citations','safety','key_facts','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "工具调用逐条正确（校验结论 + 路由 + mock 结果摘要）",
+      "expr": "JSON.stringify(out.tool_calls.map((c) => [c.call_id, c.tool, c.args_valid, c.status, c.rejected_reason, c.result_summary])) === JSON.stringify(expected.tool_calls)"
+    },
+    {
+      "name": "非法调用被如实记为 rejected（并且写出理由）",
+      "expr": "out.tool_calls.filter((c) => c.args_valid === false).length === expected.key_facts.n_call_rejected && out.tool_calls.filter((c) => c.args_valid === false).every((c) => c.status === 'rejected' && typeof c.rejected_reason === 'string' && c.rejected_reason.trim() !== '')"
+    },
+    {
+      "name": "记忆真的写入了（条目内容与 expected 一致）",
+      "expr": "Array.isArray(out.memory.written) && out.memory.written.length >= 1 && JSON.stringify(out.memory.written.map((e) => [e.entry_id, e.fact, e.category])) === JSON.stringify(expected.memory.written)"
+    },
+    {
+      "name": "记忆真的被用上了（跨轮应用，至少一次）",
+      "expr": "Array.isArray(out.memory.applied) && out.memory.applied.length >= 1 && JSON.stringify(out.memory.applied.map((a) => [a.question_id, a.entry_id])) === JSON.stringify(expected.memory.applied)"
+    },
+    {
+      "name": "报告四节齐全 / 顺序与模板一致 / 每节都写到最小篇幅",
+      "expr": "JSON.stringify(out.report.sections.map((s) => s.name)) === JSON.stringify(expected.section_names) && out.report.sections.every((s, i) => typeof s.content === 'string' && s.content.trim().length >= expected.section_min_chars[i])"
+    },
+    {
+      "name": "出处齐全且格式规范（行级 data 引用 + 段级 passage 引用）",
+      "expr": "JSON.stringify(out.citations.map((c) => [c.kind, c.ref])) === JSON.stringify(expected.citations) && out.citations.every((c) => (c.kind === 'data' && /^experiment_data\\.csv:R\\d+$/.test(c.ref)) || (c.kind === 'passage' && /^passages\\.csv:P-\\d+$/.test(c.ref)))"
+    },
+    {
+      "name": "越界读数逐行升级（并给出固定话术）",
+      "expr": "JSON.stringify(out.safety.escalations.map((e) => [e.row_id, e.item, e.message])) === JSON.stringify(expected.safety.escalations) && out.safety.escalations.every((e) => e.message === expected.safety.warn_message)"
+    },
+    {
+      "name": "要求直接下诊断的提问被拒答（并写出理由）",
+      "expr": "JSON.stringify(out.safety.refusals.map((r) => r.question_id).sort()) === JSON.stringify(expected.safety.refusal_question_ids) && out.safety.refusals.every((r) => typeof r.reason === 'string' && r.reason.trim().length >= 10)"
+    },
+    {
+      "name": "关键事实正确（越界行 / 调用计数 / 薄弱点）",
+      "expr": "out.key_facts.n_warn_rows === expected.key_facts.n_warn_rows && JSON.stringify(out.key_facts.warn_row_ids) === JSON.stringify(expected.key_facts.warn_row_ids) && out.key_facts.n_call_executed === expected.key_facts.n_call_executed && out.key_facts.n_call_rejected === expected.key_facts.n_call_rejected && out.key_facts.weak_point === expected.key_facts.weak_point"
+    },
+    {
+      "name": "图与说明齐全（至少 1 张，含一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 1 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "说清四环的理由、局限与安全边界（notes ≥ 60 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 60"
+    }
+  ],
+  "requires": { "python": ["matplotlib"] }
+}

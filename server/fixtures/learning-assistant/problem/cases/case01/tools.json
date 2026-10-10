@@ -1,0 +1,42 @@
+{
+  "tools": [
+    {
+      "name": "mean_of_column",
+      "description": "算某一列（指标）的算术平均值",
+      "parameters": {
+        "column": {
+          "type": "string",
+          "required": true
+        },
+        "decimals": {
+          "type": "integer",
+          "required": false
+        }
+      }
+    },
+    {
+      "name": "plot_histogram",
+      "description": "为某一列（指标）画直方图",
+      "parameters": {
+        "column": {
+          "type": "string",
+          "required": true
+        },
+        "bins": {
+          "type": "integer",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "fetch_reference",
+      "description": "取某个指标的解释段落号",
+      "parameters": {
+        "item": {
+          "type": "string",
+          "required": true
+        }
+      }
+    }
+  ]
+}

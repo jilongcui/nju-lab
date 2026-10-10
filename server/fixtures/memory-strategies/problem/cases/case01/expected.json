@@ -1,0 +1,222 @@
+{
+  "note": "参考水平（不是标准答案）：条目抽取、category、重要性、更新/遗忘阈值、三种策略与检索口径都已在 task.md 里钉死，所以条目编号、校验和、窗口、摘要、检索名单、三个 recall 与 before/after 都是确定的 —— 用于核对学生的口径，以及「更新后旧条目不再命中、遗忘后谁都拿不到」这两条行为性条件。硬性判据见 manifest.json 的 assertions，语义判据见 judge.md。",
+  "memory": {
+    "n_entries": 7,
+    "entries_checksum": "5eab37f8b88a",
+    "entries": [
+      [
+        "M01",
+        "allergy",
+        "2025-11-03",
+        3,
+        "active",
+        ""
+      ],
+      [
+        "M02",
+        "lifestyle",
+        "2025-12-15",
+        1,
+        "forgotten",
+        ""
+      ],
+      [
+        "M03",
+        "other",
+        "2025-12-15",
+        1,
+        "superseded",
+        "M07"
+      ],
+      [
+        "M04",
+        "lab_result",
+        "2025-12-15",
+        2,
+        "active",
+        ""
+      ],
+      [
+        "M05",
+        "lab_result",
+        "2026-01-20",
+        2,
+        "active",
+        ""
+      ],
+      [
+        "M06",
+        "lifestyle",
+        "2026-02-10",
+        1,
+        "forgotten",
+        ""
+      ],
+      [
+        "M07",
+        "medication_change",
+        "2026-03-08",
+        3,
+        "active",
+        ""
+      ]
+    ],
+    "window": [
+      "T09",
+      "T10",
+      "T11",
+      "T12"
+    ],
+    "window_entry_ids": [
+      "M07"
+    ],
+    "summary": "allergy: 我两年前查出对青霉素过敏，打针后起过疹子。；lab_result: 我每个月都复查一次肌酐，最近一次是 92。；medication_change: 更正：二甲双胍 → 达格列净",
+    "summary_entry_ids": [
+      "M01",
+      "M05",
+      "M07"
+    ],
+    "retrieved": [
+      {
+        "query_id": "Q01",
+        "entry_ids": [
+          "M01"
+        ]
+      },
+      {
+        "query_id": "Q02",
+        "entry_ids": [
+          "M07"
+        ]
+      },
+      {
+        "query_id": "Q03",
+        "entry_ids": [
+          "M04",
+          "M05"
+        ]
+      },
+      {
+        "query_id": "Q04",
+        "entry_ids": []
+      },
+      {
+        "query_id": "Q05",
+        "entry_ids": [
+          "M07",
+          "M01"
+        ]
+      }
+    ]
+  },
+  "answers": [
+    {
+      "query_id": "Q01",
+      "used_entry_ids": [
+        "M01"
+      ],
+      "answer_min_len": 10
+    },
+    {
+      "query_id": "Q02",
+      "used_entry_ids": [
+        "M07"
+      ],
+      "answer_min_len": 10
+    },
+    {
+      "query_id": "Q03",
+      "used_entry_ids": [
+        "M04",
+        "M05"
+      ],
+      "answer_min_len": 10
+    },
+    {
+      "query_id": "Q04",
+      "used_entry_ids": [],
+      "answer_min_len": 10
+    },
+    {
+      "query_id": "Q05",
+      "used_entry_ids": [
+        "M01",
+        "M07"
+      ],
+      "answer_min_len": 10
+    }
+  ],
+  "updates": {
+    "applied": [
+      {
+        "update_id": "U01",
+        "old_entry_ids": [
+          "M03"
+        ],
+        "new_entry_id": "M07"
+      }
+    ],
+    "forgotten": [
+      "M02",
+      "M06"
+    ],
+    "before_after": [
+      {
+        "query_id": "Q01",
+        "before": [
+          "M01"
+        ],
+        "after": [
+          "M01"
+        ]
+      },
+      {
+        "query_id": "Q02",
+        "before": [
+          "M07",
+          "M03"
+        ],
+        "after": [
+          "M07"
+        ]
+      },
+      {
+        "query_id": "Q03",
+        "before": [
+          "M04",
+          "M06",
+          "M05"
+        ],
+        "after": [
+          "M04",
+          "M05"
+        ]
+      },
+      {
+        "query_id": "Q04",
+        "before": [
+          "M02",
+          "M06"
+        ],
+        "after": []
+      },
+      {
+        "query_id": "Q05",
+        "before": [
+          "M07",
+          "M03",
+          "M01"
+        ],
+        "after": [
+          "M07",
+          "M01"
+        ]
+      }
+    ]
+  },
+  "metrics": {
+    "recall_at_k_window": 0.3,
+    "recall_at_k_summary": 0.7,
+    "recall_at_k_retrieval": 0.8
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "name": "attention-ablation",
+  "title": "大语言模型实验：手写缩放点积注意力 + 三档消融 + 下一个 token 的采样",
+  "outputFile": "output.json",
+  "inputs": ["sentences.csv", "embeddings.csv", "params.json"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['tokens','attention','ablation','sampling','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "token 序列与高频繁词报对（n_tokens / n_unique_tokens / top_terms）",
+      "expr": "out.tokens.n_tokens === expected.tokens.n_tokens && out.tokens.n_unique_tokens === expected.tokens.n_unique_tokens && JSON.stringify(out.tokens.top_terms) === JSON.stringify(expected.tokens.top_terms)"
+    },
+    {
+      "name": "注意力矩阵形状正确且每行权重和为 1",
+      "expr": "JSON.stringify(out.attention.shape) === JSON.stringify(expected.attention.shape) && Array.isArray(out.attention.row_sums) && out.attention.row_sums.length === out.attention.shape[0] && out.attention.row_sums.every((s) => typeof s === 'number' && Math.abs(s - 1) < 1e-6)"
+    },
+    {
+      "name": "因果掩码真的生效（上三角全为 0）",
+      "expr": "out.attention.masked_upper_is_zero === true && expected.attention.masked_upper_is_zero === true"
+    },
+    {
+      "name": "注意力权重口径一致（attn_checksum 逐字节可比）",
+      "expr": "out.attention.attn_checksum === expected.attention.attn_checksum"
+    },
+    {
+      "name": "每个位置最关注的 token 正确（top_attend 逐项）",
+      "expr": "JSON.stringify(out.attention.top_attend) === JSON.stringify(expected.attention.top_attend)"
+    },
+    {
+      "name": "三档消融的数值正确（max_row_weight / entropy，容差 1e-3）",
+      "expr": "['full','no_scale','no_mask'].every((v) => { const a = out.ablation.find((x) => x.variant === v); const e = expected.ablation.find((x) => x.variant === v); return a && e && Math.abs(a.max_row_weight - e.max_row_weight) < 1e-3 && Math.abs(a.entropy - e.entropy) < 1e-3; })"
+    },
+    {
+      "name": "消融方向成立：去掉 √d 缩放后分布更尖（最大行权重更大、行熵更低）",
+      "expr": "out.ablation.find((x) => x.variant === 'no_scale').max_row_weight > out.ablation.find((x) => x.variant === 'full').max_row_weight && out.ablation.find((x) => x.variant === 'no_scale').entropy < out.ablation.find((x) => x.variant === 'full').entropy"
+    },
+    {
+      "name": "去掉因果掩码后确实看到了未来（未来权重 > 0，完整版与去缩放版为 0）",
+      "expr": "out.ablation.find((x) => x.variant === 'no_mask').mean_future_weight > 0 && Math.abs(out.ablation.find((x) => x.variant === 'full').mean_future_weight) < 1e-6 && Math.abs(out.ablation.find((x) => x.variant === 'no_scale').mean_future_weight) < 1e-6"
+    },
+    {
+      "name": "下一个 token 的基础分布与前 5 次采样逐项一致",
+      "expr": "out.sampling.top1_token === expected.sampling.top1_token && Math.abs(out.sampling.top1_prob - expected.sampling.top1_prob) < 1e-3 && Math.abs(out.sampling.entropy - expected.sampling.entropy) < 1e-3 && JSON.stringify(out.sampling.scales.map((s) => [s.scale, s.top1_token, s.samples])) === JSON.stringify(expected.sampling.scales.map((s) => [s.scale, s.top1_token, s.samples]))"
+    },
+    {
+      "name": "各锐化系数下的 top-1 概率、行熵与实测 top1_ratio 正确",
+      "expr": "out.sampling.scales.length === expected.sampling.scales.length && expected.sampling.scales.every((e, i) => Math.abs(out.sampling.scales[i].top1_prob - e.top1_prob) < 1e-3 && Math.abs(out.sampling.scales[i].entropy - e.entropy) < 1e-3 && Math.abs(out.sampling.scales[i].top1_ratio - e.top1_ratio) < 1e-3)"
+    },
+    {
+      "name": "采样方向成立：锐化系数越大，top-1 概率与实测占比越低",
+      "expr": "out.sampling.scales.every((s, i, a) => i === 0 || (a[i - 1].top1_prob > s.top1_prob && a[i - 1].top1_ratio > s.top1_ratio))"
+    },
+    {
+      "name": "图与说明齐全（至少 2 张，各含一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 2 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "说清机制与边界（notes ≥ 60 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 60"
+    }
+  ],
+  "requires": { "python": ["numpy", "matplotlib"] }
+}

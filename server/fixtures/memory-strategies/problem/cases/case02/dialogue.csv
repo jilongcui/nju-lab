@@ -1,0 +1,17 @@
+turn_id,date,role,kind,text
+T01,2025-09-12,assistant,question,今天想聊点什么？
+T02,2025-09-12,patient,fact_statement,我对磺胺类药物过敏，上次用完全身发痒。
+T03,2025-09-12,patient,chitchat,我女儿上个月来看我。
+T04,2025-10-05,patient,fact_statement,我每天喝一点白酒，大概一两。
+T05,2025-10-05,patient,fact_statement,医生给我开了阿托伐他汀，我每天都吃。
+T06,2025-10-05,patient,fact_statement,上周检验的低密度脂蛋白是 3.8。
+T07,2025-11-18,patient,fact_statement,我每周去游泳两次，每次半小时。
+T08,2025-11-18,assistant,question,血脂复查了吗？
+T09,2025-12-22,patient,fact_statement,我每个月都化验一次血红蛋白，上次是 128。
+T10,2026-01-30,patient,chitchat,过年家里人多，有点累。
+T11,2026-01-30,patient,fact_statement,我每天早上出去运动二十分钟。
+T12,2026-02-14,patient,fact_statement,我已经把酒戒了，一滴也不喝。
+T13,2026-02-14,patient,fact_statement,我每天晚饭后散步半小时，人精神多了。
+T14,2026-04-02,patient,correction,更正：阿托伐他汀 → 瑞舒伐他汀
+T15,2026-04-02,patient,chitchat,谢谢，下个月再来。
+T16,2026-04-02,assistant,question,还有别的不舒服吗？

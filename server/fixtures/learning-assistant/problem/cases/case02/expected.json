@@ -1,0 +1,127 @@
+{
+  "note": "参考水平（不是标准答案）：本章是**迁移检验**型任务 —— 学生只拿到需求与交付契约，没有参考实现（见 README「为什么不下发参考实现」）。这份 expected 由**教师侧**的解答样例（`solution/`，不下发）算出，用于证明「题目可解 + 判据不误杀」：工具调用的校验与 mock 结果、越界行、引用、安全边界、key_facts 都是口径钉死后的确定值；报告文本与答案措辞**不在判据里**（只判篇幅与语义）。",
+  "n_questions": 3,
+  "tool_calls": [
+    [
+      "C01",
+      "mean_of_column",
+      true,
+      "executed",
+      "",
+      "收缩压 均值 129.0"
+    ],
+    [
+      "C02",
+      "mean_of_column",
+      true,
+      "executed",
+      "",
+      "心率 均值 78.0"
+    ],
+    [
+      "C03",
+      "plot_histogram",
+      true,
+      "executed",
+      "",
+      "收缩压 直方图 bins=4"
+    ],
+    [
+      "C04",
+      "plot_histogram",
+      false,
+      "rejected",
+      "missing_required",
+      ""
+    ],
+    [
+      "C05",
+      "fetch_reference",
+      true,
+      "executed",
+      "",
+      "舒张压 的参考段落 P-02"
+    ],
+    [
+      "C06",
+      "fetch_reference",
+      false,
+      "rejected",
+      "type_mismatch",
+      ""
+    ]
+  ],
+  "memory": {
+    "written": [
+      [
+        "MEM01",
+        "老是搞混 收缩压 和 舒张压",
+        "weak_point"
+      ]
+    ],
+    "applied": [
+      [
+        "Q02",
+        "MEM01"
+      ]
+    ]
+  },
+  "citations": [
+    [
+      "data",
+      "experiment_data.csv:R02"
+    ],
+    [
+      "data",
+      "experiment_data.csv:R04"
+    ],
+    [
+      "passage",
+      "passages.csv:P-01"
+    ],
+    [
+      "passage",
+      "passages.csv:P-02"
+    ]
+  ],
+  "safety": {
+    "refusal_question_ids": [
+      "Q03"
+    ],
+    "escalations": [
+      [
+        "R02",
+        "舒张压",
+        "该读数已越界：请立即复核原始数据与测量过程，并联系指导教师确认，不要据此下任何结论。"
+      ],
+      [
+        "R04",
+        "收缩压",
+        "该读数已越界：请立即复核原始数据与测量过程，并联系指导教师确认，不要据此下任何结论。"
+      ]
+    ],
+    "warn_message": "该读数已越界：请立即复核原始数据与测量过程，并联系指导教师确认，不要据此下任何结论。"
+  },
+  "key_facts": {
+    "n_warn_rows": 2,
+    "warn_row_ids": [
+      "R02",
+      "R04"
+    ],
+    "n_call_executed": 4,
+    "n_call_rejected": 2,
+    "weak_point": "收缩压/舒张压"
+  },
+  "section_names": [
+    "目的",
+    "方法",
+    "结果",
+    "讨论"
+  ],
+  "section_min_chars": [
+    20,
+    20,
+    30,
+    30
+  ]
+}

@@ -1,0 +1,7 @@
+call_id,tool,args
+C01,mean_of_column,"{""column"": ""血小板计数"", ""decimals"": 1}"
+C02,plot_histogram,"{""column"": ""血红蛋白"", ""bins"": 5}"
+C03,mean_of_column,"{""column"": ""白细胞计数""}"
+C04,plot_histogram,"{""column"": ""白细胞计数""}"
+C05,fetch_reference,"{""item"": ""血小板计数""}"
+C06,mean_of_column,"{""column"": 12}"

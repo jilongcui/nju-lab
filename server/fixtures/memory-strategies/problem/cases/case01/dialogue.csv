@@ -1,0 +1,13 @@
+turn_id,date,role,kind,text
+T01,2025-11-03,assistant,question,最近血糖控制得怎么样？
+T02,2025-11-03,patient,fact_statement,我两年前查出对青霉素过敏，打针后起过疹子。
+T03,2025-11-03,patient,chitchat,今天路上堵了好久。
+T04,2025-12-15,patient,fact_statement,我每天晚饭后都去散步四十分钟。
+T05,2025-12-15,patient,fact_statement,我一直在吃二甲双胍，早晚各一片。
+T06,2025-12-15,patient,fact_statement,上个月化验的空腹血糖是 8.6。
+T07,2026-01-20,assistant,question,最近血压怎么样？
+T08,2026-01-20,patient,fact_statement,我每个月都复查一次肌酐，最近一次是 92。
+T09,2026-02-10,patient,fact_statement,我最近戒烟了，已经两个月没抽烟。
+T10,2026-02-10,patient,chitchat,天气冷，出门少了。
+T11,2026-03-08,patient,correction,更正：二甲双胍 → 达格列净
+T12,2026-03-08,patient,chitchat,谢谢医生。

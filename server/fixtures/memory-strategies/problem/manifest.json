@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "name": "memory-strategies",
+  "title": "记忆系统实验：记忆四操作 + 三种上下文策略的对照（窗口 / 摘要 / 检索）",
+  "outputFile": "output.json",
+  "inputs": ["dialogue.csv", "queries.csv", "memory_config.json"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['memory','answers','updates','metrics','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "记忆条目抽取正确（编号 / category / 时间 / 重要性 / 状态）",
+      "expr": "out.memory.n_entries === expected.memory.n_entries && JSON.stringify(out.memory.entries.map((e) => [e.entry_id, e.category, e.time, e.importance, e.status, e.superseded_by])) === JSON.stringify(expected.memory.entries)"
+    },
+    {
+      "name": "条目内容口径一致（entries_checksum 钉住 fact 原文）",
+      "expr": "out.memory.entries_checksum === expected.memory.entries_checksum"
+    },
+    {
+      "name": "窗口策略正确（最后 N 轮的 turn_id 与窗口内可用条目）",
+      "expr": "JSON.stringify(out.memory.window) === JSON.stringify(expected.memory.window) && JSON.stringify(out.memory.window_entry_ids) === JSON.stringify(expected.memory.window_entry_ids)"
+    },
+    {
+      "name": "摘要策略正确（口径钉死：同类只留最新一条，文本逐字可比）",
+      "expr": "out.memory.summary === expected.memory.summary && JSON.stringify(out.memory.summary_entry_ids) === JSON.stringify(expected.memory.summary_entry_ids)"
+    },
+    {
+      "name": "检索策略正确（每个提问命中的条目集合与顺序）",
+      "expr": "JSON.stringify(out.memory.retrieved.map((r) => [r.query_id, r.entry_ids])) === JSON.stringify(expected.memory.retrieved.map((r) => [r.query_id, r.entry_ids]))"
+    },
+    {
+      "name": "三种策略的 recall@k 都算对",
+      "expr": "['recall_at_k_window','recall_at_k_summary','recall_at_k_retrieval'].every((k) => typeof out.metrics[k] === 'number' && Math.abs(out.metrics[k] - expected.metrics[k]) < 1e-6)"
+    },
+    {
+      "name": "更新真的生效（被更正的旧条目不再被检索命中）",
+      "expr": "JSON.stringify(out.updates.applied) === JSON.stringify(expected.updates.applied) && expected.updates.applied.every((u) => u.old_entry_ids.length >= 1 && out.memory.retrieved.every((r) => u.old_entry_ids.every((id) => r.entry_ids.indexOf(id) === -1)))"
+    },
+    {
+      "name": "遗忘真的生效（被遗忘的条目在三种策略里都拿不回来）",
+      "expr": "JSON.stringify(out.updates.forgotten) === JSON.stringify(expected.updates.forgotten) && out.updates.forgotten.length >= 1 && out.memory.retrieved.every((r) => out.updates.forgotten.every((id) => r.entry_ids.indexOf(id) === -1)) && out.memory.summary_entry_ids.every((id) => out.updates.forgotten.indexOf(id) === -1) && out.memory.window_entry_ids.every((id) => out.updates.forgotten.indexOf(id) === -1)"
+    },
+    {
+      "name": "更新 / 遗忘前后确有差异（before ≠ after 至少一题，且逐题与 expected 一致）",
+      "expr": "JSON.stringify(out.updates.before_after) === JSON.stringify(expected.updates.before_after) && expected.updates.before_after.some((x) => JSON.stringify(x.before) !== JSON.stringify(x.after))"
+    },
+    {
+      "name": "每题答案引用到的记忆条目正确，且答案是完整句子（≥10 字）",
+      "expr": "JSON.stringify(out.answers.map((a) => [a.query_id, a.used_entry_ids])) === JSON.stringify(expected.answers.map((e) => [e.query_id, e.used_entry_ids])) && out.answers.every((a) => typeof a.answer === 'string' && a.answer.trim().length >= 10)"
+    },
+    {
+      "name": "图与说明齐全（至少 1 张，含一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 1 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "说清三种策略的取舍与风险（notes ≥ 60 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 60"
+    }
+  ],
+  "requires": { "python": ["matplotlib"] }
+}

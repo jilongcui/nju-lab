@@ -1,0 +1,265 @@
+{
+  "note": "参考水平（不是标准答案）：条目抽取、category、重要性、更新/遗忘阈值、三种策略与检索口径都已在 task.md 里钉死，所以条目编号、校验和、窗口、摘要、检索名单、三个 recall 与 before/after 都是确定的 —— 用于核对学生的口径，以及「更新后旧条目不再命中、遗忘后谁都拿不到」这两条行为性条件。硬性判据见 manifest.json 的 assertions，语义判据见 judge.md。",
+  "memory": {
+    "n_entries": 10,
+    "entries_checksum": "d669753a7c28",
+    "entries": [
+      [
+        "M01",
+        "allergy",
+        "2025-09-12",
+        3,
+        "active",
+        ""
+      ],
+      [
+        "M02",
+        "lifestyle",
+        "2025-10-05",
+        1,
+        "forgotten",
+        ""
+      ],
+      [
+        "M03",
+        "other",
+        "2025-10-05",
+        1,
+        "superseded",
+        "M10"
+      ],
+      [
+        "M04",
+        "lab_result",
+        "2025-10-05",
+        2,
+        "active",
+        ""
+      ],
+      [
+        "M05",
+        "lifestyle",
+        "2025-11-18",
+        1,
+        "forgotten",
+        ""
+      ],
+      [
+        "M06",
+        "lab_result",
+        "2025-12-22",
+        2,
+        "active",
+        ""
+      ],
+      [
+        "M07",
+        "lifestyle",
+        "2026-01-30",
+        1,
+        "forgotten",
+        ""
+      ],
+      [
+        "M08",
+        "lifestyle",
+        "2026-02-14",
+        1,
+        "forgotten",
+        ""
+      ],
+      [
+        "M09",
+        "lifestyle",
+        "2026-02-14",
+        1,
+        "forgotten",
+        ""
+      ],
+      [
+        "M10",
+        "medication_change",
+        "2026-04-02",
+        3,
+        "active",
+        ""
+      ]
+    ],
+    "window": [
+      "T12",
+      "T13",
+      "T14",
+      "T15",
+      "T16"
+    ],
+    "window_entry_ids": [
+      "M10"
+    ],
+    "summary": "allergy: 我对磺胺类药物过敏，上次用完全身发痒。；lab_result: 我每个月都化验一次血红蛋白，上次是 128。；medication_change: 更正：阿托伐他汀 → 瑞舒伐他汀",
+    "summary_entry_ids": [
+      "M01",
+      "M06",
+      "M10"
+    ],
+    "retrieved": [
+      {
+        "query_id": "Q01",
+        "entry_ids": [
+          "M01"
+        ]
+      },
+      {
+        "query_id": "Q02",
+        "entry_ids": [
+          "M10"
+        ]
+      },
+      {
+        "query_id": "Q03",
+        "entry_ids": [
+          "M06",
+          "M04"
+        ]
+      },
+      {
+        "query_id": "Q04",
+        "entry_ids": []
+      },
+      {
+        "query_id": "Q05",
+        "entry_ids": []
+      },
+      {
+        "query_id": "Q06",
+        "entry_ids": [
+          "M10",
+          "M01"
+        ]
+      }
+    ]
+  },
+  "answers": [
+    {
+      "query_id": "Q01",
+      "used_entry_ids": [
+        "M01"
+      ],
+      "answer_min_len": 10
+    },
+    {
+      "query_id": "Q02",
+      "used_entry_ids": [
+        "M10"
+      ],
+      "answer_min_len": 10
+    },
+    {
+      "query_id": "Q03",
+      "used_entry_ids": [
+        "M04",
+        "M06"
+      ],
+      "answer_min_len": 10
+    },
+    {
+      "query_id": "Q04",
+      "used_entry_ids": [],
+      "answer_min_len": 10
+    },
+    {
+      "query_id": "Q05",
+      "used_entry_ids": [],
+      "answer_min_len": 10
+    },
+    {
+      "query_id": "Q06",
+      "used_entry_ids": [
+        "M01",
+        "M10"
+      ],
+      "answer_min_len": 10
+    }
+  ],
+  "updates": {
+    "applied": [
+      {
+        "update_id": "U01",
+        "old_entry_ids": [
+          "M03"
+        ],
+        "new_entry_id": "M10"
+      }
+    ],
+    "forgotten": [
+      "M02",
+      "M05",
+      "M07",
+      "M08",
+      "M09"
+    ],
+    "before_after": [
+      {
+        "query_id": "Q01",
+        "before": [
+          "M01"
+        ],
+        "after": [
+          "M01"
+        ]
+      },
+      {
+        "query_id": "Q02",
+        "before": [
+          "M10",
+          "M03"
+        ],
+        "after": [
+          "M10"
+        ]
+      },
+      {
+        "query_id": "Q03",
+        "before": [
+          "M06",
+          "M04"
+        ],
+        "after": [
+          "M06",
+          "M04"
+        ]
+      },
+      {
+        "query_id": "Q04",
+        "before": [
+          "M02"
+        ],
+        "after": []
+      },
+      {
+        "query_id": "Q05",
+        "before": [
+          "M05",
+          "M09"
+        ],
+        "after": []
+      },
+      {
+        "query_id": "Q06",
+        "before": [
+          "M10",
+          "M03",
+          "M01"
+        ],
+        "after": [
+          "M10",
+          "M01"
+        ]
+      }
+    ]
+  },
+  "metrics": {
+    "recall_at_k_window": 0.25,
+    "recall_at_k_summary": 0.583333,
+    "recall_at_k_retrieval": 0.666667
+  }
+}

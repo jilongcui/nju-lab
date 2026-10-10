@@ -1,0 +1,7 @@
+call_id,tool,args
+C01,mean_of_column,"{""column"": ""收缩压"", ""decimals"": 1}"
+C02,mean_of_column,"{""column"": ""心率""}"
+C03,plot_histogram,"{""column"": ""收缩压"", ""bins"": 4}"
+C04,plot_histogram,"{""column"": ""舒张压""}"
+C05,fetch_reference,"{""item"": ""舒张压""}"
+C06,fetch_reference,"{""item"": 2026}"
