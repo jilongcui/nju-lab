@@ -102,7 +102,15 @@ export type Block =
   | { kind: 'table'; head: string[]; rows: string[][]; align?: ('l' | 'r')[] }
   | { kind: 'code'; lang: string; content: string; caption?: string }
   | { kind: 'quote'; text: string; cite?: string }
-  | { kind: 'image'; fileId: string; caption?: string; role?: 'hero' | 'inline' }
+  | {
+      kind: 'image';
+      fileId: string;
+      caption?: string;
+      /** inline=居中单图 / hero=图文并排 / full=大图不裁切 / grid=多图网格 */
+      role?: 'hero' | 'inline' | 'full' | 'grid';
+      /** grid：多图（1–4 张） */
+      items?: { fileId: string; caption?: string }[];
+    }
   | { kind: 'note'; text: string };
 
 export interface Page {

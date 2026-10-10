@@ -7,6 +7,7 @@
  *   node web/tools/preview-semantic.mjs --themes=a,b,c        # 多主题对比
  *   node web/tools/preview-semantic.mjs --pages=1,4,7         # 只截指定页（快速迭代）
  *   node web/tools/preview-semantic.mjs --out=/tmp/shots
+ *   node web/tools/preview-semantic.mjs --source=legacy   # 走 legacy 适配器（旧 SlideJson → 语义页）
  *
  * 产物：`<out>/<theme>/pNN.png`（1920×1080，与固定画布 1:1）+ `deck.html`（可直接用浏览器打开看翻页）。
  *
@@ -28,8 +29,9 @@ const argValue = (name, fallback) => {
   return hit ? hit.slice(name.length + 3) : fallback;
 };
 const themeIds = argValue('themes', 'builtin-platform-blue').split(',').map((s) => s.trim()).filter(Boolean);
+const source = argValue('source', 'semantic'); // semantic | legacy
 // 默认落在 `web/tools/shots/`（.gitignore 已忽略）—— 截图是评审产物，不进仓库
-const outRoot = argValue('out', join(webRoot, 'tools', 'shots', 'semantic'));
+const outRoot = argValue('out', join(webRoot, 'tools', 'shots', 'semantic', source));
 const onlyPages = argValue('pages', '')
   .split(',')
   .map((s) => Number(s.trim()))
@@ -60,6 +62,8 @@ await esbuild.build({
     contents: [
       `export { buildSemanticDeckHtml } from './src/slides/semantic/stage';`,
       `export { PAGES, META } from './tools/fixtures/chapter4-deck';`,
+      `export { LEGACY_SLIDES, LEGACY_DECK_META } from './tools/fixtures/legacy-deck';`,
+      `export { legacyDeckToPages } from './src/slides/semantic/legacy';`,
       `export { DECK_THEMES } from './src/slides/semantic/theme';`,
     ].join('\n'),
     resolveDir: webRoot,
@@ -74,7 +78,11 @@ await esbuild.build({
   logLevel: 'silent',
 });
 
-const { buildSemanticDeckHtml, PAGES, META, DECK_THEMES } = await import(pathToFileURL(bundle).href);
+const { buildSemanticDeckHtml, PAGES, META, DECK_THEMES, LEGACY_SLIDES, LEGACY_DECK_META, legacyDeckToPages } =
+  await import(pathToFileURL(bundle).href);
+// --source=legacy：模拟平台里的真实路径（旧 deck → 适配器 → 新渲染）
+const pages = source === 'legacy' ? legacyDeckToPages(LEGACY_SLIDES) : PAGES;
+const meta = source === 'legacy' ? LEGACY_DECK_META : META;
 const themeName = (id) => DECK_THEMES.find((t) => t.id === id)?.name ?? id;
 
 const { chromium } = await import('playwright');
@@ -86,7 +94,7 @@ const context = await browser.newContext({
 const page = await context.newPage();
 
 for (const themeId of themeIds) {
-  const html = buildSemanticDeckHtml({ pages: PAGES, meta: META, themeId });
+  const html = buildSemanticDeckHtml({ pages, meta, themeId });
   const dir = join(outRoot, themeId);
   mkdirSync(dir, { recursive: true });
   const file = join(dir, 'deck.html');
@@ -97,7 +105,7 @@ for (const themeId of themeIds) {
   await page.addStyleTag({ content: '.slide{transition:none !important}' });
   await page.waitForTimeout(120);
 
-  const targets = onlyPages.length ? onlyPages : PAGES.map((_, i) => i + 1);
+  const targets = onlyPages.length ? onlyPages : pages.map((_, i) => i + 1);
   let current = 1;
   for (const pageNo of targets) {
     while (current < pageNo) {
@@ -114,4 +122,4 @@ for (const themeId of themeIds) {
 
 await browser.close();
 rmSync(work, { recursive: true, force: true });
-console.log(`\n完成：${themeIds.length} 个主题 / ${onlyPages.length || PAGES.length} 页 → ${outRoot}`);
+console.log(`\n完成：${source} / ${themeIds.length} 个主题 / ${onlyPages.length || pages.length} 页 → ${outRoot}`);

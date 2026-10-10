@@ -228,7 +228,7 @@ export function findTheme(id: string | undefined | null): DeckTheme {
  * 编译主题 CSS：**字体栈 → vendor token → 本主题 token**（后者覆盖前者）。
  * 字体放在最前面，确保 vendor 主题里的 Google Fonts 指向被系统字体栈顶掉。
  */
-export function themeCss(theme: DeckTheme): string {
+export function themeCss(theme: DeckTheme, overrides: Record<string, string> = {}): string {
   const fromTokens = (tokens: Record<string, string>) =>
     Object.entries(tokens)
       .map(([key, value]) => `  ${key}: ${value};`)
@@ -237,6 +237,8 @@ export function themeCss(theme: DeckTheme): string {
     `:root {\n${fromTokens(FONT_TOKENS)}\n}`,
     theme.vendorCss?.trim() ?? '',
     Object.keys(theme.tokens).length ? `:root {\n${fromTokens(theme.tokens)}\n}` : '',
+    // 课程自定义模板的调参覆盖（旧 TemplateDesign → token，见 legacy.ts）
+    Object.keys(overrides).length ? `:root {\n${fromTokens(overrides)}\n}` : '',
   ];
   return parts.filter(Boolean).join('\n');
 }

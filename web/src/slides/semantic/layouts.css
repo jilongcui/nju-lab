@@ -43,6 +43,10 @@
   margin: 6px 0 0;
   max-width: 74ch;
 }
+.ly strong {
+  color: var(--accent);
+  font-weight: 700;
+}
 .ly-note {
   margin-top: 22px;
   font-size: 20px;
@@ -781,6 +785,41 @@
 .ly-media.inline { grid-template-columns: 1fr; justify-items: center; }
 .ly-media .img-frame { aspect-ratio: var(--ly-ratio, 16/9); }
 .ly-media.inline .img-frame { max-width: 1180px; }
+
+/* ---------- 大图 / 多图网格 / 占位 ---------- */
+.ly-media.inline .ly-img-missing { min-height: 420px; }
+.ly-media.full .ly-img-missing { min-height: 520px; }
+.ly-gallery-cell .ly-img-missing { min-height: 240px; }
+
+.ly-media.full .img-frame {
+  aspect-ratio: 16/9;
+  max-height: 600px;
+}
+.ly-media.full .img-frame > img {
+  object-fit: contain;
+}
+.ly-gallery {
+  display: grid;
+  gap: 22px;
+}
+.ly-gallery.cols-2 { grid-template-columns: repeat(2, 1fr); }
+.ly-gallery.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.ly-gallery.cols-4 { grid-template-columns: repeat(4, 1fr); }
+.ly-gallery-cell { min-width: 0; }
+.ly-gallery .img-frame { aspect-ratio: 16/10; }
+.ly-gallery-cell .img-cap { font-size: 17px; }
+.ly-img-missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  padding: 20px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font-size: 18px;
+}
 
 /* ---------- 小结 ---------- */
 .ly-summary {

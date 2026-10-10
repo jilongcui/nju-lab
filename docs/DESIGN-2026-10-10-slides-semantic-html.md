@@ -2,8 +2,8 @@
 
 > 目标读者：接手实现的人。现状功能指南见 `docs/SLIDES.md`，历史设计见
 > `docs/DESIGN-2026-09-29-chapter-slides.md`、`docs/DESIGN-2026-09-30-slides-images.md`。
-> 本文是**规划 + P0 落地记录**：§1–§8 是规划（`[已核实]` = 实际 clone 仓库看到的事实），
-> §9 是 P0 的实测记录（2026-10-10 当天实现并验证）。
+> 本文是**规划 + 落地记录**：§1–§8 是规划（`[已核实]` = 实际 clone 仓库看到的事实），
+> §9 = P0（渲染层），§10 = P1（接入平台），均为 2026-10-10 当天实现并验证。
 
 ## 0. 一句话与结论
 
@@ -297,3 +297,56 @@ MD 视图**降级为只读预览 + 应急文本修正**（保留 `toMarkdown`/`p
    `SLIDES_PROMPT_VERSION` +1（否则同 hash 命中旧缓存）；
 4. **老断言迁移**：`verify-slides.mjs`（11 项，基于 reveal DOM）与 `assert-render.mjs`（27 项）
    需要按新渲染器改写，并新增"每页内容高度 ≤ 1080、无重叠"的溢出实测断言。
+
+
+---
+
+## 10. P1 落地记录：把新渲染层接进平台（2026-10-10，已实测）
+
+### 10.1 交付物
+
+| 文件 | 作用 |
+|---|---|
+| `web/src/slides/semantic/legacy.ts` | **旧 `SlideJson` → 语义 `Page` 适配器**（16 版式全映射，有损但**不丢内容**）+ `designToTokenOverrides`（旧模板调参 → token） |
+| `web/src/slides/SlideStage.tsx` | 双渲染器：`renderer='semantic'**（默认）** \| 'reveal'`；新增 `slideTheme` / `meta` 两个 prop；新版渲染器走**动态 import**（不进主包） |
+| `web/src/slides/semantic/{stage,render,theme}.ts`、`layouts.css` | 支持主题 token 覆盖、页脚文案、页脚 logo；图片版式扩展 `full`（大图不裁切）/`grid`（多图）/**占位**（拿不到图不留白、不发外部请求） |
+| `web/src/pages/teacher/ChapterSlides.tsx`、`web/src/pages/student/ChapterRead.tsx` | 调用点传入 `slideTheme`（模板 id + 课程自定义 design）与 `meta`（章节名） |
+| `web/tools/fixtures/legacy-deck.ts` | 旧模型测试集（**覆盖全部 16 种旧版式**，用第 16 章记忆系统的真实口径） |
+
+**默认即生效**：教师端与学生端现在都用新渲染器；`VITE_SLIDES_RENDERER=reveal` 可一键回退旧渲染器
+（旧代码路径完整保留，未删除）。
+
+### 10.2 为什么 `verify-slides.mjs`（11 项浏览器断言）不用改
+
+它的断言刻意**全部走 postMessage 契约**（页码从 `message` 事件读、点击/键盘/Esc 作用于父窗口 UI），
+注释里写明了原因——"演示 iframe 是 opaque origin，读不到它的 DOM"。新运行时复刻了同一套
+`boot/ready/slidechanged/exit-present` 与 `next/prev/goto` 契约，因此这些断言对两条渲染路径同样成立。
+（真实环境复跑仍建议做一次，作为切换后的验收。）
+
+### 10.3 实测结果
+
+- `web/tools/assert-semantic.mjs` **44/44 通过**（新增 12 条适配器断言：映射/不丢页/不丢数字/不丢讲稿/
+  Markdown 降级/多图网格/图片占位/调参 token 生效）。
+- `npx tsc --noEmit`、`npm run build` 通过。
+- **主包未变大**：`index` 701.5KB（切换前 700.7KB），新渲染层与 vendor 主题 CSS 被拆成
+  `stage-*.js` + `legacy-*.js`（合计 60KB）**按需加载**。
+- 适配器出图验证：旧 deck（16 版式测试集）经 `--source=legacy` 渲染，`bullets/steps/stat/compare/
+  code/image-*` 全部落到新观感上；图片拿不到时按"占位块 + 图注"呈现。
+
+### 10.4 适配器的三处**有损**（明确记录，避免误判为 bug）
+
+1. `two-col` 的两段 Markdown 片段降级为**纯文本**（新模型没有"自由 Markdown 两栏"这种块；
+   需要时应在生成侧改出 `pillars/contrast` 语义）；
+2. 旧模型没有语义可依的图示（`relation/flow/arch/timeline`）**不臆造** —— 适配器只做保守映射，
+   这些版式要靠生成侧直接产语义块（P2）才会出现；
+3. 旧调参里的 `density` / `cardStyle` / `fontScale` 三项**暂未映射**（新版的疏密与卡片风格应改为
+   token 化的 scale 变量，属 P2）；页级 `attrs.background`（背景图）暂未实现。
+
+### 10.5 下一步（P2）
+
+1. **生成侧改造**：两阶段 prompt 改为直接输出 `intent + blocks`（大纲出骨架、扩写出块内容），
+   块级预算校验（claim ≤40 字 / evidence ≤5×20 / metric ≤4 / relation ≤7 节点…），
+   `SLIDES_PROMPT_VERSION` **+1**（否则同 hash 命中旧缓存）；
+2. `postProcessSlides` 从"形状校验"升级为**块级预算校验**；mock 生成器同步产语义页；
+3. 教师端把"MD/JSON 双视图"降级为只读预览 + 应急修正，主操作改为「换主题 / 换版式 / 重生成单页」；
+4. 溢出实测断言（每页内容高度 ≤1080、无重叠）纳入 `verify-slides.mjs`。

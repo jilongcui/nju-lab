@@ -158,6 +158,8 @@ export default function ChapterRead() {
               baseTheme: slidesData?.template.baseTheme ?? 'simple',
               css: slidesData?.template.css ?? '',
             }}
+            slideTheme={{ id: slidesData?.template.id, design: slidesData?.template.design }}
+            meta={{ chapter: chapter.title }}
             config={deck?.config}
             footerText={slidesData?.template.design?.footerText ?? null}
             logoDataUrl={

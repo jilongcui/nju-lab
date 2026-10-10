@@ -611,6 +611,8 @@ export default function ChapterSlides() {
         baseTheme: currentTemplate?.baseTheme ?? 'simple',
         css: currentTemplate?.css ?? '',
       }}
+      slideTheme={{ id: currentTemplate?.id, design: currentTemplate?.design }}
+      meta={{ chapter: chapter.title }}
       config={deck?.config}
       footerText={currentTemplate?.design?.footerText ?? null}
       logoDataUrl={

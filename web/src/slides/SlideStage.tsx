@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Button, Space, Spin, theme } from 'antd';
 import { CloseOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
-import type { SlideDeckConfig, SlideJson } from '../types';
+import type { SlideDeckConfig, SlideJson, SlideTemplateDesign } from '../types';
 import { buildDeckHtml } from './renderDeck';
 
 /**
@@ -27,6 +27,16 @@ export interface SlideStageProps {
   presenting?: boolean;
   onExitPresenting?: () => void;
   height?: number | string;
+  /**
+   * 渲染器：`semantic`（新，默认）= 语义模型 + 固定 1920×1080 舞台；
+   * `reveal` = 旧渲染器（保留回退能力；也可用 `VITE_SLIDES_RENDERER=reveal` 全局回退）。
+   * 两者与父窗口的 postMessage 契约完全相同，因此这里的切换对页面无感。
+   */
+  renderer?: 'semantic' | 'reveal';
+  /** 新渲染器的主题（内置模板 id + 课程自定义调参）；不传则用平台默认主题 */
+  slideTheme?: { id?: string; design?: SlideTemplateDesign };
+  /** 页脚上下文（课程/章节名） */
+  meta?: { course?: string; chapter?: string };
 }
 
 export default function SlideStage({
@@ -41,6 +51,9 @@ export default function SlideStage({
   presenting = false,
   onExitPresenting,
   height = 520,
+  renderer,
+  slideTheme,
+  meta,
 }: SlideStageProps) {
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -63,17 +76,44 @@ export default function SlideStage({
   /** 当前文档下发的时间戳（就绪耗时日志用） */
   const htmlSetAtRef = useRef(0);
 
+  /** 生效的渲染器：显式 prop 优先，其次环境变量回退，最后默认新版 */
+  const effectiveRenderer: 'semantic' | 'reveal' =
+    renderer ?? (import.meta.env.VITE_SLIDES_RENDERER === 'reveal' ? 'reveal' : 'semantic');
+
   // 内容/模板/配置变化 → 重建文档（重建 iframe 的 srcdoc，状态最干净）
   useEffect(() => {
     let cancelled = false;
-    buildDeckHtml({
-      slides,
-      template,
-      config: config ?? {},
-      footerText,
-      logoDataUrl,
-      imageDataUrls,
-    })
+    // 两条渲染路径产出的是同一种"自包含文档"，对页面其余部分完全等价。
+    // 新版渲染器（版式 + vendor 主题 CSS）走**动态 import** —— 只有真的要看幻灯片才加载，
+    // 不拖累应用主包（与 reveal 资产按需加载的做法一致）。
+    const docPromise =
+      effectiveRenderer === 'reveal'
+        ? buildDeckHtml({
+            slides,
+            template,
+            config: config ?? {},
+            footerText,
+            logoDataUrl,
+            imageDataUrls,
+          })
+        : (async () => {
+            const [{ buildSemanticDeckHtml }, { designToTokenOverrides, legacyDeckToPages }] = await Promise.all([
+              import('./semantic/stage'),
+              import('./semantic/legacy'),
+            ]);
+            return buildSemanticDeckHtml({
+              pages: legacyDeckToPages(slides),
+              meta: { course: meta?.course ?? '', chapter: meta?.chapter ?? '' },
+              themeId: slideTheme?.id,
+              themeOverrides: designToTokenOverrides(slideTheme?.design),
+              slideNumber: config?.slideNumber !== false,
+              progress: config?.progress !== false,
+              footerText,
+              logoDataUrl,
+              resolveImage: (fileId) => imageDataUrls?.[`file:${fileId}`] ?? imageDataUrls?.[fileId],
+            });
+          })();
+    docPromise
       .then((doc) => {
         if (cancelled || lastDocRef.current === doc) return;
         lastDocRef.current = doc;
@@ -90,7 +130,7 @@ export default function SlideStage({
     return () => {
       cancelled = true;
     };
-  }, [slides, template, config, footerText, logoDataUrl, imageDataUrls]);
+  }, [slides, template, config, footerText, logoDataUrl, imageDataUrls, effectiveRenderer, slideTheme, meta]);
 
   // 就绪看门狗：html 已下发但 iframe 迟迟不回 ready（个别环境下 srcdoc 不重载/脚本未跑的竞态，
   // 表现为"转圈永不停"）—— 超时自动重挂载 iframe（换 key），重试 2 次仍不行就给出明确错误。

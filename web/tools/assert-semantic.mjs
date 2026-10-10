@@ -50,6 +50,8 @@ await esbuild.build({
       `export { buildSemanticDeckHtml, CANVAS } from './src/slides/semantic/stage';`,
       `export { DECK_THEMES, themeCss, findTheme } from './src/slides/semantic/theme';`,
       `export { PAGES, META } from './tools/fixtures/chapter4-deck';`,
+      `export { LEGACY_SLIDES } from './tools/fixtures/legacy-deck';`,
+      `export { legacyDeckToPages, designToTokenOverrides } from './src/slides/semantic/legacy';`,
     ].join('\n'),
     resolveDir: webRoot,
     loader: 'ts',
@@ -62,7 +64,8 @@ await esbuild.build({
   plugins: [rawPlugin],
   logLevel: 'silent',
 });
-const { buildSemanticDeckHtml, CANVAS, DECK_THEMES, themeCss, PAGES, META } = await import(pathToFileURL(bundle).href);
+const { buildSemanticDeckHtml, CANVAS, DECK_THEMES, themeCss, PAGES, META, LEGACY_SLIDES, legacyDeckToPages, designToTokenOverrides } =
+  await import(pathToFileURL(bundle).href);
 
 const html = buildSemanticDeckHtml({ pages: PAGES, meta: META, themeId: 'builtin-platform-blue' });
 const dom = new JSDOM(html);
@@ -171,6 +174,76 @@ check('主题 CSS 不引用任何外部 CDN', !DECK_THEMES.some((t) => /https?:\
 // ---------------- 6. 颜色纪律 ----------------
 const layoutsCss = readFileSync(join(webRoot, 'src/slides/semantic/layouts.css'), 'utf8');
 check('版式 CSS 无硬编码颜色（全走 token 变量）', !/#[0-9a-fA-F]{3,8}\b/.test(layoutsCss) && !/\brgba?\(/.test(layoutsCss));
+
+// ---------------- 7. 旧模型适配器（平台既有 deck 的迁移路径）----------------
+const legacyPages = legacyDeckToPages(LEGACY_SLIDES);
+const intentAt = (layout) => legacyPages[LEGACY_SLIDES.findIndex((s) => s.layout === layout)].intent;
+check('适配器：页数不变（不丢页）', legacyPages.length === LEGACY_SLIDES.length);
+check(
+  '适配器：16 种旧版式全部有映射',
+  [
+    ['cover', 'cover'],
+    ['agenda', 'toc'],
+    ['section', 'section'],
+    ['bullets', 'claim'],
+    ['steps', 'sequence'],
+    ['stat', 'metric'],
+    ['compare', 'contrast'],
+    ['two-col', 'pillars'],
+    ['code', 'example'],
+    ['quote', 'quote'],
+    ['image', 'image'],
+    ['image-full', 'image'],
+    ['image-left', 'image'],
+    ['image-grid', 'image'],
+    ['end', 'summary'],
+  ].every(([layout, intent]) => intentAt(layout) === intent),
+);
+check('适配器：agenda 的条目数 = bullets 数', legacyPages[1].blocks[0].items.length === LEGACY_SLIDES[1].bullets.length);
+check('适配器：stat → metric 保留数字/标签/说明', (() => {
+  const block = legacyPages[5].blocks[0];
+  return block.kind === 'metric' && block.items.length === 3 && block.items[2].value === '0.8';
+})());
+check('适配器：compare 保留左右列标题', (() => {
+  const block = legacyPages[6].blocks[0];
+  return block.kind === 'compare' && block.left.title.includes('更新') && block.right.title.includes('遗忘');
+})());
+check('适配器：two-col 的 Markdown 降级为纯文本（不留 ** 与 #）', (() => {
+  const block = legacyPages[7].blocks[0];
+  return block.kind === 'evidence' && block.items.every((t) => !/[*#`]/.test(t));
+})());
+check('适配器：image-grid → 多图网格块（≤4 张）', (() => {
+  const block = legacyPages[13].blocks[0];
+  return block.kind === 'image' && block.role === 'grid' && block.items.length === 3;
+})());
+check('适配器：image-left → 图文并排（图 + 要点都在）', (() => {
+  const blocks = legacyPages[12].blocks;
+  return blocks.some((b) => b.kind === 'image' && b.role === 'hero') && blocks.some((b) => b.kind === 'evidence');
+})());
+check('适配器：讲稿原样带过来', legacyPages[0].notes === LEGACY_SLIDES[0].notes);
+
+const legacyHtml = buildSemanticDeckHtml({ pages: legacyPages, meta: META, themeId: 'builtin-platform-blue' });
+const legacyDoc = new JSDOM(legacyHtml).window.document;
+check(
+  '适配器：图片拿不到时渲染占位（不产空 src、不发外部请求）',
+  // 6 处图片引用（单图 / 大图 / 并排各 1 + 网格 3）全部退化为占位
+  legacyDoc.querySelectorAll('img').length === 0 && legacyDoc.querySelectorAll('.ly-img-missing').length === 6,
+  `img=${legacyDoc.querySelectorAll('img').length} missing=${legacyDoc.querySelectorAll('.ly-img-missing').length}`,
+);
+
+const tokens = designToTokenOverrides({
+  primary: '#6a3d9a',
+  background: '#fbfaff',
+  text: '#221a2e',
+  fontFamily: 'Songti SC, serif',
+  radius: 6,
+});
+check(
+  '适配器：课程自定义模板调参 → token 覆盖（颜色/字体/圆角都不丢）',
+  tokens['--accent'] === '#6a3d9a' && tokens['--bg'] === '#fbfaff' && tokens['--text-1'] === '#221a2e' &&
+    tokens['--font-sans'] === 'Songti SC, serif' && tokens['--radius'] === '6px',
+);
+check('适配器：token 覆盖传进主题 CSS 后生效', themeCss(DECK_THEMES[0], tokens).includes('--accent: #6a3d9a;'));
 
 // ---------------- 汇总 ----------------
 const failed = results.filter(([, ok]) => !ok);

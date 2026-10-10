@@ -28,6 +28,8 @@ export interface RenderContext {
   slideNumber: boolean;
   /** 图片解析：`file:` 引用 → 可用 URL（data URL / blob URL）；无则渲染占位 */
   resolveImage?: (fileId: string) => string | undefined;
+  /** 页脚左侧文案（模板调参的 footerText）；缺省用「课程 · 章节」 */
+  footerText?: string | null;
 }
 
 export function escapeHtml(value: string): string {
@@ -351,19 +353,47 @@ function renderQuote(page: Page): string {
 </div>`;
 }
 
+/** 图片框：拿不到图片时渲染占位（绝不留空白，也绝不发外部请求） */
+function imgFrame(fileId: string, caption: string | undefined, ctx: RenderContext, contain: boolean): string {
+  const src = ctx.resolveImage?.(fileId);
+  if (!src) {
+    return `<div class="ly-img-missing">图片不可用${caption ? `：${escapeHtml(caption)}` : ''}</div>`;
+  }
+  return `<figure class="img-frame${contain ? ' contain' : ''}"><img src="${escapeHtml(src)}" alt="${escapeHtml(
+    caption ?? '',
+  )}" /></figure>`;
+}
+
 function renderImage(page: Page, ctx: RenderContext): string {
   const image = blockOf(page, 'image');
+  if (!image) return head(page);
   const evidence = blockOf(page, 'evidence');
-  const src = image ? ctx.resolveImage?.(image.fileId) : undefined;
-  const frame = `<figure class="img-frame"><img src="${escapeHtml(src ?? '')}" alt="${escapeHtml(image?.caption ?? '')}" /></figure>`;
-  const role = image?.role ?? (evidence?.items.length ? 'hero' : 'inline');
-  const body =
-    role === 'hero' && evidence?.items.length
-      ? `<div class="ly-media hero"><div>${frame}</div><div class="ly-evidence">${evidence.items
-          .map((item) => `<div class="ly-ev"><span>${inline(item)}</span></div>`)
-          .join('')}</div></div>`
-      : `<div class="ly-media inline">${frame}</div>`;
-  return `${head(page)}${body}${image?.caption ? `<p class="ly-code-cap">${escapeHtml(image.caption)}</p>` : ''}`;
+  const role = image.role ?? (evidence?.items.length ? 'hero' : 'inline');
+
+  if (role === 'grid') {
+    const items = (image.items?.length ? image.items : [{ fileId: image.fileId, caption: image.caption }]).slice(0, 4);
+    const cells = items
+      .map((item) => `<div class="ly-gallery-cell">${imgFrame(item.fileId, undefined, ctx, true)}${
+        item.caption ? `<p class="img-cap">${escapeHtml(item.caption)}</p>` : ''
+      }</div>`)
+      .join('');
+    return `${head(page)}<div class="ly-gallery ${colsClass(items.length)}">${cells}</div>${renderNote(page)}`;
+  }
+
+  if (role === 'full') {
+    return `${head(page)}<div class="ly-media full">${imgFrame(image.fileId, image.caption, ctx, true)}</div>${renderNote(page)}`;
+  }
+
+  const frame = imgFrame(image.fileId, image.caption, ctx, false);
+  if (role === 'hero' && evidence?.items.length) {
+    return `${head(page)}<div class="ly-media hero">
+  <div>${frame}</div>
+  <div class="ly-evidence">${evidence.items
+    .map((item) => `<div class="ly-ev"><span>${inline(item)}</span></div>`)
+    .join('')}</div>
+</div>`;
+  }
+  return `${head(page)}<div class="ly-media inline">${frame}</div>${renderNote(page)}`;
 }
 
 function renderSummary(page: Page): string {
@@ -409,7 +439,9 @@ export function renderPage(page: Page, ctx: RenderContext): string {
     page.intent === 'cover'
       ? ''
       : `<div class="deck-footer">
-    <span>${escapeHtml(ctx.meta.course)}${ctx.meta.chapter ? ` · ${escapeHtml(ctx.meta.chapter)}` : ''}</span>
+    <span>${escapeHtml(
+      ctx.footerText || `${ctx.meta.course}${ctx.meta.chapter ? ` · ${ctx.meta.chapter}` : ''}`,
+    )}</span>
     ${ctx.slideNumber ? `<span class="slide-number" data-current="${ctx.index + 1}" data-total="${ctx.total}"></span>` : ''}
   </div>`;
   const notes = page.notes ? `<div class="notes">${escapeHtml(page.notes)}</div>` : '';
@@ -422,7 +454,15 @@ export function renderPage(page: Page, ctx: RenderContext): string {
 }
 
 /** 整份 deck → 全部 `<section>` */
-export function renderPages(pages: Page[], meta: DeckMeta, options: { slideNumber?: boolean; resolveImage?: (fileId: string) => string | undefined } = {}): string {
+export function renderPages(
+  pages: Page[],
+  meta: DeckMeta,
+  options: {
+    slideNumber?: boolean;
+    resolveImage?: (fileId: string) => string | undefined;
+    footerText?: string | null;
+  } = {},
+): string {
   return pages
     .map((page, index) =>
       renderPage(page, {
@@ -431,6 +471,7 @@ export function renderPages(pages: Page[], meta: DeckMeta, options: { slideNumbe
         total: pages.length,
         slideNumber: options.slideNumber !== false,
         resolveImage: options.resolveImage,
+        footerText: options.footerText,
       }),
     )
     .join('\n');

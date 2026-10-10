@@ -22,8 +22,14 @@ export interface StageOptions {
   pages: Page[];
   meta: DeckMeta;
   themeId?: string;
+  /** 课程自定义模板的 token 覆盖（旧 TemplateDesign 映射而来） */
+  themeOverrides?: Record<string, string>;
   slideNumber?: boolean;
   progress?: boolean;
+  /** 页脚左侧文案；缺省「课程 · 章节」 */
+  footerText?: string | null;
+  /** 页脚 logo（data URL） */
+  logoDataUrl?: string | null;
   resolveImage?: (fileId: string) => string | undefined;
 }
 
@@ -132,7 +138,11 @@ export function buildSemanticDeckHtml(options: StageOptions): string {
   const body = renderPages(pages, meta, {
     slideNumber: options.slideNumber !== false,
     resolveImage: options.resolveImage,
+    footerText: options.footerText,
   });
+  const logo = options.logoDataUrl
+    ? `<img class="deck-logo" data-pos="bottom-right" src="${escapeHtml(options.logoDataUrl)}" alt="" />`
+    : '';
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -140,12 +150,13 @@ export function buildSemanticDeckHtml(options: StageOptions): string {
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${escapeHtml(pages[0]?.title ?? meta.chapter)}</title>
 <style>${baseCss}</style>
-<style>${themeCss(theme)}</style>
+<style>${themeCss(theme, options.themeOverrides)}</style>
 <style>${layoutsCss}</style>
 </head>
 <body>
 <div class="deck" id="deck">
 ${body}
+${logo}
 </div>
 ${options.progress === false ? '' : '<div class="progress-bar"><span></span></div>'}
 <script>${runtimeScript(pages.length)}</script>
