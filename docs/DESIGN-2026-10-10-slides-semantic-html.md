@@ -2,8 +2,8 @@
 
 > 目标读者：接手实现的人。现状功能指南见 `docs/SLIDES.md`，历史设计见
 > `docs/DESIGN-2026-09-29-chapter-slides.md`、`docs/DESIGN-2026-09-30-slides-images.md`。
-> 本文是**待决策的规划**，不含已落地的实测记录；文中 `[已核实]` 是本次实际 clone 仓库看到的事实，
-> `[待实测]` 是必须在 P0 实验里验证的假设。
+> 本文是**规划 + P0 落地记录**：§1–§8 是规划（`[已核实]` = 实际 clone 仓库看到的事实），
+> §9 是 P0 的实测记录（2026-10-10 当天实现并验证）。
 
 ## 0. 一句话与结论
 
@@ -218,7 +218,7 @@ MD 视图**降级为只读预览 + 应急文本修正**（保留 `toMarkdown`/`p
 
 | 阶段 | 内容 | 出口判据 |
 |---|---|---|
-| **P0 样张实验**（0.5–1 天） | vendored 资产落 `web/src/slides/vendor/`；手写 6–8 页语义 JSON（cover/toc/claim/contrast/timeline/relation/metric），跑通固定舞台渲染 + 3 套主题；顺带验证 reveal 耦合与字体方案 | 出 1920×1080 截图，与现有 deck 并排；D5/D7 盲评 ≥ 现在 |
+| **P0 样张实验**（0.5–1 天）✅ **已完成，见 §9** | vendored 资产落 `web/src/slides/vendor/`；手写 6–8 页语义 JSON（cover/toc/claim/contrast/timeline/relation/metric），跑通固定舞台渲染 + 3 套主题；顺带验证 reveal 耦合与字体方案 | 出 1920×1080 截图，与现有 deck 并排；D5/D7 盲评 ≥ 现在 |
 | **P1 渲染层**（2–4 天） | 语义块 → 版式映射（含纯 CSS 图示）；token 主题编译；固定舞台 + 溢出实测；`assert-render`/`verify-slides` 断言 | 断言全绿；同一份语义 JSON 换主题/换版式零 token |
 | **P2 生成层**（2–3 天） | 两阶段 prompt 改造（intent/blocks）；块级预算校验；mock 同步；`SLIDES_PROMPT_VERSION +1`；`review-decks` 出素材盲评 | 真实章节端到端；D5/D7 目标 5 分；零 warning |
 | **P3 教师/学生端**（2–3 天） | 教师：换主题/换版式/重生成单页；MD 视图降级为只读+应急；学生端只读放映 | 交互回归（浏览器断言）全绿 |
@@ -244,3 +244,56 @@ MD 视图**降级为只读预览 + 应急文本修正**（保留 `toMarkdown`/`p
 3. **字体**：系统字体栈 vs 自托管 woff2 子集（影响中文观感一致性）。
 4. **P0 样张章节**：用生产库哪一章做对照（建议取篇幅中等、含流程/对比各一处的一章）。
 5. **图表与公式**：P1 是否一并做，还是先纯 CSS 图示、数据图/公式推迟到 P4。
+
+
+---
+
+## 9. P0 落地记录（2026-10-10，已实测）
+
+### 9.1 交付物（文件级）
+
+| 文件 | 作用 |
+|---|---|
+| `web/src/slides/vendor/html-ppt/{LICENSE,NOTICE.md,base.css,themes/*.css}` | vendored 设计系统资产（MIT，来源与改动见 NOTICE） |
+| `web/src/slides/semantic/types.ts` | **语义页模型**（17 个 intent + 13 种 block），取代"版式枚举" |
+| `web/src/slides/semantic/theme.ts` | 8 套 token 主题（5 套沿用平台历史 id/主色 + 3 套 vendored）；系统字体栈，**零 CDN** |
+| `web/src/slides/semantic/layouts.css` | 版式层（`ly-` 命名空间，16 个版式；颜色全部走 token） |
+| `web/src/slides/semantic/render.ts` | `Page` → HTML（intent 决定版式；块兜底；全量转义） |
+| `web/src/slides/semantic/stage.ts` | 固定 1920×1080 舞台 + 自研运行时（缩放/翻页/postMessage **契约与旧渲染器一致**） |
+| `web/tools/fixtures/chapter4-deck.ts` | 13 页样张（第 4 章注意力实验，**数字全部来自真实实验记录**） |
+| `web/tools/preview-semantic.mjs` | 样张截图（多主题/指定页；产物落 `web/tools/shots/`，已 gitignore） |
+| `web/tools/assert-semantic.mjs` | 渲染层断言 **32 项**（结构/映射/转义/主题解耦/颜色纪律） |
+
+### 9.2 实测结果
+
+- **样张 13 页 × 3 主题**（平台蓝 / 学术白 / 深色高对比）逐页截图：观感明显优于旧渲染器
+  （固定 16:9 画布、眉题-标题-导语的字号阶梯、卡片/网格体系、渐变装饰、页码与页脚齐备）；
+  **同一份语义 JSON 换主题，DOM 逐字节不变**（断言已固化）——"换主题零成本"从口号变成事实。
+- **渲染层断言 32/32 通过**：`node web/tools/assert-semantic.mjs`。
+- **未破坏现有应用**：`npx tsc --noEmit` 与 `npm run build` 均通过（新渲染层尚未接入应用代码路径）。
+- **承载决策（原 §8 待决项 1）**：P0 采用**自研运行时**而非 reveal —— 固定画布 + `transform: scale`
+  与 reveal 自身的 transform/居中机制天然冲突（这正是原计划里 `[待实测]` 的那条），
+  而自研运行时仅数十行、与 `SlideStage` 的 postMessage 契约完全一致（`boot/ready/slidechanged/exit-present`
+  + `next/prev/goto`），换渲染器不需要改 `SlideStage`。
+- **字体决策（原 §8 待决项 3）**：走**系统字体栈**（`PingFang SC`/`Source Han Sans`/`Noto Sans CJK SC`…，
+  衬线用 `Source Han Serif`/`Noto Serif CJK SC`），零 CDN、零体积；学术白主题的中文衬线效果已验证可接受。
+
+### 9.3 P0 抓到的两个真 bug（都值得写进规范）
+
+1. **类名撞车**：关系图中心节点原本用 `class="... center"`，撞上 vendored `base.css` 的
+   工具类 `.center{display:flex}` → 中心卡里的标题与说明被压成左右两列（截图 p04 一眼可见）。
+   修法：改用自有 `ly-rel-center`，并**加断言**"中心节点不得带 `.center`"。
+   教训：**沿用第三方 CSS 时，自有类名要带前缀**，否则会被对方的工具类静默命中。
+2. **代码高亮的替换顺序**：先插 `<span class="cm">` 再跑关键字替换 → 插入片段里的 `class` 被当成关键字
+   二次染色，**输出 `class="kw">class</span>="cm">…` 这种破属性**。修法：先按行切分注释、再做关键字着色。
+   教训：字符串 → HTML 的多次替换必须保证"后一步不重扫前一步插入的标记"。
+
+### 9.4 下一步（P1 入口，尚未开工）
+
+1. **`SlideJson → Page` 适配器**：让平台里**现有 deck 零生成成本**地换上新渲染器（观感立即可得），
+   同时为生成侧改造留出迁移期；
+2. **`SlideStage` 切换**：新渲染器与旧渲染器并存，按 `schemaVersion` 分流；契约不变则 `SlideStage` 不动；
+3. **生成侧改造**（P2）：两阶段 prompt 改为输出 `intent + blocks`，块级预算校验，
+   `SLIDES_PROMPT_VERSION` +1（否则同 hash 命中旧缓存）；
+4. **老断言迁移**：`verify-slides.mjs`（11 项，基于 reveal DOM）与 `assert-render.mjs`（27 项）
+   需要按新渲染器改写，并新增"每页内容高度 ≤ 1080、无重叠"的溢出实测断言。
