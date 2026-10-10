@@ -3,7 +3,7 @@
 # 设计见 docs/DESIGN-2026-09-28-platform-workspace.md；用法见本目录 README.md。
 #
 # 构建（build context **必须是仓库根**，因为要 COPY dsh/nju-lab-client）：
-#   docker build -f server/workspace-image/Dockerfile -t nju-lab-workspace:0.2.0-rc.2-pkg4 .
+#   docker build -f server/workspace-image/Dockerfile -t nju-lab-workspace:0.2.0-rc.2-pkg6 .
 #
 # ---- 为什么基座是 nju-lab-verify 而不是 node:22.23.2-slim ----
 # 本机 docker.io 直连不通（见 HANDOFF §2.1）；华为云源的 node:22-slim 是 **v22.18.0**，
@@ -14,7 +14,7 @@
 # 若要在有 docker.io 的机器上从零构建：把 FROM 换成 node:22.23.2-slim，并参照
 # server/verify-image/Dockerfile 补 `npm ci`（本目录的 package.json / package-lock.json
 # 就是为这条路径准备的，依赖与复验镜像完全相同）。
-FROM nju-lab-verify:0.2.0-rc.2-pkg4
+FROM nju-lab-verify:0.2.0-rc.2-pkg6
 
 # 基座（verify-image）已装 python3 / pip 预装依赖集 / unzip / zstd / jq / ca-certificates，无需重装
 

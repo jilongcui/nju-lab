@@ -5,6 +5,39 @@
 
 ## 0. 一句话现状
 
+**2026-11（续）：工作区 LLM 从「教练模式」改成「引导监督模式」—— 学习过程，不是考察过程** ——
+**用户提出的口径**："不要太死板，就是要引导学生走一个流程，但不要求学生必须做一些重要决定，
+目的是为了引导学生熟悉一个过程 —— 如何分析应用场景、最后如何获得结果和交付；本质上还是**学习**
+的过程，而不是**考察**的过程。" **做法**（用户选定：只改学生端 LLM 人设 + 全仓库统一改称
+「引导监督模式」）：
+① `dsh/nju-lab-client/src/host/guidance.ts` 的常驻 system prompt 段与 skill 手册重写为**四条分寸** ——
+   **引导**（六步每一步先说清"这一步在干什么、为什么要有这一步"）、**不必卡决定**（选模型 / 定基线
+   他拿不准就**直接给建议甚至替他定好**，并说清理由）、**别把流程糊掉**（每一步真的跑、结果真的
+   看得见，不能一口气做完只回一句"已完成"）、**监督是流程层面的**（跳步 / 漏了评估或结论 /
+   交付物不齐 → 直接指出并说明为什么要补，是提醒不是评分）。
+   旧「教练立场」里的硬禁令（"第一个回应必须是提问""不给整段实现""要答案先反问""判断由学生自己写"）
+   **撤掉** —— 考试式的逼问、"必须学生自己想出来"不再是要求。
+② **"监督"落在流程与交付，不落在判分**：`notes` / `figures.takeaway` / `SKILL.md` 实测档案
+   **最好由学生写**，模型给结构、给例子、帮他改（原文口径是"由学生自己写、不许代写"）。
+③ **文档同步更名**：FRAMEWORK §3.5 第 8 件改写为「引导监督模式」（定位一段重写）；
+   CREATION-GUIDE §1 第 2 条与坑表（`教练指令污染复验` → `引导指令污染复验`）跟着改。
+   **带日期的历史条目（2026-10-31 / 2026-11）保持原样**，按 AGENTS.md 纪律不动。
+④ **隔离不变**：`nju-lab-client` 只装学生端，**复验容器不装**（verify profile 里没有它）。
+⑤ **产物与上线（已实测）**：
+   - 客户端 `npm run typecheck / build / test` 通过 —— **59 pass / 0 fail / 6 skip**
+     （6 条 L2 因本机无 `DSH_BIN` 静默 skip，与既往一致）；
+   - **workspace 镜像 `nju-lab-workspace:0.2.0-rc.2-pkg6`**：`server/workspace-image/Dockerfile` 的
+     `FROM` 同步升到 `nju-lab-verify:0.2.0-rc.2-pkg6`（与复验同运行时），体积 **2.29GB**，
+     **pkg5 保留作回滚点**；`workspace.config.ts` 默认镜像切到 pkg6 → `npm run build` + kill 重启
+     （systemd 按 `Restart=always` 拉起）。容器内已验证 `lib/host/index.js` 含新文案、旧硬禁令为 0；
+   - **学生 kit**：`cd dsh/kit && PLATFORM_URL=http://medai.nju.edu.cn/lab ./build-kit.sh` →
+     `kit-version=20261010-0925-a9436ff`；已先备份 + 投放到 `/var/www/lab/kit/nju-lab-student-kit.zip`
+     （与 `dsh/kit/dist/` 逐字节一致）；
+   - **冒烟**：`http://127.0.0.1/lab/` → **200**；本地起 pkg6 容器打印
+     `[nju-lab-client] host half loaded` + `WORKSPACE_READY port=9090`，
+     token → 303（种 cookie）→ 带 cookie **200** ✓。
+   - ⚠️ 重启会让已有工作台容器走 reclaim（镜像变了），**在线学生的会话需重新进入**。
+
 **2026-11（深度学习章）：第三章「深度学习」三个实验落地 + 复验镜像 pkg6（judge token 预算）** ——
 **用户要求**："参考 `docs/EXPERIMENT-DESIGN-FRAMEWORK.md` §3.5 设计第三章 深度学习课程的相关实验"，
 交付形态选定"**直接落成可上传的完整实验包**"，范围选定"**MLP + CNN + 序列**"，
