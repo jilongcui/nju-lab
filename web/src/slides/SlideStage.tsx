@@ -39,6 +39,8 @@ export interface SlideStageProps {
   slideTheme?: { id?: string; design?: SlideTemplateDesign };
   /** 页脚上下文（课程/章节名） */
   meta?: { course?: string; chapter?: string };
+  /** 文档构建完成（导出 PDF 用；回调不入依赖数组，父组件传内联函数也不会重复构建） */
+  onDocument?: (html: string) => void;
 }
 
 export default function SlideStage({
@@ -56,6 +58,7 @@ export default function SlideStage({
   renderer,
   slideTheme,
   meta,
+  onDocument,
 }: SlideStageProps) {
   const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -77,6 +80,9 @@ export default function SlideStage({
   const buildSeqRef = useRef(0);
   /** 当前文档下发的时间戳（就绪耗时日志用） */
   const htmlSetAtRef = useRef(0);
+  /** onDocument 走 ref：父组件传内联箭头函数不会导致 effect 重复构建 */
+  const onDocumentRef = useRef(onDocument);
+  onDocumentRef.current = onDocument;
 
   /** 生效的渲染器：显式 prop 优先，其次环境变量回退，最后默认新版 */
   const effectiveRenderer: 'semantic' | 'reveal' =
@@ -130,6 +136,7 @@ export default function SlideStage({
         setReady(false);
         setError(null);
         htmlSetAtRef.current = Date.now();
+        onDocumentRef.current?.(doc);
         setHtml(`${doc}\n<!-- deck-build:${buildSeqRef.current} -->`);
       })
       .catch((err: Error) => {

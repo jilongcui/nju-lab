@@ -29,6 +29,7 @@ export type PageIntent =
   | 'relation' // 概念之间的关系（中心 + 卫星）
   | 'timeline' // 时间/演化
   | 'table' // 数据表（严格对齐的数值）
+  | 'data' // 数据图（柱状 / 折线 / 环形）
   | 'example' // 代码/命令示例
   | 'quote' // 点睛引用
   | 'image' // 以图为主
@@ -100,6 +101,17 @@ export type Block =
   | { kind: 'timeline'; points: TimelinePoint[] }
   | { kind: 'compare'; left: CompareColumn; right: CompareColumn }
   | { kind: 'table'; head: string[]; rows: string[][]; align?: ('l' | 'r')[] }
+  | {
+      kind: 'chart';
+      chart: 'bar' | 'line' | 'donut';
+      labels: string[];
+      series: { name?: string; values: number[] }[];
+      /** 数值单位（轴标签用，如 "%" / "s"） */
+      unit?: string;
+      /** 高亮第 i 个数据点（讲这一根柱/这一个点） */
+      highlight?: number;
+    }
+  | { kind: 'formula'; tex: string; caption?: string }
   | { kind: 'code'; lang: string; content: string; caption?: string }
   | { kind: 'quote'; text: string; cite?: string }
   | {
@@ -124,6 +136,8 @@ export interface Page {
   /** 分节页的大编号 */
   number?: string;
   blocks: Block[];
+  /** 整页背景（图片铺满 + 压暗遮罩）；封面/分节页常用 */
+  background?: { fileId: string; dim?: number; blur?: boolean };
   /** 讲者备注：只进 <div class="notes">，绝不渲染给观众 */
   notes?: string;
 }

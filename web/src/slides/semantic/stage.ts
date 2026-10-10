@@ -131,14 +131,36 @@ function runtimeScript(total: number): string {
 })();`;
 }
 
-/** 组装完整自包含文档 */
-export function buildSemanticDeckHtml(options: StageOptions): string {
+/**
+ * 组装完整自包含文档。
+ *
+ * **异步**的原因：公式（`formula` 块）按需加载 KaTeX —— 不含公式的 deck 完全不加载它。
+ * KaTeX 用 `output: 'mathml'` 生成 **MathML**（现代浏览器原生渲染），因此**不需要内联任何字体**
+ * —— 这正是当初"公式很难做"的症结（KaTeX 的 HTML 输出依赖 20 个 woff2 字体文件）。
+ */
+export async function buildSemanticDeckHtml(options: StageOptions): Promise<string> {
   const { pages, meta } = options;
   const theme = findTheme(options.themeId);
+  let renderTex: ((tex: string) => string) | undefined;
+  if (pages.some((page) => page.blocks.some((block) => block.kind === 'formula'))) {
+    try {
+      const katexModule = (await import('katex')) as unknown as {
+        default?: { renderToString: (tex: string, opts: Record<string, unknown>) => string };
+        renderToString?: (tex: string, opts: Record<string, unknown>) => string;
+      };
+      const katex = katexModule.default ?? (katexModule as { renderToString: (tex: string, opts: Record<string, unknown>) => string });
+      renderTex = (tex) =>
+        katex.renderToString(tex, { output: 'mathml', throwOnError: false, displayMode: true });
+    } catch (error) {
+      // 加载失败不能拖垮整页：降级为等宽源码
+      console.warn('[semantic] KaTeX 加载失败，公式降级为源码：', (error as Error).message);
+    }
+  }
   const body = renderPages(pages, meta, {
     slideNumber: options.slideNumber !== false,
     resolveImage: options.resolveImage,
     footerText: options.footerText,
+    renderTex,
   });
   const logo = options.logoDataUrl
     ? `<img class="deck-logo" data-pos="bottom-right" src="${escapeHtml(options.logoDataUrl)}" alt="" />`

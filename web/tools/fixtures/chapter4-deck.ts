@@ -163,6 +163,26 @@ export const PAGES: Page[] = [
     notes: '表格比三条要点更能说明"正交"：去缩放只动前两列，去掩码只动后两列。',
   },
   {
+    intent: 'data',
+    kicker: '采样 · 锐化系数',
+    title: '系数越大，分布越尖',
+    lede: '同一个位置的 logits，只改锐化系数，200 次采样里 top-1 被选中的占比：',
+    blocks: [
+      {
+        kind: 'chart',
+        chart: 'bar',
+        labels: ['锐化系数 0.5', '锐化系数 1.0', '锐化系数 2.0'],
+        series: [{ name: 'top-1 实测占比', values: [0.745, 0.54, 0.36] }],
+        unit: '',
+      },
+      {
+        kind: 'note',
+        text: '实测占比贴近 top-1 概率（0.7728 / 0.5489 / 0.3444）—— 采样确实按分布走，只是"这一次"不等于"概率"。',
+      },
+    ],
+    notes: '看图说话：系数从 0.5 到 2.0，top-1 占比从 0.745 掉到 0.360，分布越来越尖。',
+  },
+  {
     intent: 'sequence',
     kicker: '动手实践 · 六步',
     title: '从 CSV 到 output.json',
@@ -202,6 +222,23 @@ export const PAGES: Page[] = [
       },
     ],
     notes: '带学生逐行读：每行对应流程图上的一步，消融就是删掉其中一行。',
+  },
+  {
+    intent: 'formula',
+    kicker: '机制 · 一行写完',
+    title: '整条链路写成一行',
+    blocks: [
+      {
+        kind: 'formula',
+        tex: '\\mathrm{Attention}(Q,K,V)=\\mathrm{softmax}\\!\\left(\\frac{QK^\\top}{\\sqrt{d}}+M\\right)V',
+        caption: 'M 是因果掩码（未来位取 -inf）：÷√d 管数值尺度，M 管可见性。',
+      },
+      {
+        kind: 'note',
+        text: '把这一行拆开读：QKᵀ 算像不像，÷√d 压数值，+M 遮未来，softmax 归一，最后乘 V 搬运内容。',
+      },
+    ],
+    notes: '公式页的作用是把前四页的机制合成一句：每个符号都对应一个可消融的部件。',
   },
   {
     intent: 'metric',

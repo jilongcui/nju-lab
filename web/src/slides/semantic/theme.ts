@@ -36,6 +36,18 @@ const FONT_SERIF =
 const FONT_MONO =
   "'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, 'Noto Sans Mono CJK SC', monospace";
 
+/**
+ * 与主题无关的“结构令牌”：画在**图片/深色遮罩**上的文字与表面。
+ * 单独抽出来是为了让版式 CSS **一行硬编码颜色都没有**（评审口径 + 断言），
+ * 同时这类颜色本就不该随主题变（遮罩永远是深色，字永远要白）。
+ */
+const MEDIA_TOKENS: Record<string, string> = {
+  '--on-media': '#ffffff',
+  '--on-media-surface': 'rgba(255, 255, 255, 0.14)',
+  '--on-media-border': 'rgba(255, 255, 255, 0.28)',
+  '--on-media-muted': 'rgba(255, 255, 255, 0.9)',
+};
+
 /** 系统字体栈：每套主题都强制覆盖，避免 vendor 主题把字体指到 Google Fonts 上 */
 const FONT_TOKENS: Record<string, string> = {
   '--font-sans': FONT_SANS,
@@ -234,7 +246,7 @@ export function themeCss(theme: DeckTheme, overrides: Record<string, string> = {
       .map(([key, value]) => `  ${key}: ${value};`)
       .join('\n');
   const parts = [
-    `:root {\n${fromTokens(FONT_TOKENS)}\n}`,
+    `:root {\n${fromTokens({ ...FONT_TOKENS, ...MEDIA_TOKENS })}\n}`,
     theme.vendorCss?.trim() ?? '',
     Object.keys(theme.tokens).length ? `:root {\n${fromTokens(theme.tokens)}\n}` : '',
     // 课程自定义模板的调参覆盖（旧 TemplateDesign → token，见 legacy.ts）

@@ -24,6 +24,7 @@ export const SEMANTIC_INTENTS = [
   'relation',
   'timeline',
   'table',
+  'data',
   'example',
   'quote',
   'image',
@@ -42,6 +43,8 @@ export const SEMANTIC_BLOCK_KINDS = [
   'timeline',
   'compare',
   'table',
+  'chart',
+  'formula',
   'code',
   'quote',
   'image',
@@ -61,6 +64,8 @@ export interface SemanticPage {
   lede?: string;
   number?: string;
   blocks: SemanticBlock[];
+  /** 整页背景（图片铺满 + 压暗遮罩）；封面/分节页常用 */
+  background?: { fileId: string; dim?: number; blur?: boolean };
   notes?: string;
 }
 
@@ -81,6 +86,9 @@ const BUDGET = {
   timelinePoints: 6,
   tableRows: 6,
   tableCols: 6,
+  chartLabels: 8,
+  chartSeries: 3,
+  formulaChars: 400,
   codeLines: 20,
   compareItems: 5,
   titleChars: 40,
@@ -304,6 +312,33 @@ function normalizeBlock(raw: unknown, warnings: string[], pageNo: number): Seman
         .slice(0, 4);
       return { kind, fileId, caption: str(raw.caption, 80), role, items: items.length ? items : undefined };
     }
+    case 'chart': {
+      const chart = ['bar', 'line', 'donut'].includes(String(raw.chart)) ? String(raw.chart) : 'bar';
+      const labels = strList(raw.labels, BUDGET.chartLabels, 24);
+      const series = (Array.isArray(raw.series) ? raw.series : [])
+        .filter(isRecord)
+        .map((item) => ({
+          name: str(item.name, 24),
+          values: (Array.isArray(item.values) ? item.values : []).map((value) => Number(value)).filter((value) => Number.isFinite(value)),
+        }))
+        .filter((item) => item.values.length)
+        .slice(0, BUDGET.chartSeries);
+      if (!labels.length || !series.length) return null;
+      const highlight = Number.isInteger(raw.highlight) ? Number(raw.highlight) : undefined;
+      return {
+        kind,
+        chart,
+        labels,
+        series,
+        unit: str(raw.unit, 8),
+        highlight: highlight !== undefined && highlight >= 0 && highlight < labels.length ? highlight : undefined,
+      };
+    }
+    case 'formula': {
+      const tex = typeof raw.tex === 'string' ? raw.tex.trim().slice(0, BUDGET.formulaChars) : '';
+      if (!tex) return null;
+      return { kind, tex, caption: str(raw.caption, 80) };
+    }
     case 'note': {
       const text = str(raw.text, BUDGET.noteChars);
       return text ? { kind, text } : null;
@@ -337,6 +372,17 @@ export function validateSemanticPages(
       return;
     }
     const notes = str(item.notes, limits.maxNotes);
+    const backgroundRaw = isRecord(item.background) ? item.background : null;
+    const backgroundFileId = backgroundRaw ? (str(backgroundRaw.fileId, 64) ?? '') : '';
+    const background =
+      backgroundFileId && /^[0-9a-fA-F-]{36}$/.test(backgroundFileId)
+        ? {
+            fileId: backgroundFileId,
+            dim: typeof backgroundRaw?.dim === 'number' ? Math.min(Math.max(backgroundRaw.dim, 0), 0.9) : undefined,
+            blur: backgroundRaw?.blur === true,
+          }
+        : undefined;
+    if (backgroundRaw && !background) warnings.push(`第 ${pageNo} 页的背景图引用非法，已忽略`);
     pages.push({
       id: str(item.id, 64),
       intent,
@@ -346,6 +392,7 @@ export function validateSemanticPages(
       lede: str(item.lede, BUDGET.ledeChars),
       number: str(item.number, 8),
       blocks,
+      background,
       notes,
     });
   });
@@ -418,7 +465,7 @@ export const SEMANTIC_OUTLINE_SYSTEM = [
   '只输出一个 JSON 对象，不要任何解释文字。结构：',
   '{"deckTitle": string, "pages": [{"intent": string, "kicker": string, "title": string, "lede": string, "keyPoint": string, "plan": string[]}]}',
   `intent 只能取：${SEMANTIC_INTENTS.join(' | ')}。`,
-  'plan 是本页要用的内容块类型，从 claim/evidence/metric/sequence/flow/arch/relation/timeline/compare/table/code/quote/note 里选 1–2 个。',
+  'plan 是本页要用的内容块类型，从 claim/evidence/metric/sequence/flow/arch/relation/timeline/compare/table/chart/formula/code/quote/note 里选 1–2 个。',
   '',
   '【整体结构】',
   '1) 第 1 页 intent=cover（title 用章节名，kicker 用课程名，lede 一句话交代本章要解决什么）；',
@@ -430,7 +477,8 @@ export const SEMANTIC_OUTLINE_SYSTEM = [
   '3) 讲清一个论断并给若干支撑 → claim；两件事/两条路线对照 → contrast；并列 2–4 个要素 → pillars；',
   '正文里有 1–4 个关键数字 → metric；有先后顺序的步骤/操作 → sequence；数据在环节间流动的管线 → flow；',
   '分层结构（层 × 组件，如系统栈）→ arch；概念之间的关系（谁依赖谁、一个中心带几个相关概念）→ relation；',
-  '时间演化/路线图 → timeline；需要严格对齐的多列数值 → table；代码或命令 → example；一句话点睛 → quote。',
+  '时间演化/路线图 → timeline；需要严格对齐的多列数值 → table；**正文里有可以画成图的数值序列就用 data（柱/折线/环形）**；',
+  '公式推导 → formula；代码或命令 → example；一句话点睛 → quote。',
   '4) 一份 deck 至少要出现 3 种不同的内容页 intent（不许全是 claim）；relation/flow/arch/timeline 这类"图示页"',
   '只在正文确有相应结构时使用，**不要为了好看硬凑**。',
   `5) 总页数不超过 ${20} 页（含首尾）。`,
@@ -455,6 +503,8 @@ export const SEMANTIC_BLOCK_SPEC = [
   '- {"kind":"timeline","points":[{"at":"时间/阶段","title":"发生了什么","desc":"一句话","highlight":true}]}  3–6 个',
   '- {"kind":"compare","left":{"title":"A","items":["≤4 条"],"tone":"accent|up|down"},"right":{"title":"B","items":["…"]}}',
   '- {"kind":"table","head":["列名"],"rows":[["…"]],"align":["l","r"]}  ≤6 行',
+  '- {"kind":"chart","chart":"bar|line|donut","labels":["≤8 个"],"series":[{"name":"系列名","values":[数字]}],"unit":"%","highlight":2}  ≤3 条序列；数值必须来自正文',
+  '- {"kind":"formula","tex":"\\frac{QK^\\top}{\\sqrt{d}}","caption":"一句话说明"}  LaTeX 源码',
   '- {"kind":"code","lang":"python","content":"≤18 行代码","caption":"一句话说明"}',
   '- {"kind":"quote","text":"引文或结论","cite":"出处（可省）"}',
   '- {"kind":"note","text":"本页的补充说明（≤60 字，不是讲稿）"}',
@@ -476,6 +526,7 @@ export const SEMANTIC_EXPAND_SYSTEM = [
   '7) 字符串内部不要使用英文双引号；需要引用时用中文引号「」。',
   '8) 【intent 与 blocks 必须匹配】cover→evidence；toc→sequence；section→evidence（本节导读，可省）；',
   'claim→claim + evidence；contrast→compare；pillars→sequence 或 evidence；metric→metric；sequence→sequence；',
-  'flow→flow；arch→arch；relation→relation；timeline→timeline；table→table；example→code；quote→quote；',
+  'flow→flow；arch→arch；relation→relation；timeline→timeline；table→table；data→chart；formula→formula；',
+  'example→code；quote→quote；',
   'summary→claim 或 evidence。除 note（本页补充说明）外，**不要在同一页混入别的块类型**。',
 ].join('\n');

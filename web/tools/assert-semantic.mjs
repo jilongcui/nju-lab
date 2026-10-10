@@ -68,7 +68,7 @@ await esbuild.build({
 const { buildSemanticDeckHtml, CANVAS, DECK_THEMES, themeCss, PAGES, META, LEGACY_SLIDES, legacyDeckToPages, designToTokenOverrides, isSemanticDeck } =
   await import(pathToFileURL(bundle).href);
 
-const html = buildSemanticDeckHtml({ pages: PAGES, meta: META, themeId: 'builtin-platform-blue' });
+const html = await buildSemanticDeckHtml({ pages: PAGES, meta: META, themeId: 'builtin-platform-blue' });
 const dom = new JSDOM(html);
 const doc = dom.window.document;
 const slides = [...doc.querySelectorAll('.slide')];
@@ -144,7 +144,7 @@ const evil = [
     notes: '</div><script>alert(5)</script>',
   },
 ];
-const evilHtml = buildSemanticDeckHtml({ pages: evil, meta: META, themeId: 'builtin-platform-blue' });
+const evilHtml = await buildSemanticDeckHtml({ pages: evil, meta: META, themeId: 'builtin-platform-blue' });
 const evilDoc = new JSDOM(evilHtml).window.document;
 const evilScripts = [...evilDoc.querySelectorAll('script')];
 check('注入内容里的 <script> 全部失效（只剩运行时）', evilScripts.length === 1, `scripts=${evilScripts.length}`);
@@ -161,7 +161,7 @@ check('讲稿里的注入同样被转义（notes 只做文本）', !/alert\(5\)/
 
 // ---------------- 5. 主题解耦 ----------------
 const other = DECK_THEMES.find((t) => t.id === 'builtin-nju-purple');
-const html2 = buildSemanticDeckHtml({ pages: PAGES, meta: META, themeId: other.id });
+const html2 = await buildSemanticDeckHtml({ pages: PAGES, meta: META, themeId: other.id });
 const stripStyle = (value) => value.replace(/<style>[\s\S]*?<\/style>/g, '').replace(/<title>[\s\S]*?<\/title>/, '');
 check('换主题后 DOM 完全不变（只有 CSS 不同）', stripStyle(html) === stripStyle(html2));
 
@@ -175,6 +175,19 @@ check('主题 CSS 不引用任何外部 CDN', !DECK_THEMES.some((t) => /https?:\
 // ---------------- 6. 颜色纪律 ----------------
 const layoutsCss = readFileSync(join(webRoot, 'src/slides/semantic/layouts.css'), 'utf8');
 check('版式 CSS 无硬编码颜色（全走 token 变量）', !/#[0-9a-fA-F]{3,8}\b/.test(layoutsCss) && !/\brgba?\(/.test(layoutsCss));
+check('版式 CSS 注释配平（注释提前闭合会让后续规则被静默丢弃）', (() => {
+  let depth = 0;
+  for (const match of layoutsCss.matchAll(/\/\*|\*\//g)) {
+    depth += match[0] === '/*' ? 1 : -1;
+    if (depth < 0) return false;
+  }
+  return depth === 0;
+})());
+check(
+  '可调令牌定义在 .deck 上（字号/间距/卡片风格可被模板调参覆盖）',
+  /\.deck\s*\{[^}]*--ly-scale:\s*1;/.test(layoutsCss) &&
+    /\.deck\s*\{[^}]*--ly-card-bg:/.test(layoutsCss),
+);
 
 // ---------------- 7. 旧模型适配器（平台既有 deck 的迁移路径）----------------
 const legacyPages = legacyDeckToPages(LEGACY_SLIDES);
@@ -223,7 +236,7 @@ check('适配器：image-left → 图文并排（图 + 要点都在）', (() => 
 })());
 check('适配器：讲稿原样带过来', legacyPages[0].notes === LEGACY_SLIDES[0].notes);
 
-const legacyHtml = buildSemanticDeckHtml({ pages: legacyPages, meta: META, themeId: 'builtin-platform-blue' });
+const legacyHtml = await buildSemanticDeckHtml({ pages: legacyPages, meta: META, themeId: 'builtin-platform-blue' });
 const legacyDoc = new JSDOM(legacyHtml).window.document;
 check(
   '适配器：图片拿不到时渲染占位（不产空 src、不发外部请求）',
@@ -265,7 +278,7 @@ const mixed = [
     blocks: [{ kind: 'relation', nodes: [{ label: '中心', center: true }, { label: '卫星' }] }],
   },
 ];
-const mixedHtml = buildSemanticDeckHtml({ pages: mixed, meta: META, themeId: 'builtin-platform-blue' });
+const mixedHtml = await buildSemanticDeckHtml({ pages: mixed, meta: META, themeId: 'builtin-platform-blue' });
 const mixedDoc = new JSDOM(mixedHtml).window.document;
 check('兜底：contrast 页多带的 table 照常渲染（不丢内容）', mixedDoc.querySelectorAll('.ly-table').length === 1);
 check('兜底：多带的 note 照常渲染', mixedDoc.querySelectorAll('.ly-note').length === 1);
@@ -295,7 +308,7 @@ const v2Pages = [
 ];
 check('v2 deck 被识别为语义 deck（按结构，不靠版本号）', isSemanticDeck(v2Pages) === true);
 check('v1 deck 不会被误判为语义 deck', isSemanticDeck(LEGACY_SLIDES) === false);
-const v2Html = buildSemanticDeckHtml({ pages: v2Pages, meta: META, themeId: 'builtin-platform-blue' });
+const v2Html = await buildSemanticDeckHtml({ pages: v2Pages, meta: META, themeId: 'builtin-platform-blue' });
 const v2Doc = new JSDOM(v2Html).window.document;
 check('v2 deck 直接渲染：页数一致', v2Doc.querySelectorAll('.slide').length === v2Pages.length);
 check(
@@ -304,6 +317,108 @@ check(
     v2Doc.querySelectorAll('.ly-flow-node').length === 3 &&
     v2Doc.querySelectorAll('.ly-tl-item').length === 3 &&
     v2Doc.querySelectorAll('.ly-tier').length === 2,
+);
+
+// ---------------- 10. 数据图表 / 公式 / 页级背景（P4）----------------
+const media = [
+  {
+    intent: 'data',
+    kicker: '采样',
+    title: '系数越大，分布越尖',
+    blocks: [
+      {
+        kind: 'chart',
+        chart: 'bar',
+        labels: ['0.5', '1.0', '2.0'],
+        series: [{ name: 'top-1 占比', values: [0.745, 0.54, 0.36] }],
+        unit: '',
+        highlight: 2,
+      },
+      { kind: 'note', text: '补充说明只应出现一次' },
+    ],
+  },
+  {
+    intent: 'data',
+    title: '环形图',
+    blocks: [{ kind: 'chart', chart: 'donut', labels: ['检索', '摘要', '窗口'], series: [{ values: [0.8, 0.7, 0.3] }] }],
+  },
+  {
+    intent: 'formula',
+    kicker: '机制',
+    title: '一行写完',
+    blocks: [
+      { kind: 'formula', tex: '\\mathrm{Attention}(Q,K,V)=\\mathrm{softmax}\\!\\left(\\frac{QK^\\top}{\\sqrt{d}}+M\\right)V', caption: 'M 是掩码' },
+    ],
+  },
+  {
+    intent: 'section',
+    number: '01',
+    title: '带背景图的页',
+    blocks: [{ kind: 'evidence', items: ['背景图铺满', '压暗遮罩保证可读'] }],
+    background: { fileId: '11111111-1111-1111-1111-111111111111', dim: 0.6 },
+  },
+];
+const mediaHtml = await buildSemanticDeckHtml({
+  pages: media,
+  meta: META,
+  themeId: 'builtin-platform-blue',
+  resolveImage: (fileId) => (fileId === '11111111-1111-1111-1111-111111111111' ? 'data:image/png;base64,AAAA' : undefined),
+});
+const mediaDoc = new JSDOM(mediaHtml).window.document;
+
+const barPage = mediaDoc.querySelectorAll('.slide')[0];
+check('图表：柱状图 SVG 渲染（柱数 = 数据点数）', barPage.querySelectorAll('.ly-chart-bar').length === 3);
+check('图表：高亮数据点被标记', barPage.querySelectorAll('.ly-chart-bar.hl').length === 1);
+check(
+  '图表：轴刻度取「好看的数字」（0/0.2/0.4…，不是 0.201）',
+  [...barPage.querySelectorAll('.ly-chart-axis')].some((node) => node.textContent.trim() === '0.8'),
+);
+check('图表：数值标签显示真实数据', [...barPage.querySelectorAll('.ly-chart-value')].some((n) => n.textContent.includes('0.745')));
+check('图表页的补充说明只渲染一次（兜底不重复）', barPage.querySelectorAll('.ly-note').length === 1);
+check('图表：环形图带图例与占比', (() => {
+  const donut = mediaDoc.querySelectorAll('.slide')[1];
+  return donut.querySelectorAll('.ly-chart-arc').length === 3 && donut.querySelectorAll('.ly-donut-item').length === 3;
+})());
+
+const formulaPage = mediaDoc.querySelectorAll('.slide')[2];
+check('公式：KaTeX 产出 MathML（不依赖内联字体）', formulaPage.querySelectorAll('.ly-formula math').length === 1);
+// KaTeX 的 MathML 输出把 LaTeX 源码放在 <annotation>（供复制/无障碍，不参与渲染）
+check(
+  '公式：LaTeX 源码只在 MathML annotation 里（不参与渲染）',
+  formulaPage.querySelectorAll('.ly-formula annotation').length >= 1 &&
+    formulaPage.querySelector('.ly-formula annotation')?.textContent.includes('Attention') === true,
+);
+
+const bgPage = mediaDoc.querySelectorAll('.slide')[3];
+check('页级背景：section 带 has-bg 与背景图', bgPage.classList.contains('has-bg') && /background-image/.test(bgPage.getAttribute('style') ?? ''));
+check('页级背景：压暗遮罩按 dim 生成', !!bgPage.querySelector('.ly-bg-scrim'));
+
+// ---------------- 11. 模板调参映射 + 打印样式（P4）----------------
+const tuned = designToTokenOverrides({
+  fontScale: 'large',
+  density: 'loose',
+  cardStyle: 'outline',
+  primary: '#1677ff',
+});
+check(
+  '调参映射：字号 / 疏密 / 卡片风格都落到版式令牌',
+  tuned['--ly-scale'] === '1.08' &&
+    tuned['--ly-gap'] === '1.22' &&
+    tuned['--ly-card-bg'] === 'transparent' &&
+    String(tuned['--ly-card-border']).includes('1.5px'),
+);
+const tunedCss = themeCss(DECK_THEMES[0], tuned);
+check('调参令牌进入文档 CSS', tunedCss.includes('--ly-scale: 1.08;') && tunedCss.includes('--ly-gap: 1.22;'));
+check(
+  '版式 CSS 一律读令牌（字号/间距/卡片都能被调参覆盖）',
+  /font-size: calc\(54px \* var\(--ly-scale\)\)/.test(layoutsCss) &&
+    /gap: calc\(18px \* var\(--ly-gap\)\)/.test(layoutsCss) &&
+    /background: var\(--ly-card-bg\)/.test(layoutsCss),
+);
+check('打印样式：页面尺寸钉为 1920×1080', /@page\s*\{[^}]*size:\s*1920px 1080px/.test(layoutsCss));
+check(
+  '打印样式：逐页分页由 vendored base.css 提供（一页一画布）',
+  /page-break-after:always/.test(html) && /@media print/.test(html),
 );
 
 // ---------------- 汇总 ----------------

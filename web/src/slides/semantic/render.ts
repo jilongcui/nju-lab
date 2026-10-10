@@ -30,6 +30,8 @@ export interface RenderContext {
   resolveImage?: (fileId: string) => string | undefined;
   /** 页脚左侧文案（模板调参的 footerText）；缺省用「课程 · 章节」 */
   footerText?: string | null;
+  /** LaTeX → HTML/MathML（由 stage 按需注入 KaTeX；缺省降级为等宽源码） */
+  renderTex?: (tex: string) => string;
 }
 
 export function escapeHtml(value: string): string {
@@ -76,6 +78,205 @@ function blockOf<T extends Block['kind']>(page: Page, kind: T): Extract<Block, {
 }
 
 /* ------------------------------- 各版式 ------------------------------- */
+
+/* ------------------------------- 数据图（自绘 SVG） ------------------------------- */
+
+const CHART_COLORS = ['var(--accent)', 'var(--accent-2)', 'var(--accent-3)'];
+
+function formatNumber(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  if (Number.isInteger(value)) return String(value);
+  const abs = Math.abs(value);
+  if (abs >= 100) return value.toFixed(0);
+  if (abs >= 1) return value.toFixed(1);
+  return value.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+/** 取「好看」的刻度步长（1/2/2.5/5/10 × 10^k），避免出现 0.201 这种轴标签 */
+function niceStep(range: number, ticks: number): number {
+  if (!(range > 0)) return 1;
+  const rough = range / ticks;
+  const pow = 10 ** Math.floor(Math.log10(rough));
+  const norm = rough / pow;
+  const nice = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10;
+  return nice * pow;
+}
+
+function truncateLabel(label: string, max = 12): string {
+  return label.length > max ? `${label.slice(0, max - 1)}…` : label;
+}
+
+/**
+ * 数据图：**自己画 SVG**，不引图表库 ——
+ * 零依赖（不进包）、颜色全走主题 token、与固定画布天然契合，且模型只提供数据（不碰图形）。
+ */
+function renderChart(block: Record<string, unknown> & { kind: 'chart' }): string {
+  const kind = String(block.chart ?? 'bar');
+  const labels = Array.isArray(block.labels) ? block.labels.map((l) => String(l)) : [];
+  const series = (Array.isArray(block.series) ? block.series : [])
+    .filter((s): s is Record<string, unknown> => typeof s === 'object' && s !== null)
+    .map((s) => ({ name: typeof s.name === 'string' ? s.name : '', values: (Array.isArray(s.values) ? s.values : []).map(Number) }))
+    .filter((s) => s.values.length);
+  if (!labels.length || !series.length) return '';
+  const flat = series.flatMap((s) => s.values).filter((v) => Number.isFinite(v));
+  if (!flat.length) return '';
+  const unit = typeof block.unit === 'string' ? block.unit : '';
+  const highlight = Number.isInteger(block.highlight) ? Number(block.highlight) : -1;
+
+  const legend =
+    series.length > 1 || series[0].name
+      ? `<div class="ly-chart-legend">${series
+          .map(
+            (s, i) =>
+              `<span><i style="background:${CHART_COLORS[i % CHART_COLORS.length]}"></i>${escapeHtml(s.name || `系列 ${i + 1}`)}</span>`,
+          )
+          .join('')}</div>`
+      : '';
+
+  if (kind === 'donut') {
+    const values = series[0].values;
+    const total = values.reduce((sum, v) => sum + (Number.isFinite(v) ? v : 0), 0) || 1;
+    const R = 150;
+    const C = 2 * Math.PI * R;
+    let offset = 0;
+    const arcs = values
+      .map((value, i) => {
+        const ratio = (Number.isFinite(value) ? value : 0) / total;
+        const dash = `${(ratio * C).toFixed(2)} ${(C - ratio * C).toFixed(2)}`;
+        const arc = `<circle class="ly-chart-arc" cx="210" cy="210" r="${R}" stroke-dasharray="${dash}" stroke-dashoffset="${(-offset * C).toFixed(2)}" style="stroke:${CHART_COLORS[i % CHART_COLORS.length]}"/>`;
+        offset += ratio;
+        return arc;
+      })
+      .join('');
+    const legendItems = labels
+      .map(
+        (label, i) =>
+          `<div class="ly-donut-item"><i style="background:${CHART_COLORS[i % CHART_COLORS.length]}"></i><span class="ly-donut-label">${escapeHtml(
+            label,
+          )}</span><b>${formatNumber(series[0].values[i] ?? 0)}${escapeHtml(unit)}</b><span class="ly-donut-pct">${Math.round(
+            ((series[0].values[i] ?? 0) / total) * 100,
+          )}%</span></div>`,
+      )
+      .join('');
+    return `<div class="ly-donut">
+  <svg viewBox="0 0 420 420" class="ly-chart-svg">
+    <circle class="ly-chart-ring" cx="210" cy="210" r="${R}"/>
+    ${arcs}
+  </svg>
+  <div class="ly-donut-legend">${legendItems}</div>
+</div>`;
+  }
+
+  const W = 1000;
+  const H = 430;
+  const padL = 78;
+  const padR = 26;
+  const padT = 30;
+  const padB = 64;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+  const maxValue = Math.max(...flat);
+  const minValue = Math.min(...flat);
+  const ticks = 4;
+  // 轴范围取「好看的刻度」倍数：柱子顶到网格线上，标签也整齐
+  const step = niceStep(Math.max(maxValue - Math.min(minValue, 0), Math.abs(maxValue) * 0.1, 1e-9), ticks);
+  const top = Math.ceil(maxValue / step) * step || step;
+  const bottom = minValue < 0 ? Math.floor(minValue / step) * step : 0;
+  const yOf = (value: number) => padT + plotH * (1 - (value - bottom) / (top - bottom));
+  let grid = '';
+  const scale = (top - bottom) / step;
+  for (let i = 0; i <= scale; i += 1) {
+    const value = bottom + step * i;
+    const y = yOf(value);
+    grid += `<line class="ly-chart-grid" x1="${padL}" x2="${W - padR}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}"/>`;
+    grid += `<text class="ly-chart-axis" x="${padL - 14}" y="${(y + 6).toFixed(1)}" text-anchor="end">${formatNumber(value)}${escapeHtml(
+      i === scale ? unit : '',
+    )}</text>`;
+  }
+  const baseline = yOf(bottom);
+  grid += `<line class="ly-chart-axis-line" x1="${padL}" x2="${W - padR}" y1="${baseline.toFixed(1)}" y2="${baseline.toFixed(1)}"/>`;
+
+  const slot = plotW / labels.length;
+  const labelNodes = labels
+    .map((label, i) => {
+      const x = padL + slot * (i + 0.5);
+      const cls = i === highlight ? 'ly-chart-xlabel hl' : 'ly-chart-xlabel';
+      return `<text class="${cls}" x="${x.toFixed(1)}" y="${H - 22}" text-anchor="middle">${escapeHtml(truncateLabel(label))}</text>`;
+    })
+    .join('');
+
+  let body = '';
+  if (kind === 'line') {
+    const paths = series
+      .map((s, si) => {
+        const points = s.values.map((value, i) => [padL + slot * (i + 0.5), yOf(value)] as const);
+        const d = points.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+        const area = `${d} L${points[points.length - 1][0].toFixed(1)},${baseline.toFixed(1)} L${points[0][0].toFixed(1)},${baseline.toFixed(
+          1,
+        )} Z`;
+        const color = CHART_COLORS[si % CHART_COLORS.length];
+        return `<path class="ly-chart-area" d="${area}" style="fill:${color}"/>` + `<path class="ly-chart-line" d="${d}" style="stroke:${color}"/>` +
+          points
+            .map(
+              ([x, y], i) =>
+                `<circle class="ly-chart-dot${i === highlight ? ' hl' : ''}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${
+                  i === highlight ? 11 : 8
+                }" style="stroke:${color}"/>`,
+            )
+            .join('');
+      })
+      .join('');
+    body = paths;
+  } else {
+    // 柱子别撑满：窄一点更像图表，也更配固定画布
+    const groupW = Math.min(slot * 0.6, 200 * Math.max(1, series.length));
+    const barW = groupW / series.length;
+    body = labels
+      .map((_, i) => {
+        const groupX = padL + slot * (i + 0.5) - groupW / 2;
+        return series
+          .map((s, si) => {
+            const value = Number.isFinite(s.values[i]) ? s.values[i] : 0;
+            const y = yOf(Math.max(value, bottom));
+            const height = Math.max(baseline - y, 2);
+            const x = groupX + barW * si;
+            const color = CHART_COLORS[si % CHART_COLORS.length];
+            const hl = i === highlight;
+            const valueLabel =
+              series.length === 1
+                ? `<text class="ly-chart-value${hl ? ' hl' : ''}" x="${(x + barW / 2).toFixed(1)}" y="${(y - 12).toFixed(
+                    1,
+                  )}" text-anchor="middle">${formatNumber(value)}${escapeHtml(unit)}</text>`
+                : '';
+            return `<rect class="ly-chart-bar${hl ? ' hl' : ''}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(
+              barW * 0.86
+            ).toFixed(1)}" height="${height.toFixed(1)}" rx="6" style="fill:${color}"/>${valueLabel}`;
+          })
+          .join('');
+      })
+      .join('');
+  }
+
+  return `<div class="ly-chart">${legend}<svg viewBox="0 0 ${W} ${H}" class="ly-chart-svg">${grid}${body}${labelNodes}</svg></div>`;
+}
+
+function renderFormula(page: Page, ctx: RenderContext): string {
+  const block = blockOf(page, 'formula');
+  if (!block) return head(page);
+  const body = ctx.renderTex
+    ? ctx.renderTex(block.tex)
+    : `<code class="ly-formula-fallback">${escapeHtml(block.tex)}</code>`;
+  return `${head(page)}<div class="ly-formula">${body}</div>${
+    block.caption ? `<p class="ly-code-cap">${inline(block.caption)}</p>` : ''
+  }`;
+}
+
+function renderData(page: Page): string {
+  const chart = blockOf(page, 'chart');
+  if (!chart) return `${head(page)}`;
+  return `${head(page)}${renderChart(chart)}${renderNote(page)}`;
+}
+
 
 function renderCover(page: Page): string {
   const evidence = blockOf(page, 'evidence');
@@ -421,16 +622,19 @@ const CONSUMED: Record<Page['intent'], Block['kind'][]> = {
   claim: ['claim', 'evidence'],
   contrast: ['compare'],
   pillars: ['sequence', 'evidence'],
-  metric: ['metric'],
+  // ⚠️ 主渲染器内部已经渲染 note 的 intent，必须把 'note' 也列为已消费 ——
+  // 否则兜底会再渲染一次（实测：图表/流程/表格页的补充说明曾出现两遍）
+  metric: ['metric', 'note'],
   sequence: ['sequence'],
-  flow: ['flow'],
+  flow: ['flow', 'note'],
   arch: ['arch'],
-  relation: ['relation'],
+  relation: ['relation', 'note'],
   timeline: ['timeline'],
-  table: ['table'],
+  table: ['table', 'note'],
+  data: ['chart', 'note'],
   example: ['code'],
   quote: ['quote'],
-  image: ['image', 'evidence'],
+  image: ['image', 'evidence', 'note'],
   summary: ['evidence', 'claim'],
 };
 
@@ -448,6 +652,8 @@ const BLOCK_INTENT: Record<Block['kind'], Page['intent']> = {
   table: 'table',
   code: 'example',
   quote: 'quote',
+  chart: 'data',
+  formula: 'claim',
   image: 'image',
   note: 'claim',
 };
@@ -466,6 +672,7 @@ const RENDERERS: Record<Page['intent'], (page: Page, ctx: RenderContext) => stri
   relation: renderRelation,
   timeline: renderTimeline,
   table: renderTable,
+  data: renderData,
   example: renderCode,
   quote: renderQuote,
   image: renderImage,
@@ -481,6 +688,7 @@ function renderBody(page: Page, ctx: RenderContext): string {
     ? `<div class="ly-extra">${leftovers
         .map((block) => {
           if (block.kind === 'note') return `<p class="ly-note">${inline(block.text)}</p>`;
+          if (block.kind === 'formula') return renderFormula({ intent: 'claim', blocks: [block] }, ctx);
           const blockRenderer = RENDERERS[BLOCK_INTENT[block.kind]];
           return blockRenderer ? blockRenderer({ intent: BLOCK_INTENT[block.kind], blocks: [block] }, ctx) : '';
         })
@@ -492,6 +700,7 @@ function renderBody(page: Page, ctx: RenderContext): string {
 
 /** 单页 → `<section class="slide">` */
 export function renderPage(page: Page, ctx: RenderContext): string {
+  const background = page.background ? ctx.resolveImage?.(page.background.fileId) : undefined;
   const footer =
     page.intent === 'cover'
       ? ''
@@ -503,7 +712,16 @@ export function renderPage(page: Page, ctx: RenderContext): string {
   </div>`;
   const notes = page.notes ? `<div class="notes">${escapeHtml(page.notes)}</div>` : '';
   const title = page.title ?? ctx.meta.chapter;
-  return `<section class="slide" data-title="${escapeHtml(title)}">
+  const bgStyle = background
+    ? ` style="background-image:url('${escapeHtml(background)}');background-size:cover;background-position:center"`
+    : '';
+  const scrim = background
+    ? `<div class="ly-bg-scrim" style="${
+        page.background?.blur ? 'backdrop-filter:blur(6px);' : ''
+      }background:rgba(6,8,14,${(page.background?.dim ?? 0.52).toFixed(2)})"></div>`
+    : '';
+  return `<section class="slide${background ? ' has-bg' : ''}" data-title="${escapeHtml(title)}"${bgStyle}>
+  ${scrim}
   ${renderBody(page, ctx)}
   ${footer}
   ${notes}
@@ -518,6 +736,7 @@ export function renderPages(
     slideNumber?: boolean;
     resolveImage?: (fileId: string) => string | undefined;
     footerText?: string | null;
+    renderTex?: (tex: string) => string;
   } = {},
 ): string {
   return pages
@@ -529,6 +748,7 @@ export function renderPages(
         slideNumber: options.slideNumber !== false,
         resolveImage: options.resolveImage,
         footerText: options.footerText,
+        renderTex: options.renderTex,
       }),
     )
     .join('\n');

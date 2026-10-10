@@ -8,6 +8,7 @@
  *   node web/tools/preview-semantic.mjs --pages=1,4,7         # 只截指定页（快速迭代）
  *   node web/tools/preview-semantic.mjs --out=/tmp/shots
  *   node web/tools/preview-semantic.mjs --source=legacy   # 走 legacy 适配器（旧 SlideJson → 语义页）
+ *   node web/tools/preview-semantic.mjs --pdf=/tmp/a.pdf  # 顺带导出 PDF（验证打印分页：一页一画布）
  *
  * 产物：`<out>/<theme>/pNN.png`（1920×1080，与固定画布 1:1）+ `deck.html`（可直接用浏览器打开看翻页）。
  *
@@ -30,6 +31,7 @@ const argValue = (name, fallback) => {
 };
 const themeIds = argValue('themes', 'builtin-platform-blue').split(',').map((s) => s.trim()).filter(Boolean);
 const source = argValue('source', 'semantic'); // semantic | legacy
+const pdfPath = argValue('pdf', '');
 // 默认落在 `web/tools/shots/`（.gitignore 已忽略）—— 截图是评审产物，不进仓库
 const outRoot = argValue('out', join(webRoot, 'tools', 'shots', 'semantic', source));
 const onlyPages = argValue('pages', '')
@@ -94,7 +96,7 @@ const context = await browser.newContext({
 const page = await context.newPage();
 
 for (const themeId of themeIds) {
-  const html = buildSemanticDeckHtml({ pages, meta, themeId });
+  const html = await buildSemanticDeckHtml({ pages, meta, themeId });
   const dir = join(outRoot, themeId);
   mkdirSync(dir, { recursive: true });
   const file = join(dir, 'deck.html');
@@ -104,6 +106,14 @@ for (const themeId of themeIds) {
   // 关掉翻页过渡，避免截到动画中间态
   await page.addStyleTag({ content: '.slide{transition:none !important}' });
   await page.waitForTimeout(120);
+
+  if (pdfPath) {
+    // 打印分页验证：@page 1920×1080 + 每页 page-break（一页一画布）
+    await page.pdf({ path: pdfPath, width: '1920px', height: '1080px', printBackground: true });
+    const buffer = readFileSync(pdfPath);
+    const counts = [...buffer.toString('latin1').matchAll(/\/Count (\d+)/g)].map((m) => Number(m[1]));
+    console.log(`  · PDF 导出 → ${pdfPath}（${(buffer.length / 1024).toFixed(0)}KB，页数=${Math.max(...counts, 0)}）`);
+  }
 
   const targets = onlyPages.length ? onlyPages : pages.map((_, i) => i + 1);
   let current = 1;

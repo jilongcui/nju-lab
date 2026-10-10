@@ -4,7 +4,7 @@
 > `docs/DESIGN-2026-09-29-chapter-slides.md`、`docs/DESIGN-2026-09-30-slides-images.md`。
 > 本文是**规划 + 落地记录**：§1–§8 是规划（`[已核实]` = 实际 clone 仓库看到的事实），
 > §9 = P0（渲染层），§10 = P1（接入平台），§11 = P2 前置验证，§12 = P2b（生成侧切换为默认 +
-> 编辑面收窄），均为 2026-10-10 当天实现并验证。
+> 编辑面收窄），§13 = P4（数据图 / 公式 / 背景图 / 调参映射 / PDF 导出），均为 2026-10-10 当天实现并验证。
 
 ## 0. 一句话与结论
 
@@ -464,3 +464,49 @@ node web/tools/gen-semantic-deck.mjs [--source=server/fixtures/<某实验>/READM
 
 数据图表（Chart.js 内联或 SVG 自绘）、KaTeX 公式、PDF 导出、页级背景图（`attrs.background`）。
 另外旧模板调参里的 `density` / `cardStyle` / `fontScale` 三项尚未映射到新 token（语义 deck 的疏密与卡片风格）。
+
+
+---
+
+## 13. P4 落地：数据图、公式、背景图、调参映射、PDF 导出（2026-10-10，已实测）
+
+### 13.1 交付物
+
+| 能力 | 实现 | 关键取舍 |
+|---|---|---|
+| **数据图** | 新增 `data` intent 与 `chart` 块（`bar` / `line` / `donut`），**渲染层自绘 SVG**（`renderChart`） | **不引图表库**：零依赖不进包、颜色全走 token、与固定画布天然契合，且模型只给数据不碰图形；轴刻度用 nice-number（0 / 0.25 / 0.5…） |
+| **公式** | 新增 `formula` 块；KaTeX **按需加载**，用 `output: 'mathml'` 产出 MathML（`renderFormula`） | 这解决了最初判断"公式难做"的症结：KaTeX 的 HTML 输出要内联 20 个 woff2 字体，而 **MathML 用浏览器原生渲染，零字体内联**；不含公式的 deck 完全不加载 KaTeX |
+| **页级背景图** | `Page.background = { fileId, dim?, blur? }` → section 背景图 + 压暗遮罩（`has-bg`） | 遮罩上的文字/表面抽成与主题无关的令牌（`--on-media*`），版式 CSS 依旧零硬编码色；图片仍只允许平台 `file:` 引用 |
+| **模板调参映射** | `fontScale / density / cardStyle` → 版式令牌 `--ly-scale / --ly-gap / --ly-card-*` | 补上了 P2b 的遗留：旧模板的三个观感档位在新渲染器上照样生效，且**换档位零 token** |
+| **PDF 导出** | 教师端「导出 PDF」→ 新窗口自动唤起打印（浏览器「另存为 PDF」）；分页由文档内 `@media print`（vendored base.css）+ `@page{size:1920px 1080px}` 负责 | **零服务端依赖**（不需要 Chromium / 不需要新接口）；每页正好一画布 |
+
+### 13.2 实测结果
+
+- `node web/tools/assert-semantic.mjs` —— **68/68 通过**（新增：图表柱数/高亮/nice 刻度/数值标签、
+  环形图图例、公式产出 MathML 且源码只留在 annotation、背景图与遮罩、调参令牌生效、打印样式、注释配平）。
+- `node server/tools/assert-semantic-schema.mjs` —— **18/18 通过**（`data/formula/background` 纳入校验与预算）。
+- **PDF 导出实拍**：`node web/tools/preview-semantic.mjs --pdf=…` 把 15 页 deck 导出成 **15 页 PDF**
+  （1920×1080、2221KB、带背景）—— 与幻灯片页数一致，分页正确。
+- **真实模型跑通**：新 prompt（含 chart/formula 选型）在 `attention-ablation/README.md` 上产出
+  **20 页 / 14 种 intent**，其中 `data` 页是双系列柱状图（case01/case02 的 top1_ratio，数值全部来自正文）；
+  另有一页模型把 `flow + formula` 放在同一页 —— 兜底渲染让**两个块都照常出现**，不丢内容。
+- `npx tsc --noEmit`（两侧）与 `npm run build`（两侧）通过；KaTeX 只在含公式时按需加载。
+
+### 13.3 这轮抓到的真 bug：**CSS 注释提前闭合，规则被静默丢弃**
+
+- 现象：P4 把标题字号改成 `calc(54px * var(--ly-scale))` 后，**所有标题突然变小**。
+- 根因：`layouts.css` 顶部注释里写了 `--text-*/--accent/…`，其中的 `*/` **提前闭合了注释**，
+  其后的 `.deck { --ly-scale: 1; … }` 与卡片统一规则被当成裸文本、**被 CSS 解析器静默丢弃**。
+  （浏览器 `getComputedStyle(deck).getPropertyValue('--ly-scale')` 返回空 → `calc()` 无效 → 字号退化。）
+- 影响面：`.deck { font-size: 21px }` 从 P0 起就没生效（正文一直是 16px），只是标题有自己的规则、
+  看起来"还行"，直到 P4 引入 `var()` 才暴露。**修改之后所有页正文从 16px 恢复到 21px**，
+  已逐页复核无溢出。
+- 防复发：`assert-semantic.mjs` 新增两条断言 —— **注释必须配平**、**可调令牌必须定义在 `.deck` 上**；
+  并在 CSS 注释里写明这条纪律（注释里不能出现紧邻的「星号 + 斜杠」序列）。
+
+### 13.4 P4 之后仍未做（明确不做或留待将来）
+
+- **pptx 导出**：与自由布局不可调和（只能截图式导出），维持不做；需要交付文件时用 PDF。
+- **Mermaid / 自由 SVG 图**：语义块已覆盖常见图示（关系/管线/分层/时间线/数据图）；若将来确有需求，
+  再评估引入独立 `mermaid` 块（注意体积与沙箱内的渲染时机）。
+- 教师端「换版式」目前落在 JSON 视图的下拉；若使用频率高，可提到缩略图旁做成一级入口。

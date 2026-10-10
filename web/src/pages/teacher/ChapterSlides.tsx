@@ -33,6 +33,7 @@ import {
   DeleteOutlined,
   EditOutlined,
   FileImageOutlined,
+  FilePdfOutlined,
   PictureOutlined,
   PlayCircleOutlined,
   RedoOutlined,
@@ -161,6 +162,8 @@ export default function ChapterSlides() {
   const [gotoIndex, setGotoIndex] = useState<number | undefined>(undefined);
   const [presenting, setPresenting] = useState(false);
   const [imageDataUrls, setImageDataUrls] = useState<Record<string, string>>({});
+  /** 当前放映文档的 HTML（SlideStage 构建完成时回填）—— 导出 PDF 用 */
+  const deckHtmlRef = useRef<string | null>(null);
 
   // 图片选择器：insert = 在当前页之后插入图片页；replace = 替换当前页的单图；
   // insert-cursor = 把图片引用插到 MD 文本光标处（凑网格页/给并排页补图都用它）
@@ -624,6 +627,29 @@ export default function ChapterSlides() {
   /** v2 语义 deck：Markdown 只读、编辑面收窄为「换主题 / 换版式 / 重生成当前页」 */
   const semanticDeck = !!deck?.semantic;
 
+  /**
+   * 导出 PDF：把当前这份**自包含文档**放进新窗口并唤起打印，由浏览器「另存为 PDF」。
+   * 零服务端依赖（不需要 Chromium），分页由文档内的 @media print 负责（每页一画布）。
+   */
+  const exportPdf = () => {
+    const doc = deckHtmlRef.current;
+    if (!doc) {
+      message.warning('幻灯片还没准备好，请稍候再试');
+      return;
+    }
+    const printable = doc.replace(
+      '</body>',
+      '<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},500)})</' + 'script></body>',
+    );
+    const url = URL.createObjectURL(new Blob([printable], { type: 'text/html' }));
+    const win = window.open(url, '_blank');
+    if (!win) {
+      message.warning('浏览器拦截了新窗口：请允许弹出窗口后重试');
+      return;
+    }
+    message.info('已打开打印视图：打印对话框里把「目标」选成「另存为 PDF」，纸张横向、边距选「无」');
+  };
+
   /** 「换版式」：只改当前页的 intent（内容块不动），保存后由渲染层换一套版式 */
   const applyIntent = (intent: SemanticIntent) => {
     try {
@@ -643,6 +669,9 @@ export default function ChapterSlides() {
   };
   const stage = (
     <SlideStage
+      onDocument={(doc) => {
+        deckHtmlRef.current = doc;
+      }}
       slides={previewSlides}
       template={{
         baseTheme: currentTemplate?.baseTheme ?? 'simple',
@@ -1034,6 +1063,9 @@ export default function ChapterSlides() {
                     }}
                   >
                     放弃改动
+                  </Button>
+                  <Button icon={<FilePdfOutlined />} onClick={exportPdf}>
+                    导出 PDF
                   </Button>
                 </Space>
               )}

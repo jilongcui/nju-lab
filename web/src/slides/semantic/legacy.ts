@@ -137,8 +137,8 @@ export function legacyDeckToPages(slides: SlideJson[]): Page[] {
 
 /**
  * 旧模板调参（`SlideTemplateDesign`）→ 新 token 覆盖。
- * 只映射**语义等价、不会画错**的几项；调参里新模型没有对应物的（density/cardStyle/fontScale）
- * 暂不映射（记为 P2 待办：新版的疏密/卡片风格应改为 token 化的 scale 变量）。
+ * 颜色/字体/圆角直接映射；`fontScale` / `density` / `cardStyle` 映射到版式令牌
+ * （`--ly-scale` / `--ly-gap` / `--ly-card-*`）—— 于是旧模板的观感档位在新渲染器上照样生效。
  */
 export function designToTokenOverrides(design: SlideTemplateDesign | undefined): Record<string, string> {
   if (!design) return {};
@@ -156,6 +156,21 @@ export function designToTokenOverrides(design: SlideTemplateDesign | undefined):
   if (design.headingFontFamily) tokens['--font-display'] = design.headingFontFamily;
   if (design.fontFamily) {
     tokens['--font-sans'] = design.fontFamily;
+  }
+  // 字号阶梯 / 疏密 / 卡片风格 —— 旧模板调参的三个观感档位，映射到新版式令牌
+  if (design.fontScale === 'compact') tokens['--ly-scale'] = '0.93';
+  if (design.fontScale === 'large') tokens['--ly-scale'] = '1.08';
+  if (design.density === 'compact') tokens['--ly-gap'] = '0.82';
+  if (design.density === 'loose') tokens['--ly-gap'] = '1.22';
+  if (design.cardStyle === 'none') {
+    tokens['--ly-card-bg'] = 'transparent';
+    tokens['--ly-card-border'] = 'none';
+    tokens['--ly-card-shadow'] = 'none';
+  }
+  if (design.cardStyle === 'outline') {
+    tokens['--ly-card-bg'] = 'transparent';
+    tokens['--ly-card-border'] = '1.5px solid var(--border-strong)';
+    tokens['--ly-card-shadow'] = 'none';
   }
   if (typeof design.radius === 'number') {
     tokens['--radius'] = `${design.radius}px`;
