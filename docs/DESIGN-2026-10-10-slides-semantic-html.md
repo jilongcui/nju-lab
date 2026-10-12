@@ -510,3 +510,56 @@ node web/tools/gen-semantic-deck.mjs [--source=server/fixtures/<某实验>/READM
 - **Mermaid / 自由 SVG 图**：语义块已覆盖常见图示（关系/管线/分层/时间线/数据图）；若将来确有需求，
   再评估引入独立 `mermaid` 块（注意体积与沙箱内的渲染时机）。
 - 教师端「换版式」目前落在 JSON 视图的下拉；若使用频率高，可提到缩略图旁做成一级入口。
+
+## 14. 插图链路修复：正文里的图终于进 deck（2026-10-12，已实测）
+
+### 14.1 现象与根因
+
+学员反馈「slide 里没把原文图片保留下来」。统计：**正文 8 张图 → deck 里 0 张**（8/8 全丢）。
+v2 链路有三处断点，**三者叠加，只修一处都不会生效**：
+
+1. **图片清单没进 prompt**：`LlmDeckGenerator`（v1）的 outline/expand user prompt 里有
+   「可用插图清单」，而 `SemanticLlmDeckGenerator`（v2）的同名方法是简化版（只给正文）——
+   模型连 fileId 都不知道，无从引用。
+2. **没有 image 块的规格**：`SEMANTIC_BLOCK_SPEC` 给 claim/evidence/metric… 都列了字段格式，
+   唯独缺 image；outline 的 `plan` 候选列表与「选型」段也没提图。也就是说 §3.1 的
+   `{ kind:'image' }` 一直只是**渲染层支持**，生成侧没有任何引导。
+3. **fileId 形态两代不一致**（最隐蔽）：`extractChapterImages()` 返回 `file:<uuid>`
+   （v1 的 `SlideJson.image.url` 要这个形态，见 `deck.schema` 的注释），
+   而 v2 的 `image.fileId` 是**裸 uuid**（`validateSemanticPages` 的校验与前端 `resolveImage`
+   都按裸 id 拼 `file:`）。模型照抄清单里的 `file:<uuid>` → 被判「图片引用非法」而丢弃。
+
+### 14.2 修法
+
+| # | 改动 | 位置 |
+|---|---|---|
+| 1 | 清单**进 prompt**，每条带 **上下文**（所在小节标题 + 图前 160 字），并指示「放回上下文所属那一节、别堆结尾、别漏」 | `imageManifest()`（outline/expand 共用）+ v2 两个 user prompt |
+| 2 | 补齐 **image 块规格**（单图 / 多图并列 `items` / `role`）、选型指示「正文带插图 → image 页」、铁律 8 增加 `image→image` | `SEMANTIC_BLOCK_SPEC` / `SEMANTIC_OUTLINE_SYSTEM` |
+| 3 | **统一 fileId 形态**：v2 清单输出裸 uuid（`bareFileId()`）；校验侧**同时容忍** `file:` 前缀并归一化 | `slides.generator.ts` / `semantic.schema.ts` |
+| 4 | **挡幻觉**：`validateSemanticPages(raw, limits, allowedImageIds?)` —— 清单外的 fileId 一律丢弃并记 warning | `semantic.schema.ts` |
+
+### 14.3 约定（写相关功能时照此办）
+
+- **图片只有一个合法来源**：正文里的 `![图注](file:<uuid>)`；生成侧绝不编造、不外链。
+- **两代形态别搞混**：v1 `image.url = file:<uuid>`；**v2 `image.fileId` = 裸 uuid**。
+- **上下文决定位置**：图要落在它语义所属的那一节，而不是集中堆在末尾（靠清单里的 `context` 字段）。
+- **正文没有图就不放图**：清单为空 → `allowedImageIds` 为空集，模型即使写了 image 块也会被丢弃；
+  不传该参数（教师手工编辑 JSON）则宽松放行。
+- 渲染侧 `role: hero | inline | full | grid` 与「拿不到图不留白、不发外部请求」的占位规则沿用 §10.1。
+
+### 14.4 实测（deepseek-flash 真实生成）
+
+- 第 2 章「机器学习基本理论和实践」（正文 5 图）：image 块 **0 → 6**、image 页 0 → 3，
+  图注如「聚类问题：相似样本自动聚成若干群体」，与正文图片语义相符；
+- 第 3 章「深度学习基本原理和实践」（正文 3 图）：image 块 **0 → 7**、image 页 0 → 3
+  （感知机 / MLP / LSTM 门）；
+- 前端实测：iframe 内 6 张图全部是 `data:image/png;base64` **真实渲染**（`naturalWidth` 有值、
+  `alt` 为图注），含图页截图在 `web/tools/shots/review/插图链路/`；
+- 断言 `server/tools/assert-semantic-schema.mjs` 24 → **31/31**（新增：清单内保留 / `file:` 前缀归一化 /
+  清单外丢弃且不动同页其它块 / 空清单不放图 / 不传清单时宽松）。
+
+### 14.5 前提与后续
+
+插图能力**依赖正文素材**：目前只有第 2 章（5 张）与第 3 章（3 张）正文里有图，**其余 12 章正文本身无图** ——
+所以不是链路问题。要让更多章节图文并茂，需先往正文加图（章节编辑页右栏「图片」tab 上传并插入
+`![图注](file:<id>)`），再重生成该章幻灯片；纯数据类内容可直接用 `chart` 块（模型自绘，不依赖素材）。
