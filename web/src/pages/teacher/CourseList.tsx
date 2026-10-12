@@ -198,16 +198,22 @@ export default function CourseList() {
                         </Popconfirm>,
                       ]
                     : []),
-                  <Popconfirm
-                    key="del"
-                    title="删除课程"
-                    description="课程下的章节、实验与提交将级联删除且不可恢复，确认？"
-                    onConfirm={() => handleDelete(c.id)}
-                  >
-                    <span style={{ color: '#ff4d4f' }}>
-                      <DeleteOutlined /> 删除
-                    </span>
-                  </Popconfirm>,
+                  // 删课是矩阵里保留给「主教师 + 管理员」的操作（协作教师点了也会 403），
+                  // 因此对协作者**不露出**这个按钮 —— 见 design §3
+                  ...(canManageTeachers(c)
+                    ? [
+                        <Popconfirm
+                          key="del"
+                          title="删除课程"
+                          description="课程下的章节、实验与提交将级联删除且不可恢复，确认？"
+                          onConfirm={() => handleDelete(c.id)}
+                        >
+                          <span style={{ color: '#ff4d4f' }}>
+                            <DeleteOutlined /> 删除
+                          </span>
+                        </Popconfirm>,
+                      ]
+                    : []),
                 ]}
               >
                 <Space direction="vertical" size={4} style={{ width: '100%' }}>

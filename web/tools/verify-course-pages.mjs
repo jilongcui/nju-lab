@@ -81,8 +81,13 @@ const checkUniform = (scope, rows) => {
 };
 
 /** 打开第一张卡片的「编辑」弹窗，返回转让下拉 label 的可见数量 */
-async function openEditModal(page) {
-  await page.locator('.ant-card-actions span', { hasText: '编辑' }).first().click();
+async function openEditModal(page, ownerName) {
+  // 多教师协作后，列表里可能混有「别人主、自己是协作者」的课 —— 需要转让/名单字段的用例
+  // 必须点「以自己为主教师」的那张卡（卡片文案里带「XX（主）」）。
+  const card = ownerName
+    ? page.locator('.ant-card').filter({ hasText: `${ownerName}（主）` }).first()
+    : page.locator('.ant-card').first();
+  await card.locator('.ant-card-actions li', { hasText: '编辑' }).click();
   await page.locator('.ant-modal').first().waitFor({ timeout: 10000 });
   await page.waitForTimeout(600);
   // 多教师协作（2026-10-11 设计）：主教师或多管理员可改「主教师（转让）」+「协作教师」
@@ -141,7 +146,7 @@ try {
 
     checkUniform('教师端课程管理', await cardRows(page));
 
-    const fields = await openEditModal(page);
+    const fields = await openEditModal(page, '示例教师');
     // 自己是主教师 → 可转让、可指定协作教师（旧版只有管理员能看到转让下拉）
     check(
       '教师（主教师）编辑弹窗：有「主教师（转让）」与「协作教师」',
@@ -149,6 +154,24 @@ try {
       `transfer=${fields.transfer} coTeachers=${fields.coTeachers}`,
     );
     await page.getByRole('button', { name: '取 消' }).click();
+    await page.waitForTimeout(400);
+
+    // 反向：别人主的课（自己是协作教师）不该出现这两个字段，也不该有「删除」按钮
+    // —— 改名单与删课都是主教师权限（见 docs/DESIGN-2026-10-11-course-co-teachers.md §3）
+    const othersCard = page.locator('.ant-card').filter({ hasText: '窦环（主）' }).first();
+    if (await othersCard.count()) {
+      await othersCard.locator('.ant-card-actions li', { hasText: '编辑' }).click();
+      await page.locator('.ant-modal').first().waitFor({ timeout: 10000 });
+      await page.waitForTimeout(500);
+      const modal = await page.locator('.ant-modal').first().innerText();
+      check(
+        '协作教师看别人主的课：无「主教师（转让）」与「协作教师」',
+        !modal.includes('主教师（转让课程）') && !modal.includes('协作教师'),
+      );
+      check('协作教师看别人主的课：卡片上没有「删除」按钮', (await othersCard.getByText('删除').count()) === 0);
+      await page.getByRole('button', { name: '取 消' }).click();
+      await page.waitForTimeout(300);
+    }
     await page.screenshot({ path: `${SHOTS_DIR}teacher-courses.png`, fullPage: true });
     await context.close();
   }
@@ -162,6 +185,7 @@ try {
 
     checkUniform('管理员课程管理', await cardRows(page));
 
+    // 管理员对任何课都能转让/改名单，直接取第一张
     const adminFields = await openEditModal(page);
     check(
       '管理员编辑弹窗：有「主教师（转让）」与「协作教师」',
