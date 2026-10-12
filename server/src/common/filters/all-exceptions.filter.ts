@@ -12,7 +12,7 @@ interface ErrorResponseBody {
   message?: string | string[];
 }
 
-/** 全局异常过滤器：统一错误响应为 { code, data: null, message }，code 取 HTTP 状态码 */
+/** 全局异常过滤器：统一错误响应为 { code, data, message }，code 取 HTTP 状态码 */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
@@ -24,6 +24,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message = '服务器内部错误';
+    /** 业务异常自带的**结构化细节**（如并发冲突的 currentVersion / updatedBy）——透传到 data */
+    let details: Record<string, unknown> | null = null;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -31,8 +33,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
       if (typeof body === 'string') {
         message = body;
       } else if (body && typeof body === 'object') {
-        const msg = (body as ErrorResponseBody).message;
+        const {
+          message: msg,
+          statusCode: _statusCode,
+          error: _error,
+          ...rest
+        } = body as ErrorResponseBody & Record<string, unknown>;
         message = Array.isArray(msg) ? msg.join('; ') : (msg ?? exception.message);
+        if (Object.keys(rest).length) details = rest;
       }
     } else {
       this.logger.error(
@@ -43,7 +51,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     response.status(status).json({
       code: status,
-      data: null,
+      data: details,
       message,
     });
   }

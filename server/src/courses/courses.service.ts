@@ -114,7 +114,7 @@ export class CoursesService {
    * 课程 → 授课教师显示名（**主教师排在最前**）。多教师展示的统一口径。
    * 名单表里没有主教师时（迁移前的历史数据）用 `courses.teacherId` 兜底。
    */
-  private async buildTeacherNames(courses: Course[]): Promise<Map<string, string[]>> {
+  async buildTeacherNames(courses: Course[]): Promise<Map<string, string[]>> {
     const result = new Map<string, string[]>();
     const courseIds = courses.map((course) => course.id);
     if (!courseIds.length) return result;
@@ -636,6 +636,7 @@ export class CoursesService {
       where: { id: In(enrollments.map((e) => e.courseId)) },
       relations: ['teacher'],
     });
+    const namesByCourse = await this.buildTeacherNames(courses);
     const result = [];
     for (const course of courses) {
       const chapters = await this.chapterRepo.find({
@@ -663,6 +664,8 @@ export class CoursesService {
         term: course.term,
         description: course.description,
         teacherName: course.teacher?.nickname || course.teacher?.username || '',
+        /** 多教师：主教师在前（学生端「我的课程」展示用） */
+        teacherNames: namesByCourse.get(course.id) ?? [],
         courseStatus: course.status,
         completedCount: chapterViews.filter(
           (c) => c.status === ProgressStatus.COMPLETED,

@@ -37,6 +37,10 @@ export interface Chapter {
   createdAt?: string;
   /** 课程详情中后端返回的实验项目摘要 */
   projects?: ProjectSummary[];
+  /** 乐观锁版本：编辑保存时带回，不符 → 409（别人刚改过） */
+  version?: number;
+  /** 最后一次写入者（userId） */
+  updatedBy?: string | null;
   /** 学生视角：章节阅读接口返回的本章学习进度 */
   myProgress?: ChapterProgressStatus;
 }
@@ -45,8 +49,10 @@ export interface Course {
   id: string;
   title: string;
   teacherId?: string;
-  /** 列表接口返回的授课教师显示名（nickname 或 username） */
+  /** 列表接口返回的主授课教师显示名（nickname 或 username；兼容字段） */
   teacherName?: string;
+  /** 全部授课教师显示名（**主教师在前**），多教师协作用；见 docs/DESIGN-2026-10-11-course-co-teachers.md */
+  teacherNames?: string[];
   term?: string;
   description?: string;
   status: CourseStatus;
@@ -81,6 +87,8 @@ export type ApplicationStatus = 'pending' | 'approved' | 'rejected';
 /** GET /api/browse/courses 条目 */
 export interface CatalogCourseBrief {
   id: string;
+  /** 多教师：全部授课教师显示名（主教师在前） */
+  teacherNames?: string[];
   slug: string | null;
   title: string;
   term: string;
@@ -106,6 +114,8 @@ export interface MyApplicationBrief {
 /** GET /api/browse/courses/:slug */
 export interface CatalogCourseDetail
   extends Omit<CatalogCourseBrief, 'chapterCount'> {
+  /** 多教师：全部授课教师显示名（主教师在前） */
+  teacherNames?: string[];
   chapters: { id: string; order: number; title: string }[];
   /** 我的最近一次申请（登录用户） */
   myApplication: MyApplicationBrief | null;
@@ -159,6 +169,8 @@ export interface MyCourse {
   term?: string;
   description?: string | null;
   teacherName?: string;
+  /** 多教师：全部授课教师显示名（主教师在前） */
+  teacherNames?: string[];
   courseStatus: CourseStatus;
   completedCount: number;
   chapters: StudentChapterBrief[];
@@ -641,6 +653,19 @@ export interface SlideDeckView {
   error: string | null;
   warnings: string | null;
   updatedAt: string;
+  /** 乐观锁版本：保存/生成时原样带回，不符会拿到 409 */
+  version: number;
+  /** 最后一次写入者（userId）—— 冲突提示据此显示「被谁改了」 */
+  updatedBy: string | null;
+}
+
+/** 课程的授课教师名单项（GET /courses/:id/teachers） */
+export interface CourseTeacherItem {
+  id: string;
+  nickname: string;
+  username: string;
+  /** owner = 主教师（转让对象），co_teacher = 协作教师（同等编辑权，不能删课/转让/改名单） */
+  role: 'owner' | 'co_teacher';
 }
 
 export interface ChapterSlidesResponse {

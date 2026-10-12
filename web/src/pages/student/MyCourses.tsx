@@ -66,7 +66,7 @@ export default function MyCourses() {
                   styles={{ body: { flex: 1, display: 'flex', flexDirection: 'column' } }}
                 >
                   <Text type="secondary">
-                    授课教师：{c.teacherName || '未署名'}
+                    授课教师：{c.teacherNames?.join('、') || c.teacherName || '未署名'}
                     {c.term ? ` · ${c.term}` : ''}
                   </Text>
                   <Paragraph

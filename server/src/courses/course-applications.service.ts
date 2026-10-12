@@ -99,6 +99,8 @@ export class CourseApplicationsService {
     );
 
     const now = new Date();
+    // 多教师：公开卡片也显示全部授课教师（主教师在前）
+    const listNamesByCourse = await this.coursesService.buildTeacherNames(courses);
     return courses.map((course) => {
       const approvedCount = approvedCounts.get(course.id) ?? 0;
       return {
@@ -108,6 +110,7 @@ export class CourseApplicationsService {
         term: course.term,
         description: course.description,
         teacherName: course.teacher?.nickname || course.teacher?.username || '',
+        teacherNames: listNamesByCourse.get(course.id) ?? [],
         chapterCount: chapterMap.get(course.id) ?? 0,
         capacity: course.capacity,
         approvedCount,
@@ -160,6 +163,8 @@ export class CourseApplicationsService {
         decisionNote: mine.decisionNote,
       };
     }
+    const detailNames =
+      (await this.coursesService.buildTeacherNames([course])).get(course.id) ?? [];
     const myEnrollment = !!(await this.enrollmentRepo.findOne({
       where: { courseId: course.id, studentId: user.id },
     }));
@@ -171,6 +176,7 @@ export class CourseApplicationsService {
       term: course.term,
       description: course.description,
       teacherName: course.teacher?.nickname || course.teacher?.username || '',
+      teacherNames: detailNames.length ? detailNames : [],
       capacity: course.capacity,
       approvedCount,
       seatsLeft: seatsLeft(course.capacity, approvedCount),

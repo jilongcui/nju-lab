@@ -69,6 +69,7 @@ import type {
 } from '../../types';
 import { SEMANTIC_INTENT_OPTIONS } from '../../types';
 import SlideStage from '../../slides/SlideStage';
+import { conflictOf, showConflictDialog } from '../../utils/content-conflict';
 import { collectFileRefs, fetchFileDataUrls } from '../../slides/files';
 import {
   IMAGE_LAYOUT_OPTIONS,
@@ -277,17 +278,34 @@ export default function ChapterSlides() {
       ? siblings[siblingIndex + 1]
       : null;
 
+  /**
+   * 撞上并发编辑（409）：明说「被谁改了」，由老师选择刷新。
+   * 返回 true 表示已处理（调用方不要再抛），false 交给外层。
+   */
+  const handleConflict = async (error: unknown): Promise<boolean> => {
+    const conflict = conflictOf(error);
+    if (!conflict) return false;
+    showConflictDialog(conflict, () => {
+      void load(true);
+    });
+    return true;
+  };
+
   const handleGenerate = async (force = false) => {
     setBusy(true);
     try {
+      // 带上当前版本：期间别人保存/生成过就 409，避免互相覆盖 + 白烧 token
       const result = await generateChapterSlides(chapterId, {
         templateId: templateId ?? undefined,
         force,
+        version: deck?.version,
       });
       message.success(
         result.cached ? '内容未变，已复用现有幻灯片' : '已开始生成，稍候即可预览',
       );
       await load(true);
+    } catch (error) {
+      if (!(await handleConflict(error))) throw error;
     } finally {
       setBusy(false);
     }
@@ -372,12 +390,19 @@ export default function ChapterSlides() {
         mode === 'json'
           ? { slides: JSON.parse(jsonText) as SlideJson[] }
           : { markdown: mdText };
-      const result = await saveChapterSlides(chapterId, { ...payload, templateId });
+      const result = await saveChapterSlides(chapterId, {
+        ...payload,
+        templateId,
+        version: deck?.version,
+      });
       if (result.warnings?.length) message.warning(result.warnings.join('；'));
       message.success('已保存');
       setEditing(false);
       await load(true);
       return true;
+    } catch (error) {
+      if (!(await handleConflict(error))) throw error;
+      return false;
     } finally {
       setBusy(false);
     }
@@ -390,9 +415,16 @@ export default function ChapterSlides() {
       return;
     }
     // 换模板不重生成：模板只提供样式，deck 内容是数据驱动的
-    await saveChapterSlides(chapterId, { templateId: value });
-    message.success('已切换模板');
-    await load(true);
+    try {
+      await saveChapterSlides(chapterId, {
+        templateId: value,
+        version: deck?.version,
+      });
+      message.success('已切换模板');
+      await load(true);
+    } catch (error) {
+      if (!(await handleConflict(error))) throw error;
+    }
   };
 
   const handleSaveDesign = async () => {

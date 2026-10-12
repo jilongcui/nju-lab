@@ -21,9 +21,9 @@ export class UsersController {
     return this.usersService.listStudents();
   }
 
-  /** GET /api/users/teachers 教师名单（仅管理员，转让课程用） */
+  /** GET /api/users/teachers 教师名单（教师可见：转让课程、指定协作教师都要选人） */
   @Get('users/teachers')
-  @Roles(UserRole.ADMIN)
+  @Roles(UserRole.TEACHER)
   listTeachers() {
     return this.usersService.listTeachers();
   }

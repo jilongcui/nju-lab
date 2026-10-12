@@ -84,8 +84,12 @@ const checkUniform = (scope, rows) => {
 async function openEditModal(page) {
   await page.locator('.ant-card-actions span', { hasText: '编辑' }).first().click();
   await page.locator('.ant-modal').first().waitFor({ timeout: 10000 });
-  await page.waitForTimeout(400);
-  return page.getByText('授课教师（转让课程）').count();
+  await page.waitForTimeout(600);
+  // 多教师协作（2026-10-11 设计）：主教师或多管理员可改「主教师（转让）」+「协作教师」
+  return {
+    transfer: await page.getByText('主教师（转让课程）').count(),
+    coTeachers: await page.getByText('协作教师').count(),
+  };
 }
 
 try {
@@ -137,8 +141,13 @@ try {
 
     checkUniform('教师端课程管理', await cardRows(page));
 
-    const transferLabels = await openEditModal(page);
-    check('教师编辑弹窗：无「转让课程」下拉', transferLabels === 0);
+    const fields = await openEditModal(page);
+    // 自己是主教师 → 可转让、可指定协作教师（旧版只有管理员能看到转让下拉）
+    check(
+      '教师（主教师）编辑弹窗：有「主教师（转让）」与「协作教师」',
+      fields.transfer === 1 && fields.coTeachers >= 1,
+      `transfer=${fields.transfer} coTeachers=${fields.coTeachers}`,
+    );
     await page.getByRole('button', { name: '取 消' }).click();
     await page.screenshot({ path: `${SHOTS_DIR}teacher-courses.png`, fullPage: true });
     await context.close();
@@ -153,8 +162,12 @@ try {
 
     checkUniform('管理员课程管理', await cardRows(page));
 
-    const transferLabels = await openEditModal(page);
-    check('管理员编辑弹窗：有「转让课程」下拉', transferLabels === 1);
+    const adminFields = await openEditModal(page);
+    check(
+      '管理员编辑弹窗：有「主教师（转让）」与「协作教师」',
+      adminFields.transfer === 1 && adminFields.coTeachers >= 1,
+      `transfer=${adminFields.transfer} coTeachers=${adminFields.coTeachers}`,
+    );
 
     // 选中值必须显示姓名（当前归属人可能是管理员，列表含管理员才能解析出 label）
     const selectedText = await page

@@ -5,6 +5,7 @@ import type {
   Chapter,
   ClaimResult,
   Course,
+  CourseTeacherItem,
   CourseApplicationRow,
   CourseApplicationsView,
   CourseDashboard,
@@ -127,8 +128,19 @@ export const getTeacherSummary = () =>
 
 // ---------- 选课学生管理 ----------
 export const listStudents = () => client.get<unknown, StudentUser[]>('/users/students');
-/** 教师名单（仅管理员；转让课程用） */
+/** 教师名单（转让课程、指定协作教师都要选人） */
 export const listTeachers = () => client.get<unknown, TeacherUser[]>('/users/teachers');
+/** 课程的授课教师名单（主教师 + 协作教师）；课程任一教师可读 */
+export const listCourseTeachers = (courseId: string) =>
+  client.get<unknown, { ownerId: string; teachers: CourseTeacherItem[] }>(
+    `/courses/${courseId}/teachers`,
+  );
+/** 全量设置**协作教师**名单（仅主教师/管理员；主教师由「转让」改） */
+export const setCourseTeachers = (courseId: string, userIds: string[]) =>
+  client.put<unknown, { ownerId: string; teachers: CourseTeacherItem[] }>(
+    `/courses/${courseId}/teachers`,
+    { userIds },
+  );
 export const listEnrollments = (courseId: string) =>
   client.get<unknown, Enrollment[]>(`/courses/${courseId}/enrollments`);
 export const addEnrollments = (courseId: string, studentIds: string[]) =>
@@ -249,7 +261,7 @@ export const getChapterSlides = (chapterId: string) =>
 /** 触发两阶段生成（异步：立即返回 generating，前端轮询 getChapterSlides） */
 export const generateChapterSlides = (
   chapterId: string,
-  data: { templateId?: string; force?: boolean } = {},
+  data: { templateId?: string; force?: boolean; version?: number } = {},
 ) =>
   client.post<unknown, { deck: SlideDeckView; cached: boolean }>(
     `/chapters/${chapterId}/slides/generate`,
@@ -272,6 +284,8 @@ export const saveChapterSlides = (
     title?: string;
     templateId?: string | null;
     config?: SlideDeckConfig;
+    /** 乐观锁：加载时拿到的 deck 版本；不符 → 409（见 docs/DESIGN-2026-10-11-course-co-teachers.md §5） */
+    version?: number;
   },
 ) =>
   client.put<unknown, { deck: SlideDeckView; warnings: string[] }>(

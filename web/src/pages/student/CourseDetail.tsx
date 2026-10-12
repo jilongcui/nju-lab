@@ -61,7 +61,7 @@ export default function StudentCourseDetail() {
         {course.title}
       </Title>
       <Text type="secondary" style={{ display: 'block', marginBottom: 16 }}>
-        授课教师：{myCourse?.teacherName || '未署名'}
+        授课教师：{myCourse?.teacherNames?.join('、') || myCourse?.teacherName || '未署名'}
         {course.term || myCourse?.term ? ` · ${course.term || myCourse?.term}` : ''}
       </Text>
       {chapters.length === 0 ? (

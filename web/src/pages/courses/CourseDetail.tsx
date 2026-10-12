@@ -212,7 +212,7 @@ export default function CourseDetail() {
             </Text>
           </Space>
           <Text type="secondary">
-            授课教师：{course.teacherName || '未署名'} {course.term ? `· ${course.term}` : ''}
+            授课教师：{course.teacherNames?.join('、') || course.teacherName || '未署名'} {course.term ? `· ${course.term}` : ''}
           </Text>
         </Space>
         <Paragraph style={{ marginTop: 16, whiteSpace: 'pre-wrap' }}>

@@ -19,6 +19,7 @@ import {
 import { PictureOutlined, PlayCircleOutlined, SaveOutlined } from '@ant-design/icons';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { getChapter, getCourse, saveChapter } from '../../api';
+import { conflictOf, showConflictDialog } from '../../utils/content-conflict';
 import type { Chapter, StoredFileInfo } from '../../types';
 import MarkdownView from '../../components/MarkdownView';
 import ImageLibraryPanel from '../../components/ImageLibraryPanel';
@@ -94,9 +95,17 @@ export default function ChapterEdit() {
     const values = form.getFieldsValue(true) as Partial<Chapter>;
     setSaving(true);
     try {
+      // chapter 里带着**加载时的 version**，服务端据此做乐观锁：期间别人保存过 → 409
       await saveChapter(chapter.courseId, { ...chapter, ...values });
       message.success('章节已保存');
       await load();
+    } catch (error) {
+      const conflict = conflictOf(error);
+      if (!conflict) throw error;
+      // 多教师协作：不能假装保存成功 —— 明说「被谁改了、你的改动没保存」，由老师选择刷新
+      showConflictDialog(conflict, () => {
+        void load();
+      });
     } finally {
       setSaving(false);
     }

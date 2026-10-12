@@ -100,7 +100,7 @@ export default function CourseBrowse() {
                 style={{ height: '100%' }}
               >
                 <Space size={4} wrap>
-                  <Text type="secondary">{c.teacherName || '未署名教师'}</Text>
+                  <Text type="secondary">{c.teacherNames?.join('、') || c.teacherName || '未署名教师'}</Text>
                   {c.term ? <Text type="secondary">· {c.term}</Text> : null}
                 </Space>
                 <Paragraph

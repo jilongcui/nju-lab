@@ -17,8 +17,17 @@ import {
   Typography,
 } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
-import { createCourse, deleteCourse, listCourses, listTeachers, publishCourse, updateCourse } from '../../api';
-import type { Course, TeacherUser } from '../../types';
+import {
+  createCourse,
+  deleteCourse,
+  listCourseTeachers,
+  listCourses,
+  listTeachers,
+  publishCourse,
+  setCourseTeachers,
+  updateCourse,
+} from '../../api';
+import type { Course, CourseTeacherItem, TeacherUser } from '../../types';
 import StatusTag from '../../components/StatusTag';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
 import { useAuthStore } from '../../stores/auth';
@@ -29,8 +38,10 @@ interface CourseFormValues {
   title: string;
   term?: string;
   description?: string;
-  /** 仅管理员可见该表单项：把课程转让给其他教师 */
+  /** 主教师（转让）：管理员或本课主教师可改 */
   teacherId?: string;
+  /** 协作教师多选：与主教师同等编辑权（不走 updateCourse，单独调名单接口） */
+  coTeacherIds?: string[];
 }
 
 export default function CourseList() {
@@ -40,7 +51,9 @@ export default function CourseList() {
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [teachers, setTeachers] = useState<TeacherUser[]>([]);
-  const isAdmin = useAuthStore((s) => s.user?.role) === 'admin';
+  const [courseMembers, setCourseMembers] = useState<CourseTeacherItem[]>([]);
+  const me = useAuthStore((s) => s.user);
+  const isAdmin = me?.role === 'admin';
   const [form] = Form.useForm<CourseFormValues>();
 
   useAuxiliaryPanel(
@@ -63,15 +76,12 @@ export default function CourseList() {
     void load();
   }, [load]);
 
-  // 管理员可转让课程 → 预取教师名单（接口本身仅管理员可见）
+  // 教师名单：转让主教师、指定协作教师都要选人（接口对教师开放）
   useEffect(() => {
-    if (!isAdmin) {
-      return;
-    }
     listTeachers()
       .then((t) => setTeachers(t ?? []))
       .catch(() => setTeachers([]));
-  }, [isAdmin]);
+  }, []);
 
   const openCreate = () => {
     setEditing(null);
@@ -81,21 +91,42 @@ export default function CourseList() {
 
   const openEdit = (c: Course) => {
     setEditing(c);
+    setCourseMembers([]);
     form.setFieldsValue({
       title: c.title,
       term: c.term,
       description: c.description,
-      ...(isAdmin ? { teacherId: c.teacherId } : {}),
+      ...(canManageTeachers(c) ? { teacherId: c.teacherId } : {}),
+      coTeacherIds: [],
     });
     setModalOpen(true);
+    // 名单单独取：课程列表接口不带（省一次 N+1）
+    listCourseTeachers(c.id)
+      .then((r) => {
+        const list = r?.teachers ?? [];
+        setCourseMembers(list);
+        form.setFieldsValue({
+          coTeacherIds: list.filter((t) => t.role === 'co_teacher').map((t) => t.id),
+        });
+      })
+      .catch(() => setCourseMembers([]));
   };
+
+  /** 主教师或管理员：可转让、可改协作名单（协作教师本人不可） */
+  const canManageTeachers = (c: Course | null) =>
+    !!c && (isAdmin || c.teacherId === me?.id);
 
   const handleSubmit = async () => {
     const values = await form.validateFields();
+    // coTeacherIds 不进 updateCourse（它走名单接口，避免 DTO 白名单报错）
+    const { coTeacherIds, ...courseValues } = values;
     setSubmitting(true);
     try {
       if (editing) {
-        await updateCourse(editing.id, values);
+        await updateCourse(editing.id, courseValues);
+        if (canManageTeachers(editing) && Array.isArray(coTeacherIds)) {
+          await setCourseTeachers(editing.id, coTeacherIds);
+        }
         message.success('课程已更新');
       } else {
         await createCourse(values);
@@ -180,7 +211,12 @@ export default function CourseList() {
                 ]}
               >
                 <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                  <Text type="secondary">授课教师：{c.teacherName || '-'}</Text>
+                  <Text type="secondary">
+                    授课教师：{(c.teacherNames?.length ? c.teacherNames : [c.teacherName])
+                      .filter(Boolean)
+                      .map((name, i) => (i === 0 ? `${name}（主）` : name))
+                      .join('、') || '-'}
+                  </Text>
                   <Text type="secondary">学期：{c.term || '-'}</Text>
                   <Paragraph
                     ellipsis={{ rows: 2, tooltip: c.description ? { title: c.description } : false }}
@@ -215,22 +251,49 @@ export default function CourseList() {
           <Form.Item name="description" label="课程简介">
             <Input.TextArea rows={3} placeholder="课程目标与内容简介" />
           </Form.Item>
-          {editing && isAdmin ? (
-            <Form.Item
-              name="teacherId"
-              label="授课教师（转让课程）"
-              extra="仅管理员可改；转让后课程归新教师所有，不再出现在原教师的课程列表中。"
-            >
-              <Select
-                showSearch
-                optionFilterProp="label"
-                placeholder="选择新的授课教师"
-                options={teachers.map((t) => ({
-                  value: t.id,
-                  label: `${t.nickname || t.username}（${t.username}）`,
-                }))}
-              />
-            </Form.Item>
+          {editing && canManageTeachers(editing) ? (
+            <>
+              <Form.Item
+                name="teacherId"
+                label="主教师（转让课程）"
+                extra="主教师是本课的负责人；转让后课程归新教师，原主教师保留为协作教师（编辑权不受影响）。"
+              >
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="选择新的主教师"
+                  options={teachers.map((t) => ({
+                    value: t.id,
+                    label: `${t.nickname || t.username}（${t.username}）`,
+                  }))}
+                />
+              </Form.Item>
+              <Form.Item
+                name="coTeacherIds"
+                label="协作教师"
+                extra="协作教师与主教师**同等编辑权**（章节、幻灯片、实验项目、批改、审批）；仅主教师/管理员可改这份名单。"
+              >
+                <Select
+                  mode="multiple"
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder="可添加多位老师共同维护本课"
+                  options={teachers
+                    .filter((t) => t.id !== editing.teacherId)
+                    .map((t) => ({
+                      value: t.id,
+                      label: `${t.nickname || t.username}（${t.username}）`,
+                    }))}
+                />
+              </Form.Item>
+              {courseMembers.length > 0 && (
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  当前名单：{courseMembers
+                    .map((t) => (t.role === 'owner' ? `${t.nickname}（主）` : t.nickname))
+                    .join('、')}
+                </Text>
+              )}
+            </>
           ) : null}
         </Form>
       </Modal>
