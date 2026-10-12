@@ -5,6 +5,7 @@ import {
   Index,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  VersionColumn,
 } from 'typeorm';
 import { DeckConfig, DeckSlide } from './deck.schema';
 
@@ -97,6 +98,18 @@ export class SlideDeck {
 
   @Column({ type: 'varchar', length: 36 })
   createdBy: string;
+
+  /**
+   * 乐观锁版本号（见 docs/DESIGN-2026-10-11-course-co-teachers.md §5）：
+   * `@VersionColumn` 在每次成功 `save()` 时自动 +1；业务层拿**客户端持有的版本**与库中值比对，
+   * 不一致就给 409 —— 避免多位老师同时编辑时后写者静默覆盖前者。
+   */
+  @VersionColumn()
+  version: number;
+
+  /** 最后一次写入者（userId）—— 冲突提示要说清「被谁改了」 */
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  updatedBy: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -19,9 +19,11 @@ import {
   MockEvaluationRunner,
 } from './evaluation-runner';
 import { DockerEvaluationRunner } from './docker-evaluation-runner';
+import { CoursesModule } from '../courses/courses.module';
 
 @Module({
   imports: [
+    CoursesModule,
     TypeOrmModule.forFeature([Submission, Evaluation, Assignment, Course]),
     FilesModule,
     ContainerRuntimeModule,

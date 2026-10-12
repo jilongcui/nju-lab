@@ -14,6 +14,7 @@ import {
   ProgressStatus,
 } from '../courses/enrollment.entity';
 import { FilesService } from '../files/files.service';
+import { CoursesService } from '../courses/courses.service';
 import { Submission } from '../submissions/submission.entity';
 import { User, UserRole } from '../users/user.entity';
 import { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
@@ -46,6 +47,8 @@ export class ProjectsService {
     @InjectRepository(Submission)
     private readonly submissionRepo: Repository<Submission>,
     private readonly filesService: FilesService,
+    /** 归属判定复用 CoursesService（主教师 + 协作教师），见设计文档 §3 */
+    private readonly coursesService: CoursesService,
   ) {}
 
   // ---------- 项目 CRUD（教师） ----------
@@ -58,7 +61,11 @@ export class ProjectsService {
       .leftJoinAndSelect('project.chapter', 'chapter')
       .orderBy('project.createdAt', 'DESC');
     if (user.role !== UserRole.ADMIN) {
-      qb.where('course.teacherId = :teacherId', { teacherId: user.id });
+      // 多教师：我**参与授课**的课（含协作课程），以名单表为准
+      const courseIds = await this.coursesService.listCourseIdsForTeacher(user.id);
+      qb.where('project.courseId IN (:...courseIds)', {
+        courseIds: courseIds.length ? courseIds : [''],
+      });
     }
     const projects = await qb.getMany();
     const result = [];
@@ -530,13 +537,7 @@ export class ProjectsService {
     if (user.role === UserRole.ADMIN) {
       return;
     }
-    const course = await this.courseRepo.findOne({ where: { id: courseId } });
-    if (!course) {
-      throw new NotFoundException('课程不存在');
-    }
-    if (course.teacherId !== user.id) {
-      throw new ForbiddenException('只有课程所属教师可以执行该操作');
-    }
+    await this.coursesService.assertTeacherOfCourse(user, courseId);
   }
 
   private async assertEnrolled(courseId: string, studentId: string) {

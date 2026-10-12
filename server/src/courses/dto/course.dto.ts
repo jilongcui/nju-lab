@@ -103,6 +103,23 @@ export class UpsertChapterDto {
   @IsOptional()
   @IsEnum(ChapterStatus)
   status?: ChapterStatus;
+
+  /**
+   * 乐观锁：客户端**加载时拿到的版本**。与库中不一致 → 409（别人刚保存过），
+   * 避免多教师同时编辑时后写者静默覆盖。不传则按旧行为放行（兼容老前端）。
+   */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  version?: number;
+}
+
+/** PUT /api/courses/:id/teachers —— 全量设置**协作教师**名单（主教师由「转让」改） */
+export class SetCourseTeachersDto {
+  @IsArray()
+  @IsUUID('4', { each: true })
+  userIds!: string[];
 }
 
 /**

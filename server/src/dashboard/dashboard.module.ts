@@ -8,9 +8,11 @@ import { Evaluation, Submission } from '../submissions/submission.entity';
 import { User } from '../users/user.entity';
 import { DashboardController, TeacherDashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';
+import { CoursesModule } from '../courses/courses.module';
 
 @Module({
   imports: [
+    CoursesModule,
     TypeOrmModule.forFeature([
       ExperimentProject,
       Assignment,

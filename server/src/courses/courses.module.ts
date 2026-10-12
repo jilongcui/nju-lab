@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UsersModule } from '../users/users.module';
 import { Chapter, Course } from './course.entity';
+import { CourseTeacher } from './course-teacher.entity';
 import { ExperimentProject } from '../projects/project.entity';
 import { ChapterProgress, Enrollment } from './enrollment.entity';
 import { CourseApplication } from './course-application.entity';
@@ -23,6 +24,7 @@ import { CourseApplicationsService } from './course-applications.service';
     TypeOrmModule.forFeature([
       Course,
       Chapter,
+      CourseTeacher,
       Enrollment,
       ChapterProgress,
       ExperimentProject,

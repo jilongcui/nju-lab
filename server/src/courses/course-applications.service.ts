@@ -23,6 +23,7 @@ import {
   resolveApplicationState,
   seatsLeft,
 } from './application-state.util';
+import { CoursesService } from './courses.service';
 
 export type { ApplicationState };
 
@@ -51,6 +52,8 @@ export class CourseApplicationsService {
     @InjectRepository(CourseApplication)
     private readonly applicationRepo: Repository<CourseApplication>,
     private readonly dataSource: DataSource,
+    /** 归属判定复用 CoursesService（主教师 + 协作教师），不在这里另写一份（见设计文档 §3） */
+    private readonly coursesService: CoursesService,
   ) {}
 
   // ---------- 课程目录与详情（需登录） ----------
@@ -290,7 +293,7 @@ export class CourseApplicationsService {
 
   /** GET /api/courses/:courseId/applications —— 申请列表（按申请时间升序＝先到先得） */
   async listApplications(user: User, courseId: string) {
-    const course = await this.getOwnedCourse(user, courseId);
+    const course = await this.coursesService.assertTeacherOfCourse(user, courseId);
     const applications = await this.applicationRepo.find({
       where: { courseId },
       relations: ['student'],
@@ -329,7 +332,7 @@ export class CourseApplicationsService {
    * 全程在事务里，并锁课程行——逐个批准时两个标签页同时批最后两个名额也不会超额。
    */
   async approve(user: User, courseId: string, applicationId: string) {
-    await this.assertCourseOwner(user, courseId);
+    await this.coursesService.assertTeacherOfCourse(user, courseId);
     return this.dataSource.transaction(async (manager) => {
       // 锁课程行，串行化「容量校验 + 建入册」这一段
       const course = await manager.findOne(Course, {
@@ -392,7 +395,7 @@ export class CourseApplicationsService {
     applicationId: string,
     note?: string,
   ) {
-    await this.assertCourseOwner(user, courseId);
+    await this.coursesService.assertTeacherOfCourse(user, courseId);
     const application = await this.applicationRepo.findOne({
       where: { id: applicationId, courseId },
     });
@@ -486,25 +489,4 @@ export class CourseApplicationsService {
     );
   }
 
-  private async getOwnedCourse(user: User, courseId: string): Promise<Course> {
-    const course = await this.courseRepo.findOne({ where: { id: courseId } });
-    if (!course) {
-      throw new NotFoundException('课程不存在');
-    }
-    this.assertOwner(course, user);
-    return course;
-  }
-
-  private async assertCourseOwner(user: User, courseId: string): Promise<void> {
-    await this.getOwnedCourse(user, courseId);
-  }
-
-  private assertOwner(course: Course, user: User) {
-    if (user.role === UserRole.ADMIN) {
-      return;
-    }
-    if (course.teacherId !== user.id) {
-      throw new ForbiddenException('只有课程所属教师可以执行该操作');
-    }
-  }
 }

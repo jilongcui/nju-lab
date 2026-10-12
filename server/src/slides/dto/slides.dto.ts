@@ -30,6 +30,16 @@ export class GenerateDeckDto {
   @IsBoolean()
   @Type(() => Boolean)
   force?: boolean;
+
+  /**
+   * 乐观锁：客户端加载时拿到的 deck 版本。生成会整体替换内容，
+   * 若期间别人已保存/生成过（版本不符）→ 409，避免互相覆盖 + 白烧 token。
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  version?: number;
 }
 
 export class RegeneratePageDto {
@@ -56,6 +66,13 @@ export class SaveDeckDto {
   @IsString()
   @MaxLength(255)
   title?: string;
+
+  /** 乐观锁：客户端加载时拿到的 deck 版本；不符 → 409（见设计文档 §5） */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  version?: number;
 
   /** 内置模板 id 或本课程自定义模板 id；显式 null 表示恢复平台默认 */
   @IsOptional()

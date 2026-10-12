@@ -11,9 +11,11 @@ import {
   ProjectsController,
 } from './projects.controller';
 import { ProjectsService } from './projects.service';
+import { CoursesModule } from '../courses/courses.module';
 
 @Module({
   imports: [
+    CoursesModule,
     TypeOrmModule.forFeature([
       ExperimentProject,
       Assignment,

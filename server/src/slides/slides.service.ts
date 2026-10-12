@@ -12,6 +12,7 @@ import { createHash } from 'crypto';
 import { Repository } from 'typeorm';
 import { Chapter, ChapterStatus, Course } from '../courses/course.entity';
 import { CoursesService } from '../courses/courses.service';
+import { buildConflictError } from '../common/content-conflict';
 import { User, UserRole } from '../users/user.entity';
 import { mergeMarkdown, toMarkdown } from './deck-markdown';
 import {
@@ -88,6 +89,10 @@ export interface DeckView {
   error: string | null;
   warnings: string | null;
   updatedAt: Date;
+  /** 乐观锁版本：前端保存/生成时原样带回，不符会拿到 409（见设计文档 §5） */
+  version: number;
+  /** 最后一次写入者（userId）—— 前端冲突提示据此显示「被谁改了」 */
+  updatedBy: string | null;
 }
 
 export interface TemplateView {
@@ -135,6 +140,9 @@ export class SlidesService {
     private readonly chapterRepo: Repository<Chapter>,
     @InjectRepository(Course)
     private readonly courseRepo: Repository<Course>,
+    /** 冲突提示要显示「被谁改了」，因此需要按 updatedBy 取昵称 */
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     private readonly coursesService: CoursesService,
   ) {}
 
@@ -171,6 +179,17 @@ export class SlidesService {
   // ------------------------------------------------------------ 生成
 
   async generate(user: User, chapterId: string, dto: GenerateDeckDto) {
+    // 乐观锁（见设计文档 §5）：生成会整体替换内容，同样要防「两人同时点生成」互相覆盖
+    {
+      const existing = await this.deckRepo.findOne({ where: { chapterId } });
+      if (
+        existing &&
+        dto.version !== undefined &&
+        dto.version !== existing.version
+      ) {
+        await this.throwDeckConflict(existing);
+      }
+    }
     const chapter = await this.loadChapter(chapterId);
     const course = await this.coursesService.getOwnedCourse(user, chapter.courseId);
 
@@ -224,17 +243,26 @@ export class SlidesService {
 
     // 后台跑（Node 单进程；前端轮询 status 直到 ready/failed）
     // availableImages：正文里的 `file:` 插图清单，LLM 配图的唯一合法来源（无图则生成器维持不配图的默认）
-    void this.runGeneration(deck.id, {
-      courseTitle: course.title,
-      chapterTitle: chapter.title,
-      chapterContent: chapter.content,
-      availableImages: extractChapterImages(chapter.content),
-    });
+    void this.runGeneration(
+      deck.id,
+      {
+        courseTitle: course.title,
+        chapterTitle: chapter.title,
+        chapterContent: chapter.content,
+        availableImages: extractChapterImages(chapter.content),
+      },
+      user.id,
+    );
 
     return { deck: this.toDeckView(deck), cached: false };
   }
 
-  private async runGeneration(deckId: string, source: DeckSource): Promise<void> {
+  private async runGeneration(
+    deckId: string,
+    source: DeckSource,
+    /** 触发生成的人：写进 updatedBy，冲突提示据此显示「被谁改了」 */
+    actorId?: string,
+  ): Promise<void> {
     const generator = createDeckGenerator(SLIDES_GENERATOR);
     try {
       const outcome = await generator.generate(source);
@@ -254,6 +282,7 @@ export class SlidesService {
       deck.warnings = outcome.warnings.length ? outcome.warnings.join('\n') : null;
       deck.error = null;
       deck.status = SlideDeckStatus.READY;
+      deck.updatedBy = actorId ?? deck.updatedBy;
       await this.deckRepo.save(deck);
       this.logger.log(
         `章节幻灯片生成完成 deck=${deckId} 页数=${outcome.slides.length} 生成器=${generator.mode}`,
@@ -370,6 +399,10 @@ export class SlidesService {
 
     const warnings: string[] = [];
     let deck = await this.deckRepo.findOne({ where: { chapterId } });
+    // 乐观锁：客户端持有的版本已过期（别人刚保存/生成过）→ 409，别静默覆盖他的改动
+    if (deck && dto.version !== undefined && dto.version !== deck.version) {
+      await this.throwDeckConflict(deck);
+    }
 
     let slides: DeckSlide[] | undefined;
     if (dto.slides !== undefined) {
@@ -429,6 +462,7 @@ export class SlidesService {
 
     if (!deck) throw new BadRequestException('该章节还没有幻灯片');
 
+    deck.updatedBy = user.id;
     if (dto.title !== undefined) deck.title = dto.title;
     if (dto.templateId !== undefined) {
       await this.assertTemplateUsable(dto.templateId, course.id, user);
@@ -550,11 +584,20 @@ export class SlidesService {
     return chapter;
   }
 
+  /** deck 保存/生成撞上并发编辑：409 + 当前版本 + 最后修改者（与章节保存同一错误结构） */
+  private async throwDeckConflict(deck: SlideDeck): Promise<never> {
+    const editor = deck.updatedBy
+      ? await this.userRepo.findOne({ where: { id: deck.updatedBy } })
+      : null;
+    throw buildConflictError(deck.version, editor);
+  }
+
   private async canEdit(user: User, courseId: string): Promise<boolean> {
     if (user.role === UserRole.ADMIN) return true;
     if (user.role !== UserRole.TEACHER) return false;
     const course = await this.courseRepo.findOne({ where: { id: courseId } });
-    return !!course && course.teacherId === user.id;
+    // 多教师：协作教师同样可以编辑幻灯片（判定复用 CoursesService，见设计文档 §3）
+    return !!course && (await this.coursesService.isTeacherOfCourse(course, user.id));
   }
 
   /** 学生：章节已发布 + 在课程名单里；教师：课程 owner（口径与章节阅读接口一致） */
@@ -588,6 +631,8 @@ export class SlidesService {
       error: deck.error,
       warnings: deck.warnings,
       updatedAt: deck.updatedAt,
+      version: deck.version,
+      updatedBy: deck.updatedBy,
     };
   }
 

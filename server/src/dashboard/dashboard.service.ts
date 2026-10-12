@@ -9,6 +9,7 @@ import {
   ExperimentProject,
 } from '../projects/project.entity';
 import { ProjectsService } from '../projects/projects.service';
+import { CoursesService } from '../courses/courses.service';
 import {
   Evaluation,
   Submission,
@@ -34,6 +35,8 @@ export class DashboardService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly projectsService: ProjectsService,
+    /** 归属判定复用 CoursesService（主教师 + 协作教师），见设计文档 §3 */
+    private readonly coursesService: CoursesService,
   ) {}
 
   /** GET /api/dashboard/teacher-summary —— 课程数、学生总数、待批改提交 */
@@ -41,7 +44,10 @@ export class DashboardService {
     const courses =
       user.role === UserRole.ADMIN
         ? await this.courseRepo.find()
-        : await this.courseRepo.find({ where: { teacherId: user.id } });
+        : await this.courseRepo.find({
+            // 多教师：我参与授课的课（含协作课程），以名单表为准
+            where: { id: In(await this.coursesService.listCourseIdsForTeacher(user.id)) },
+          });
     const courseIds = courses.map((c) => c.id);
     if (courseIds.length === 0) {
       return {

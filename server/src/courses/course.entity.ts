@@ -7,6 +7,7 @@ import {
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
+  VersionColumn,
 } from 'typeorm';
 import { User } from '../users/user.entity';
 
@@ -107,6 +108,18 @@ export class Chapter {
 
   @Column({ type: 'enum', enum: ChapterStatus, default: ChapterStatus.DRAFT })
   status: ChapterStatus;
+
+  /**
+   * 乐观锁版本号（见 docs/DESIGN-2026-10-11-course-co-teachers.md §5）：
+   * `@VersionColumn` 在每次成功 `save()` 时自动 +1；保存请求若带着**过期版本**，业务层给 409 ——
+   * 多教师协作下，避免后写者静默覆盖前一位老师刚保存的内容。
+   */
+  @VersionColumn()
+  version: number;
+
+  /** 最后一次写入者（userId）—— 冲突提示要说清「被谁改了」 */
+  @Column({ type: 'varchar', length: 36, nullable: true })
+  updatedBy: string | null;
 
   @CreateDateColumn()
   createdAt: Date;

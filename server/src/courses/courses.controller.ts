@@ -7,6 +7,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
 } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -16,6 +17,7 @@ import {
   CreateCourseDto,
   EnrollStudentsDto,
   ReorderChaptersDto,
+  SetCourseTeachersDto,
   UpdateCourseDto,
   UpsertChapterDto,
 } from './dto/course.dto';
@@ -48,6 +50,27 @@ export class CoursesController {
     @Body() dto: UpdateCourseDto,
   ) {
     return this.coursesService.updateCourse(user, id, dto);
+  }
+
+  /** 授课教师名单（主教师 + 协作教师）：课程任一教师可读，前端卡片与编辑弹窗用 */
+  @Get(':id/teachers')
+  @Roles(UserRole.TEACHER)
+  listTeachers(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.coursesService.listCourseTeachers(user, id);
+  }
+
+  /** 全量设置协作教师名单（仅主教师 / 管理员，见设计文档 §3） */
+  @Put(':id/teachers')
+  @Roles(UserRole.TEACHER)
+  setTeachers(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetCourseTeachersDto,
+  ) {
+    return this.coursesService.setCourseTeachers(user, id, dto.userIds);
   }
 
   @Post(':id/publish')

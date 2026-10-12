@@ -9,6 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Course } from '../courses/course.entity';
 import { FilesService } from '../files/files.service';
+import { CoursesService } from '../courses/courses.service';
 import {
   Assignment,
   AssignmentStatus,
@@ -42,6 +43,8 @@ export class SubmissionsService {
     @Inject(EVALUATION_RUNNER)
     private readonly evaluationRunner: EvaluationRunner,
     private readonly filesService: FilesService,
+    /** 归属判定复用 CoursesService（主教师 + 协作教师），见设计文档 §3 */
+    private readonly coursesService: CoursesService,
   ) {}
 
   /** POST /api/assignments/:id/submit —— 学生提交 Skill 包 + 证据包 + 审计事件 */
@@ -168,12 +171,10 @@ export class SubmissionsService {
         throw new ForbiddenException('只能查看自己的提交');
       }
     } else if (user.role !== UserRole.ADMIN) {
-      const course = await this.courseRepo.findOne({
-        where: { id: assignment.project.courseId },
-      });
-      if (!course || course.teacherId !== user.id) {
-        throw new ForbiddenException('只有课程所属教师可以执行该操作');
-      }
+      await this.coursesService.assertTeacherOfCourse(
+        user,
+        assignment.project.courseId,
+      );
     }
     return this.submissionRepo.find({
       where: { assignmentId },
@@ -316,11 +317,9 @@ export class SubmissionsService {
     if (!assignment) {
       throw new NotFoundException('任务不存在');
     }
-    const course = await this.courseRepo.findOne({
-      where: { id: assignment.project.courseId },
-    });
-    if (!course || course.teacherId !== user.id) {
-      throw new ForbiddenException('只有课程所属教师可以执行该操作');
-    }
+    await this.coursesService.assertTeacherOfCourse(
+      user,
+      assignment.project.courseId,
+    );
   }
 }

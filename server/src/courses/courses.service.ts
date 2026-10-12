@@ -14,6 +14,7 @@ import {
   CourseStatus,
 } from './course.entity';
 import { ChapterProgress, Enrollment, ProgressStatus } from './enrollment.entity';
+import { CourseTeacher } from './course-teacher.entity';
 import { ExperimentProject } from '../projects/project.entity';
 import {
   CreateCourseDto,
@@ -22,6 +23,7 @@ import {
   UpsertChapterDto,
 } from './dto/course.dto';
 import { buildSlugBase } from './slug.util';
+import { buildConflictError } from '../common/content-conflict';
 import { resolveApplicationState, seatsLeft } from './application-state.util';
 
 @Injectable()
@@ -39,6 +41,9 @@ export class CoursesService {
     private readonly userRepo: Repository<User>,
     @InjectRepository(ExperimentProject)
     private readonly projectRepo: Repository<ExperimentProject>,
+    /** 授课教师名单（多教师协作）：可编辑这门课的人以它为准，见设计文档 §2 */
+    @InjectRepository(CourseTeacher)
+    private readonly courseTeacherRepo: Repository<CourseTeacher>,
   ) {}
 
   // ---------- 课程 CRUD ----------
@@ -54,10 +59,13 @@ export class CoursesService {
     );
     // 公开链接标识：建课时即生成，发布时若为空再兜底（见 publishCourse）
     course.slug = await this.uniqueSlug(buildSlugBase(dto.title, course.id));
-    return this.courseRepo.save(course);
+    const saved = await this.courseRepo.save(course);
+    // 建课人自动进授课教师名单（多教师协作下「谁能编辑」以名单为准，见设计文档 §2）
+    await this.addCourseTeacher(saved.id, teacher.id);
+    return saved;
   }
 
-  /** 管理员看全部课程，教师看自己开的课，学生看自己被选入的课 */
+  /** 管理员看全部课程，教师看**自己参与授课**的课（主教师或协作教师），学生看自己被选入的课 */
   async listCourses(user: User) {
     const relations = ['teacher'];
     let courses: Course[];
@@ -67,8 +75,15 @@ export class CoursesService {
         order: { createdAt: 'DESC' },
       });
     } else if (user.role === UserRole.TEACHER) {
+      // 多教师协作：以名单表为准（主教师也在名单里）→ 这里天然是「我参与的全部课程」
+      const links = await this.courseTeacherRepo.find({
+        where: { userId: user.id },
+      });
+      if (links.length === 0) {
+        return [];
+      }
       courses = await this.courseRepo.find({
-        where: { teacherId: user.id },
+        where: { id: In(links.map((link) => link.courseId)) },
         relations,
         order: { createdAt: 'DESC' },
       });
@@ -86,10 +101,45 @@ export class CoursesService {
       });
     }
     // 只暴露教师显示名；teacher 实体本身（含 passwordHash）不能随响应出去
+    const namesByCourse = await this.buildTeacherNames(courses);
     return courses.map(({ teacher, ...course }) => ({
       ...course,
       teacherName: teacher?.nickname || teacher?.username || '',
+      /** 多教师：主教师在前（见设计文档 §4） */
+      teacherNames: namesByCourse.get(course.id) ?? [],
     }));
+  }
+
+  /**
+   * 课程 → 授课教师显示名（**主教师排在最前**）。多教师展示的统一口径。
+   * 名单表里没有主教师时（迁移前的历史数据）用 `courses.teacherId` 兜底。
+   */
+  private async buildTeacherNames(courses: Course[]): Promise<Map<string, string[]>> {
+    const result = new Map<string, string[]>();
+    const courseIds = courses.map((course) => course.id);
+    if (!courseIds.length) return result;
+    const links = await this.courseTeacherRepo.find({
+      where: { courseId: In(courseIds) },
+    });
+    const userIds = [...new Set(links.map((link) => link.userId))];
+    const users = userIds.length
+      ? await this.userRepo.find({ where: { id: In(userIds) } })
+      : [];
+    const nameOf = new Map(users.map((u) => [u.id, u.nickname || u.username]));
+    for (const course of courses) {
+      const members = links
+        .filter((link) => link.courseId === course.id)
+        .map((link) => link.userId);
+      const ordered = [
+        course.teacherId,
+        ...members.filter((id) => id !== course.teacherId),
+      ];
+      result.set(
+        course.id,
+        ordered.map((id) => nameOf.get(id) ?? '').filter(Boolean),
+      );
+    }
+    return result;
   }
 
   async getCourse(user: User, courseId: string) {
@@ -98,7 +148,13 @@ export class CoursesService {
       throw new NotFoundException('课程不存在');
     }
     if (user.role === UserRole.TEACHER || user.role === UserRole.ADMIN) {
-      this.assertOwner(course, user);
+      // 多教师：主教师或**协作教师**都能看（含草稿章节）；course 已加载，直接判名单即可
+      if (
+        user.role !== UserRole.ADMIN &&
+        !(await this.isTeacherOfCourse(course, user.id))
+      ) {
+        throw new ForbiddenException('只有本课程的授课教师可以查看');
+      }
     } else {
       await this.assertEnrolled(courseId, user.id);
       if (course.status !== CourseStatus.PUBLISHED) {
@@ -121,8 +177,9 @@ export class CoursesService {
       approvedCount,
       seatsLeft: seatsLeft(course.capacity, approvedCount),
     };
+    const teacherNames = (await this.buildTeacherNames([course])).get(course.id) ?? [];
     if (chapters.length === 0) {
-      return { ...course, ...enrollmentState, chapters };
+      return { ...course, ...enrollmentState, teacherNames, chapters };
     }
     // 章节下挂的实验项目一并返回（课程详情页大纲用）
     const projects = await this.projectRepo.find({
@@ -132,6 +189,7 @@ export class CoursesService {
     return {
       ...course,
       ...enrollmentState,
+      teacherNames,
       chapters: chapters.map((ch) => ({
         ...ch,
         projects: projects
@@ -168,9 +226,9 @@ export class CoursesService {
     if (dto.term !== undefined) course.term = dto.term;
     if (dto.description !== undefined) course.description = dto.description;
     if (dto.teacherId !== undefined && dto.teacherId !== course.teacherId) {
-      // 课程转让是管理员专属操作；教师本人只能改自己的课，谈不上"转给谁"
-      if (user.role !== UserRole.ADMIN) {
-        throw new ForbiddenException('只有管理员可以把课程转让给其他教师');
+      // 转让 = 换**主教师**：主教师本人或管理员（原先只允许管理员，见设计文档 §3）
+      if (user.role !== UserRole.ADMIN && course.teacherId !== user.id) {
+        throw new ForbiddenException('只有主教师或管理员可以转让课程');
       }
       const target = await this.userRepo.findOne({
         where: { id: dto.teacherId },
@@ -181,6 +239,8 @@ export class CoursesService {
       ) {
         throw new BadRequestException('目标用户不存在或不是教师');
       }
+      // 新主教师进名单；**原主教师保留为协作教师**（转让不该夺走他的编辑权）
+      await this.addCourseTeacher(course.id, dto.teacherId);
       course.teacherId = dto.teacherId;
     }
     if (dto.capacity !== undefined) course.capacity = dto.capacity ?? null;
@@ -227,7 +287,8 @@ export class CoursesService {
 
   /** 删除课程（级联删除章节、实验、选课、提交等，FK 已配置 CASCADE） */
   async removeCourse(user: User, courseId: string) {
-    const course = await this.getOwnedCourse(user, courseId);
+    // 删课是矩阵里保留给「主教师 + 管理员」的操作（协作教师不能删课，见设计文档 §3）
+    const course = await this.assertPrimaryTeacher(user, courseId);
     await this.courseRepo.remove(course);
     return { deleted: true, id: courseId };
   }
@@ -256,12 +317,17 @@ export class CoursesService {
       if (!chapter) {
         throw new NotFoundException('章节不存在');
       }
+      // 乐观锁：客户端持有的版本与库中不一致 = 期间有人保存过 → 409，别静默覆盖
+      if (dto.version !== undefined && dto.version !== chapter.version) {
+        await this.throwContentConflict(chapter);
+      }
       Object.assign(chapter, {
         title: dto.title,
         order: dto.order ?? chapter.order,
         content: dto.content ?? chapter.content,
         exampleSkills: dto.exampleSkills ?? chapter.exampleSkills,
         status: dto.status ?? chapter.status,
+        updatedBy: user.id,
       });
       return this.chapterRepo.save(chapter);
     }
@@ -327,7 +393,10 @@ export class CoursesService {
     if (!course) {
       throw new NotFoundException('课程不存在');
     }
-    const isOwner = course.teacherId === user.id || user.role === UserRole.ADMIN;
+    // 多教师：主教师或协作教师都能看到全部章节（含草稿）
+    const isOwner =
+      user.role === UserRole.ADMIN ||
+      (await this.isTeacherOfCourse(course, user.id));
     if (!isOwner) {
       await this.assertEnrolled(courseId, user.id);
     }
@@ -375,7 +444,8 @@ export class CoursesService {
     });
     if (
       !course ||
-      (course.teacherId !== user.id && user.role !== UserRole.ADMIN)
+      (user.role !== UserRole.ADMIN &&
+        !(await this.isTeacherOfCourse(course, user.id)))
     ) {
       throw new ForbiddenException('没有权限查看该章节');
     }
@@ -605,22 +675,129 @@ export class CoursesService {
 
   // ---------- 内部工具 ----------
 
-  async getOwnedCourse(user: User, courseId: string): Promise<Course> {
+  // ---------- 授课教师（多教师协作，见 docs/DESIGN-2026-10-11-course-co-teachers.md） ----------
+
+  /**
+   * 该用户是否算这门课的**授课教师**（主教师或协作教师，不含管理员的直通判定）。
+   * 权限判定只留这一处实现，其它模块不要自己比 `courses.teacherId`。
+   */
+  async isTeacherOfCourse(course: Course, userId: string): Promise<boolean> {
+    if (course.teacherId === userId) return true;
+    const link = await this.courseTeacherRepo.findOne({
+      where: { courseId: course.id, userId },
+    });
+    return !!link;
+  }
+
+  /** 任意授课教师（含协作教师）或管理员；否则 403。返回课程，便于调用方继续用。 */
+  async assertTeacherOfCourse(user: User, courseId: string): Promise<Course> {
     const course = await this.courseRepo.findOne({ where: { id: courseId } });
     if (!course) {
       throw new NotFoundException('课程不存在');
     }
-    this.assertOwner(course, user);
+    if (user.role === UserRole.ADMIN) return course;
+    if (await this.isTeacherOfCourse(course, user.id)) return course;
+    throw new ForbiddenException('只有本课程的授课教师可以执行该操作');
+  }
+
+  /** 仅**主教师**或管理员：删除课程、转让主教师、改协作者名单（见设计文档 §3 权限矩阵）。 */
+  async assertPrimaryTeacher(user: User, courseId: string): Promise<Course> {
+    const course = await this.courseRepo.findOne({ where: { id: courseId } });
+    if (!course) {
+      throw new NotFoundException('课程不存在');
+    }
+    if (user.role === UserRole.ADMIN) return course;
+    if (course.teacherId !== user.id) {
+      throw new ForbiddenException('只有主教师或管理员可以执行该操作');
+    }
     return course;
   }
 
-  private assertOwner(course: Course, user: User) {
-    if (user.role === UserRole.ADMIN) {
-      return;
+  /**
+   * @deprecated 名字是历史遗留（原意「课程归属者」）。语义已改为**任意授课教师或管理员**，
+   * 因此编辑章节 / 幻灯片 / 批改 / 审批等 19 处调用点自动支持协作教师。
+   * 需要「仅主教师」的场合请显式用 `assertPrimaryTeacher`。
+   */
+  async getOwnedCourse(user: User, courseId: string): Promise<Course> {
+    return this.assertTeacherOfCourse(user, courseId);
+  }
+
+  /** 把某教师加入课程名单（幂等：已在名单里就不动，靠 `uq_course_teacher` 兜底并发） */
+  private async addCourseTeacher(courseId: string, userId: string): Promise<void> {
+    const exists = await this.courseTeacherRepo.findOne({
+      where: { courseId, userId },
+    });
+    if (!exists) {
+      await this.courseTeacherRepo.save(
+        this.courseTeacherRepo.create({ courseId, userId }),
+      );
     }
-    if (course.teacherId !== user.id) {
-      throw new ForbiddenException('只有课程所属教师可以执行该操作');
+  }
+
+  /** 授课教师名单：`owner` 标记主教师。课程任一教师可读（前端要展示），管理员可读。 */
+  async listCourseTeachers(user: User, courseId: string) {
+    const course = await this.assertTeacherOfCourse(user, courseId);
+    const links = await this.courseTeacherRepo.find({ where: { courseId } });
+    const userIds = [...new Set([course.teacherId, ...links.map((l) => l.userId)])];
+    const users = await this.userRepo.find({ where: { id: In(userIds) } });
+    const byId = new Map(users.map((u) => [u.id, u]));
+    return {
+      ownerId: course.teacherId,
+      teachers: userIds.map((id) => ({
+        id,
+        nickname: byId.get(id)?.nickname ?? '',
+        username: byId.get(id)?.username ?? '',
+        role: id === course.teacherId ? ('owner' as const) : ('co_teacher' as const),
+      })),
+    };
+  }
+
+  /**
+   * 全量设置**协作教师**名单（主教师由「转让」改，这里自动剔除，保证主教师始终在名单里）。
+   * 仅主教师或管理员。
+   */
+  async setCourseTeachers(user: User, courseId: string, userIds: string[]) {
+    const course = await this.assertPrimaryTeacher(user, courseId);
+    const wanted = [...new Set(userIds)];
+    const targets = wanted.length
+      ? await this.userRepo.find({ where: { id: In(wanted) } })
+      : [];
+    const invalid = wanted.filter(
+      (id) =>
+        !targets.some(
+          (t) =>
+            t.id === id &&
+            (t.role === UserRole.TEACHER || t.role === UserRole.ADMIN),
+        ),
+    );
+    if (invalid.length) {
+      throw new BadRequestException('名单里有用户不存在或不是教师');
     }
+    await this.courseTeacherRepo.delete({ courseId });
+    // 主教师始终在名单里；其余按传入选人（顺序无关，靠 UNIQUE 索引兜底）
+    await this.courseTeacherRepo.save(
+      [...new Set([course.teacherId, ...wanted])].map((id) =>
+        this.courseTeacherRepo.create({ courseId, userId: id }),
+      ),
+    );
+    return this.listCourseTeachers(user, courseId);
+  }
+
+  /**
+   * 章节保存撞上并发编辑：抛 409（带当前版本与最后修改者）。
+   * 走统一的 `buildConflictError`，与幻灯片保存的错误结构保持一致。
+   */
+  private async throwContentConflict(chapter: Chapter): Promise<never> {
+    const editor = chapter.updatedBy
+      ? await this.userRepo.findOne({ where: { id: chapter.updatedBy } })
+      : null;
+    throw buildConflictError(chapter.version, editor);
+  }
+
+  /** 某教师**参与授课**的课程 id 列表（含协作课程）—— 工作台/实验项目列表按「我参与的课」过滤用 */
+  async listCourseIdsForTeacher(userId: string): Promise<string[]> {
+    const links = await this.courseTeacherRepo.find({ where: { userId } });
+    return links.map((link) => link.courseId);
   }
 
   /** 学生是否在课程名单里。公开给其他模块复用 —— 权限口径只留一份实现，避免各处漂移 */
