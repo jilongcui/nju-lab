@@ -5,6 +5,36 @@
 
 ## 0. 一句话现状
 
+**2026-10-12（课程多教师协作 + 编辑乐观锁，已上线）**
+
+- **需求口径（用户确认）**：一门课可属多位老师**同时编辑**；**完整多教师**（除「删除课程」「转让」
+  仍限主教师+管理员，其余权限协作者同等）；**一并做乐观锁**；协作者由**主教师/管理员直接指定**。
+- **设计**：`docs/DESIGN-2026-10-11-course-co-teachers.md`。
+- **数据模型**：新增 `course_teachers`（`UNIQUE(courseId,userId)`，**主教师也在表里**，
+  「谁能编辑」以它为唯一真源）；`chapters` / `slide_decks` 加 `version`（`@VersionColumn`）+ `updatedBy`；
+  迁移 `1790800000000-CourseCoTeachers` 建表加列并**回灌**现有 `teacherId`（`down` 可退回单教师，
+  全程不修改 `courses.teacherId`）。
+- **权限收敛**：原先「谁算这门课的老师」散在 **7 个模块 11 处**，现在只剩两处实现 ——
+  `isTeacherOfCourse` / `assertTeacherOfCourse`（任意授课教师，含协作者）与 `assertPrimaryTeacher`
+  （**删课 / 转让 / 改名单**）。`getOwnedCourse` 语义改为「任意授课教师」，于是它的 **19 处调用点**
+  （章节、幻灯片、批改、审批、实验项目、工作台）自动支持协作教师；各模块里复制的 `teacherId` 判定全部删掉。
+- **乐观锁**：章节保存、幻灯片保存、幻灯片生成都接受可选 `version`，过期 → **409**
+  `{code, data:{currentVersion, updatedBy}, message}`（细节靠 `AllExceptionsFilter` 透传到 `data`）；
+  前端 `utils/content-conflict.tsx` 弹「这份内容刚被 **X** 保存过，**你这次的修改没有保存**」+
+  「刷新 / 留在此页」。**不做静默合并**，差异交给老师判断。
+- **接口**：`GET/PUT /courses/:id/teachers`（读：任一教师；写：主教师/管理员）；转让放宽为
+  「主教师或管理员」，转让后**新主教师入名单、原主教师保留为协作者**；`GET /users/teachers` 放开给教师。
+- **验证**：`node server/tools/verify-co-teachers.mjs` **16/16**（**全程用临时课程**跑，最后删除 ——
+  「删课/转让」这类破坏性断言即使判定出错也不波及真实课程）；回归 `verify-course-pages.mjs` 22/22、
+  `verify-chapter-slides.mjs` 21/21、`assert-semantic.mjs` 79/79、`assert-semantic-schema.mjs` 24/24。
+- **⚠️ 本次踩坑（部署纪律）**：给 `SlidesService` 加 `UserRepository` 注入时**忘了在 `SlidesModule` 的
+  `forFeature` 里注册** → Nest 启动即 DI 失败、服务反复重启**约 1 分钟**。
+  教训：**改构造注入必须同步 module 的 forFeature，且「构建 → 重启 → 冒烟」要放在提交之前**
+  （本次是先提交后重启才发现）。另外 `kill $(systemctl show … MainPID)` 在服务已挂时返回 `0`，
+  `kill 0` 会**杀掉自己的 shell** —— 生产脚本里务必判断 PID 非 0。
+- **回滚**：`down` 迁移退回单教师；迁移前的 `courses/chapters/slide_decks/enrollments/chapter_progress`
+  已全量备份在 `/tmp/db-backup-20261011/tables.json`；前端产物备份见 `/home/ubuntu/lab-web-backups/`。
+
 **2026-10-11（课程归属变更）：两门分子医学课转给窦环（0611010）**
 
 - 按用户要求，把《分子医学人工智能理论与实验》（`cd11ea33…`，14 章）与
