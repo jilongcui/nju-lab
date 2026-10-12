@@ -5,6 +5,25 @@
 
 ## 0. 一句话现状
 
+**2026-10-12（幻灯片插图链路修复：正文的图终于进 deck 了）**
+
+- **现象**：章节正文里的插图（`![图注](file:<uuid>)`）一张都没进幻灯片 —— 8 张图 → deck 里 0 张。
+- **根因（v2 语义链路三处断点）**：① **图片清单没进 prompt**（v1 的 outline/expand user prompt 里有
+  可用插图清单，v2 的同名方法被简化掉了）；② `SEMANTIC_BLOCK_SPEC` **缺 image 块规格**，
+  outline 的 plan 列表与选型段也没提图；③ **fileId 形态两代不一致** —— 提取函数返回 `file:<uuid>`
+  （v1 的 `image.url` 要这个），而 v2 的 `image.fileId` 要**裸 uuid**（校验与前端 `resolveImage` 都按裸 id），
+  模型照抄清单就被判「图片引用非法」丢弃。
+- **修法**：v2 两个 prompt 都带 `imageManifest`（裸 id + 图注 + **上下文**：所在小节标题 + 图前 160 字）；
+  补齐 image 块规格（单图/多图并列/role）与选型指示（放回上下文所属那一节、别堆结尾、别漏）；
+  `bareFileId()` 统一形态、校验同时**容忍** `file:` 前缀并归一化；
+  `validateSemanticPages` 增加可选 `allowedImageIds` **挡幻觉**（清单外一律丢弃，不传则宽松）。
+- **实测**（deepseek-flash 真实生成）：第 2 章 0 → **6 个 image 块 / 3 页**（图注语义相符）；
+  第 3 章 0 → **7 个 image 块 / 3 页**（感知机 / MLP / LSTM 门）；前端 iframe 内 6 张图全部
+  `data:image/png;base64` 真实渲染。断言 `assert-semantic-schema.mjs` 24 → **31/31**。
+- **注意**：**其余 12 章正文本身没有插图**（只有第 2 章 5 张、第 3 章 3 张）—— 想更图文并茂，
+  需要往章节正文里加图（章节编辑页右栏「图片」tab 可上传并插入 `![…](file:…)`）；
+  纯数据类内容模型会自动用 `chart` 块自绘图表（不依赖素材）。
+
 **2026-10-12（多教师协作配套：内容操作记录，已上线）**
 
 - 补 `content_audits`（迁移 `1790850000000`，**纯追加**，down 删表即回退）：
