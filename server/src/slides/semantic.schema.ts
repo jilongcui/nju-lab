@@ -188,7 +188,13 @@ export function parseLooseJson(text: string): unknown {
   }
 }
 
-function normalizeBlock(raw: unknown, warnings: string[], pageNo: number): SemanticBlock | null {
+function normalizeBlock(
+  raw: unknown,
+  warnings: string[],
+  pageNo: number,
+  /** 允许引用的图片 fileId；未传则不校验（教师手工编辑时宽松） */
+  allowedImageIds?: Set<string>,
+): SemanticBlock | null {
   if (!isRecord(raw) || typeof raw.kind !== 'string' || !BLOCK_SET.has(raw.kind)) return null;
   const kind = raw.kind as SemanticBlockKind;
   switch (kind) {
@@ -324,16 +330,26 @@ function normalizeBlock(raw: unknown, warnings: string[], pageNo: number): Seman
       return { kind, text, cite: str(raw.cite, 40) };
     }
     case 'image': {
-      const fileId = str(raw.fileId, 64) ?? '';
+      // 容忍模型写成 `file:<uuid>`（v1 的写法）：归一化成裸 uuid 再校验，避免同图两代形态不一致
+      const fileId = (str(raw.fileId, 64) ?? '').replace(/^file:/, '');
       if (!/^[0-9a-fA-F-]{36}$/.test(fileId)) {
         warnings.push(`第 ${pageNo} 页的图片引用非法，已忽略该图`);
+        return null;
+      }
+      // 防幻觉：只允许引用**本章正文里真实存在的图**（清单由调用方传入；未传则不校验，教师手编时宽松）
+      if (allowedImageIds && !allowedImageIds.has(fileId)) {
+        warnings.push(`第 ${pageNo} 页引用了正文里没有的图片，已忽略该图`);
         return null;
       }
       const role = ['hero', 'inline', 'full', 'grid'].includes(String(raw.role)) ? String(raw.role) : 'inline';
       const items = (Array.isArray(raw.items) ? raw.items : [])
         .filter(isRecord)
-        .map((item) => ({ fileId: str(item.fileId, 64) ?? '', caption: str(item.caption, 60) }))
+        .map((item) => ({
+          fileId: (str(item.fileId, 64) ?? '').replace(/^file:/, ''),
+          caption: str(item.caption, 60),
+        }))
         .filter((item) => /^[0-9a-fA-F-]{36}$/.test(item.fileId))
+        .filter((item) => !allowedImageIds || allowedImageIds.has(item.fileId))
         .slice(0, 4);
       return { kind, fileId, caption: str(raw.caption, 80), role, items: items.length ? items : undefined };
     }
@@ -377,6 +393,11 @@ function normalizeBlock(raw: unknown, warnings: string[], pageNo: number): Seman
 export function validateSemanticPages(
   raw: unknown,
   limits: { maxPages: number; maxNotes: number },
+  /**
+   * 允许引用的图片 fileId（本章正文里真实存在的图）。给了就**挡幻觉**：不在清单里的一律丢弃；
+   * 不给则宽松（教师手工编辑 JSON 时不至于被卡）。
+   */
+  allowedImageIds?: Set<string>,
 ): { pages: SemanticPage[]; warnings: string[] } {
   const warnings: string[] = [];
   const list = Array.isArray(raw) ? raw : isRecord(raw) && Array.isArray(raw.pages) ? raw.pages : [];
@@ -402,7 +423,7 @@ export function validateSemanticPages(
       );
     }
     const blocks = (Array.isArray(item.blocks) ? item.blocks : [])
-      .map((block) => normalizeBlock(block, warnings, pageNo))
+      .map((block) => normalizeBlock(block, warnings, pageNo, allowedImageIds))
       .filter((block): block is SemanticBlock => !!block);
     if (!blocks.length) {
       warnings.push(`第 ${pageNo} 页没有可用内容块，已跳过`);
@@ -503,7 +524,7 @@ export const SEMANTIC_OUTLINE_SYSTEM = [
   '{"deckTitle": string, "pages": [{"intent": string, "kicker": string, "title": string, "lede": string, "keyPoint": string, "plan": string[]}]}',
   `intent 只能取：${SEMANTIC_INTENTS.join(' | ')}。`,
   '**intent 是「版式」，只能取上面这一串；claim/evidence/metric/sequence/flow/arch/relation/timeline/compare/table/chart/formula/code/quote/note 是「内容块类型」，只能出现在 plan 里，绝不许当 intent 用。**',
-  'plan 是本页要用的内容块类型，从 claim/evidence/metric/sequence/flow/arch/relation/timeline/compare/table/chart/formula/code/quote/note 里选 1–2 个。',
+  'plan 是本页要用的内容块类型，从 claim/evidence/metric/sequence/flow/arch/relation/timeline/compare/table/chart/formula/code/quote/image/note 里选 1–2 个。',
   '',
   '【整体结构】',
   '1) 第 1 页 intent=cover（title 用章节名，kicker 用课程名，lede 一句话交代本章要解决什么）；',
@@ -516,7 +537,9 @@ export const SEMANTIC_OUTLINE_SYSTEM = [
   '正文里有 1–4 个关键数字 → metric；有先后顺序的步骤/操作 → sequence；数据在环节间流动的管线 → flow；',
   '分层结构（层 × 组件，如系统栈）→ arch；概念之间的关系（谁依赖谁、一个中心带几个相关概念）→ relation；',
   '时间演化/路线图 → timeline；需要严格对齐的多列数值 → table；**正文里有可以画成图的数值序列就用 data（柱/折线/环形）**；',
-  '有公式推导 → claim（plan 里写 formula 块）；代码或命令 → example；一句话点睛 → quote。',
+  '有公式推导 → claim（plan 里写 formula 块）；代码或命令 → example；一句话点睛 → quote；',
+  '**正文里带了插图（用户消息末尾给了清单）→ 用 image 页**：把它放回它上下文所属的那一节里，',
+  '标题/lede 说明这张图让人看出什么；一张都别漏，也别把图全堆在最后一页。',
   '4) 一份 deck 至少要出现 3 种不同的内容页 intent（不许全是 claim）；relation/flow/arch/timeline 这类"图示页"',
   '只在正文确有相应结构时使用，**不要为了好看硬凑**。',
   `5) 总页数不超过 ${20} 页（含首尾）。`,
@@ -545,6 +568,7 @@ export const SEMANTIC_BLOCK_SPEC = [
   '- {"kind":"formula","tex":"\\frac{QK^\\top}{\\sqrt{d}}","caption":"一句话说明"}  LaTeX 源码',
   '- {"kind":"code","lang":"python","content":"≤18 行代码","caption":"一句话说明"}',
   '- {"kind":"quote","text":"引文或结论","cite":"出处（可省）"}',
+  '- {"kind":"image","fileId":"<插图清单里的 id>","caption":"一句话图注（≤40 字）","role":"hero|inline|full"}  单图；多图并列：{"kind":"image","fileId":"<第一张>","items":[{"fileId":"…","caption":"…"}]}（≤4 张）；**fileId 只能照抄清单，编造会被丢弃**',
   '- {"kind":"note","text":"本页的补充说明（≤60 字，不是讲稿）"}',
 ].join('\n');
 
@@ -565,7 +589,7 @@ export const SEMANTIC_EXPAND_SYSTEM = [
   '8) 【intent 与 blocks 必须匹配，且箭头左边**只能**是上面的 intent 白名单，右边才是块类型】',
   'cover→evidence；toc→sequence；section→evidence（本节导读，可省）；',
   'claim→claim + evidence（本页有公式时再加 formula）；contrast→compare；pillars→sequence 或 evidence；metric→metric；sequence→sequence；',
-  'flow→flow；arch→arch；relation→relation；timeline→timeline；table→table；data→chart；',
+  'flow→flow；arch→arch；relation→relation；timeline→timeline；table→table；data→chart；image→image；',
   'example→code；quote→quote；',
   'summary→claim 或 evidence。除 note（本页补充说明）外，**不要在同一页混入别的块类型**。',
 ].join('\n');

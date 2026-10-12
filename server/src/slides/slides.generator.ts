@@ -46,24 +46,81 @@ export interface DeckSource {
   courseTitle: string;
   chapterTitle: string;
   chapterContent: string;
-  /** 章节正文里出现的平台图片（`![cap](file:<id>)`），LLM 配图的唯一合法来源 */
-  availableImages?: { fileId: string; caption?: string }[];
+  /** 章节正文里出现的平台图片（含上下文），LLM 配图的唯一合法来源 */
+  availableImages?: ChapterImageRef[];
 }
 
 /** 从章节正文提取可用的平台图片引用（去重，首次出现为准）；没有则返回空数组 = 不配图 */
-export function extractChapterImages(
-  content: string,
-): { fileId: string; caption?: string }[] {
+export interface ChapterImageRef {
+  fileId: string;
+  caption?: string;
+  /**
+   * 图片在正文里的**上下文**：所在小节标题 + 图片前一段原文片段（已去 Markdown 标记）。
+   *
+   * 2026-10-12 补：此前只给模型 fileId 与图注，模型无从判断"这张图讲什么、该放哪一页"，
+   * 于是正文里有图也没用上（实测 8 张图 → deck 里 0 张）。有了上下文才能把图放回语义所属的位置。
+   */
+  context?: string;
+}
+
+export function extractChapterImages(content: string): ChapterImageRef[] {
   const seen = new Set<string>();
-  const images: { fileId: string; caption?: string }[] = [];
+  const images: ChapterImageRef[] = [];
   const re = /!\[([^\]]*)\]\((file:[0-9a-fA-F-]{36})\)/g;
   let match: RegExpExecArray | null;
   while ((match = re.exec(content))) {
     if (seen.has(match[2])) continue;
     seen.add(match[2]);
-    images.push({ fileId: match[2], caption: match[1] || undefined });
+    images.push({
+      fileId: match[2],
+      caption: match[1] || undefined,
+      context: imageContext(content.slice(0, match.index)),
+    });
   }
   return images;
+}
+
+/** 取图片**之前**的正文，压成一句话上下文：最后一个小节标题 + 末尾 160 字 */
+function imageContext(before: string): string | undefined {
+  const headings = [...before.matchAll(/^#{1,4}\s*(.+?)\s*$/gm)];
+  const section = headings.length ? headings[headings.length - 1][1].trim() : '';
+  const plain = before
+    .slice(-400)
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/[#>*`|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(-160);
+  const parts = [section && `小节「${section}」`, plain].filter(Boolean);
+  return parts.length ? parts.join('：') : undefined;
+}
+
+/**
+ * 同一张图在两代模型里的 **fileId 形态不同**：
+ *   · v1（`SlideJson.image.url`）要 `file:<uuid>`（见 deck.schema 的注释）；
+ *   · v2（语义 `image.fileId`）要**裸 uuid**（校验与前端 `resolveImage` 都按裸 id 拼 `file:`）。
+ * 提取函数统一返回 `file:<uuid>`，v2 侧用这个转换（2026-10-12 实测：形态不一致导致
+ * 模型照抄清单里的 `file:` 前缀，6 处 image 块全被校验判为"引用非法"而丢弃）。
+ */
+export function bareFileId(fileId: string): string {
+  return fileId.replace(/^file:/, '');
+}
+
+/** 把插图清单编成 prompt 片段（outline 与 expand 共用，措辞一致） */
+export function imageManifest(images: ChapterImageRef[] = []): string[] {
+  if (!images.length) return [];
+  return [
+    '',
+    '【本章正文里的插图（务必用上）】',
+    ...images.map(
+      (img, index) =>
+        `${index + 1}. fileId=${bareFileId(img.fileId)}${img.caption ? `｜图注：${img.caption}` : ''}${
+          img.context ? `｜上下文：${img.context}` : ''
+        }`,
+    ),
+    '把每张图放回**它上下文所属的那一节**的那一页（别集中堆在结尾，也别漏掉）；',
+    'image 块的 fileId 只能照抄上面这些 id，编造的一律会被丢弃。',
+  ];
 }
 
 export interface GenerateOutcome {
@@ -1141,9 +1198,13 @@ export class LlmDeckGenerator implements DeckGenerator {
  *   3) 批内缺页用**计划骨架**兜底（页数、页序永不漂移）。
  */
 export class SemanticLlmDeckGenerator implements DeckGenerator {
+  /** 本次生成可用的插图（进 prompt 的清单；`assertImagesFromSource` 用它挡幻觉） */
+  private lastImages: ChapterImageRef[] = [];
   readonly mode: SlidesGeneratorMode = 'llm';
 
   async generate(source: DeckSource): Promise<GenerateOutcome> {
+    // 记下本章插图（进 outline/expand 的 prompt 清单，并用于挡幻觉 fileId）
+    this.lastImages = source.availableImages ?? [];
     const content = truncate(source.chapterContent || '（本章暂无正文）', SLIDES_SOURCE_MAX_CHARS);
     const warnings: string[] = [];
 
@@ -1188,10 +1249,15 @@ export class SemanticLlmDeckGenerator implements DeckGenerator {
       pages.push(...(result.slides as SemanticPage[]));
     }
 
-    const { pages: validated, warnings: schemaWarnings } = validateSemanticPages(pages, {
-      maxPages: SLIDES_LIMITS.maxSlides,
-      maxNotes: SLIDES_LIMITS.maxNotes,
-    });
+    const { pages: validated, warnings: schemaWarnings } = validateSemanticPages(
+      pages,
+      {
+        maxPages: SLIDES_LIMITS.maxSlides,
+        maxNotes: SLIDES_LIMITS.maxNotes,
+      },
+      // 挡幻觉：只认本章正文里真实存在的图（见 imageManifest 的说明）
+      this.allowedImageIdSet(),
+    );
     warnings.push(...schemaWarnings);
 
     return {
@@ -1255,10 +1321,14 @@ export class SemanticLlmDeckGenerator implements DeckGenerator {
             title: item.title || record.title,
           }
         : { intent: item.intent, kicker: item.kicker, title: item.title, lede: item.lede, blocks: [] };
-      const { pages: validated, warnings: schemaWarnings } = validateSemanticPages([candidate], {
-        maxPages: 1,
-        maxNotes: SLIDES_LIMITS.maxNotes,
-      });
+      const { pages: validated, warnings: schemaWarnings } = validateSemanticPages(
+        [candidate],
+        {
+          maxPages: 1,
+          maxNotes: SLIDES_LIMITS.maxNotes,
+        },
+        this.allowedImageIdSet(),
+      );
       warnings.push(...schemaWarnings.map((text) => `第 ${startIndex + i + 1} 页：${text}`));
       if (validated[0]) return validated[0];
       // 兜底：计划骨架（页数/页序永不漂移）
@@ -1274,8 +1344,21 @@ export class SemanticLlmDeckGenerator implements DeckGenerator {
     return { slides: pages, warnings, promptTokens, completionTokens };
   }
 
+  /** 允许的图片 fileId 集合（清单为空 = 一律不允许图片块） */
+  private allowedImageIdSet(): Set<string> {
+    // v2 的 image.fileId 是裸 uuid（与校验、前端一致）
+    return new Set(this.lastImages.map((image) => bareFileId(image.fileId)));
+  }
+
   private outlineUserPrompt(source: DeckSource, content: string): string {
-    return [`课程：${source.courseTitle}`, `章节：${source.chapterTitle}`, '', '【章节正文】', content].join('\n');
+    return [
+      `课程：${source.courseTitle}`,
+      `章节：${source.chapterTitle}`,
+      '',
+      '【章节正文】',
+      content,
+      ...imageManifest(source.availableImages),
+    ].join('\n');
   }
 
   private expandUserPrompt(content: string, plan: unknown): string {
@@ -1285,6 +1368,7 @@ export class SemanticLlmDeckGenerator implements DeckGenerator {
       '',
       '【章节正文】',
       content,
+      ...imageManifest(this.lastImages),
     ].join('\n');
   }
 

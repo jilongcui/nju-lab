@@ -107,6 +107,55 @@ check(
   arrowLeft.join(' '),
 );
 
+// ---------------- 2.5 插图链路（v2）----------------
+// 2026-10-12：原来 availableImages 根本没进 v2 的 prompt（清单+块规格都缺），
+// 而且提取出来的 fileId 带 `file:` 前缀、校验要裸 uuid —— 正文里的图一张都没进 deck。
+const IMG_A = 'fbaf516a-1234-4abc-8def-0123456789ab';
+const IMG_B = 'cabd8c96-1234-4abc-8def-0123456789ab';
+const imgOk = validateSemanticPages(
+  [
+    {
+      intent: 'image',
+      title: '含图页',
+      blocks: [
+        { kind: 'image', fileId: IMG_A, caption: '图一', role: 'hero' },
+        { kind: 'image', fileId: `file:${IMG_B}`, caption: '带前缀的写法' },
+      ],
+    },
+  ],
+  LIMITS,
+  new Set([IMG_A, IMG_B]),
+);
+const imgBlocks = imgOk.pages[0]?.blocks.filter((b) => b.kind === 'image') ?? [];
+check('插图：清单内的图片保留', imgBlocks.length === 2, `保留 ${imgBlocks.length}`);
+check(
+  '插图：`file:` 前缀被归一化成裸 uuid（两代模型 fileId 形态不同）',
+  imgBlocks.some((b) => b.fileId === IMG_B),
+  imgBlocks.map((b) => String(b.fileId).slice(0, 12)).join(' '),
+);
+check('插图：保留图注与 role', imgBlocks.some((b) => b.caption === '图一' && b.role === 'hero'));
+const imgHacked = validateSemanticPages(
+  [{ intent: 'image', title: '编造的图', blocks: [{ kind: 'image', fileId: 'deadbeef-dead-4bee-8def-0123456789ab' }, { kind: 'claim', text: '仍应保留的正文' }] }],
+  LIMITS,
+  new Set([IMG_A]),
+);
+check(
+  '插图：清单外的 fileId 被丢弃（挡幻觉），同页其它块不受影响',
+  !(imgHacked.pages[0]?.blocks ?? []).some((b) => b.kind === 'image') &&
+    (imgHacked.pages[0]?.blocks ?? []).some((b) => b.kind === 'claim'),
+);
+check('插图：给出非法 fileId 时有可读 warning', imgHacked.warnings.some((w) => w.includes('没有的图片')));
+const imgNoList = validateSemanticPages(
+  [{ intent: 'image', title: '无清单', blocks: [{ kind: 'image', fileId: IMG_A }, { kind: 'claim', text: 'x' }] }],
+  LIMITS,
+  new Set(),
+);
+check('插图：允许清单为空 → 一律不放图（正文没图时不硬凑）', !(imgNoList.pages[0]?.blocks ?? []).some((b) => b.kind === 'image'));
+check(
+  '插图：不传清单时宽松（教师手工编辑 JSON 不被卡）',
+  validateSemanticPages([{ intent: 'image', title: 't', blocks: [{ kind: 'image', fileId: IMG_A }] }], LIMITS).pages[0]?.blocks.some((b) => b.kind === 'image'),
+);
+
 // ---------------- 3. 块级预算 ----------------
 const over = validateSemanticPages(
   [
