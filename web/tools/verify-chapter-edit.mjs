@@ -26,7 +26,9 @@ mkdirSync(SHOTS_DIR, { recursive: true });
 
 const SITE_HOST = 'medai.nju.edu.cn';
 const BASE = `http://${SITE_HOST}/lab`;
-const CHAPTER_ID = process.argv[2] || '6133aea6-b85c-480f-ac9a-079820a8cef5';
+// 默认第 7 章「向量数据库」（现存章节）—— 旧的默认 6133aea6 在 2026-09-30 的章节替换中已被删除
+// 断言验证的是脚本自带的 MD_SAMPLE（表格/代码/引用/公式），与目标章内容无关，只要求"可编辑、有兄弟章节"
+const CHAPTER_ID = process.argv[2] || '3d52759a-0b32-4e6e-a74c-9febc2d44d14';
 
 const results = [];
 const check = (label, ok, extra = '') => {

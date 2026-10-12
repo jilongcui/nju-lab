@@ -23,7 +23,9 @@
  *   · 登录走**后端 API**（不点登录页）：Playwright 的 name 是子串匹配，`name: '登录'` 会误点
  *     「统一认证登录」把页面带去 CAS；拿到 token 后按 zustand persist 格式写 localStorage(`nju-lab-auth`)
  *   · 页码从 iframe 的 postMessage 事件读（演示 iframe 是 opaque origin，读不到它的 DOM）
- *   · 结束后自动清理本次生成的 deck（不留生产数据）
+ *   · **安全约定（2026-10-12 补）**：若该章**本来就有课件**，本脚本只做只读验证 ——
+ *     **不生成、也不删除**（旧版无条件 DELETE，而课程 14 章现在都有老师准备的课件，一跑就会删掉它）
+ *   · 只有"该章原本没有课件"时，才走"生成 → 验证 → 清理"的老路径
  */
 import { mkdirSync } from 'node:fs';
 import { chromium } from 'playwright';
@@ -34,7 +36,8 @@ mkdirSync(SHOTS_DIR, { recursive: true });
 
 const SITE_HOST = 'medai.nju.edu.cn';
 const BASE = `http://${SITE_HOST}/lab`;
-const CHAPTER_ID = process.argv[2] || '6133aea6-b85c-480f-ac9a-079820a8cef5';
+// 默认第 7 章「向量数据库」（现存、且已有语义 deck）—— 旧的默认章节 6133aea6 已被删除（2026-09-30 章节替换）
+const CHAPTER_ID = process.argv[2] || '3d52759a-0b32-4e6e-a74c-9febc2d44d14';
 
 const results = [];
 /** 提升到外层：finally 里的清理也要用它 */
@@ -63,6 +66,8 @@ const lastIndex = async () => {
   return changed.length ? changed[changed.length - 1].index : -1;
 };
 
+let hadDeckBefore = false;
+
 try {
   // 1) 登录：直接用后端 API 拿 token，再按 zustand persist 的格式写进 localStorage。
   //    不走 UI 登录的原因：Playwright 的 name 默认是**子串**匹配，`name: '登录'` 会命中
@@ -84,21 +89,41 @@ try {
   );
   check('API 登录并注入会话', true, 'teacher');
 
+  // 1.5) 先问后端：这一章本来就有课件吗？—— 决定后面「生成/清理」还是「只读验证」
+  const existingDeck = await fetch(`http://127.0.0.1:3100/api/chapters/${CHAPTER_ID}/slides`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => r.json());
+  hadDeckBefore = !!(existingDeck?.data?.deck?.slides?.length);
+  check(
+    '已确认目标章节的课件状态（有则只读验证：不生成不删除）',
+    true,
+    hadDeckBefore ? '本章已有课件 → 只读' : '本章无课件 → 生成后清理',
+  );
+
   // 2) 直接进章节幻灯片页
   await page.goto(`${BASE}/teacher/chapters/${CHAPTER_ID}/slides`, { waitUntil: 'domcontentloaded' });
   await page.getByText('章节幻灯片').first().waitFor({ timeout: 20000 });
   check('进入幻灯片页', true);
 
-  // 3) 生成（mock 生成器，很快）
-  const genBtn = page.getByRole('button', { name: /生成幻灯片|重新生成/ }).first();
-  await genBtn.click();
-  await page.waitForFunction(
-    () => !document.body.innerText.includes('正在生成幻灯片'),
-    null,
-    { timeout: 60000 },
-  );
-  const pageCount = await page.locator('div[style*="cursor: pointer"]').count();
-  check('生成完成（左侧页列表出现）', pageCount > 1, `${pageCount} 页`);
+  // 3) 有课件就复用（绝不重新生成覆盖老师的成果），没有才生成
+  if (!hadDeckBefore) {
+    const genBtn = page.getByRole('button', { name: /生成幻灯片|重新生成/ }).first();
+    await genBtn.click();
+    await page.waitForFunction(
+      () => !document.body.innerText.includes('正在生成幻灯片'),
+      null,
+      { timeout: 60000 },
+    );
+    const generated = await page.locator('div[style*="cursor: pointer"]').count();
+    check('生成完成（左侧页列表出现）', generated > 1, `${generated} 页`);
+  } else {
+    check('复用本章已有课件（未重新生成）', true, '只读验证');
+  }
+  // 页数以**后端数据**为准（`div[style*="cursor: pointer"]` 会把其它可点元素也算进来，曾误报 18 页）
+  const deckPages = existingDeck?.data?.deck?.slides?.length ?? 0;
+  const listItems = await page.locator('div[style*="cursor: pointer"]').count();
+  check('幻灯片页列表已渲染', listItems > 1, `列表项 ${listItems}`);
+  check('页数与后端一致（有课件时）', !hadDeckBefore || deckPages > 1, `deck ${deckPages} 页`);
 
   // 4) 放映
   await page.getByRole('button', { name: '放映' }).click();
@@ -169,11 +194,15 @@ try {
   // 清理：删掉本次验证生成的 deck（别在生产库留垃圾）
   try {
     if (!token) throw new Error('未登录成功，无法清理');
-    await fetch(`http://127.0.0.1:3100/api/chapters/${CHAPTER_ID}/slides`, {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    console.log('  · 已清理本次验证生成的 deck');
+    if (hadDeckBefore) {
+      console.log('  · 本章原有课件保持不动（未生成、未删除）');
+    } else {
+      await fetch(`http://127.0.0.1:3100/api/chapters/${CHAPTER_ID}/slides`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      console.log('  · 已清理本次验证生成的 deck');
+    }
   } catch (e) {
     console.log('  · deck 清理失败（需手动删）：', e.message);
   }

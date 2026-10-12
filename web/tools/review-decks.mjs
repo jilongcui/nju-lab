@@ -26,13 +26,14 @@ const API = process.env.REVIEW_API || 'http://127.0.0.1:3100/api';
 const SITE_HOST = 'medai.nju.edu.cn';
 const BASE = `http://${SITE_HOST}/lab`;
 
-/** 默认评测集：生产库真实章节（2026-09-29 用 API 核实字数与内容类型） */
+/** 默认评测集：生产库真实章节（2026-10-12 重新核实 —— 旧清单里的 6133aea6 / e908e0bb 两个章节
+ *  在 2026-09-30 的章节替换中已被删除，其余 id 虽在但章节名与备注也都换了，务必用 id 对名字核对） */
 const EVAL_CHAPTERS = [
-  { id: '6133aea6-b85c-480f-ac9a-079820a8cef5', name: '结构化Prompt模版', note: '叙述性正文 3499字' },
-  { id: 'e908e0bb-a500-46de-a4ec-5592f7713ee4', name: '输出JSON结构数据', note: '代码含量最高 3616字' },
-  { id: '63d6f6bc-a18b-427b-a829-8bd75dc096d4', name: '思维链COT', note: '概念+示例 3027字' },
-  { id: '3e54377d-d659-437d-a474-c505a674368e', name: '提示工程介绍', note: '入门概念 2831字' },
-  { id: '7070707c-0d96-4162-aac2-5650e0e277a2', name: '什么是人工智能', note: '短章节压力测试 1059字' },
+  { id: 'ca6cc944-b6c8-4ad6-b9e6-12f5a868d3df', name: '智能体：定义、框架与常用选择', note: '叙述性正文 2525 字' },
+  { id: '36e3d1cc-f725-4cdb-962e-99fdd0bed50c', name: '深度学习基本原理和实践', note: '代码 + 公式密集 3693 字' },
+  { id: '3d52759a-0b32-4e6e-a74c-9febc2d44d14', name: '向量数据库', note: '概念 + 动手实例 2481 字' },
+  { id: '63d6f6bc-a18b-427b-a829-8bd75dc096d4', name: '关系数据库', note: '短章节 2198 字' },
+  { id: '7070707c-0d96-4162-aac2-5650e0e277a2', name: '人工智能发展概论', note: '极短章节压力测试 1059 字' },
 ];
 
 const label = process.argv[2];
@@ -101,6 +102,11 @@ async function main() {
   mkdirSync(outRoot, { recursive: true });
   const { token, user } = await login();
   console.log(`· 已登录（teacher），标签=${label}，章节数=${chapters.length}`);
+  if (!shotsOnly) {
+    console.log('⚠️  以下章节的幻灯片将被 **force 重新生成**（覆盖该章现有 deck、并消耗 token）：');
+    chapters.forEach((c) => console.log(`      · ${c.name}（${c.id.slice(0, 8)}）`));
+    console.log('    只想看现有 deck、不生成：加 --shots-only。');
+  }
 
   // 1) 逐章生成（串行：同课程共享每小时配额，也避免并发把 DeepSeek 打挂）
   const decks = [];
