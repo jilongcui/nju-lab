@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Chapter, Course } from '../courses/course.entity';
+import { User } from '../users/user.entity';
 import { CoursesModule } from '../courses/courses.module';
 import { SlideDeck } from './slide-deck.entity';
 import { SlideTemplate } from './slide-template.entity';
@@ -18,7 +19,8 @@ import { SlidesService } from './slides.service';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([SlideDeck, SlideTemplate, Chapter, Course]),
+    // User 仓储：乐观锁冲突提示要按 updatedBy 取昵称
+    TypeOrmModule.forFeature([SlideDeck, SlideTemplate, Chapter, Course, User]),
     CoursesModule,
   ],
   controllers: [ChapterSlidesController, SlideTemplatesController],
