@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -60,6 +61,17 @@ export class CoursesController {
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.coursesService.listCourseTeachers(user, id);
+  }
+
+  /** 内容操作记录（谁在什么时候改了什么）：课程任一教师 + 管理员可读 */
+  @Get(':id/audits')
+  @Roles(UserRole.TEACHER)
+  listAudits(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.coursesService.listAudits(user, id, limit ? Number(limit) : 30);
   }
 
   /** 全量设置协作教师名单（仅主教师 / 管理员，见设计文档 §3） */

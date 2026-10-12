@@ -67,6 +67,7 @@ import type {
 import { STATE_META, formatDateTime, formatSeats } from '../../applicationState';
 import StatusTag from '../../components/StatusTag';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
+import CourseAuditList from '../../components/CourseAuditList';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -794,6 +795,8 @@ export default function CourseDetail() {
           { key: 'chapters', label: '章节与实验', children: chaptersTab },
           { key: 'students', label: `学生管理（${roster.length}）`, children: studentsTab },
           { key: 'enrollment', label: '公开报名', children: enrollmentTab },
+          // 多教师协作的追溯：谁在什么时候改了章节/幻灯片/课程信息/名单
+          { key: 'audits', label: '操作记录', children: <CourseAuditList courseId={courseId} /> },
         ]}
       />
 

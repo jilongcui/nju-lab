@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -15,6 +16,7 @@ import {
 } from './course.entity';
 import { ChapterProgress, Enrollment, ProgressStatus } from './enrollment.entity';
 import { CourseTeacher } from './course-teacher.entity';
+import { ContentAudit } from './content-audit.entity';
 import { ExperimentProject } from '../projects/project.entity';
 import {
   CreateCourseDto,
@@ -44,7 +46,14 @@ export class CoursesService {
     /** 授课教师名单（多教师协作）：可编辑这门课的人以它为准，见设计文档 §2 */
     @InjectRepository(CourseTeacher)
     private readonly courseTeacherRepo: Repository<CourseTeacher>,
-  ) {}
+    /** 内容操作流水（谁在什么时候改了什么） */
+    @InjectRepository(ContentAudit)
+    private readonly auditRepo: Repository<ContentAudit>,
+  ) {
+    this.logger = new Logger(CoursesService.name);
+  }
+
+  private readonly logger: Logger;
 
   // ---------- 课程 CRUD ----------
 
@@ -62,6 +71,14 @@ export class CoursesService {
     const saved = await this.courseRepo.save(course);
     // 建课人自动进授课教师名单（多教师协作下「谁能编辑」以名单为准，见设计文档 §2）
     await this.addCourseTeacher(saved.id, teacher.id);
+    await this.recordAudit({
+      courseId: saved.id,
+      action: 'course_create',
+      targetType: 'course',
+      targetId: saved.id,
+      summary: `创建了课程「${saved.title}」`,
+      actorId: teacher.id,
+    });
     return saved;
   }
 
@@ -225,6 +242,7 @@ export class CoursesService {
     if (dto.title !== undefined) course.title = dto.title;
     if (dto.term !== undefined) course.term = dto.term;
     if (dto.description !== undefined) course.description = dto.description;
+    let transferredTo: string | null = null;
     if (dto.teacherId !== undefined && dto.teacherId !== course.teacherId) {
       // 转让 = 换**主教师**：主教师本人或管理员（原先只允许管理员，见设计文档 §3）
       if (user.role !== UserRole.ADMIN && course.teacherId !== user.id) {
@@ -242,6 +260,7 @@ export class CoursesService {
       // 新主教师进名单；**原主教师保留为协作教师**（转让不该夺走他的编辑权）
       await this.addCourseTeacher(course.id, dto.teacherId);
       course.teacherId = dto.teacherId;
+      transferredTo = target.nickname || target.username;
     }
     if (dto.capacity !== undefined) course.capacity = dto.capacity ?? null;
     if (dto.applicationOpenAt !== undefined) {
@@ -255,7 +274,27 @@ export class CoursesService {
         : null;
     }
 
-    return this.courseRepo.save(course);
+    const updated = await this.courseRepo.save(course);
+    if (transferredTo) {
+      await this.recordAudit({
+        courseId,
+        action: 'course_transfer',
+        targetType: 'course',
+        targetId: courseId,
+        summary: `把课程转让给「${transferredTo}」（原主教师保留为协作教师）`,
+        actorId: user.id,
+      });
+    } else {
+      await this.recordAudit({
+        courseId,
+        action: 'course_update',
+        targetType: 'course',
+        targetId: courseId,
+        summary: `更新了课程信息「${updated.title}」`,
+        actorId: user.id,
+      });
+    }
+    return updated;
   }
 
   async publishCourse(user: User, courseId: string) {
@@ -290,6 +329,15 @@ export class CoursesService {
     // 删课是矩阵里保留给「主教师 + 管理员」的操作（协作教师不能删课，见设计文档 §3）
     const course = await this.assertPrimaryTeacher(user, courseId);
     await this.courseRepo.remove(course);
+    // 记录保留（courseId 指向已删课程）—— 便于事后追查"谁把课删了"
+    await this.recordAudit({
+      courseId,
+      action: 'course_delete',
+      targetType: 'course',
+      targetId: courseId,
+      summary: `删除了课程「${course.title}」`,
+      actorId: user.id,
+    });
     return { deleted: true, id: courseId };
   }
 
@@ -303,6 +351,14 @@ export class CoursesService {
     }
     await this.getOwnedCourse(user, chapter.courseId);
     await this.chapterRepo.remove(chapter);
+    await this.recordAudit({
+      courseId: chapter.courseId,
+      action: 'chapter_delete',
+      targetType: 'chapter',
+      targetId: chapterId,
+      summary: `删除了章节「${chapter.title}」`,
+      actorId: user.id,
+    });
     return { deleted: true, id: chapterId };
   }
 
@@ -329,7 +385,16 @@ export class CoursesService {
         status: dto.status ?? chapter.status,
         updatedBy: user.id,
       });
-      return this.chapterRepo.save(chapter);
+      const savedChapter = await this.chapterRepo.save(chapter);
+      await this.recordAudit({
+        courseId,
+        action: 'chapter_save',
+        targetType: 'chapter',
+        targetId: savedChapter.id,
+        summary: `保存了章节「${savedChapter.title}」`,
+        actorId: user.id,
+      });
+      return savedChapter;
     }
     // 用 max(order) + 1 而不是 count + 1：删过章节后 count 会小于现有最大 order，
     // 再按 count 加一就会与已有章节**撞号**（曾导致同一课程出现两个 order=3，
@@ -348,7 +413,16 @@ export class CoursesService {
       exampleSkills: dto.exampleSkills ?? null,
       status: dto.status ?? ChapterStatus.DRAFT,
     });
-    return this.chapterRepo.save(chapter);
+    const createdChapter = await this.chapterRepo.save(chapter);
+    await this.recordAudit({
+      courseId,
+      action: 'chapter_create',
+      targetType: 'chapter',
+      targetId: createdChapter.id,
+      summary: `新建了章节「${createdChapter.title}」`,
+      actorId: user.id,
+    });
+    return createdChapter;
   }
 
   /**
@@ -783,6 +857,17 @@ export class CoursesService {
         this.courseTeacherRepo.create({ courseId, userId: id }),
       ),
     );
+    const names = targets.map((t) => t.nickname || t.username);
+    await this.recordAudit({
+      courseId,
+      action: 'teachers_update',
+      targetType: 'teachers',
+      targetId: null,
+      summary: names.length
+        ? `把协作教师设为：${names.join('、')}`
+        : '清空了协作教师名单',
+      actorId: user.id,
+    });
     return this.listCourseTeachers(user, courseId);
   }
 
@@ -801,6 +886,62 @@ export class CoursesService {
   async listCourseIdsForTeacher(userId: string): Promise<string[]> {
     const links = await this.courseTeacherRepo.find({ where: { userId } });
     return links.map((link) => link.courseId);
+  }
+
+  // ---------- 内容操作记录（谁在什么时候改了什么） ----------
+
+  /**
+   * 记一条内容操作流水。**审计失败绝不打断主流程**（只写日志）——
+   * 教学内容本身比"留痕"重要，不能因为记录写不进去就让老师的保存失败。
+   */
+  async recordAudit(entry: {
+    courseId: string;
+    action: string;
+    targetType: string;
+    targetId?: string | null;
+    summary: string;
+    actorId: string;
+  }): Promise<void> {
+    try {
+      await this.auditRepo.save(
+        this.auditRepo.create({
+          courseId: entry.courseId,
+          action: entry.action,
+          targetType: entry.targetType,
+          targetId: entry.targetId ?? null,
+          summary: entry.summary.slice(0, 255),
+          actorId: entry.actorId,
+        }),
+      );
+    } catch (error) {
+      this.logger.warn(`内容操作记录写入失败：${(error as Error).message}`);
+    }
+  }
+
+  /** 课程的操作记录（倒序，带操作人昵称）。课程任一教师 + 管理员可读。 */
+  async listAudits(user: User, courseId: string, limit = 30) {
+    await this.assertTeacherOfCourse(user, courseId);
+    const rows = await this.auditRepo.find({
+      where: { courseId },
+      order: { createdAt: 'DESC' },
+      take: Math.min(Math.max(limit, 1), 100),
+    });
+    const actorIds = [...new Set(rows.map((r) => r.actorId))];
+    const actors = actorIds.length
+      ? await this.userRepo.find({ where: { id: In(actorIds) } })
+      : [];
+    const nameOf = new Map(actors.map((u) => [u.id, u.nickname || u.username]));
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        action: r.action,
+        targetType: r.targetType,
+        targetId: r.targetId,
+        summary: r.summary,
+        createdAt: r.createdAt,
+        actor: { id: r.actorId, nickname: nameOf.get(r.actorId) ?? '' },
+      })),
+    };
   }
 
   /** 学生是否在课程名单里。公开给其他模块复用 —— 权限口径只留一份实现，避免各处漂移 */

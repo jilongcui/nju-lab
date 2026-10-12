@@ -284,6 +284,16 @@ export class SlidesService {
       deck.status = SlideDeckStatus.READY;
       deck.updatedBy = actorId ?? deck.updatedBy;
       await this.deckRepo.save(deck);
+      if (actorId) {
+        await this.coursesService.recordAudit({
+          courseId: deck.courseId,
+          action: 'deck_generate',
+          targetType: 'deck',
+          targetId: deck.id,
+          summary: `重新生成了幻灯片（${outcome.slides.length} 页，${generator.mode}）`,
+          actorId,
+        });
+      }
       this.logger.log(
         `章节幻灯片生成完成 deck=${deckId} 页数=${outcome.slides.length} 生成器=${generator.mode}`,
       );
@@ -473,6 +483,15 @@ export class SlidesService {
     }
 
     deck = await this.deckRepo.save(deck);
+    // 谁在什么时候改了这份课件（多教师协作的追溯，见设计文档 §8）
+    await this.coursesService.recordAudit({
+      courseId: course.id,
+      action: 'deck_save',
+      targetType: 'deck',
+      targetId: deck.id,
+      summary: `保存了「${chapter.title}」的幻灯片`,
+      actorId: user.id,
+    });
     return { deck: this.toDeckView(deck), warnings };
   }
 

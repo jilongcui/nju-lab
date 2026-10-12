@@ -5,6 +5,7 @@ import type {
   Chapter,
   ClaimResult,
   Course,
+  CourseAuditItem,
   CourseTeacherItem,
   CourseApplicationRow,
   CourseApplicationsView,
@@ -134,6 +135,11 @@ export const listTeachers = () => client.get<unknown, TeacherUser[]>('/users/tea
 export const listCourseTeachers = (courseId: string) =>
   client.get<unknown, { ownerId: string; teachers: CourseTeacherItem[] }>(
     `/courses/${courseId}/teachers`,
+  );
+/** 课程的操作记录（谁在什么时候改了什么）；课程任一教师 + 管理员可读 */
+export const listCourseAudits = (courseId: string, limit = 30) =>
+  client.get<unknown, { items: CourseAuditItem[] }>(
+    `/courses/${courseId}/audits?limit=${limit}`,
   );
 /** 全量设置**协作教师**名单（仅主教师/管理员；主教师由「转让」改） */
 export const setCourseTeachers = (courseId: string, userIds: string[]) =>

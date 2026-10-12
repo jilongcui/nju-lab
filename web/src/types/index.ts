@@ -659,6 +659,17 @@ export interface SlideDeckView {
   updatedBy: string | null;
 }
 
+/** 课程操作记录项（GET /courses/:id/audits）—— 谁在什么时候改了什么 */
+export interface CourseAuditItem {
+  id: string;
+  action: string;
+  targetType: string;
+  targetId: string | null;
+  summary: string;
+  createdAt: string;
+  actor: { id: string; nickname: string };
+}
+
 /** 课程的授课教师名单项（GET /courses/:id/teachers） */
 export interface CourseTeacherItem {
   id: string;

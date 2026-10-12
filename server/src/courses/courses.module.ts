@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { UsersModule } from '../users/users.module';
 import { Chapter, Course } from './course.entity';
 import { CourseTeacher } from './course-teacher.entity';
+import { ContentAudit } from './content-audit.entity';
 import { ExperimentProject } from '../projects/project.entity';
 import { ChapterProgress, Enrollment } from './enrollment.entity';
 import { CourseApplication } from './course-application.entity';
@@ -25,6 +26,7 @@ import { CourseApplicationsService } from './course-applications.service';
       Course,
       Chapter,
       CourseTeacher,
+      ContentAudit,
       Enrollment,
       ChapterProgress,
       ExperimentProject,
