@@ -50,7 +50,10 @@ export default function ExperimentPanel({
   );
   const currentTotal = rows.filter((row) => row.chapter.id === currentChapterId).length;
   const visibleRows = difficulty === 'all' ? rows : rows.filter((row) => row.project.difficulty === difficulty);
-  /** 一门课一个难度都没标时，不显示筛选控件（别给空筛选） */
+  /**
+   * 难度列 NOT NULL、默认「中等」，所以正常情况下筛选控件总是有用；
+   * 保留这个判断只是兜底（老接口/异常数据里没有难度时不摆一个空筛选）。
+   */
   const hasDifficulty = rows.some((row) => !!row.project.difficulty);
 
   return (

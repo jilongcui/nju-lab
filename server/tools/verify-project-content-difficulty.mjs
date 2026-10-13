@@ -5,7 +5,7 @@
  * 背景：
  *   · **实验内容** `content` —— 学生详情页首屏要直接看到"这个实验做什么"
  *     （此前题干只在题目包 ZIP 的 task.md 里，必须下载解压才看得到）；
- *   · **难度等级** `difficulty`（easy / medium / hard，可空=未标注）—— 让不同基础的学生各取所需。
+ *   · **难度等级** `difficulty`（easy / medium / hard，**非空、默认 medium**）—— 让不同基础的学生各取所需。
  *
  * 用法：`node server/tools/verify-project-content-difficulty.mjs`
  * 前置：服务在 127.0.0.1:3100 运行；账号 admin/admin123、student1/student123。
@@ -13,8 +13,8 @@
  *
  * 设计：**全程用一门临时课程**（标题带「内容难度验证」），最后删掉 —— 验证写得再错也不碰真实课程。
  * 覆盖：
- *   ① 创建实验：`content` / `difficulty` 能写入并回读
- *   ② 更新实验：改内容、改难度、**清空难度（传 null）**
+ *   ① 创建实验：`content` / `difficulty` 能写入并回读；**不传难度时默认「中等」**
+ *   ② 更新实验：改内容、改难度；**传 null 被拒（400，难度不允许为空）**
  *   ③ 学生（未领取）也能从 `GET /projects/:id` 读到实验内容与难度 —— 这是本次改动的核心
  *   ④ 学生 `GET /courses/:id` 与 `/me/assignments` 的难度透出（章节右栏、待办实验用）
  *   ⑤ 清理：临时课程删除后取不到
@@ -91,7 +91,19 @@ try {
   );
   const projectId = createdProject?.id;
 
-  // ---------- ② 更新：改内容、改难度、清空难度 ----------
+  const defaulted = pick(
+    await call(admin.token, '/projects', {
+      method: 'POST',
+      body: { title: `默认难度验证-${stamp}`, chapterId: chapter.id },
+    }),
+  );
+  check(
+    '创建实验：不传难度 → 默认「中等」（不能为空）',
+    defaulted?.difficulty === 'medium',
+    `difficulty=${defaulted?.difficulty}`,
+  );
+
+  // ---------- ② 更新：改内容、改难度、拒绝 null ----------
   const patched = pick(
     await call(admin.token, `/projects/${projectId}`, {
       method: 'PATCH',
@@ -103,14 +115,17 @@ try {
     patched?.content === CONTENT_UPDATED && patched?.difficulty === 'hard',
     `difficulty=${patched?.difficulty}`,
   );
-  const cleared = pick(
-    await call(admin.token, `/projects/${projectId}`, { method: 'PATCH', body: { difficulty: null } }),
-  );
-  check('更新实验：难度可清空（传 null → 未标注）', cleared?.difficulty === null, `difficulty=${cleared?.difficulty}`);
+  const rejected = await call(admin.token, `/projects/${projectId}`, {
+    method: 'PATCH',
+    body: { difficulty: null },
+  });
+  check('更新实验：难度传 null 被拒（400，不允许为空）', rejected.status === 400, `status=${rejected.status}`);
+  const afterRejected = pick(await call(admin.token, `/projects/${projectId}`));
+  check('被拒后难度保持不变（仍是「提高」）', afterRejected?.difficulty === 'hard', `difficulty=${afterRejected?.difficulty}`);
   const restored = pick(
     await call(admin.token, `/projects/${projectId}`, { method: 'PATCH', body: { difficulty: 'medium' } }),
   );
-  check('更新实验：难度可重新标注', restored?.difficulty === 'medium', `difficulty=${restored?.difficulty}`);
+  check('更新实验：难度可改成其它档位', restored?.difficulty === 'medium', `difficulty=${restored?.difficulty}`);
 
   // ---------- 学生视角 ----------
   await call(admin.token, `/courses/${courseId}/enrollments`, {

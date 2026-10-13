@@ -22,6 +22,7 @@ import {
   Assignment,
   AssignmentStatus,
   ExperimentProject,
+  ProjectDifficulty,
   ProjectStatus,
   UnlockRule,
 } from './project.entity';
@@ -80,8 +81,8 @@ export class ProjectsService {
         id: project.id,
         title: project.title,
         status: project.status,
-        /** 难度标注（null = 未标注）：教师端实验列表的「难度」列用 */
-        difficulty: project.difficulty ?? null,
+        /** 难度（列已 NOT NULL，默认 medium）：教师端实验列表的「难度」列用 */
+        difficulty: project.difficulty,
         deadline: project.deadline,
         createdAt: project.createdAt,
         courseId: project.courseId,
@@ -111,7 +112,8 @@ export class ProjectsService {
       chapterId: chapter.id,
       title: dto.title,
       content: dto.content ?? null,
-      difficulty: dto.difficulty ?? null,
+      // 难度不落空：没指定就是「中等」（见 migration 1791100000000）
+      difficulty: dto.difficulty ?? ProjectDifficulty.MEDIUM,
       objectives: dto.objectives ?? null,
       background: dto.background ?? null,
       description: dto.description ?? null,
@@ -355,8 +357,8 @@ export class ProjectsService {
           title: project.title,
           deadline: project.deadline,
           chapterTitle: chapter?.title ?? null,
-          /** 难度标注：学生工作台「待办实验」也显示（null = 未标注） */
-          difficulty: project.difficulty ?? null,
+          /** 难度：学生工作台「待办实验」也显示 */
+          difficulty: project.difficulty,
         },
         submission: submission
           ? {

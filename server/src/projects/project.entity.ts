@@ -20,7 +20,9 @@ export enum ProjectStatus {
 /**
  * 难度等级（2026-10-13 用户要求）：让不同基础的学生各取所需 ——
  * 基础弱的做「容易」、感兴趣的学生课后做「提高」。
- * `null` = 教师还没标注，前端不显示标签（不是"默认容易"）。
+ *
+ * **有默认值、不允许为空**（同日用户补充："难度默认选择中，也不能是 null"）：
+ * 每个实验总有一个难度，没特意标就是 `medium`（中等），学生端因此总能按难度筛。
  */
 export enum ProjectDifficulty {
   EASY = 'easy',
@@ -89,9 +91,9 @@ export class ExperimentProject {
   @Column({ type: 'text', nullable: true })
   content: string | null;
 
-  /** 难度等级：null = 未标注 */
-  @Column({ type: 'enum', enum: ProjectDifficulty, nullable: true })
-  difficulty: ProjectDifficulty | null;
+  /** 难度等级：默认「中等」（迁移 1791100000000 起 NOT NULL） */
+  @Column({ type: 'enum', enum: ProjectDifficulty, default: ProjectDifficulty.MEDIUM })
+  difficulty: ProjectDifficulty;
 
   /** 实验目标 */
   @Column({ type: 'text', nullable: true })

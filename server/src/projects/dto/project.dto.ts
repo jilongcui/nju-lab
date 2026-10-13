@@ -10,6 +10,7 @@ import {
   IsString,
   IsUUID,
   MaxLength,
+  ValidateIf,
   ValidateNested,
 } from 'class-validator';
 
@@ -65,10 +66,14 @@ class ProjectBaseDto {
   @IsString()
   content?: string;
 
-  /** 难度等级：easy / medium / hard；省略 = 未标注 */
-  @IsOptional()
+  /**
+   * 难度等级：easy / medium / hard。省略 = 默认「中等」（medium，见迁移 1791100000000）；
+   * 显式传 null 会被拒（难度不允许为空）—— 这里不用 `@IsOptional()`：
+   * 它会把 null 也放过去，随后写库撞 NOT NULL 约束。
+   */
+  @ValidateIf((_, value) => value !== undefined)
   @IsIn(Object.values(ProjectDifficulty))
-  difficulty?: ProjectDifficulty | null;
+  difficulty?: ProjectDifficulty;
 
   @IsOptional()
   @IsString()
@@ -146,10 +151,13 @@ export class UpdateProjectDto {
   @IsString()
   content?: string | null;
 
-  /** 难度等级；传 null 表示取消标注。 */
-  @IsOptional()
+  /**
+   * 难度等级：easy / medium / hard（**不允许 null** —— 难度总有一个值，不填就是「中等」）。
+   * 同 ProjectBaseDto：用 `@ValidateIf` 而非 `@IsOptional()`，否则 null 会被静默放过。
+   */
+  @ValidateIf((_, value) => value !== undefined)
   @IsIn(Object.values(ProjectDifficulty))
-  difficulty?: ProjectDifficulty | null;
+  difficulty?: ProjectDifficulty;
 
   @IsOptional()
   @IsString()

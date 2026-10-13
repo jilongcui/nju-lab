@@ -84,8 +84,7 @@ export default function ProjectList() {
               title: '难度',
               dataIndex: 'difficulty',
               width: 90,
-              render: (v) =>
-                v ? <DifficultyTag difficulty={v} /> : <Text type="secondary">未标注</Text>,
+              render: (v) => <DifficultyTag difficulty={v} />,
             },
             {
               title: '提交进度',

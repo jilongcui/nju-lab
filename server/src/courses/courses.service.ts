@@ -227,7 +227,13 @@ export class CoursesService {
         ...ch,
         projects: projects
           .filter((p) => p.chapterId === ch.id)
-          .map((p) => ({ id: p.id, title: p.title, status: p.status, difficulty: p.difficulty })),
+          .map((p) => ({
+            id: p.id,
+            title: p.title,
+            status: p.status,
+            // 难度列 NOT NULL（默认 medium，见 migration 1791100000000）
+            difficulty: p.difficulty,
+          })),
         // 0 = 老师还没有为这一章做课件（前端据此显示「无课件 / 课件 N 页」）
         slideCount: slideCountOf.get(ch.id) ?? 0,
       })),

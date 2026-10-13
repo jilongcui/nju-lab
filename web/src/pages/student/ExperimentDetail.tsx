@@ -34,6 +34,7 @@ const { Title, Text, Paragraph } = Typography;
  *     领取后紧跟着「实验材料」下载 —— 学生第一眼就要知道"这实验是干嘛的、我要交什么"。
  *   · **「实验指导」折叠区（怎么做）**：背景知识、任务要求（口径）、评分要求、参考资料、
  *     常见问题、运行环境与评估配置 —— 技术细节不该跟"做什么"抢首屏，想深入的学生展开看。
+ * 难度（容易/中等/提高）**总有一个值**（列 NOT NULL、默认中等），首屏直接显示标签。
  * 空字段不再渲染"标题 + 暂无内容"，避免一片空壳把关键信息埋掉。
  */
 export default function ExperimentDetail() {
@@ -139,7 +140,7 @@ export default function ExperimentDetail() {
       <Card title="实验内容">
         <Descriptions column={3} size="small" style={{ marginBottom: 16 }}>
           <Descriptions.Item label="难度">
-            {project.difficulty ? <DifficultyTag difficulty={project.difficulty} /> : '未标注'}
+            <DifficultyTag difficulty={project.difficulty} />
           </Descriptions.Item>
           <Descriptions.Item label="所属章节">{assignment?.project.chapterTitle || '-'}</Descriptions.Item>
           <Descriptions.Item label="截止时间">

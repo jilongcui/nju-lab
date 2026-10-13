@@ -185,8 +185,19 @@ try {
     const difficultyShown = (await difficultyItem.locator('.ant-select-selection-item').innerText()).trim();
     check('编辑弹窗：难度回填当前值（提高）', difficultyShown === '提高', difficultyShown);
 
-    // 改难度：提高 → 容易，保存后页面标签应同步
+    // 难度不允许为空：下拉里不该出现「未标注」
     await difficultyItem.locator('.ant-select-selector').click();
+    const difficultyOptions = await page
+      .locator('.ant-select-dropdown .ant-select-item-option')
+      .allInnerTexts();
+    check(
+      '编辑弹窗：难度下拉只有三档（没有「未标注」）',
+      ['容易', '中等', '提高'].every((label) => difficultyOptions.map((t) => t.trim()).includes(label)) &&
+        !difficultyOptions.some((t) => t.includes('未标注')),
+      difficultyOptions.map((t) => t.trim()).join(' / '),
+    );
+
+    // 改难度：提高 → 容易（下拉此刻是打开的，直接点选项；再点一次 selector 反而会关掉它）
     await page.locator('.ant-select-dropdown .ant-select-item-option').filter({ hasText: '容易' }).first().click();
     await page.locator('.ant-modal').getByRole('button', { name: '确 定' }).click();
     await page.waitForTimeout(1500);

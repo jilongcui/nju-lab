@@ -37,7 +37,7 @@ import {
 import type { Chapter, ExperimentProject, ProjectDashboard, ProjectSubmissionRow, RubricItem, StoredFileInfo } from '../../types';
 import StatusTag from '../../components/StatusTag';
 import MarkdownView from '../../components/MarkdownView';
-import { DIFFICULTY_META, DIFFICULTY_ORDER, DifficultyTag } from '../../utils/difficulty';
+import { DEFAULT_DIFFICULTY, DIFFICULTY_FORM_OPTIONS, DifficultyTag } from '../../utils/difficulty';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
 
 const { Title, Text, Paragraph } = Typography;
@@ -55,12 +55,6 @@ const { Title, Text, Paragraph } = Typography;
  * 留空 = 用 provider 默认（verify profile 里钉的是 low）。
  */
 const EFFORT_OPTIONS = ['off', 'low', 'high', 'max'].map((v) => ({ label: v, value: v }));
-
-/** 难度下拉：空字符串 = 未标注（提交时统一转成 null） */
-const DIFFICULTY_OPTIONS = [
-  { label: '未标注', value: '' },
-  ...DIFFICULTY_ORDER.map((value) => ({ label: DIFFICULTY_META[value].label, value })),
-];
 
 function percent(rate?: number) {
   return rate != null ? Math.round(rate * 100) : null;
@@ -177,7 +171,7 @@ export default function ProjectDetail() {
       title: project.title,
       chapterId: project.chapterId,
       content: project.content,
-      difficulty: project.difficulty ?? '',
+      difficulty: project.difficulty ?? DEFAULT_DIFFICULTY,
       objectives: project.objectives,
       background: project.background,
       description: project.description,
@@ -204,8 +198,8 @@ export default function ProjectDetail() {
         // 所属章节：允许纠正"实验挂错章节"（后端校验限同一课程内）
         chapterId: values.chapterId,
         content: values.content ?? null,
-        // 空字符串 = 取消难度标注 → 存 null（而不是空串）
-        difficulty: values.difficulty || null,
+        // 难度不允许为空：没选就是「中等」（后端列默认值一致）
+        difficulty: values.difficulty ?? DEFAULT_DIFFICULTY,
         objectives: values.objectives ?? null,
         background: values.background ?? null,
         description: values.description ?? null,
@@ -304,9 +298,7 @@ export default function ProjectDetail() {
       {/* ① 实验内容：学生详情页首屏看到的东西 */}
       <Card
         title="实验内容（学生详情页首屏）"
-        extra={
-          project.difficulty ? <DifficultyTag difficulty={project.difficulty} /> : <Text type="secondary">未标注难度</Text>
-        }
+        extra={<DifficultyTag difficulty={project.difficulty} />}
         style={{ marginBottom: 16 }}
       >
         <MarkdownView
@@ -490,9 +482,10 @@ export default function ProjectDetail() {
             <Form.Item
               name="difficulty"
               label="难度等级"
-              extra="学生可按难度挑选：容易 / 中等 / 提高；留空 = 未标注（学生端不显示标签）"
+              extra="学生可按难度挑选：容易 / 中等 / 提高（默认「中等」；难度总有一个值，不能为空）"
+              rules={[{ required: true, message: '请选择难度' }]}
             >
-              <Select options={DIFFICULTY_OPTIONS} style={{ width: 160 }} />
+              <Select options={DIFFICULTY_FORM_OPTIONS} style={{ width: 160 }} />
             </Form.Item>
           </Space>
           <Form.Item name="objectives" label="实验目标（学生详情页首屏，紧随实验内容）">

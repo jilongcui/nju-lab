@@ -12,7 +12,8 @@
   这类技术配置。另外所有实验难度一样，初学者吃不消、感兴趣的学生没得挑。
 - **改法（用户选定）**：
   · 新增字段 **`content`「实验内容」**（教师手填，出题时从 `task.md` 提炼"做什么"）；
-  · 新增字段 **`difficulty`「难度」**（`easy` / `medium` / `hard` = 容易 / 中等 / 提高，**可空** = 未标注）；
+  · 新增字段 **`difficulty`「难度」**（`easy` / `medium` / `hard` = 容易 / 中等 / 提高；
+    **非空、默认 `medium`** —— 同日用户补充"难度默认选择中，也不能是 null"）；
   · **学生详情页分层**：首屏 = 实验内容 + 实验目标 + 难度/章节/截止 + 领取（领取后紧跟「实验材料」下载）；
     技术性内容（背景知识、任务要求口径、评分要求、参考资料、常见问题、运行环境与评估配置）
     收进 **「实验指导」折叠区**，默认收起；空字段不再渲染"标题 + 暂无内容"。
@@ -31,14 +32,17 @@
   教师端三块分区与编辑弹窗、改难度后标签与库同步）；两端 tsc 通过。
 - **文档**：`docs/EXPERIMENT-CREATION-GUIDE.md` 步骤 11 与发布前检查清单补上「建项目时就要填
   `content` / `difficulty`」的口径（**已有 19 个实验的 `content` 为空**，需要老师按新口径补填）。
-- **部署（2026-10-13 已完成）**：后端 `npm run build` + 重启（新 PID 1378000；迁移随启动执行，
+- **部署（2026-10-13 已完成）**：后端 `npm run build` + 重启（迁移随启动执行，
   `content` / `difficulty` 两列已加、`migrations` 表记录 `ProjectContentDifficulty1791000000000`）；
   前端 `bash deploy/deploy-web-lab.sh`（备份 `20261013-151735`）。**后端与前端必须一起上**：
   旧后端不认这两个字段，只上前端会编辑失败。顺带修掉一处漏字段：`listProjects` 是手写字段映射，
   最初没带 `difficulty`（教师端列表「难度」列会全显示"未标注"），已补。
-- **上线后线上复验**（真实浏览器/接口，`medai.nju.edu.cn/lab`）：`verify-experiment-detail.mjs` **22/22**、
-  `verify-project-content-difficulty.mjs` **11/11**；回归 `verify-chapter-experiments.mjs` 25/25、
-  `verify-chapter-slides.mjs` 21/21、`verify-course-pages.mjs` 24/24、`verify-draft-project-visibility.mjs` 12/12。
+- **上线后线上复验**（真实浏览器/接口，`medai.nju.edu.cn/lab`）：
+  `verify-experiment-detail.mjs` **23/23**（含"难度下拉只有三档、没有「未标注」"）、
+  `verify-project-content-difficulty.mjs` **13/13**（含"不传难度 → 默认中等""难度传 null → 400"）；
+  回归 `verify-chapter-experiments.mjs` 25/25、`verify-chapter-slides.mjs` 21/21、
+  `verify-course-pages.mjs` 24/24、`verify-draft-project-visibility.mjs` 12/12。
+  难度默认值上线在后端 PID 1444722、前端部署 `20261013-154634`。
 - **已有实验的补填（2026-10-13 已执行）**：`server/tools/sync-project-content.mjs` —— 从题目包的
   `task.md` 抽「业务背景 + 你的任务」（`--full` 取整份）写进 `content`。**默认只预览，`--apply` 才写**；
   已有内容的项目默认跳过（不覆盖老师编辑），要覆盖加 `--overwrite`；抽出不足 50 字也跳过。
@@ -47,8 +51,14 @@
   `run-eval.mjs` 的 `BUILTIN_TASK` 里，且那只是一句给 agent 的英文指令），且都挂在示例课程 /
   curl 验收课程上，需要人工决定是否补。写入后抽查：学生视角（`student1`）打开真实实验详情页，
   首屏直接显示题面（关系数据库实验 1110 字 → 卡片内文 1110 字）。
-- **难度仍是"未标注"**：15 个真实实验的 `difficulty` 都是 null —— 难度是教学判断，脚本不猜；
-  老师可在教师端实验详情里逐个标（容易 / 中等 / 提高）。
+- **难度默认「中等」，不允许为空（同日用户补充后已实现并上线）**：
+  · 迁移 `1791100000000-ProjectDifficultyDefault.ts`：把已有 NULL **回填成 `medium`**，
+    列改成 `NOT NULL DEFAULT 'medium'`（`down` 恢复可空）。**不改**已执行的前一个迁移。
+  · DTO 用 `@ValidateIf(v => v !== undefined)` + `@IsIn([...])` 取代 `@IsOptional()` ——
+    后者会把显式 `null` 也放过，随后撞 NOT NULL；现在传 `null` 返回 **400**。
+  · 前端去掉「未标注」：教师端表单难度为必选三档（默认中等）、列表与学生端详情页直接显示标签、
+    `utils/difficulty.tsx` 里加了 `DEFAULT_DIFFICULTY`；筛选控件因此在有实验时总可用。
+  · 结果：19 个实验的难度现在都是「中等」，老师按实际逐个调整即可。
 
 **2026-10-13（章节课直达实验：右栏「实验」tab + 课程章节页瘦身）—— ✅ 已上线**
 
