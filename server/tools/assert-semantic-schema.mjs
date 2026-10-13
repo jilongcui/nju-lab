@@ -171,9 +171,9 @@ const over = validateSemanticPages(
   LIMITS,
 );
 const blocks = over.pages[0].blocks;
-check('evidence 超量被裁到 5 条', blocks[0].items.length === 5);
+check('evidence 超量被裁到 4 条', blocks[0].items.length === 4);
 check('metric 超量被裁到 4 个', blocks[1].items.length === 4);
-check(`code 超行被裁到 20 行（实际 ${String(blocks[2].content).split('\n').length}）`, String(blocks[2].content).split('\n').length === 20);
+check(`code 超行被裁到 16 行（实际 ${String(blocks[2].content).split('\n').length}）`, String(blocks[2].content).split('\n').length === 16);
 
 const table = validateSemanticPages(
   [
