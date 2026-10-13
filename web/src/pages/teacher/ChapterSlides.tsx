@@ -174,7 +174,7 @@ export default function ChapterSlides() {
     { kind: 'insert'; layout: SlideLayout } | { kind: 'replace' } | { kind: 'insert-cursor' } | null
   >(null);
   const mdAreaRef = useRef<TextAreaRef>(null);
-  const [auxTab, setAuxTab] = useState<'chapters' | 'images'>('chapters');
+  const [auxTab, setAuxTab] = useState<'chapters' | 'generate' | 'images'>('chapters');
   const editingRef = useRef(editing);
   editingRef.current = editing;
   // 章节 tab/工具栏里「放弃修改并切换」与放映态的章节跳转要绕过路由守卫
@@ -572,7 +572,7 @@ export default function ChapterSlides() {
     '章节幻灯片',
     <Tabs
       activeKey={auxTab}
-      onChange={(k) => setAuxTab(k as 'chapters' | 'images')}
+      onChange={(k) => setAuxTab(k as 'chapters' | 'generate' | 'images')}
       items={[
         {
           key: 'chapters',
@@ -613,6 +613,51 @@ export default function ChapterSlides() {
                 放映时：<Text code>←/→</Text> 翻页、<Text code>空格</Text> 下一页、<Text code>O</Text> 总览、
                 <Text code>Esc</Text> 退出。章节正文改动后只会提示，不会自动重新生成。
               </Paragraph>
+            </>
+          ),
+        },
+        {
+          key: 'generate',
+          label: '生成',
+          children: (
+            <>
+              <Paragraph type="secondary" style={{ fontSize: 12 }}>
+                工具栏的「重新生成」默认是<b>优化</b>：沿用现有页面结构与内容，只按下面的提示词改进
+                （改动小、可累积）。需要重排页面组织时才用最下面的「彻底重做」。
+              </Paragraph>
+              <Input.TextArea
+                rows={4}
+                value={instruction}
+                onChange={(e) => setInstruction(e.target.value)}
+                placeholder={'可选提示词，例如：\n· 第 3 页改成左右对比\n· 多用图表，少用要点列表\n· 讲稿再口语化一点'}
+                style={{ marginBottom: 10 }}
+              />
+              <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                <Button
+                  block
+                  type="primary"
+                  icon={<ThunderboltOutlined />}
+                  loading={busy}
+                  disabled={deck?.status === 'generating'}
+                  onClick={() => handleGenerate(true, 'optimize')}
+                >
+                  {deck ? '重新生成（优化）' : '生成幻灯片'}
+                </Button>
+                {deck && (
+                  <Popconfirm
+                    title="从章节正文重新规划所有页面？"
+                    description="会重新设计页面顺序与版式，改动比优化大得多；当前内容与手工修改会被替换。"
+                    onConfirm={() => handleGenerate(true, 'fresh')}
+                  >
+                    <Button block danger loading={busy} disabled={deck?.status === 'generating'}>
+                      彻底重做（重新规划）
+                    </Button>
+                  </Popconfirm>
+                )}
+                <Paragraph type="secondary" style={{ fontSize: 12, margin: 0 }}>
+                  只想改某一页：用工具栏的「重生成当前页」，它同样会带上这里的提示词。
+                </Paragraph>
+              </Space>
             </>
           ),
         },
@@ -915,18 +960,7 @@ export default function ChapterSlides() {
                 </Button>
               </Popconfirm>
             )}
-            <Tooltip title="可选：告诉模型这次怎么改（如「第 3 页改成左右对比」「多用图表，少用要点列表」）。留空则只做常规优化。">
-              <Input
-                size="small"
-                allowClear
-                style={{ width: 300 }}
-                placeholder="可选提示词：如「第 3 页改成左右对比」"
-                value={instruction}
-                onChange={(e) => setInstruction(e.target.value)}
-                disabled={deck?.status === 'generating'}
-              />
-            </Tooltip>
-            <Tooltip title="沿用现有页面结构与内容，只按要求改进（改动小、可累积；没生成过时等价于首次生成）">
+            <Tooltip title="默认按右栏「生成」里的提示词做优化重生成：沿用现有页面结构，只改进内容；没生成过时等价于首次生成">
               <Button
                 size="small"
                 type="primary"
@@ -935,20 +969,9 @@ export default function ChapterSlides() {
                 disabled={deck?.status === 'generating'}
                 onClick={() => handleGenerate(true, 'optimize')}
               >
-                {deck ? '优化重生成' : '生成幻灯片'}
+                {deck ? '重新生成' : '生成幻灯片'}
               </Button>
             </Tooltip>
-            {deck && (
-              <Popconfirm
-                title="从章节正文重新规划所有页面？"
-                description="会重新设计页面顺序与版式，改动比「优化重生成」大得多；当前内容与手工修改会被替换（页面结构确实需要重排时再用）。"
-                onConfirm={() => handleGenerate(true, 'fresh')}
-              >
-                <Button size="small" loading={busy} disabled={deck?.status === 'generating'}>
-                  彻底重做
-                </Button>
-              </Popconfirm>
-            )}
             {deck && (
               <Popconfirm title="删除该章节的幻灯片？" onConfirm={handleDeleteDeck}>
                 <Button size="small" danger icon={<DeleteOutlined />} />
