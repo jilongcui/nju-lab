@@ -48,6 +48,13 @@ const teacher = await login('teacher', 'teacher123');
 const REAL_COURSE = 'cd11ea33-0f1f-420a-afbc-951baf1f5e89';
 
 let tempCourseId = null;
+/** 验证开始前的真实课程名单：结束时比对，确认本次验证没碰它（不写死人数 —— 生产名单本就会变） */
+const realBefore = await (async () => {
+  const r = await call(admin.token, `/courses/${REAL_COURSE}/teachers`);
+  const list = r.data?.data?.teachers ?? r.data?.teachers ?? [];
+  return list.map((t) => `${t.id}:${t.role}`).sort();
+})();
+
 try {
   // ---------- 准备：临时课程 ----------
   const created = await call(admin.token, '/courses', {
@@ -132,10 +139,11 @@ try {
   // ---------- ⑤ 真实课程未被本次验证波及 ----------
   const realList = await call(admin.token, `/courses/${REAL_COURSE}/teachers`);
   const realTeachers = realList.data?.data?.teachers ?? realList.data?.teachers ?? [];
+  const realAfter = realTeachers.map((t) => `${t.id}:${t.role}`).sort();
   check(
-    '真实课程（分子医学）名单仍是 1 人，未被改动',
-    realTeachers.length === 1,
-    realTeachers.map((t) => `${t.nickname}:${t.role}`).join(', '),
+    '真实课程（分子医学）名单未被本次验证改动',
+    JSON.stringify(realBefore) === JSON.stringify(realAfter),
+    realTeachers.map((t) => `${t.nickname}:${t.role}`).join('、') || '（空）',
   );
 } finally {
   // ---------- 清理 ----------

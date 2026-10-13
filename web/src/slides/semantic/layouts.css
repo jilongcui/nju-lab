@@ -803,16 +803,79 @@
   color: var(--text-2);
 }
 
-/* ---------- 图片 ---------- */
+/* ---------- 图片 ----------
+ * 2026-10-12 重做：此前给图片框强加 `aspect-ratio: 16/9`，而正文里的图比例各异
+ * （近方图 362×354、宽扁图 1120×390…），塞进 16:9 只能缩小留白 —— 看起来"图小、四周空"。
+ * 现在**由图片自身比例决定尺寸**，只约束"最大宽/最大高"（不撑破页脚），并给统一的卡片外观。 */
 .ly-media {
   display: grid;
-  gap: 28px;
+  gap: 32px;
   align-items: center;
 }
-.ly-media.hero { grid-template-columns: 1.15fr 1fr; }
+.ly-media.hero { grid-template-columns: 1.2fr 1fr; }
 .ly-media.inline { grid-template-columns: 1fr; justify-items: center; }
-.ly-media .img-frame { aspect-ratio: var(--ly-ratio, 16/9); }
-.ly-media.inline .img-frame { max-width: 1180px; }
+.ly-media-figure {
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+}
+.ly-media-side {
+  min-width: 0;
+}
+.ly-media-side .ly-note {
+  margin-top: 18px;
+}
+.ly-side-text .ly-claim-p {
+  margin: 0;
+  font-size: calc(26px * var(--fs-boost, 1));
+  line-height: 1.6;
+  color: var(--text-1);
+}
+
+/* 图片卡片：边框 + 圆角 + 浅底 + 细阴影（与平台其它卡片一致，不再是"裸图贴上去"） */
+.img-frame {
+  /* 宽度 fit-content：**容器贴合图片比例**（不留白边）；高度固定：小图也随之放大
+     （此前"只限上限不放大"会让 362px 宽的原图保持原尺寸 → 页面显得又空又小） */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  height: var(--ly-img-box-h, 520px);
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.img-frame > img {
+  display: block;
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  /* 宽度受限于容器时才按比例缩（不拉伸） */
+  object-fit: contain;
+  border-radius: calc(var(--radius) - 6px);
+}
+.ly-media.inline {
+  /* 整页只有图：可以更大，但仍不顶掉页脚 */
+  --ly-img-box-h: 580px;
+}
+.ly-media.inline .img-frame { max-width: 1400px; }
+.ly-media.hero { --ly-img-box-h: 540px; }
+.ly-media.full { display: block; --ly-img-box-h: 640px; }
+.ly-media.full .img-frame { max-width: 100%; }
+
+/* 图注：统一小字 + 居中（此前只有网格页有样式） */
+.img-cap {
+  margin: 12px 4px 0;
+  text-align: center;
+  color: var(--text-3);
+  font-size: calc(17px * var(--fs-boost, 1));
+  line-height: 1.5;
+}
 
 /* 兜底区：intent 主渲染之后仍未被消费的块（绝不丢内容） */
 .ly-extra {
@@ -827,13 +890,6 @@
 .ly-media.full .ly-img-missing { min-height: 520px; }
 .ly-gallery-cell .ly-img-missing { min-height: 240px; }
 
-.ly-media.full .img-frame {
-  aspect-ratio: 16/9;
-  max-height: 600px;
-}
-.ly-media.full .img-frame > img {
-  object-fit: contain;
-}
 .ly-gallery {
   display: grid;
   gap: 22px;
@@ -842,7 +898,10 @@
 .ly-gallery.cols-3 { grid-template-columns: repeat(3, 1fr); }
 .ly-gallery.cols-4 { grid-template-columns: repeat(4, 1fr); }
 .ly-gallery-cell { min-width: 0; }
-.ly-gallery .img-frame { aspect-ratio: 16/10; }
+/* 网格页：格子统一比例（多图对齐），其余交给 .img-frame */
+.ly-gallery .img-frame { aspect-ratio: 16/10; padding: 6px; }
+.ly-gallery .img-frame { height: auto; }
+.ly-gallery .img-frame > img { width: 100%; height: 100%; }
 .ly-gallery-cell .img-cap { font-size: calc(17px * var(--fs-boost, 1)); }
 .ly-img-missing {
   display: flex;

@@ -571,9 +571,11 @@ function renderImage(page: Page, ctx: RenderContext): string {
   const image = blockOf(page, 'image');
   if (!image) return head(page);
   const evidence = blockOf(page, 'evidence');
-  const role = image.role ?? (evidence?.items.length ? 'hero' : 'inline');
+  const claim = blockOf(page, 'claim');
+  const note = blockOf(page, 'note');
 
-  if (role === 'grid') {
+  // 多图网格
+  if (image.role === 'grid') {
     const items = (image.items?.length ? image.items : [{ fileId: image.fileId, caption: image.caption }]).slice(0, 4);
     const cells = items
       .map((item) => `<div class="ly-gallery-cell">${imgFrame(item.fileId, undefined, ctx, true)}${
@@ -583,20 +585,36 @@ function renderImage(page: Page, ctx: RenderContext): string {
     return `${head(page)}<div class="ly-gallery ${colsClass(items.length)}">${cells}</div>${renderNote(page)}`;
   }
 
-  if (role === 'full') {
+  // 满幅大图
+  if (image.role === 'full') {
     return `${head(page)}<div class="ly-media full">${imgFrame(image.fileId, image.caption, ctx, true)}</div>${renderNote(page)}`;
   }
 
-  const frame = imgFrame(image.fileId, image.caption, ctx, false);
-  if (role === 'hero' && evidence?.items.length) {
+  const frame = imgFrame(image.fileId, image.caption, ctx, true);
+  /**
+   * 图 + 文字的关系决定版式（2026-10-12 重做）：
+   *   · 页面还有要点/主张 → **两栏**（图 + 文字），否则小图会孤零零摆在页面中间、四周大片空白；
+   *   · 整页只有图 → 单栏居中，且图可以更大。
+   */
+  const side = evidence?.items.length
+    ? `<div class="ly-evidence">${evidence.items
+        .map((item) => `<div class="ly-ev"><span>${inline(item)}</span></div>`)
+        .join('')}</div>${note ? `<p class="ly-note">${inline(note.text)}</p>` : ''}`
+    : claim?.text
+      ? `<div class="ly-side-text"><p class="ly-claim-p">${inline(claim.text)}</p>${
+          note ? `<p class="ly-note">${inline(note.text)}</p>` : ''
+        }</div>`
+      : note
+        ? `<p class="ly-note">${inline(note.text)}</p>`
+        : '';
+
+  if (side) {
     return `${head(page)}<div class="ly-media hero">
-  <div>${frame}</div>
-  <div class="ly-evidence">${evidence.items
-    .map((item) => `<div class="ly-ev"><span>${inline(item)}</span></div>`)
-    .join('')}</div>
+  <figure class="ly-media-figure">${frame}</figure>
+  <div class="ly-media-side">${side}</div>
 </div>`;
   }
-  return `${head(page)}<div class="ly-media inline">${frame}</div>${renderNote(page)}`;
+  return `${head(page)}<div class="ly-media inline">${frame}</div>`;
 }
 
 function renderSummary(page: Page): string {
@@ -634,7 +652,7 @@ const CONSUMED: Record<Page['intent'], Block['kind'][]> = {
   data: ['chart', 'note'],
   example: ['code'],
   quote: ['quote'],
-  image: ['image', 'evidence', 'note'],
+  image: ['image', 'evidence', 'claim', 'note'],
   summary: ['evidence', 'claim'],
 };
 

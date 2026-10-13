@@ -254,6 +254,32 @@ check(
   html.includes('(function () {') && html.includes('document.fonts.ready') && html.includes('requestAnimationFrame(layoutThumbs)'),
 );
 
+// ---------------- 6.5 插图版式（2026-10-12 重做）----------------
+// 背景：此前给图片框强加 aspect-ratio:16/9，比例不符的图（近方图/宽扁图）被缩小留白，
+// 看起来"图小、四周空"；且 .img-frame 没有卡片外观，图直接裸贴。
+const renderSrc = readFileSync(join(webRoot, 'src/slides/semantic/render.ts'), 'utf8');
+check(
+  '图片框不再强制固定比例（比例由图片自身决定）',
+  !/\.ly-media[^{]*\.img-frame\s*\{[^}]*aspect-ratio/.test(layoutsCss) &&
+    !/\.ly-media\.full\s*\.img-frame\s*\{[^}]*aspect-ratio/.test(layoutsCss),
+);
+check(
+  '图片框是卡片（边框 + 圆角 + 底色 + 阴影）',
+  /\.img-frame\s*\{[^}]*border:\s*1px solid var\(--border\)/.test(layoutsCss) &&
+    /\.img-frame\s*\{[^}]*border-radius:/.test(layoutsCss) &&
+    /\.img-frame\s*\{[^}]*background:\s*var\(--surface\)/.test(layoutsCss),
+);
+check('图片框宽度贴合图比例（fit-content，避免容器留白边）', /\.img-frame\s*\{[^}]*width:\s*fit-content/.test(layoutsCss));
+check('图宽受限时才按比例缩（object-fit: contain，不拉伸）', /\.img-frame > img\s*\{[^}]*object-fit:\s*contain/.test(layoutsCss));
+check(
+  '图 + 文字构成两栏（图 | 要点/主张），避免小图孤零零居中',
+  renderSrc.includes('ly-media-figure') && renderSrc.includes('ly-media-side'),
+);
+check(
+  'image 页的 claim 被主渲染器消费（不会重复渲染一遍）',
+  /image: \['image', 'evidence', 'claim', 'note'\]/.test(renderSrc),
+);
+
 // ---------------- 7. 旧模型适配器（平台既有 deck 的迁移路径）----------------
 const legacyPages = legacyDeckToPages(LEGACY_SLIDES);
 const intentAt = (layout) => legacyPages[LEGACY_SLIDES.findIndex((s) => s.layout === layout)].intent;
