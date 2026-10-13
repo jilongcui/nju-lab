@@ -40,8 +40,9 @@ const { Title, Paragraph, Text } = Typography;
  *
  * 2026-10-13（学员反馈：实验入口太绕）：
  *   **右栏改为「章节 | 实验」两个 tab**。原先学生上完一节想进实验，必须离开章节
- *   （回「课程详情」再点实验标签），路径太长；现在右栏就能看到本课程各章实验、
- *   当前章高亮并一键进入。同时课程详情页不再堆一串实验标签，只显示计数与课件信息。
+ *   （回「课程详情」再点实验标签），路径太长；现在右栏就能看到本章实验并一键进入。
+ *   同时课程详情页不再堆一串实验标签，只显示计数与课件信息。
+ *   （「实验」tab 起初列全课程各章实验，2026-10-13 用户反馈"右栏太挤"，改成**只列当前章**。）
  *
  * 2026-10-10 学员反馈的三处修复：
  *   ① 幻灯片上方那条提示会把演示画面往下挤 —— 移到**演示下方**；
@@ -115,7 +116,8 @@ export default function ChapterRead() {
     };
   }, [chapter?.courseId]);
 
-  const experimentTotal = siblings.reduce((sum, item) => sum + (item.projects?.length ?? 0), 0);
+  // 右栏「实验」tab 只列**当前章**（2026-10-13 用户补充），标签上的数字也随章节走
+  const chapterExperiments = siblings.find((item) => item.id === chapterId)?.projects?.length ?? 0;
 
   const auxContent = useMemo(
     () => (
@@ -166,8 +168,8 @@ export default function ChapterRead() {
           },
           {
             key: 'experiments',
-            // 计数放在 tab 上：不点进去也知道这门课一共有多少实验要做
-            label: experimentTotal > 0 ? `实验 ${experimentTotal}` : '实验',
+            // 计数放在 tab 上：不点进去也知道本章有几个实验
+            label: `实验 ${chapterExperiments}`,
             children: (
               <ExperimentPanel
                 chapters={siblings}
@@ -180,7 +182,7 @@ export default function ChapterRead() {
         ]}
       />
     ),
-    [auxTab, siblings, chapterId, assignments, experimentTotal],
+    [auxTab, siblings, chapterId, assignments, chapterExperiments],
   );
 
   useAuxiliaryPanel('章节学习', auxContent);

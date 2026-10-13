@@ -170,7 +170,7 @@ export default function ChapterEdit() {
     });
   };
 
-  // 右栏辅助区：Tabs —— 章节（兄弟章节切换）/ 实验（本章与全课程实验）/ 图片（图片库）
+  // 右栏辅助区：Tabs —— 章节（兄弟章节切换）/ 实验（**当前章**的实验）/ 图片（图片库）
   useAuxiliaryPanel(
     '章节编辑',
     <Tabs
@@ -217,7 +217,9 @@ export default function ChapterEdit() {
         },
         {
           key: 'experiments',
-          label: '实验',
+          label: `实验 ${
+            siblings.find((item) => item.id === chapterId)?.projects?.length ?? 0
+          }`,
           children: <ExperimentPanel chapters={siblings} currentChapterId={chapterId} mode="teacher" />,
         },
         {

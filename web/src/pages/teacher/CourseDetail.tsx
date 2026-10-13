@@ -34,6 +34,7 @@ import {
   DownCircleOutlined,
   EditOutlined,
   ExperimentOutlined,
+  FilePptOutlined,
   PlusOutlined,
   UpCircleOutlined,
   UserAddOutlined,
@@ -429,86 +430,77 @@ export default function CourseDetail() {
             <List
               dataSource={chapters}
               renderItem={(ch, idx) => (
-                <List.Item
-                  actions={[
-                    <Button
-                      key="up"
-                      size="small"
-                      type="link"
-                      icon={<ArrowUpOutlined />}
-                      title="上移（重排后 order 会重写为 1..N）"
-                      disabled={idx === 0}
-                      onClick={() => void handleMoveChapter(ch, -1)}
-                    />,
-                    <Button
-                      key="down"
-                      size="small"
-                      type="link"
-                      icon={<ArrowDownOutlined />}
-                      title="下移（重排后 order 会重写为 1..N）"
-                      disabled={idx === chapters.length - 1}
-                      onClick={() => void handleMoveChapter(ch, 1)}
-                    />,
-                    <Link key="edit" to={`/teacher/chapters/${ch.id}/edit`}>
-                      <EditOutlined /> 编辑内容
-                    </Link>,
-                    <Button
-                      key="toggle"
-                      size="small"
-                      type="link"
-                      icon={ch.status === 'published' ? <DownCircleOutlined /> : <UpCircleOutlined />}
-                      onClick={() => handleToggleChapterStatus(ch)}
-                    >
-                      {ch.status === 'published' ? '下线' : '发布'}
-                    </Button>,
-                    <Button
-                      key="add"
-                      size="small"
-                      type="link"
-                      icon={<PlusOutlined />}
-                      onClick={() => setProjectModal(ch)}
-                    >
-                      添加实验
-                    </Button>,
-                    <Popconfirm
-                      key="del"
-                      title="删除章节"
-                      description="章节下的实验项目将一并删除，确认？"
-                      onConfirm={() => handleDeleteChapter(ch)}
-                    >
-                      <Button size="small" type="link" danger icon={<DeleteOutlined />} />
-                    </Popconfirm>,
-                  ]}
-                >
-                  <List.Item.Meta
-                    title={
-                      <Space>
-                        <Text strong>
-                          第 {idx + 1} 章 · {ch.title}
-                        </Text>
-                        <StatusTag status={ch.status} />
-                      </Space>
-                    }
-                    description={
-                      (ch.projects ?? []).length === 0 ? (
-                        <Text type="secondary">本章节暂无实验项目</Text>
-                      ) : (
-                        <Space wrap style={{ marginTop: 8 }}>
-                          {(ch.projects ?? []).map((p) => (
-                            <Link key={p.id} to={`/teacher/projects/${p.id}`}>
-                              <Card size="small" hoverable style={{ minWidth: 220 }}>
-                                <Space>
-                                  <ExperimentOutlined />
-                                  <Text>{p.title}</Text>
-                                  <StatusTag status={p.status} />
-                                </Space>
-                              </Card>
-                            </Link>
-                          ))}
-                        </Space>
-                      )
-                    }
-                  />
+                /* 块状排布（2026-10-13）：此前 title/description 走 List.Item.Meta、
+                   6 个操作塞 actions —— 元信息区被挤到几乎零宽，章节标题逐字换行。
+                   现在标题 / 统计 / 操作各占一行，宽度都够，也不再需要 Meta。 */
+                <List.Item style={{ display: 'block', paddingTop: 12, paddingBottom: 12 }}>
+                  <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                    <Space wrap>
+                      <Text strong>
+                        第 {idx + 1} 章 · {ch.title}
+                      </Text>
+                      <StatusTag status={ch.status} />
+                    </Space>
+                    {/* 与学生端课程页同口径的统计信息（不再平铺实验卡片） */}
+                    <Space size={16} wrap>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        <ExperimentOutlined style={{ marginRight: 4 }} />
+                        实验 {(ch.projects ?? []).length} 个
+                        {(() => {
+                          const drafts = (ch.projects ?? []).filter((p) => p.status === 'draft').length;
+                          return drafts > 0 ? `（草稿 ${drafts}）` : '';
+                        })()}
+                      </Text>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        <FilePptOutlined style={{ marginRight: 4 }} />
+                        {(ch.slideCount ?? 0) > 0 ? `课件 ${ch.slideCount} 页` : '无课件'}
+                      </Text>
+                    </Space>
+                    <Space size={4} wrap>
+                      <Button
+                        size="small"
+                        type="link"
+                        icon={<ArrowUpOutlined />}
+                        title="上移（重排后 order 会重写为 1..N）"
+                        disabled={idx === 0}
+                        onClick={() => void handleMoveChapter(ch, -1)}
+                      />
+                      <Button
+                        size="small"
+                        type="link"
+                        icon={<ArrowDownOutlined />}
+                        title="下移（重排后 order 会重写为 1..N）"
+                        disabled={idx === chapters.length - 1}
+                        onClick={() => void handleMoveChapter(ch, 1)}
+                      />
+                      <Link to={`/teacher/chapters/${ch.id}/edit`}>
+                        <EditOutlined /> 编辑内容
+                      </Link>
+                      <Button
+                        size="small"
+                        type="link"
+                        icon={ch.status === 'published' ? <DownCircleOutlined /> : <UpCircleOutlined />}
+                        onClick={() => handleToggleChapterStatus(ch)}
+                      >
+                        {ch.status === 'published' ? '下线' : '发布'}
+                      </Button>
+                      <Button
+                        size="small"
+                        type="link"
+                        icon={<PlusOutlined />}
+                        onClick={() => setProjectModal(ch)}
+                      >
+                        添加实验
+                      </Button>
+                      <Popconfirm
+                        title="删除章节"
+                        description="章节下的实验项目将一并删除，确认？"
+                        onConfirm={() => handleDeleteChapter(ch)}
+                      >
+                        <Button size="small" type="link" danger icon={<DeleteOutlined />} />
+                      </Popconfirm>
+                    </Space>
+                  </Space>
                 </List.Item>
               )}
             />

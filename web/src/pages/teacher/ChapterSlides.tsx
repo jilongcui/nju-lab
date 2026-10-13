@@ -568,7 +568,7 @@ export default function ChapterSlides() {
     }
   };
 
-  // 右栏辅助区：Tabs —— 章节（兄弟章节切换，带未保存检查）/ 实验（全课程实验）/ 生成 / 图片
+  // 右栏辅助区：Tabs —— 章节（兄弟章节切换，带未保存检查）/ 实验（**当前章**的实验）/ 生成 / 图片
   useAuxiliaryPanel(
     '章节幻灯片',
     <Tabs
@@ -619,7 +619,9 @@ export default function ChapterSlides() {
         },
         {
           key: 'experiments',
-          label: '实验',
+          label: `实验 ${
+            siblings.find((item) => item.id === chapterId)?.projects?.length ?? 0
+          }`,
           children: <ExperimentPanel chapters={siblings} currentChapterId={chapterId} mode="teacher" />,
         },
         {

@@ -10,9 +10,10 @@
  * 覆盖：
  *   ① 学生课程页：无 `/student/projects/*` 链接（不再列具体实验）、每卡有实验计数与课件信息、
  *      页头概览、卡片等高与标题不折行
- *   ② 学生章节课：右栏「章节 / 实验」两个 tab、实验条数与后端一致、当前章高亮、
- *      点实验名直接进入实验页（不经过课程详情）
- *   ③ 教师章节页（编辑 / 幻灯片）：右栏有「实验」tab，点实验名进入教师端实验详情
+ *   ② 学生章节课：右栏「章节 / 实验」两个 tab；**「实验」tab 只列当前章**（2026-10-13 用户补充：
+ *      原先列全课程 15 个太挤）——条数与后端本章一致、行内有难度/状态标签、点实验名直接进入
+ *   ③ 教师章节页（编辑 / 幻灯片）：右栏「实验」tab 同样**只列本章**，点实验名进入教师端实验详情
+ *   ④ 教师端课程详情：章节列表**只给统计信息**（实验 N 个 / 课件 M 页），不再平铺实验卡片
  *
  * 用法（默认打线上 medai.nju.edu.cn/lab）：
  *   PLAYWRIGHT_BROWSERS_PATH=/home/ubuntu/.cache/ms-playwright \
@@ -90,7 +91,6 @@ try {
   const chapters = [...(course.chapters ?? [])].sort((a, b) => a.order - b.order);
   const totalExperiments = chapters.reduce((sum, ch) => sum + (ch.projects?.length ?? 0), 0);
   const chapterWithProjects = chapters.find((ch) => (ch.projects?.length ?? 0) > 0);
-  const chapterIndex = chapters.findIndex((ch) => ch.id === chapterWithProjects?.id);
   const currentChapterExperiments = chapterWithProjects?.projects?.length ?? 0;
   const slideChapters = chapters.filter((ch) => (ch.slideCount ?? 0) > 0).length;
   const assignments = await apiGet(student.token, '/me/assignments');
@@ -186,7 +186,7 @@ try {
           [...document.querySelectorAll('aside .ant-tabs-tab')].some(
             (el) => el.innerText.trim() === `实验 ${n}`,
           ),
-        totalExperiments,
+        currentChapterExperiments,
         { timeout: 15000 },
       )
       .catch(() => {});
@@ -196,9 +196,9 @@ try {
       [...document.querySelectorAll('aside .ant-tabs-tab')].map((el) => el.innerText.trim()),
     );
     check(
-      '章节课：右栏有「实验」tab 且标签带全课程实验数',
-      auxTabTexts.includes(`实验 ${totalExperiments}`),
-      `实际 tab：${auxTabTexts.join(' / ')}`,
+      '章节课：右栏有「实验」tab 且标签带**本章**实验数',
+      auxTabTexts.includes(`实验 ${currentChapterExperiments}`),
+      `实际 tab：${auxTabTexts.join(' / ')}（全课程共 ${totalExperiments} 个）`,
     );
     // 默认仍在「章节」tab：既有的课程目录不能被顶掉
     check(
@@ -210,31 +210,31 @@ try {
     await auxTab(page, '实验').click();
     await page.waitForTimeout(500);
     const linkCount = await activeProjectLinks(page).count();
-    check('章节课：「实验」tab 列出全课程实验', linkCount === totalExperiments, `${linkCount}/${totalExperiments}`);
     check(
-      '章节课：实验行标出所属章节（第 N 章）',
-      (await page.getByText(new RegExp(`第 ${chapterIndex + 1} 章 ·`)).count()) >= 1,
+      '章节课：「实验」tab 只列当前章的实验（不再列其它章节）',
+      linkCount === currentChapterExperiments,
+      `${linkCount}/${currentChapterExperiments}（全课程共 ${totalExperiments} 个）`,
     );
-
-    const highlight = await page.evaluate(() => {
+    const paneInfo = await page.evaluate(() => {
       const pane = document.querySelector('aside .ant-tabs-tabpane-active');
       const items = [...(pane?.querySelectorAll('.ant-list-item') ?? [])];
       return {
-        total: items.length,
-        highlighted: items.filter((el) => getComputedStyle(el).backgroundColor !== 'rgba(0, 0, 0, 0)')
-          .length,
+        rows: items.length,
+        numbered: items.filter((el) => /^1\.\s|^\d+\.\s/.test(el.innerText.trim())).length,
+        tagged: items.filter((el) => el.querySelectorAll('.ant-tag').length > 0).length,
       };
     });
-    check(
-      '章节课：当前章实验高亮',
-      highlight.highlighted === currentChapterExperiments,
-      `高亮 ${highlight.highlighted} / 本章实验 ${currentChapterExperiments}`,
-    );
-    if (lockedIds.size > 0) {
+    check('章节课：实验行带章节内编号（不再堆「第 N 章 · 章名」副标题）',
+      paneInfo.numbered === currentChapterExperiments, `编号 ${paneInfo.numbered}/${currentChapterExperiments}`);
+    check('章节课：每行都有难度标签（排版改成标题一行 + 标签一行）',
+      paneInfo.tagged === currentChapterExperiments, `带标签 ${paneInfo.tagged}/${currentChapterExperiments}`);
+    // 锁标记只看**本章**（列表只列本章；lockedIds 是全课程的）
+    const currentLocked = (chapterWithProjects.projects ?? []).filter((p) => lockedIds.has(p.id)).length;
+    if (currentLocked > 0) {
       const locked = await page.locator('aside .ant-tabs-tabpane-active .anticon-lock').count();
-      check('章节课：未解锁实验带锁标记', locked === lockedIds.size, `${locked}/${lockedIds.size}`);
+      check('章节课：未解锁实验带锁标记', locked === currentLocked, `${locked}/${currentLocked}`);
     } else {
-      check('章节课：未解锁实验带锁标记', true, '该学生实验全部已解锁，跳过');
+      check('章节课：未解锁实验带锁标记', true, '本章实验都已解锁，跳过');
     }
     await page.screenshot({ path: `${SHOTS_DIR}02-student-chapter-experiments.png`, fullPage: true });
 
@@ -274,11 +274,41 @@ try {
     await auxTab(page, '实验').click();
     await page.waitForTimeout(500);
     const teacherLinks = await activeProjectLinks(page).count();
-    check('教师端章节幻灯片：列出全课程实验', teacherLinks === totalExperiments, `${teacherLinks}/${totalExperiments}`);
+    check(
+      '教师端章节幻灯片：「实验」tab 只列当前章的实验',
+      teacherLinks === currentChapterExperiments,
+      `${teacherLinks}/${currentChapterExperiments}（全课程共 ${totalExperiments} 个）`,
+    );
+    check(
+      '教师端章节幻灯片：显示本章课件页数',
+      (await page.getByText(/本章课件 \d+ 页/).count()) >= 1,
+    );
     await page.screenshot({ path: `${SHOTS_DIR}03-teacher-chapter-experiments.png`, fullPage: true });
     await activeProjectLinks(page).first().click();
     await page.waitForURL(/\/teacher\/projects\//, { timeout: 15000 });
     check('教师端章节幻灯片：点实验名进入教师端实验详情', page.url().includes('/teacher/projects/'));
+
+    // ---------- ④ 教师端课程详情：章节列表只给统计信息 ----------
+    await page.goto(`${BASE}/teacher/courses/${COURSE_ID}`, { waitUntil: 'domcontentloaded' });
+    await page.getByText('章节大纲').first().waitFor({ timeout: 30000 });
+    await page.waitForTimeout(800);
+    check(
+      '教师端课程详情：章节列表不再平铺实验卡片（没有指向实验详情的链接）',
+      (await page.locator('a[href*="/teacher/projects/"]').count()) === 0,
+    );
+    const experimentStat = await page.getByText(/^实验 \d+ 个/).count();
+    const slideStat = await page.getByText(/^(课件 \d+ 页|无课件)$/).count();
+    check(
+      '教师端课程详情：每章显示「实验 N 个」（与学生端同口径）',
+      experimentStat === chapters.length,
+      `${experimentStat}/${chapters.length}`,
+    );
+    check(
+      '教师端课程详情：每章显示课件页数',
+      slideStat === chapters.length,
+      `${slideStat}/${chapters.length}`,
+    );
+    await page.screenshot({ path: `${SHOTS_DIR}04-teacher-course-chapters.png`, fullPage: true });
     await context.close();
   }
 } catch (error) {
