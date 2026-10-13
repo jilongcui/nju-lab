@@ -35,6 +35,24 @@
 - **上线后线上复验**（`medai.nju.edu.cn/lab`，真实浏览器）：本页脚本 **25/25**、
   `verify-chapter-slides.mjs` 21/21、`verify-course-pages.mjs` 24/24。
 
+**2026-10-13 补充（同批）：学生端不得看到未发布的草稿实验 —— ✅ 已上线**
+
+- **用户要求**：学生不该看到老师还没发布的实验。
+- **排查**：其余入口本来就有防护 —— `ProjectsService.getProject` 对学生返回 403「实验项目尚未发布」、
+  审批下发任务（`backfillAssignments`）与 `/me/assignments` 都只认 `PUBLISHED`；
+  **唯一泄漏点是 `CoursesService.getCourse`**：章节里挂的实验摘要不按状态过滤，
+  学生（右栏「实验」tab）能读到草稿实验的**标题**。
+- **修法**：`getCourse` 里 `canSeeDrafts` 分流 —— 教师（含协作教师）/管理员看全部，
+  **学生只查 `status = PUBLISHED`**（在 DB 查询条件里过滤，不是拿回来再筛）。前端不重复过滤
+  （口径只有一处：见 `ExperimentPanel` 注释）。
+- **验证**：新脚本 `server/tools/verify-draft-project-visibility.mjs` —— 临时课程 + 一草稿一发布
+  两个实验，覆盖「学生只见已发布 / 响应里连草稿标题与 id 都不出现 / 教师仍看得到草稿（不误伤备课）/
+  学生直接打开草稿实验 403 / `/me/assignments` 不含草稿 / 课件页数未被破坏」，**用完整清理**（删课）。
+  **修复前 10/12（正好两条泄漏断言失败）→ 修复后 12/12**；线上复验 12/12。
+- **部署**：后端 `npm run build` + 重启（新 PID 1321562）；前端重新部署（备份 `20261013-144359`，
+  仅为产物与源码一致 —— 本修复只动后端）。上线后回归：`verify-chapter-experiments.mjs` 25/25、
+  `verify-chapter-slides.mjs` 21/21、`verify-course-pages.mjs` 24/24。
+
 **2026-10-12（幻灯片：新增「优化重生成」+ 生成提示词）—— ⚠️ 代码已提交但尚未部署**
 
 - **背景**：每次重生成都从正文**从零规划**页面结构 → 大改、改进无法累积（"越改越差"）；

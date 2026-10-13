@@ -17,7 +17,7 @@ import {
 import { ChapterProgress, Enrollment, ProgressStatus } from './enrollment.entity';
 import { CourseTeacher } from './course-teacher.entity';
 import { ContentAudit } from './content-audit.entity';
-import { ExperimentProject } from '../projects/project.entity';
+import { ExperimentProject, ProjectStatus } from '../projects/project.entity';
 import { SlideDeck } from '../slides/slide-deck.entity';
 import {
   CreateCourseDto,
@@ -189,6 +189,9 @@ export class CoursesService {
           : { courseId, status: ChapterStatus.PUBLISHED },
       order: { order: 'ASC' },
     });
+    /** 教师（含协作教师）/管理员：看得到草稿章节与草稿实验 */
+    const canSeeDrafts =
+      user.role === UserRole.TEACHER || user.role === UserRole.ADMIN;
     // 报名状态：教师端「公开报名」页签要用（与公开目录共用同一套判定）
     const approvedCount = await this.enrollmentRepo.count({
       where: { courseId },
@@ -202,9 +205,17 @@ export class CoursesService {
     if (chapters.length === 0) {
       return { ...course, ...enrollmentState, teacherNames, chapters };
     }
-    // 章节下挂的实验项目一并返回（课程详情页大纲用）
+    // 章节下挂的实验项目一并返回（课程详情页大纲 / 章节页右栏「实验」tab 用）。
+    // **学生只看已发布实验**（2026-10-13 用户要求）：草稿实验的标题也还没打算公开。
+    // 其余入口的同一口径已在别处执行：`getProject` 对学生 403、下发任务与
+    // `/me/assignments` 只认 PUBLISHED —— 这里不能松。
     const projects = await this.projectRepo.find({
-      where: { chapterId: In(chapters.map((c) => c.id).concat([''])) },
+      where: canSeeDrafts
+        ? { chapterId: In(chapters.map((c) => c.id).concat([''])) }
+        : {
+            chapterId: In(chapters.map((c) => c.id).concat([''])),
+            status: ProjectStatus.PUBLISHED,
+          },
       order: { createdAt: 'ASC' },
     });
     const slideCountOf = await this.slideCountsOf(chapters.map((c) => c.id));

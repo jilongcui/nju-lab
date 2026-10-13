@@ -25,6 +25,8 @@ interface ExperimentPanelProps {
  * 教师端（章节编辑 / 幻灯片页）同理，右栏本来就是 tabs。
  *
  * 学生端「未解锁」只作提示：点进去仍能看到实验说明（与课程详情页既有行为一致）。
+ * **学生端不会有草稿实验**：`GET /courses/:id` 对学生只返回已发布实验
+ * （后端唯一口径，见 `CoursesService.getCourse`），前端不再重复过滤。
  */
 export default function ExperimentPanel({
   chapters,
