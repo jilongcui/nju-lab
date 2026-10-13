@@ -255,6 +255,8 @@ check(
 );
 
 // ---------------- 6.4 溢出兜底与图并排（2026-10-12）----------------
+// 渲染层源码：图并排等结构断言要用（定义在此，供 6.4/6.5 共用）
+const renderSrc = readFileSync(join(webRoot, 'src/slides/semantic/render.ts'), 'utf8');
 // 学员反馈：有图或有代码时容易顶掉页脚（实测第 2 章 code+图页超出 72px）。
 check(
   '运行时实现溢出兜底：内容超出安全高度时整页等比缩小',
@@ -277,7 +279,6 @@ check(
 // ---------------- 6.5 插图版式（2026-10-12 重做）----------------
 // 背景：此前给图片框强加 aspect-ratio:16/9，比例不符的图（近方图/宽扁图）被缩小留白，
 // 看起来"图小、四周空"；且 .img-frame 没有卡片外观，图直接裸贴。
-const renderSrc = readFileSync(join(webRoot, 'src/slides/semantic/render.ts'), 'utf8');
 check(
   '图片框不再强制固定比例（比例由图片自身决定）',
   !/\.ly-media[^{]*\.img-frame\s*\{[^}]*aspect-ratio/.test(layoutsCss) &&
