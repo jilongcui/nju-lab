@@ -5,6 +5,32 @@
 
 ## 0. 一句话现状
 
+**2026-10-13（课程「下架」能力 + 撤下 4 门示例/验收课程）—— ✅ 已上线**
+
+- **需求**：4 门内部课程（「Skill 工程导论（示例课程）」×2、「curl 验收课程」×2）不是完整课程，**不要公开**。
+- **发现**：公开目录、公开详情页、学生读课程三处都按 `status = published` 判定，但平台**只有「发布」没有「下架」**；
+  且学生「我的课程」（`getMyCourses`）不过滤状态 —— 已入册的学生仍会列出未公开的课程（点进去 403）。
+- **改法**：
+  · 新增 `POST /api/courses/:id/unpublish`（`CoursesService.unpublishCourse`）：课程回到 `draft`，
+    **什么都不删**（章节 / 实验 / 名单 / 提交全保留，可随时重新发布），并写 `course_unpublish` 操作记录；
+    权限与「发布」一致（任一授课教师，含协作者）。
+  · `getMyCourses` 排除 `draft`：学生端「我的课程」不再列出未公开课程（保留 `archived` —— 那是
+    "课程结束、历史仍在"的另一语义）。
+  · 教师端课程卡片：已发布 → 「下架」（确认框写明"已入册学生也会看不到"）；草稿 → 「发布」。
+- **执行**：4 门课已下架（均 `draft`）。学生端现状：公开目录 **2 门**（两门真实课程）、
+  「我的课程」**1 门**（student1 入册的那门真实课程）。
+- **验证**：接口级 `server/tools/verify-course-unpublish.mjs` **10/10**（发布可见 → 下架后目录消失 /
+  详情 404 / 学生读课程 403 /「我的课程」不再列出 → 重新发布可逆 → 清理）；界面级
+  `web/tools/verify-course-unpublish-ui.mjs` **8/8**（卡片「下架」→ 状态变草稿 → 操作区换「发布」→
+  学生选课页看不到 → 清理）。两者本地与线上各跑一次。
+- **部署**：后端 `npm run build` + 重启（PID 1587152）；前端 `bash deploy/deploy-web-lab.sh`
+  （备份 `20261013-171019`）。
+- **回归**：`verify-chapter-experiments.mjs` 25/25、`verify-chapter-slides.mjs` 21/21、
+  `verify-experiment-detail.mjs` 23/23、`verify-project-content-difficulty.mjs` 13/13、
+  `verify-draft-project-visibility.mjs` 12/12；`verify-course-pages.mjs` **23/23**
+  —— 比上次少 1 条**不是回归**：学生端「我的课程」从 3 门降到 1 门，同一行卡片不足 2 张，
+  `checkUniform` 的等高断言自然少一条。
+
 **2026-10-13（实验详情页分层：实验内容放首屏 + 难度等级）—— ✅ 已上线**
 
 - **问题（学员反馈）**：学生点开实验详情页看不到"这个实验做什么" —— 题干只存在于题目包 ZIP 的

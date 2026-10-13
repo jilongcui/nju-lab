@@ -24,6 +24,7 @@ import {
   listCourses,
   listTeachers,
   publishCourse,
+  unpublishCourse,
   setCourseTeachers,
   updateCourse,
 } from '../../api';
@@ -146,6 +147,12 @@ export default function CourseList() {
     await load();
   };
 
+  const handleUnpublish = async (id: string) => {
+    await unpublishCourse(id);
+    message.success('课程已下架（学生端不再可见，数据保留）');
+    await load();
+  };
+
   const handleDelete = async (id: string) => {
     await deleteCourse(id);
     message.success('课程已删除');
@@ -197,7 +204,16 @@ export default function CourseList() {
                           <span>发布</span>
                         </Popconfirm>,
                       ]
-                    : []),
+                    : [
+                        <Popconfirm
+                          key="unpublish"
+                          title="下架课程（不再公开）"
+                          description="下架后公开目录、课程详情页与已入册学生都会看不到它（课程回到草稿）；章节、实验与提交记录全部保留，可随时重新发布。确认下架？"
+                          onConfirm={() => handleUnpublish(c.id)}
+                        >
+                          <span>下架</span>
+                        </Popconfirm>,
+                      ]),
                   // 删课是矩阵里保留给「主教师 + 管理员」的操作（协作教师点了也会 403），
                   // 因此对协作者**不露出**这个按钮 —— 见 design §3
                   ...(canManageTeachers(c)

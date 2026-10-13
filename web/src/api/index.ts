@@ -120,6 +120,9 @@ export const updateCourse = (id: string, data: Partial<Course>) =>
 export const deleteCourse = (id: string) => client.delete<unknown, null>(`/courses/${id}`);
 export const publishCourse = (id: string) =>
   client.post<unknown, Course>(`/courses/${id}/publish`);
+/** 下架（取消发布）：回到草稿，学生端与公开目录立即不可见；数据保留 */
+export const unpublishCourse = (id: string) =>
+  client.post<unknown, Course>(`/courses/${id}/unpublish`);
 export const getCourseProgress = (id: string) =>
   client.get<unknown, CourseProgress>(`/courses/${id}/progress`);
 export const getCourseDashboard = (id: string) =>

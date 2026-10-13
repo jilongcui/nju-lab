@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 import { User, UserRole } from '../users/user.entity';
 import {
   Chapter,
@@ -352,6 +352,31 @@ export class CoursesService {
       course.slug = await this.uniqueSlug(buildSlugBase(course.title, course.id));
     }
     return this.courseRepo.save(course);
+  }
+
+  /**
+   * 下架（取消发布）—— 与发布对称：课程回到 `draft`，**立即从公开目录、公开详情页与学生端消失**
+   * （三处都按 `status = published` 判定）。
+   *
+   * 与「删除」的分工：下架**什么都不删** —— 章节、实验、选课名单、学生提交记录全保留，
+   * 想再上就重新发布；删除是主教师/管理员的破坏性操作。
+   * 用途：内部示例/验收课程不该被学生选到（2026-10-13 用户要求）、学期结束临时撤下。
+   * 注意副作用（前端确认框里也写明）：**已入册的学生也会看不到这门课**，
+   * 只是"停止对外"更常用的做法是改报名截止时间，不是下架整门课。
+   */
+  async unpublishCourse(user: User, courseId: string) {
+    const course = await this.getOwnedCourse(user, courseId);
+    course.status = CourseStatus.DRAFT;
+    const saved = await this.courseRepo.save(course);
+    await this.recordAudit({
+      courseId,
+      action: 'course_unpublish',
+      targetType: 'course',
+      targetId: courseId,
+      summary: `下架了课程「${course.title}」（不再公开）`,
+      actorId: user.id,
+    });
+    return saved;
   }
 
   /** 生成唯一公开链接标识；冲突时追加 -2、-3… */
@@ -753,8 +778,14 @@ export class CoursesService {
     if (enrollments.length === 0) {
       return [];
     }
+    // **未公开（draft）的课程对学生端完全不可见**：2026-10-13 下架内部示例/验收课程时发现
+    // 学生「我的课程」仍会列出它们（点进去 403）—— 现在与公开目录、课程读取三处口径一致。
+    // 保留 `archived`：那是"课程结束、历史仍在"的语义，与"没打算公开"不同。
     const courses = await this.courseRepo.find({
-      where: { id: In(enrollments.map((e) => e.courseId)) },
+      where: {
+        id: In(enrollments.map((e) => e.courseId)),
+        status: Not(CourseStatus.DRAFT),
+      },
       relations: ['teacher'],
     });
     const namesByCourse = await this.buildTeacherNames(courses);

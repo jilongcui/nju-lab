@@ -91,6 +91,13 @@ export class CoursesController {
     return this.coursesService.publishCourse(user, id);
   }
 
+  /** 下架（取消发布）：回到草稿，公开目录/公开详情/学生端立即不可见；数据全保留 */
+  @Post(':id/unpublish')
+  @Roles(UserRole.TEACHER)
+  unpublish(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.coursesService.unpublishCourse(user, id);
+  }
+
   @Delete(':id')
   @Roles(UserRole.TEACHER)
   remove(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
