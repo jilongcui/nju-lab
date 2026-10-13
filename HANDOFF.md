@@ -5,7 +5,7 @@
 
 ## 0. 一句话现状
 
-**2026-10-13（章节课直达实验：右栏「实验」tab + 课程章节页瘦身）—— ⚠️ 代码已提交但尚未部署**
+**2026-10-13（章节课直达实验：右栏「实验」tab + 课程章节页瘦身）—— ✅ 已上线**
 
 - **问题（学员反馈）**：上完一节想进实验，必须先退出章节 → 回「课程详情」→ 再点实验标签，路径太绕。
 - **改法（用户选定）**：
@@ -28,9 +28,12 @@
 - **验证脚本小改**：`verify-chapter-slides.mjs` / `verify-course-pages.mjs` 支持
   `VERIFY_BASE` / `VERIFY_API`（默认仍打线上），本地联调不必先部署；`web/vite.config.ts` 的 dev proxy
   支持 `API_PROXY_TARGET`（把 dev server 指到另一个后端实例，不动线上服务）。
-- **待部署**：服务端 `cd server && npm run build` 后重启（`kill $(systemctl show nju-lab -p MainPID --value)`，
-  systemd `Restart=always` 拉起）；前端 `bash deploy/deploy-web-lab.sh`。**后端必须一起上**：
-  旧后端不返回 `slideCount`，新前端会把「有课件」显示成「无课件」。
+- **部署（2026-10-13 已完成）**：服务端 `npm run build` + `kill $(systemctl show nju-lab -p MainPID --value)`
+  （systemd `Restart=always` 拉起，新 PID 1293723）；前端 `bash deploy/deploy-web-lab.sh`
+  （备份 `lab-web-backups/20261013-143730`）。**后端与前端必须一起上**：旧后端不返回 `slideCount`，
+  新前端会把「有课件」显示成「无课件」。
+- **上线后线上复验**（`medai.nju.edu.cn/lab`，真实浏览器）：本页脚本 **25/25**、
+  `verify-chapter-slides.mjs` 21/21、`verify-course-pages.mjs` 24/24。
 
 **2026-10-12（幻灯片：新增「优化重生成」+ 生成提示词）—— ⚠️ 代码已提交但尚未部署**
 
