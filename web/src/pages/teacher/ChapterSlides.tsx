@@ -79,6 +79,7 @@ import {
   imageMarkdownSnippet,
   splitMarkdownPages,
 } from '../../slides/imageActions';
+import ExperimentPanel from '../../components/ExperimentPanel';
 import ImagePickerDrawer from '../../components/ImagePickerDrawer';
 import ImageLibraryPanel from '../../components/ImageLibraryPanel';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
@@ -174,7 +175,7 @@ export default function ChapterSlides() {
     { kind: 'insert'; layout: SlideLayout } | { kind: 'replace' } | { kind: 'insert-cursor' } | null
   >(null);
   const mdAreaRef = useRef<TextAreaRef>(null);
-  const [auxTab, setAuxTab] = useState<'chapters' | 'generate' | 'images'>('chapters');
+  const [auxTab, setAuxTab] = useState<'chapters' | 'experiments' | 'generate' | 'images'>('chapters');
   const editingRef = useRef(editing);
   editingRef.current = editing;
   // 章节 tab/工具栏里「放弃修改并切换」与放映态的章节跳转要绕过路由守卫
@@ -567,12 +568,12 @@ export default function ChapterSlides() {
     }
   };
 
-  // 右栏辅助区：Tabs —— 章节（兄弟章节切换，带未保存检查）/ 图片（图库插图页）
+  // 右栏辅助区：Tabs —— 章节（兄弟章节切换，带未保存检查）/ 实验（全课程实验）/ 生成 / 图片
   useAuxiliaryPanel(
     '章节幻灯片',
     <Tabs
       activeKey={auxTab}
-      onChange={(k) => setAuxTab(k as 'chapters' | 'generate' | 'images')}
+      onChange={(k) => setAuxTab(k as 'chapters' | 'experiments' | 'generate' | 'images')}
       items={[
         {
           key: 'chapters',
@@ -615,6 +616,11 @@ export default function ChapterSlides() {
               </Paragraph>
             </>
           ),
+        },
+        {
+          key: 'experiments',
+          label: '实验',
+          children: <ExperimentPanel chapters={siblings} currentChapterId={chapterId} mode="teacher" />,
         },
         {
           key: 'generate',

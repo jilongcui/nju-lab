@@ -37,6 +37,8 @@ export interface Chapter {
   createdAt?: string;
   /** 课程详情中后端返回的实验项目摘要 */
   projects?: ProjectSummary[];
+  /** 课程详情中后端返回的课件页数：0 = 这章还没有课件（见 CoursesService.slideCountsOf） */
+  slideCount?: number;
   /** 乐观锁版本：编辑保存时带回，不符 → 409（别人刚改过） */
   version?: number;
   /** 最后一次写入者（userId） */

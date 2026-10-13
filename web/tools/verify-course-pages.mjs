@@ -19,7 +19,13 @@ const SHOTS_DIR = new URL('./shots/', import.meta.url).pathname;
 mkdirSync(SHOTS_DIR, { recursive: true });
 
 const SITE_HOST = 'medai.nju.edu.cn';
-const BASE = `http://${SITE_HOST}/lab`;
+// 默认打线上（走 nginx 链路）；本地联调可指向 dev server 与另一个后端实例：
+//   VERIFY_BASE=http://127.0.0.1:5173 VERIFY_API=http://127.0.0.1:3101/api node web/tools/verify-course-pages.mjs
+const BASE = process.env.VERIFY_BASE || `http://${SITE_HOST}/lab`;
+const API = process.env.VERIFY_API || 'http://127.0.0.1:3100/api';
+const LAUNCH_ARGS = BASE.includes(SITE_HOST)
+  ? [`--host-resolver-rules=MAP ${SITE_HOST} 127.0.0.1`, '--ignore-certificate-errors']
+  : ['--ignore-certificate-errors'];
 const COURSE_ID = process.argv[2] || 'cd11ea33-0f1f-420a-afbc-951baf1f5e89';
 
 const results = [];
@@ -29,12 +35,12 @@ const check = (label, ok, extra = '') => {
 };
 
 const browser = await chromium.launch({
-  args: [`--host-resolver-rules=MAP ${SITE_HOST} 127.0.0.1`, '--ignore-certificate-errors'],
+  args: LAUNCH_ARGS,
 });
 
 /** API 登录 + 注入会话，返回独立 context 的页面（多角色互不影响） */
 async function openSession(username, password) {
-  const loginRes = await fetch('http://127.0.0.1:3100/api/auth/login', {
+  const loginRes = await fetch(`${API}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),

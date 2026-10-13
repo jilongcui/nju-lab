@@ -10,6 +10,7 @@ import {
   Segmented,
   Skeleton,
   Space,
+  Tabs,
   Tag,
   Typography,
 } from 'antd';
@@ -20,10 +21,11 @@ import {
   PlayCircleOutlined,
   RightOutlined,
 } from '@ant-design/icons';
-import { completeChapter, getChapter, getChapterSlides, getCourse } from '../../api';
-import type { Chapter, ChapterSlidesResponse } from '../../types';
+import { completeChapter, getChapter, getChapterSlides, getCourse, listMyAssignments } from '../../api';
+import type { Assignment, Chapter, ChapterSlidesResponse } from '../../types';
 import StatusTag from '../../components/StatusTag';
 import MarkdownView from '../../components/MarkdownView';
+import ExperimentPanel from '../../components/ExperimentPanel';
 import SlideStage, { type SlideStageHandle } from '../../slides/SlideStage';
 import { collectFileRefs, fetchFileDataUrls } from '../../slides/files';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
@@ -35,6 +37,11 @@ const { Title, Paragraph, Text } = Typography;
  *
  * 只读：学生看不到模板清单，也不能改内容/模板（后端对学生返回 `templates: []`、写接口 403）。
  * 老师还没做幻灯片时不显示切换入口，也不打扰学生。
+ *
+ * 2026-10-13（学员反馈：实验入口太绕）：
+ *   **右栏改为「章节 | 实验」两个 tab**。原先学生上完一节想进实验，必须离开章节
+ *   （回「课程详情」再点实验标签），路径太长；现在右栏就能看到本课程各章实验、
+ *   当前章高亮并一键进入。同时课程详情页不再堆一串实验标签，只显示计数与课件信息。
  *
  * 2026-10-10 学员反馈的三处修复：
  *   ① 幻灯片上方那条提示会把演示画面往下挤 —— 移到**演示下方**；
@@ -48,6 +55,9 @@ export default function ChapterRead() {
   const [loading, setLoading] = useState(true);
   const [chapter, setChapter] = useState<Chapter | null>(null);
   const [siblings, setSiblings] = useState<Chapter[]>([]);
+  /** 本课程任务（含解锁状态）：右栏「实验」tab 用，与课程详情页同一数据源 */
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [auxTab, setAuxTab] = useState<'chapters' | 'experiments'>('chapters');
   const [slidesData, setSlidesData] = useState<ChapterSlidesResponse | null>(null);
   const [slidesError, setSlidesError] = useState<string | null>(null);
   const [view, setView] = useState<'doc' | 'slides'>('doc');
@@ -85,63 +95,92 @@ export default function ChapterRead() {
     setCurrentIndex(0);
   }, [chapterId]);
 
-  // 右侧附栏的章节目录：与「我的课程 → 课程详情」同一口径（courseId → 全部章节，按 order 排）
+  // 右侧附栏的数据：章节目录（与「我的课程 → 课程详情」同一口径）与
+  // 我的任务（右栏「实验」tab 的解锁/提交状态，同 /me/assignments）
   useEffect(() => {
     const courseId = chapter?.courseId;
     if (!courseId) return;
     let cancelled = false;
-    void getCourse(courseId)
-      .then((course) => {
-        if (!cancelled) setSiblings([...(course.chapters ?? [])].sort((a, b) => a.order - b.order));
-      })
-      .catch(() => {
-        // 目录取不到不影响阅读，静默降级为空列表
-        if (!cancelled) setSiblings([]);
-      });
+    void Promise.all([
+      getCourse(courseId).catch(() => null),
+      listMyAssignments().catch(() => [] as Assignment[]),
+    ]).then(([course, myAssignments]) => {
+      if (cancelled) return;
+      // 取不到不影响阅读，静默降级为空列表
+      setSiblings([...(course?.chapters ?? [])].sort((a, b) => a.order - b.order));
+      setAssignments(myAssignments ?? []);
+    });
     return () => {
       cancelled = true;
     };
   }, [chapter?.courseId]);
 
+  const experimentTotal = siblings.reduce((sum, item) => sum + (item.projects?.length ?? 0), 0);
+
   const auxContent = useMemo(
     () => (
-      <>
-        <Paragraph type="secondary" style={{ fontSize: 12 }}>
-          阅读完成后点击右上角「标记完成」。章节进度会影响后续实验的解锁。
-          若老师准备了课件，可用顶部「文档 / 幻灯片」切换。
-        </Paragraph>
-        {siblings.length > 0 && (
-          <>
-            <Divider style={{ margin: '4px 0 8px' }} />
-            <List
-              size="small"
-              dataSource={siblings}
-              renderItem={(item, index) => {
-                const current = item.id === chapterId;
-                return (
-                  <List.Item style={{ padding: '4px 0' }}>
-                    <Link
-                      to={`/student/chapters/${item.id}`}
-                      style={{ width: '100%', fontWeight: current ? 600 : undefined }}
-                    >
-                      <Text style={{ fontSize: 13 }} ellipsis>
-                        {index + 1}. {item.title}
-                      </Text>
-                      {current && (
-                        <Tag color="processing" style={{ marginLeft: 6 }}>
-                          当前
-                        </Tag>
-                      )}
-                    </Link>
-                  </List.Item>
-                );
-              }}
-            />
-          </>
-        )}
-      </>
+      <Tabs
+        activeKey={auxTab}
+        onChange={(key) => setAuxTab(key as 'chapters' | 'experiments')}
+        items={[
+          {
+            key: 'chapters',
+            label: '章节',
+            children: (
+              <>
+                <Paragraph type="secondary" style={{ fontSize: 12 }}>
+                  阅读完成后点击右上角「标记完成」。章节进度会影响后续实验的解锁。
+                  若老师准备了课件，可用顶部「文档 / 幻灯片」切换。
+                </Paragraph>
+                {siblings.length > 0 && (
+                  <>
+                    <Divider style={{ margin: '4px 0 8px' }} />
+                    <List
+                      size="small"
+                      dataSource={siblings}
+                      renderItem={(item, index) => {
+                        const current = item.id === chapterId;
+                        return (
+                          <List.Item style={{ padding: '4px 0' }}>
+                            <Link
+                              to={`/student/chapters/${item.id}`}
+                              style={{ width: '100%', fontWeight: current ? 600 : undefined }}
+                            >
+                              <Text style={{ fontSize: 13 }} ellipsis>
+                                {index + 1}. {item.title}
+                              </Text>
+                              {current && (
+                                <Tag color="processing" style={{ marginLeft: 6 }}>
+                                  当前
+                                </Tag>
+                              )}
+                            </Link>
+                          </List.Item>
+                        );
+                      }}
+                    />
+                  </>
+                )}
+              </>
+            ),
+          },
+          {
+            key: 'experiments',
+            // 计数放在 tab 上：不点进去也知道这门课一共有多少实验要做
+            label: experimentTotal > 0 ? `实验 ${experimentTotal}` : '实验',
+            children: (
+              <ExperimentPanel
+                chapters={siblings}
+                currentChapterId={chapterId}
+                mode="student"
+                assignments={assignments}
+              />
+            ),
+          },
+        ]}
+      />
     ),
-    [siblings, chapterId],
+    [auxTab, siblings, chapterId, assignments, experimentTotal],
   );
 
   useAuxiliaryPanel('章节学习', auxContent);

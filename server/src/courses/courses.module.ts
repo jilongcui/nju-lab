@@ -7,6 +7,8 @@ import { ContentAudit } from './content-audit.entity';
 import { ExperimentProject } from '../projects/project.entity';
 import { ChapterProgress, Enrollment } from './enrollment.entity';
 import { CourseApplication } from './course-application.entity';
+// 课程详情/章节页右栏要显示「这章有没有课件」，故在此注册 deck 仓储（只读页数，见 getCourse）
+import { SlideDeck } from '../slides/slide-deck.entity';
 import {
   ChaptersController,
   CoursesController,
@@ -31,6 +33,7 @@ import { CourseApplicationsService } from './course-applications.service';
       ChapterProgress,
       ExperimentProject,
       CourseApplication,
+      SlideDeck,
     ]),
     UsersModule,
   ],

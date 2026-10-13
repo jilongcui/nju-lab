@@ -18,6 +18,7 @@ import { ChapterProgress, Enrollment, ProgressStatus } from './enrollment.entity
 import { CourseTeacher } from './course-teacher.entity';
 import { ContentAudit } from './content-audit.entity';
 import { ExperimentProject } from '../projects/project.entity';
+import { SlideDeck } from '../slides/slide-deck.entity';
 import {
   CreateCourseDto,
   EnrollStudentsDto,
@@ -49,6 +50,9 @@ export class CoursesService {
     /** 内容操作流水（谁在什么时候改了什么） */
     @InjectRepository(ContentAudit)
     private readonly auditRepo: Repository<ContentAudit>,
+    /** 章节课件：课程详情只读它的**页数**（`slideCount`），不读正文 JSON */
+    @InjectRepository(SlideDeck)
+    private readonly deckRepo: Repository<SlideDeck>,
   ) {
     this.logger = new Logger(CoursesService.name);
   }
@@ -203,6 +207,7 @@ export class CoursesService {
       where: { chapterId: In(chapters.map((c) => c.id).concat([''])) },
       order: { createdAt: 'ASC' },
     });
+    const slideCountOf = await this.slideCountsOf(chapters.map((c) => c.id));
     return {
       ...course,
       ...enrollmentState,
@@ -212,8 +217,33 @@ export class CoursesService {
         projects: projects
           .filter((p) => p.chapterId === ch.id)
           .map((p) => ({ id: p.id, title: p.title, status: p.status })),
+        // 0 = 老师还没有为这一章做课件（前端据此显示「无课件 / 课件 N 页」）
+        slideCount: slideCountOf.get(ch.id) ?? 0,
       })),
     };
+  }
+
+  /**
+   * 各章课件的页数（`chapterId → 页数`，无 deck/无内容为 0）。
+   *
+   * 为什么用 `JSON_LENGTH`：这里是**高频**接口（学生每次进章节页也会调），
+   * 而 `slides` 是几十 KB 的 JSON —— 整列读出来只为算 `.length` 太亏。
+   * 平台固定 MySQL（见 data-source.ts），JSON_LENGTH 可用；页数口径 = 前端
+   * `deck.slides.length`（学生端「有没有幻灯片」的既有判定），两者必须一致。
+   */
+  private async slideCountsOf(chapterIds: string[]) {
+    const counts = new Map<string, number>();
+    if (chapterIds.length === 0) return counts;
+    const rows = await this.deckRepo
+      .createQueryBuilder('deck')
+      .select('deck.chapterId', 'chapterId')
+      .addSelect('JSON_LENGTH(deck.slides)', 'slideCount')
+      .where('deck.chapterId IN (:...chapterIds)', { chapterIds })
+      .getRawMany<{ chapterId: string; slideCount: number | string | null }>();
+    for (const row of rows) {
+      counts.set(row.chapterId, Number(row.slideCount) || 0);
+    }
+    return counts;
   }
 
   /**

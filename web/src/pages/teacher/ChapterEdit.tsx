@@ -22,6 +22,7 @@ import { getChapter, getCourse, saveChapter } from '../../api';
 import { conflictOf, showConflictDialog } from '../../utils/content-conflict';
 import type { Chapter, StoredFileInfo } from '../../types';
 import MarkdownView from '../../components/MarkdownView';
+import ExperimentPanel from '../../components/ExperimentPanel';
 import ImageLibraryPanel from '../../components/ImageLibraryPanel';
 import { imageMarkdownSnippet } from '../../slides/imageActions';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
@@ -29,7 +30,7 @@ import { useAuxiliaryStore } from '../../stores/auxiliary';
 
 const { Paragraph, Text } = Typography;
 
-type AuxTab = 'chapters' | 'images';
+type AuxTab = 'chapters' | 'experiments' | 'images';
 
 export default function ChapterEdit() {
   const { chapterId = '' } = useParams();
@@ -169,7 +170,7 @@ export default function ChapterEdit() {
     });
   };
 
-  // 右栏辅助区：Tabs —— 章节（兄弟章节切换）/ 图片（图片库，替代原来的 Drawer）
+  // 右栏辅助区：Tabs —— 章节（兄弟章节切换）/ 实验（本章与全课程实验）/ 图片（图片库）
   useAuxiliaryPanel(
     '章节编辑',
     <Tabs
@@ -213,6 +214,11 @@ export default function ChapterEdit() {
               />
             </>
           ),
+        },
+        {
+          key: 'experiments',
+          label: '实验',
+          children: <ExperimentPanel chapters={siblings} currentChapterId={chapterId} mode="teacher" />,
         },
         {
           key: 'images',

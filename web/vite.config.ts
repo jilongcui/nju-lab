@@ -69,7 +69,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:3100',
+        // 本地联调可指向另一个后端实例（不必动线上服务）：
+        //   API_PROXY_TARGET=http://127.0.0.1:3101 npm run dev
+        target: process.env.API_PROXY_TARGET || 'http://localhost:3100',
         changeOrigin: true,
       },
     },

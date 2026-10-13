@@ -21,7 +21,13 @@ const SHOTS_DIR = new URL('./shots/review/chapter-slides/', import.meta.url).pat
 mkdirSync(SHOTS_DIR, { recursive: true });
 
 const SITE_HOST = 'medai.nju.edu.cn';
-const BASE = `http://${SITE_HOST}/lab`;
+// 默认打线上（走 nginx 链路）；本地联调可指向 dev server 与另一个后端实例：
+//   VERIFY_BASE=http://127.0.0.1:5173 VERIFY_API=http://127.0.0.1:3101/api node web/tools/verify-chapter-slides.mjs
+const BASE = process.env.VERIFY_BASE || `http://${SITE_HOST}/lab`;
+const API = process.env.VERIFY_API || 'http://127.0.0.1:3100/api';
+const LAUNCH_ARGS = BASE.includes(SITE_HOST)
+  ? [`--host-resolver-rules=MAP ${SITE_HOST} 127.0.0.1`, '--ignore-certificate-errors']
+  : ['--ignore-certificate-errors'];
 // 第 7 章「向量数据库」：已生成 v2 语义 deck（18 页），且挂着章节目录
 const CHAPTER_ID = process.argv[2] || '3d52759a-0b32-4e6e-a74c-9febc2d44d14';
 
@@ -32,11 +38,11 @@ const check = (label, ok, extra = '') => {
 };
 
 const browser = await chromium.launch({
-  args: [`--host-resolver-rules=MAP ${SITE_HOST} 127.0.0.1`, '--ignore-certificate-errors'],
+  args: LAUNCH_ARGS,
 });
 
 async function openSession(username, password) {
-  const loginJson = await fetch('http://127.0.0.1:3100/api/auth/login', {
+  const loginJson = await fetch(`${API}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),

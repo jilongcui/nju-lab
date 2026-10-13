@@ -5,6 +5,33 @@
 
 ## 0. 一句话现状
 
+**2026-10-13（章节课直达实验：右栏「实验」tab + 课程章节页瘦身）—— ⚠️ 代码已提交但尚未部署**
+
+- **问题（学员反馈）**：上完一节想进实验，必须先退出章节 → 回「课程详情」→ 再点实验标签，路径太绕。
+- **改法（用户选定）**：
+  · **章节课右栏改成「章节 | 实验」两个 tab**（学生端 `ChapterRead`；教师端 `ChapterEdit` /
+    `ChapterSlides` 同款）。实验按章列出、**当前章高亮**；学生端未解锁带锁、教师端显示发布状态；
+    点实验名**直接进入实验页**，不必离开章节。tab 标签带全课程实验数（如「实验 15」）。
+  · **课程章节列表页（`StudentCourseDetail`）不再列具体实验**，只给概览：卡片显示
+    「本章实验 N 个 / 课件 X 页（无课件）」+ 进度标签 +「进入学习」；页头一行
+    「共 14 章 · 实验 15 个 · 14 章有课件」。此前每张卡一堆实验 Tag 里还套着状态标签，很乱。
+- **共用的新组件** `web/src/components/ExperimentPanel.tsx`（props：`chapters` / `currentChapterId` /
+  `mode: 'student' | 'teacher'` / `assignments`）。
+- **后端**：`GET /courses/:id` 的章节新增 **`slideCount`**（课件页数，0 = 无课件）——
+  `CoursesService.slideCountsOf()` 用 `JSON_LENGTH(deck.slides)` **只读页数**（deck 正文几十 KB，
+  本接口是高频调用，不能整列读出来）；`courses.module` 因此注册了 `SlideDeck` 仓储（**无模块循环**：
+  只引 entity，不引 `SlidesModule`）。口径 = 前端 `deck.slides.length`，与「有没有幻灯片」的既有判定一致。
+- **验证**：新脚本 `web/tools/verify-chapter-experiments.mjs` **25/25**（真实浏览器；本地 dev server +
+  另一端口后端实例跑，覆盖"课程页不列实验 / 概览计数 / 卡片等高 / 右栏两个 tab / 当前章高亮 /
+  点实验直达 / 教师端两页 tab"）；回归 `verify-chapter-slides.mjs` 21/21、`verify-course-pages.mjs` 24/24；
+  两端 tsc 通过。
+- **验证脚本小改**：`verify-chapter-slides.mjs` / `verify-course-pages.mjs` 支持
+  `VERIFY_BASE` / `VERIFY_API`（默认仍打线上），本地联调不必先部署；`web/vite.config.ts` 的 dev proxy
+  支持 `API_PROXY_TARGET`（把 dev server 指到另一个后端实例，不动线上服务）。
+- **待部署**：服务端 `cd server && npm run build` 后重启（`kill $(systemctl show nju-lab -p MainPID --value)`，
+  systemd `Restart=always` 拉起）；前端 `bash deploy/deploy-web-lab.sh`。**后端必须一起上**：
+  旧后端不返回 `slideCount`，新前端会把「有课件」显示成「无课件」。
+
 **2026-10-12（幻灯片：新增「优化重生成」+ 生成提示词）—— ⚠️ 代码已提交但尚未部署**
 
 - **背景**：每次重生成都从正文**从零规划**页面结构 → 大改、改进无法累积（"越改越差"）；
