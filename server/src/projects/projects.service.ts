@@ -80,6 +80,8 @@ export class ProjectsService {
         id: project.id,
         title: project.title,
         status: project.status,
+        /** 难度标注（null = 未标注）：教师端实验列表的「难度」列用 */
+        difficulty: project.difficulty ?? null,
         deadline: project.deadline,
         createdAt: project.createdAt,
         courseId: project.courseId,
@@ -108,6 +110,8 @@ export class ProjectsService {
       courseId: chapter.courseId,
       chapterId: chapter.id,
       title: dto.title,
+      content: dto.content ?? null,
+      difficulty: dto.difficulty ?? null,
       objectives: dto.objectives ?? null,
       background: dto.background ?? null,
       description: dto.description ?? null,
@@ -351,6 +355,8 @@ export class ProjectsService {
           title: project.title,
           deadline: project.deadline,
           chapterTitle: chapter?.title ?? null,
+          /** 难度标注：学生工作台「待办实验」也显示（null = 未标注） */
+          difficulty: project.difficulty ?? null,
         },
         submission: submission
           ? {

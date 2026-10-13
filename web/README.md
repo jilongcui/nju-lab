@@ -49,12 +49,12 @@ cd .. && bash deploy/deploy-web-lab.sh    # 构建 → 备份 → 先 chunk 后 
 | `/teacher/courses` | 课程列表（新建/发布课程） | 教师 |
 | `/teacher/courses/:courseId` | 课程详情：章节与实验（章节大纲、实验卡片、班级学习进度）、学生管理（报名审批 + 选课名单统一表格）、公开报名设置 | 教师 |
 | `/teacher/chapters/:chapterId/edit` | 章节编辑（Markdown 编辑 + 预览；右栏「章节 / 实验 / 图片」tab） | 教师 |
-| `/teacher/projects/:projectId` | 实验项目详情：完整项目信息展示与编辑（目标/背景/任务/evalConfig/rubric/截止时间/解锁规则）、发布、学生提交表格 | 教师 |
+| `/teacher/projects/:projectId` | 实验项目详情：三块分区（实验内容 / 实验指导 / 运行环境与评估配置）+ 编辑（含**难度**）、发布、学生提交表格 | 教师 |
 | `/teacher/submissions/:submissionId/grade` | 批改页：提交详情（引用/哈希/审计事件）+ 复验结果（逐用例成功率、token 成本、评分建议）+ 打分评语 | 教师 |
 | `/student/courses` | 我的课程（含章节进度） | 学生 |
 | `/student/courses/:courseId` | 课程学习页：章节列表（进度 + 本章实验数 / 课件页数概览；实验不在此列，见下） | 学生 |
 | `/student/chapters/:chapterId` | 章节阅读（文档 ⇄ 幻灯片；右栏「章节 / 实验」tab，实验可直接进入） | 学生 |
-| `/student/projects/:projectId` | 实验详情（学生视图，只读项目信息 + 领取按钮，未解锁禁用并提示） | 学生 |
+| `/student/projects/:projectId` | 实验详情（学生视图）：首屏**实验内容 + 目标 + 难度/章节/截止** + 领取；技术性内容在「实验指导」折叠区 | 学生 |
 | `/student/submissions` | 我的提交与反馈：提交表单（skillZipRef/capsuleRef/auditEvents/哈希）、复验结果与教师评语 | 学生 |
 
 路由守卫：未登录访问任意受保护页面跳 `/login`；角色不匹配跳回本角色首页。

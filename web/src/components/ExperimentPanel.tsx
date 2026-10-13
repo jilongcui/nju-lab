@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Empty, List, theme, Typography } from 'antd';
+import { Empty, List, Select, Space, theme, Typography } from 'antd';
 import { ExperimentOutlined, LockOutlined } from '@ant-design/icons';
-import type { Assignment, Chapter } from '../types';
+import type { Assignment, Chapter, ProjectDifficulty } from '../types';
 import StatusTag from './StatusTag';
+import { DIFFICULTY_FILTER_OPTIONS, DifficultyTag } from '../utils/difficulty';
 
 const { Paragraph, Text } = Typography;
 
@@ -35,6 +37,8 @@ export default function ExperimentPanel({
   assignments = [],
 }: ExperimentPanelProps) {
   const { token } = theme.useToken();
+  /** 难度筛选（2026-10-13）：老师标了难度后，学生可按自己的水平挑 */
+  const [difficulty, setDifficulty] = useState<'all' | ProjectDifficulty>('all');
 
   // 章节顺序展开成"实验行"：每行记住所属章节，便于显示「第 N 章 · 章节名」
   const rows = chapters.flatMap((chapter, index) =>
@@ -45,18 +49,31 @@ export default function ExperimentPanel({
     })),
   );
   const currentTotal = rows.filter((row) => row.chapter.id === currentChapterId).length;
+  const visibleRows = difficulty === 'all' ? rows : rows.filter((row) => row.project.difficulty === difficulty);
+  /** 一门课一个难度都没标时，不显示筛选控件（别给空筛选） */
+  const hasDifficulty = rows.some((row) => !!row.project.difficulty);
 
   return (
     <>
       <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
         {mode === 'student'
-          ? '点实验名直接进入实验页；未解锁的实验需先完成前置章节。本章实验已高亮。'
-          : '点实验名进入该实验详情（题目、提交与批改）。'}
+          ? '点实验名直接进入实验页；未解锁的实验需先完成前置章节。本章实验已高亮。老师标注难度后，可按难度挑选。'
+          : '点实验名进入该实验详情（实验内容、提交与批改）。'}
       </Paragraph>
       <Text type="secondary" style={{ fontSize: 12 }}>
         本课程共 {rows.length} 个实验
         {currentChapterId ? ` · 本章 ${currentTotal} 个` : ''}
+        {difficulty !== 'all' ? ` · 当前显示 ${visibleRows.length} 个` : ''}
       </Text>
+      {hasDifficulty && (
+        <Select
+          size="small"
+          value={difficulty}
+          onChange={(value) => setDifficulty(value)}
+          options={DIFFICULTY_FILTER_OPTIONS}
+          style={{ width: '100%', margin: '8px 0' }}
+        />
+      )}
       {rows.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -67,7 +84,8 @@ export default function ExperimentPanel({
         <List
           size="small"
           style={{ marginTop: 4 }}
-          dataSource={rows}
+          dataSource={visibleRows}
+          locale={{ emptyText: '这个难度下暂时没有实验' }}
           renderItem={({ chapter, chapterNo, project }) => {
             const current = chapter.id === currentChapterId;
             const assignment =
@@ -100,14 +118,15 @@ export default function ExperimentPanel({
                       第 {chapterNo} 章 · {chapter.title}
                     </Text>
                   </span>
-                  <span style={{ flexShrink: 0 }}>
+                  <Space size={4} style={{ flexShrink: 0 }}>
+                    <DifficultyTag difficulty={project.difficulty} />
                     {mode === 'teacher' ? (
                       <StatusTag status={project.status} />
                     ) : (
                       assignment &&
                       assignment.status !== 'pending' && <StatusTag status={assignment.status} />
                     )}
-                  </span>
+                  </Space>
                 </Link>
               </List.Item>
             );

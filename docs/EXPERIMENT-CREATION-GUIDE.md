@@ -209,10 +209,22 @@ TOKEN=$(curl -s -X POST http://127.0.0.1:3100/api/auth/login -H 'Content-Type: a
 curl -s -X POST http://127.0.0.1:3100/api/files -H "Authorization: Bearer $TOKEN" -F "file=@problem.zip"
 curl -s -X POST http://127.0.0.1:3100/api/files -H "Authorization: Bearer $TOKEN" -F "file=@skill-template.zip"
 curl -s -X POST http://127.0.0.1:3100/api/projects -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"title":"...","chapterId":"...","skillTemplateFileId":"...","problemFileId":"...","description":"..."}'
+  -d '{"title":"...","chapterId":"...","skillTemplateFileId":"...","problemFileId":"...","content":"...","difficulty":"medium","description":"..."}'
 curl -s -X POST http://127.0.0.1:3100/api/projects/<id>/publish -H "Authorization: Bearer $TOKEN"
-# 后续调整用 PATCH /api/projects/<id>（title/objectives/background/description/evalConfig/rubric/... 全部可选）
+# 后续调整用 PATCH /api/projects/<id>（title/content/difficulty/objectives/background/description/evalConfig/rubric/... 全部可选）
 ```
+
+**`content`（实验内容）—— 建项目时就要填，别留空**（2026-10-13 学员反馈：学生点开实验详情页
+第一眼必须是"这个实验做什么"，而不是先下载题目包解压看 `task.md`）：
+
+- 内容 = `task.md` 的**业务背景 + 你的任务**（"做什么、交什么"），大白话，学生看得懂；
+- **技术口径（清洗口径、更正口径、六步流程细节）不放在这里** —— 那属于 `description` / `background`，
+  学生端收在「实验指导」折叠区里（详情页分层：首屏 = 实验本身，折叠 = 怎么做）；
+- 顺手把 `task.md` 里那句"一句话任务"抄进首段，学生扫一眼就知道要做啥。
+
+**`difficulty`（难度）—— 让不同基础的学生各取所需**：`easy` / `medium` / `hard`（容易 / 中等 / 提高），
+不填 = 未标注（学生端不显示标签）。学生可在章节页右栏按难度筛选。
+同一知识点做多档时，**每档一个项目**（各自独立的题目包与 rubric），别把三档塞进一份题目包。
 
 `description` 建议逐条重复六步并注明 **② ⑤ 要画图**；`objectives` / `background` 用学生看得懂的大白话。
 
@@ -279,6 +291,8 @@ judge 的 `max_tokens` 已调到 2048 并有短 JSON 重试 —— 别把判据�
 - [ ] 骨架只留 TODO；`SKILL.md` 有填写指引与材料导航
 - [ ] `README.md` 补上本次实测记录（含日期与实测数值）
 - [ ] 平台：两个包已上传并绑定、`description` / `objectives` / `background` 是新版、已 publish
+- [ ] 平台：**`content`（实验内容）已填**（= task.md 的业务背景 + 你的任务；学生详情页首屏就看它）
+- [ ] 平台：**`difficulty` 已标**（容易 / 中等 / 提高；同一知识点多档时每档一个项目）
 - [ ] 提交并 push 到 `origin`（先提交再 push；不要提交他人未跟踪的文件如 `3.sh`）
 
 ---

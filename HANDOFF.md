@@ -5,6 +5,44 @@
 
 ## 0. 一句话现状
 
+**2026-10-13（实验详情页分层：实验内容放首屏 + 难度等级）—— ✅ 已上线**
+
+- **问题（学员反馈）**：学生点开实验详情页看不到"这个实验做什么" —— 题干只存在于题目包 ZIP 的
+  `task.md` 里，必须下载解压；详情页上最显眼的反而是「评估模型 / 推理档位 / 工具白名单 / 超时」
+  这类技术配置。另外所有实验难度一样，初学者吃不消、感兴趣的学生没得挑。
+- **改法（用户选定）**：
+  · 新增字段 **`content`「实验内容」**（教师手填，出题时从 `task.md` 提炼"做什么"）；
+  · 新增字段 **`difficulty`「难度」**（`easy` / `medium` / `hard` = 容易 / 中等 / 提高，**可空** = 未标注）；
+  · **学生详情页分层**：首屏 = 实验内容 + 实验目标 + 难度/章节/截止 + 领取（领取后紧跟「实验材料」下载）；
+    技术性内容（背景知识、任务要求口径、评分要求、参考资料、常见问题、运行环境与评估配置）
+    收进 **「实验指导」折叠区**，默认收起；空字段不再渲染"标题 + 暂无内容"。
+  · **教师端详情页同样分三块**（实验内容 / 实验指导 / 运行环境与评估配置，教师全展开 —— 老师要了解技术细节），
+    编辑弹窗新增「实验内容」（大文本框）与「难度等级」下拉。
+  · **难度透出**：学生端章节页右栏「实验」tab 每行显示难度标签 + **按难度筛选**（全课程一个都没标时不显示筛选）；
+    工作台「待办实验」显示难度；教师端实验列表新增「难度」列。
+- **迁移** `1791000000000-ProjectContentDifficulty.ts`：`experiment_projects` 加 `content` text null +
+  `difficulty` enum('easy','medium','hard') null（**纯追加、无回填**，down 删两列即回退）。
+  服务启动时 `migrationsRun: true` 自动执行。
+- **文件**：`ProjectDetail`（教师端）、`ExperimentDetail`（学生端）、`ExperimentPanel`、`ProjectList`、
+  `student/Home`、`utils/difficulty.tsx`（标签/颜色/顺序/筛选项的**唯一口径**）。
+- **验证**：接口级 `server/tools/verify-project-content-difficulty.mjs` **11/11**（含"学生**未领取**也能读到实验内容"、
+  "难度传 null 可清空"、"课程/任务列表难度透出"、临时课程用完即删）；界面级
+  `web/tools/verify-experiment-detail.mjs` **22/22**（首屏只放实验本身、技术内容默认收起、展开后可见、
+  教师端三块分区与编辑弹窗、改难度后标签与库同步）；两端 tsc 通过。
+- **文档**：`docs/EXPERIMENT-CREATION-GUIDE.md` 步骤 11 与发布前检查清单补上「建项目时就要填
+  `content` / `difficulty`」的口径（**已有 19 个实验的 `content` 为空**，需要老师按新口径补填）。
+- **部署（2026-10-13 已完成）**：后端 `npm run build` + 重启（新 PID 1378000；迁移随启动执行，
+  `content` / `difficulty` 两列已加、`migrations` 表记录 `ProjectContentDifficulty1791000000000`）；
+  前端 `bash deploy/deploy-web-lab.sh`（备份 `20261013-151735`）。**后端与前端必须一起上**：
+  旧后端不认这两个字段，只上前端会编辑失败。顺带修掉一处漏字段：`listProjects` 是手写字段映射，
+  最初没带 `difficulty`（教师端列表「难度」列会全显示"未标注"），已补。
+- **上线后线上复验**（真实浏览器/接口，`medai.nju.edu.cn/lab`）：`verify-experiment-detail.mjs` **22/22**、
+  `verify-project-content-difficulty.mjs` **11/11**；回归 `verify-chapter-experiments.mjs` 25/25、
+  `verify-chapter-slides.mjs` 21/21、`verify-course-pages.mjs` 24/24、`verify-draft-project-visibility.mjs` 12/12。
+- **已有实验的补填**：`server/tools/preview-task-content.mjs`（**只读**）把已有实验题目包里的 `task.md`
+  整理成「实验内容」初稿（默认取「业务背景 + 你的任务」两节，`--full` 取整份）打印出来，供老师粘贴；
+  实测 19 个实验都能抽出初稿（约 850–1200 字/个）。**该脚本不写任何数据** —— 要批量写入需另行授权。
+
 **2026-10-13（章节课直达实验：右栏「实验」tab + 课程章节页瘦身）—— ✅ 已上线**
 
 - **问题（学员反馈）**：上完一节想进实验，必须先退出章节 → 回「课程详情」→ 再点实验标签，路径太绕。

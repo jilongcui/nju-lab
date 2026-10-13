@@ -17,6 +17,17 @@ export enum ProjectStatus {
   CLOSED = 'closed',
 }
 
+/**
+ * 难度等级（2026-10-13 用户要求）：让不同基础的学生各取所需 ——
+ * 基础弱的做「容易」、感兴趣的学生课后做「提高」。
+ * `null` = 教师还没标注，前端不显示标签（不是"默认容易"）。
+ */
+export enum ProjectDifficulty {
+  EASY = 'easy',
+  MEDIUM = 'medium',
+  HARD = 'hard',
+}
+
 /** 评估条件：模型、推理档位、工具集白名单、超时——学生自测与平台复验两处一致 */
 export interface EvalConfig {
   model?: string;
@@ -66,6 +77,21 @@ export class ExperimentProject {
 
   @Column()
   title: string;
+
+  /**
+   * **实验内容**（2026-10-13）：学生点开实验详情页**第一眼**要看的东西 ——
+   * "这个实验是做什么的"（题面/业务背景/要交付什么）。
+   *
+   * 与其它字段的分工：`content` = 实验本身（学生看），`background` / `description` 等
+   * = 实验指导与技术口径（怎么做、按什么口径做），后者在详情页收进「实验指导」折叠区。
+   * 出题时从题目包的 `task.md` 提炼（见 docs/EXPERIMENT-CREATION-GUIDE.md）。
+   */
+  @Column({ type: 'text', nullable: true })
+  content: string | null;
+
+  /** 难度等级：null = 未标注 */
+  @Column({ type: 'enum', enum: ProjectDifficulty, nullable: true })
+  difficulty: ProjectDifficulty | null;
 
   /** 实验目标 */
   @Column({ type: 'text', nullable: true })

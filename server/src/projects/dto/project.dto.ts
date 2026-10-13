@@ -1,4 +1,5 @@
 import { Type } from 'class-transformer';
+import { ProjectDifficulty } from '../project.entity';
 import {
   IsArray,
   IsDateString,
@@ -58,6 +59,16 @@ class ProjectBaseDto {
   @IsNotEmpty()
   @MaxLength(128)
   title: string;
+
+  /** 实验内容（学生详情页首屏）：这个实验做什么 —— 出题时从题目包 task.md 提炼 */
+  @IsOptional()
+  @IsString()
+  content?: string;
+
+  /** 难度等级：easy / medium / hard；省略 = 未标注 */
+  @IsOptional()
+  @IsIn(Object.values(ProjectDifficulty))
+  difficulty?: ProjectDifficulty | null;
 
   @IsOptional()
   @IsString()
@@ -129,6 +140,16 @@ export class UpdateProjectDto {
   @IsOptional()
   @IsUUID()
   chapterId?: string;
+
+  /** 实验内容（学生详情页首屏）。传 null 表示清空。 */
+  @IsOptional()
+  @IsString()
+  content?: string | null;
+
+  /** 难度等级；传 null 表示取消标注。 */
+  @IsOptional()
+  @IsIn(Object.values(ProjectDifficulty))
+  difficulty?: ProjectDifficulty | null;
 
   @IsOptional()
   @IsString()

@@ -5,6 +5,7 @@ import dayjs from 'dayjs';
 import { listProjects } from '../../api';
 import type { TeacherProjectRow } from '../../types';
 import StatusTag from '../../components/StatusTag';
+import { DifficultyTag } from '../../utils/difficulty';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
 
 const { Title, Text, Paragraph } = Typography;
@@ -79,6 +80,13 @@ export default function ProjectList() {
             },
             { title: '所属章节', dataIndex: 'chapterTitle', render: (v) => v ?? '-' },
             { title: '状态', dataIndex: 'status', render: (v) => <StatusTag status={v} />, width: 100 },
+            {
+              title: '难度',
+              dataIndex: 'difficulty',
+              width: 90,
+              render: (v) =>
+                v ? <DifficultyTag difficulty={v} /> : <Text type="secondary">未标注</Text>,
+            },
             {
               title: '提交进度',
               width: 110,

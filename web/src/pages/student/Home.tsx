@@ -20,6 +20,7 @@ import { BookOutlined, FormOutlined, RightOutlined } from '@ant-design/icons';
 import { listMyApplications, listMyAssignments, listMyCourses } from '../../api';
 import type { Assignment, MyApplication, MyCourse } from '../../types';
 import { useAuthStore } from '../../stores/auth';
+import { DifficultyTag } from '../../utils/difficulty';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
 
 const { Title, Paragraph, Text } = Typography;
@@ -220,7 +221,12 @@ export default function StudentHome() {
                     ]}
                   >
                     <List.Item.Meta
-                      title={a.project.title}
+                      title={
+                        <Space size={6}>
+                          <span>{a.project.title}</span>
+                          <DifficultyTag difficulty={a.project.difficulty} />
+                        </Space>
+                      }
                       description={
                         <Space size={4}>
                           <Badge

@@ -37,6 +37,7 @@ import {
 import type { Chapter, ExperimentProject, ProjectDashboard, ProjectSubmissionRow, RubricItem, StoredFileInfo } from '../../types';
 import StatusTag from '../../components/StatusTag';
 import MarkdownView from '../../components/MarkdownView';
+import { DIFFICULTY_META, DIFFICULTY_ORDER, DifficultyTag } from '../../utils/difficulty';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
 
 const { Title, Text, Paragraph } = Typography;
@@ -54,6 +55,12 @@ const { Title, Text, Paragraph } = Typography;
  * 留空 = 用 provider 默认（verify profile 里钉的是 low）。
  */
 const EFFORT_OPTIONS = ['off', 'low', 'high', 'max'].map((v) => ({ label: v, value: v }));
+
+/** 难度下拉：空字符串 = 未标注（提交时统一转成 null） */
+const DIFFICULTY_OPTIONS = [
+  { label: '未标注', value: '' },
+  ...DIFFICULTY_ORDER.map((value) => ({ label: DIFFICULTY_META[value].label, value })),
+];
 
 function percent(rate?: number) {
   return rate != null ? Math.round(rate * 100) : null;
@@ -124,7 +131,9 @@ export default function ProjectDetail() {
     '实验项目说明',
     <div>
       <Paragraph type="secondary">
-        本页是数字化实验指导书：目标、背景、任务要求、评估条件（模型与推理档位）、评分维度、截止时间与解锁规则。
+        本页分三块：<b>实验内容</b>（学生详情页首屏看到的"这个实验做什么"）、
+        <b>实验指导</b>（背景、任务口径、评分维度 —— 学生展开折叠看）、
+        <b>运行环境与评估配置</b>（模型与推理档位、超时、解锁规则、材料文件）。
       </Paragraph>
       <Paragraph type="secondary">
         发布后学生方可按解锁规则领取；提交后可在下方表格进入批改。注意：保存为整体替换，请确认各字段完整。
@@ -167,6 +176,8 @@ export default function ProjectDetail() {
     form.setFieldsValue({
       title: project.title,
       chapterId: project.chapterId,
+      content: project.content,
+      difficulty: project.difficulty ?? '',
       objectives: project.objectives,
       background: project.background,
       description: project.description,
@@ -192,6 +203,9 @@ export default function ProjectDetail() {
         title: values.title,
         // 所属章节：允许纠正"实验挂错章节"（后端校验限同一课程内）
         chapterId: values.chapterId,
+        content: values.content ?? null,
+        // 空字符串 = 取消难度标注 → 存 null（而不是空串）
+        difficulty: values.difficulty || null,
         objectives: values.objectives ?? null,
         background: values.background ?? null,
         description: values.description ?? null,
@@ -250,6 +264,7 @@ export default function ProjectDetail() {
           <Title level={4} style={{ margin: 0 }}>
             {project.title}
           </Title>
+          <DifficultyTag difficulty={project.difficulty} />
           <StatusTag status={project.status} />
         </Space>
         <Space>
@@ -286,8 +301,58 @@ export default function ProjectDetail() {
         </Card>
       )}
 
-      <Card title="项目信息" style={{ marginBottom: 16 }}>
-        <Descriptions column={2} size="small" style={{ marginBottom: 16 }}>
+      {/* ① 实验内容：学生详情页首屏看到的东西 */}
+      <Card
+        title="实验内容（学生详情页首屏）"
+        extra={
+          project.difficulty ? <DifficultyTag difficulty={project.difficulty} /> : <Text type="secondary">未标注难度</Text>
+        }
+        style={{ marginBottom: 16 }}
+      >
+        <MarkdownView
+          content={project.content ?? undefined}
+          emptyText="还没填写实验内容 —— 学生详情页首屏会是空的。建议从题目包的 task.md 提炼「这个实验做什么」。"
+        />
+        {(project.objectives ?? '').trim() && (
+          <>
+            <Title level={5} style={{ marginTop: 24 }}>
+              实验目标
+            </Title>
+            <MarkdownView content={project.objectives ?? undefined} />
+          </>
+        )}
+      </Card>
+
+      {/* ② 实验指导：学生展开折叠看的内容 */}
+      <Card title="实验指导（学生端收在折叠区）" style={{ marginBottom: 16 }}>
+        <Title level={5}>背景知识</Title>
+        <MarkdownView content={project.background ?? undefined} />
+        <Title level={5}>任务要求（口径）</Title>
+        <MarkdownView content={project.description ?? undefined} />
+        <Title level={5}>评分要求（Rubric）</Title>
+        {(project.rubric ?? []).length === 0 ? (
+          <Text type="secondary">暂未配置评分维度</Text>
+        ) : (
+          <Table<RubricItem>
+            size="small"
+            rowKey="name"
+            pagination={false}
+            dataSource={project.rubric}
+            columns={[
+              { title: '维度', dataIndex: 'name' },
+              { title: '权重（%）', dataIndex: 'weight', width: 120 },
+            ]}
+          />
+        )}
+        <Title level={5}>参考资料</Title>
+        <MarkdownView content={project.references ?? undefined} />
+        <Title level={5}>常见问题</Title>
+        <MarkdownView content={project.faq ?? undefined} />
+      </Card>
+
+      {/* ③ 运行环境与评估配置：老师要了解的技术细节 */}
+      <Card title="运行环境与评估配置" style={{ marginBottom: 16 }}>
+        <Descriptions column={2} size="small">
           <Descriptions.Item label="截止时间">
             {project.deadline ? dayjs(project.deadline).format('YYYY-MM-DD HH:mm') : '未设置'}
           </Descriptions.Item>
@@ -319,32 +384,6 @@ export default function ProjectDetail() {
             )}
           </Descriptions.Item>
         </Descriptions>
-
-        <Title level={5}>实验目标</Title>
-        <MarkdownView content={project.objectives ?? undefined} />
-        <Title level={5}>背景知识</Title>
-        <MarkdownView content={project.background ?? undefined} />
-        <Title level={5}>任务要求</Title>
-        <MarkdownView content={project.description ?? undefined} />
-        <Title level={5}>评分要求（Rubric）</Title>
-        {(project.rubric ?? []).length === 0 ? (
-          <Text type="secondary">暂未配置评分维度</Text>
-        ) : (
-          <Table<RubricItem>
-            size="small"
-            rowKey="name"
-            pagination={false}
-            dataSource={project.rubric}
-            columns={[
-              { title: '维度', dataIndex: 'name' },
-              { title: '权重（%）', dataIndex: 'weight', width: 120 },
-            ]}
-          />
-        )}
-        <Title level={5}>参考资料</Title>
-        <MarkdownView content={project.references ?? undefined} />
-        <Title level={5}>常见问题</Title>
-        <MarkdownView content={project.faq ?? undefined} />
       </Card>
 
       <Card
@@ -440,13 +479,29 @@ export default function ProjectDetail() {
               options={chapters.map((c, i) => ({ label: `${i + 1}. ${c.title}`, value: c.id }))}
             />
           </Form.Item>
-          <Form.Item name="objectives" label="实验目标">
+          <Form.Item
+            name="content"
+            label="实验内容（学生详情页首屏）"
+            extra="学生第一眼看到的就是它：这个实验做什么（业务背景 / 要交付什么）。建议从题目包 task.md 提炼；技术口径放「任务要求」，别堆在这里。"
+          >
+            <Input.TextArea rows={8} placeholder={'例如：\n## 业务背景\n…\n\n## 你的任务\n…'} />
+          </Form.Item>
+          <Space size={16} wrap>
+            <Form.Item
+              name="difficulty"
+              label="难度等级"
+              extra="学生可按难度挑选：容易 / 中等 / 提高；留空 = 未标注（学生端不显示标签）"
+            >
+              <Select options={DIFFICULTY_OPTIONS} style={{ width: 160 }} />
+            </Form.Item>
+          </Space>
+          <Form.Item name="objectives" label="实验目标（学生详情页首屏，紧随实验内容）">
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="background" label="背景知识">
+          <Form.Item name="background" label="背景知识（学生端「实验指导」折叠区）">
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item name="description" label="任务要求">
+          <Form.Item name="description" label="任务要求 / 技术口径（学生端「实验指导」折叠区）">
             <Input.TextArea rows={4} />
           </Form.Item>
           <Space size={16} wrap>

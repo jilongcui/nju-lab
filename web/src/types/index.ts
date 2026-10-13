@@ -17,10 +17,14 @@ export interface User {
 
 export type CourseStatus = 'draft' | 'published' | 'archived';
 
+/** 实验难度等级（null/未给 = 老师还没标注，不显示标签） */
+export type ProjectDifficulty = 'easy' | 'medium' | 'hard';
+
 export interface ProjectSummary {
   id: string;
   title: string;
   status: ProjectStatus;
+  difficulty?: ProjectDifficulty | null;
 }
 
 export type ChapterStatus = 'draft' | 'published';
@@ -216,6 +220,10 @@ export interface ExperimentProject {
   courseId: string;
   chapterId: string;
   title: string;
+  /** 实验内容（学生详情页首屏）：这个实验做什么 */
+  content?: string | null;
+  /** 难度等级：null = 未标注 */
+  difficulty?: ProjectDifficulty | null;
   objectives?: string | null;
   background?: string | null;
   description?: string | null;
@@ -239,6 +247,8 @@ export interface TeacherProjectRow {
   id: string;
   title: string;
   status: ProjectStatus;
+  /** 难度等级：null = 未标注 */
+  difficulty?: ProjectDifficulty | null;
   deadline?: string | null;
   createdAt?: string;
   courseId: string;
@@ -257,6 +267,8 @@ export interface AssignmentProjectBrief {
   title: string;
   deadline?: string | null;
   chapterTitle?: string;
+  /** 难度等级：null = 未标注 */
+  difficulty?: ProjectDifficulty | null;
 }
 
 export interface AssignmentSubmissionBrief {
