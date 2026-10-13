@@ -39,9 +39,16 @@
 - **上线后线上复验**（真实浏览器/接口，`medai.nju.edu.cn/lab`）：`verify-experiment-detail.mjs` **22/22**、
   `verify-project-content-difficulty.mjs` **11/11**；回归 `verify-chapter-experiments.mjs` 25/25、
   `verify-chapter-slides.mjs` 21/21、`verify-course-pages.mjs` 24/24、`verify-draft-project-visibility.mjs` 12/12。
-- **已有实验的补填**：`server/tools/preview-task-content.mjs`（**只读**）把已有实验题目包里的 `task.md`
-  整理成「实验内容」初稿（默认取「业务背景 + 你的任务」两节，`--full` 取整份）打印出来，供老师粘贴；
-  实测 19 个实验都能抽出初稿（约 850–1200 字/个）。**该脚本不写任何数据** —— 要批量写入需另行授权。
+- **已有实验的补填（2026-10-13 已执行）**：`server/tools/sync-project-content.mjs` —— 从题目包的
+  `task.md` 抽「业务背景 + 你的任务」（`--full` 取整份）写进 `content`。**默认只预览，`--apply` 才写**；
+  已有内容的项目默认跳过（不覆盖老师编辑），要覆盖加 `--overwrite`；抽出不足 50 字也跳过。
+  实际结果：**15 个实验写入成功**（603–1314 字/个），**4 个跳过** —— 「实验一：CSV 数据清洗 Skill」×2
+  与「实验：数据清洗」×2 属于早期「内置回落型」包（`server/fixtures/csv-cleaner`：题面故意写死在驱动
+  `run-eval.mjs` 的 `BUILTIN_TASK` 里，且那只是一句给 agent 的英文指令），且都挂在示例课程 /
+  curl 验收课程上，需要人工决定是否补。写入后抽查：学生视角（`student1`）打开真实实验详情页，
+  首屏直接显示题面（关系数据库实验 1110 字 → 卡片内文 1110 字）。
+- **难度仍是"未标注"**：15 个真实实验的 `difficulty` 都是 null —— 难度是教学判断，脚本不猜；
+  老师可在教师端实验详情里逐个标（容易 / 中等 / 提高）。
 
 **2026-10-13（章节课直达实验：右栏「实验」tab + 课程章节页瘦身）—— ✅ 已上线**
 
