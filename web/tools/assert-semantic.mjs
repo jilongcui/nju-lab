@@ -254,6 +254,26 @@ check(
   html.includes('(function () {') && html.includes('document.fonts.ready') && html.includes('requestAnimationFrame(layoutThumbs)'),
 );
 
+// ---------------- 6.4 溢出兜底与图并排（2026-10-12）----------------
+// 学员反馈：有图或有代码时容易顶掉页脚（实测第 2 章 code+图页超出 72px）。
+check(
+  '运行时实现溢出兜底：内容超出安全高度时整页等比缩小',
+  html.includes('function autofit') && html.includes('SAFE_H') && html.includes('ly.offsetHeight'),
+);
+check(
+  '截图/测量要等图片就绪（否则量出来的高度偏小，兜底会失效）',
+  html.includes('function whenImagesReady') && html.includes('whenImagesReady(finish)'),
+);
+check(
+  '图与主内容并排（代码页 + 图不再垂直堆叠）',
+  renderSrc.includes('ly-split-main') && renderSrc.includes('ly-split-media'),
+);
+check(
+  '并排布局的 CSS 到位（两栏 + 图高让位给内容）',
+  /\.ly-split\s*\{[^}]*grid-template-columns/.test(layoutsCss) &&
+    /\.ly-split-media\s*\{[^}]*--ly-img-box-h:\s*420px/.test(layoutsCss),
+);
+
 // ---------------- 6.5 插图版式（2026-10-12 重做）----------------
 // 背景：此前给图片框强加 aspect-ratio:16/9，比例不符的图（近方图/宽扁图）被缩小留白，
 // 看起来"图小、四周空"；且 .img-frame 没有卡片外观，图直接裸贴。

@@ -697,21 +697,46 @@ const RENDERERS: Record<Page['intent'], (page: Page, ctx: RenderContext) => stri
   summary: renderSummary,
 };
 
+/** 兜底渲染单个"未被主渲染器消费"的块（绝不丢内容） */
+function renderLeftover(block: Page['blocks'][number], ctx: RenderContext): string {
+  if (block.kind === 'note') return `<p class="ly-note">${inline(block.text)}</p>`;
+  if (block.kind === 'formula') return renderFormula({ intent: 'claim', blocks: [block] }, ctx);
+  const blockRenderer = RENDERERS[BLOCK_INTENT[block.kind]];
+  return blockRenderer ? blockRenderer({ intent: BLOCK_INTENT[block.kind], blocks: [block] }, ctx) : '';
+}
+
 function renderBody(page: Page, ctx: RenderContext): string {
   const renderer = RENDERERS[page.intent] ?? renderClaim;
   const inner = renderer(page, ctx);
   const consumed = CONSUMED[page.intent] ?? [];
   const leftovers = page.blocks.filter((block) => !consumed.includes(block.kind));
-  const extra = leftovers.length
-    ? `<div class="ly-extra">${leftovers
-        .map((block) => {
-          if (block.kind === 'note') return `<p class="ly-note">${inline(block.text)}</p>`;
-          if (block.kind === 'formula') return renderFormula({ intent: 'claim', blocks: [block] }, ctx);
-          const blockRenderer = RENDERERS[BLOCK_INTENT[block.kind]];
-          return blockRenderer ? blockRenderer({ intent: BLOCK_INTENT[block.kind], blocks: [block] }, ctx) : '';
-        })
-        .join('')}</div>`
-    : '';
+
+  /**
+   * 图片与主内容**并排**，不垂直堆叠（2026-10-12 实测：代码页 + 图垂直堆叠时会顶掉页脚，
+   * 第 2 章第 14 页超出 72px；学员的建议也是"代码和图片用左右布局"）。
+   * 其余兜底块（note/formula/…）仍走下方的 .ly-extra。
+   */
+  const images = leftovers.filter((block) => block.kind === 'image');
+  const rest = leftovers.filter((block) => block.kind !== 'image');
+  const extra = rest.length ? `<div class="ly-extra">${rest.map((block) => renderLeftover(block, ctx)).join('')}</div>` : '';
+
+  if (images.length) {
+    const figs = images
+      .map((block) =>
+        imgFrame(
+          String(block.fileId ?? ''),
+          typeof block.caption === 'string' ? block.caption : undefined,
+          ctx,
+          true,
+        ),
+      )
+      .join('');
+    return `<div class="ly"><div class="ly-split">
+  <div class="ly-split-main">${inner}</div>
+  <div class="ly-split-media">${figs}</div>
+</div>${extra}</div>`;
+  }
+
   const body = inner + extra;
   return body.startsWith('<div class="ly ly-') ? body : `<div class="ly">${body}</div>`;
 }

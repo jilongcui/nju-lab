@@ -216,16 +216,52 @@ function runtimeScript(total: number): string {
     else if (ratio <= 0.25) show(index - 1);
   });
 
+  /**
+   * 自动缩放兜底：内容超出安全区时**整体等比缩小**。
+   *
+   * 固定 1920×1080 画布下，任何内容（长代码块 + 图、多步流程图…）都可能顶掉页脚 ——
+   * 实测第 2 章第 14 页（代码 + 图垂直堆叠）超出 72px。与其逐页调尺寸，不如在运行时兜住：
+   * 量出页内容高度，超出就把页内容整体等比缩小到安全高度内（居中缩放，观感自然）。
+   * 安全高度 = 画布高 − 上下留白（与 layouts.css 里页内容的边距对应）。
+   */
+  var SAFE_H = H - 2 * 72;
+  function autofit() {
+    for (var i = 0; i < slides.length; i += 1) {
+      var ly = slides[i].querySelector('.ly');
+      if (!ly) continue;
+      ly.style.transform = '';
+      ly.style.transformOrigin = 'center center';
+      var h = ly.offsetHeight;
+      if (h > SAFE_H) {
+        ly.style.transform = 'scale(' + (SAFE_H / h).toFixed(4) + ')';
+      }
+    }
+  }
+
+  /* 图片就绪后再量高度：图没解码完时量出来偏小，兜底会失效 */
+  function whenImagesReady(cb) {
+    var imgs = [].slice.call(document.querySelectorAll('img'));
+    var pending = imgs.filter(function (img) { return !img.complete; });
+    if (!pending.length) { cb(); return; }
+    var left = pending.length;
+    var done = function () { left -= 1; if (left <= 0) cb(); };
+    pending.forEach(function (img) {
+      img.addEventListener('load', done, { once: true });
+      img.addEventListener('error', done, { once: true });
+    });
+  }
+
   scale();
   paint();
-  /* 就绪 = 首屏已排版 + 字体已到位（两个 tick 保证浏览器已完成一次 paint） */
+  /* 就绪 = 首屏已排版 + 字体与图片都已到位 + 已做溢出兜底（两个 tick 保证浏览器已完成一次 paint） */
   function finish() {
+    autofit();
     requestAnimationFrame(function () { requestAnimationFrame(postReady); });
   }
   if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
-    document.fonts.ready.then(finish, finish);
+    document.fonts.ready.then(function () { whenImagesReady(finish); }, function () { whenImagesReady(finish); });
   } else {
-    finish();
+    whenImagesReady(finish);
   }
 })();`;
 }

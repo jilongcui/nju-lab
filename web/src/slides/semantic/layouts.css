@@ -877,6 +877,25 @@
   line-height: 1.5;
 }
 
+/* 图与内容并排：内容多的页（如代码页带图）避免垂直堆叠顶掉页脚 */
+.ly-split {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 34px;
+  align-items: center;
+}
+.ly-split-main {
+  min-width: 0;
+}
+.ly-split-media {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  /* 并排时图小一点，把高度让给内容 */
+  --ly-img-box-h: 420px;
+}
+
 /* 兜底区：intent 主渲染之后仍未被消费的块（绝不丢内容） */
 .ly-extra {
   margin-top: 26px;
