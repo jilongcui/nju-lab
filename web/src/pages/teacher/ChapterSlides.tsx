@@ -146,6 +146,8 @@ export default function ChapterSlides() {
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  /** 教师本次的额外要求（可选提示词）：重生成 / 重生成当前页时随请求下发 */
+  const [instruction, setInstruction] = useState('');
   const [data, setData] = useState<ChapterSlidesResponse | null>(null);
   const [chapter, setChapter] = useState<Chapter | null>(null);
   const [siblings, setSiblings] = useState<Chapter[]>([]);
@@ -291,7 +293,13 @@ export default function ChapterSlides() {
     return true;
   };
 
-  const handleGenerate = async (force = false) => {
+  /**
+   * 生成/重生成。`mode`：
+   *   · `optimize`（默认）= 沿用现有页面结构，只按要求重写内容 —— 改动可控、改进可累积；
+   *   · `fresh` = 从章节正文重新规划所有页面（结构会变，适合确实要重排时用）。
+   * 无 deck 时两者等价（没有"上一版"可沿用）。`instruction` 是教师本次的额外要求。
+   */
+  const handleGenerate = async (force = false, mode: 'fresh' | 'optimize' = 'optimize') => {
     setBusy(true);
     try {
       // 带上当前版本：期间别人保存/生成过就 409，避免互相覆盖 + 白烧 token
@@ -299,6 +307,8 @@ export default function ChapterSlides() {
         templateId: templateId ?? undefined,
         force,
         version: deck?.version,
+        instruction: instruction.trim() || undefined,
+        mode,
       });
       message.success(
         result.cached ? '内容未变，已复用现有幻灯片' : '已开始生成，稍候即可预览',
@@ -315,7 +325,11 @@ export default function ChapterSlides() {
   const handleRegeneratePage = async () => {
     setBusy(true);
     try {
-      const result = await regenerateChapterSlidePage(chapterId, currentIndex);
+      const result = await regenerateChapterSlidePage(
+        chapterId,
+        currentIndex,
+        instruction.trim() || undefined,
+      );
       message.success(`第 ${currentIndex + 1} 页已重新生成`);
       if (result.warnings?.length) {
         message.warning(result.warnings.join('；'));
@@ -893,7 +907,7 @@ export default function ChapterSlides() {
             {deck?.status === 'ready' && canEdit && (
               <Popconfirm
                 title={`用 LLM 重写第 ${currentIndex + 1} 页？`}
-                description="只重新生成当前页（消耗一次生成额度），其余页不动；该页上的手工修改会被覆盖。"
+                description="只重新生成当前页（消耗一次生成额度），其余页不动；会在上方提示词（若填了）的要求下改写该页。"
                 onConfirm={handleRegeneratePage}
               >
                 <Button size="small" icon={<RedoOutlined />} loading={busy}>
@@ -901,16 +915,40 @@ export default function ChapterSlides() {
                 </Button>
               </Popconfirm>
             )}
-            <Button
-              size="small"
-              type="primary"
-              icon={<ThunderboltOutlined />}
-              loading={busy}
-              disabled={deck?.status === 'generating'}
-              onClick={() => handleGenerate(true)}
-            >
-              {deck ? '重新生成' : '生成幻灯片'}
-            </Button>
+            <Tooltip title="可选：告诉模型这次怎么改（如「第 3 页改成左右对比」「多用图表，少用要点列表」）。留空则只做常规优化。">
+              <Input
+                size="small"
+                allowClear
+                style={{ width: 300 }}
+                placeholder="可选提示词：如「第 3 页改成左右对比」"
+                value={instruction}
+                onChange={(e) => setInstruction(e.target.value)}
+                disabled={deck?.status === 'generating'}
+              />
+            </Tooltip>
+            <Tooltip title="沿用现有页面结构与内容，只按要求改进（改动小、可累积；没生成过时等价于首次生成）">
+              <Button
+                size="small"
+                type="primary"
+                icon={<ThunderboltOutlined />}
+                loading={busy}
+                disabled={deck?.status === 'generating'}
+                onClick={() => handleGenerate(true, 'optimize')}
+              >
+                {deck ? '优化重生成' : '生成幻灯片'}
+              </Button>
+            </Tooltip>
+            {deck && (
+              <Popconfirm
+                title="从章节正文重新规划所有页面？"
+                description="会重新设计页面顺序与版式，改动比「优化重生成」大得多；当前内容与手工修改会被替换（页面结构确实需要重排时再用）。"
+                onConfirm={() => handleGenerate(true, 'fresh')}
+              >
+                <Button size="small" loading={busy} disabled={deck?.status === 'generating'}>
+                  彻底重做
+                </Button>
+              </Popconfirm>
+            )}
             {deck && (
               <Popconfirm title="删除该章节的幻灯片？" onConfirm={handleDeleteDeck}>
                 <Button size="small" danger icon={<DeleteOutlined />} />

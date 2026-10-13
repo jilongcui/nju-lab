@@ -198,8 +198,12 @@ export class SlidesService {
     }
 
     const chapterHash = sha256(chapter.content);
+    const instruction = (dto.instruction ?? '').trim();
+    /** 优化模式 = 沿用现有页结构只重写内容（与 fresh 的结果必然不同，缓存键要区分开） */
+    const optimize = dto.mode === 'optimize';
     const sourceHash = sha256(
-      `${chapter.content}\u0000${SLIDES_GENERATOR === 'llm' ? SLIDES_MODEL : 'mock'}\u0000${SLIDES_PROMPT_VERSION}`,
+      `${chapter.content}\u0000${SLIDES_GENERATOR === 'llm' ? SLIDES_MODEL : 'mock'}\u0000${SLIDES_PROMPT_VERSION}` +
+        `\u0000${optimize ? 'optimize' : 'fresh'}\u0000${instruction}`,
     );
 
     let deck = await this.deckRepo.findOne({ where: { chapterId } });
@@ -243,6 +247,18 @@ export class SlidesService {
 
     // 后台跑（Node 单进程；前端轮询 status 直到 ready/failed）
     // availableImages：正文里的 `file:` 插图清单，LLM 配图的唯一合法来源（无图则生成器维持不配图的默认）
+    // 优化模式：把**上一版页面**（intent/标题/内容块）交给生成器，让它在此基础上改，而不是从零重规划
+    const basePages = optimize
+      ? (deck.slides ?? [])
+          .filter((page): page is SemanticPage => isSemanticDeck([page]) && typeof page === 'object')
+          .map((page) => ({
+            intent: page.intent,
+            kicker: page.kicker,
+            title: page.title,
+            lede: page.lede,
+            blocks: page.blocks,
+          }))
+      : undefined;
     void this.runGeneration(
       deck.id,
       {
@@ -250,6 +266,8 @@ export class SlidesService {
         chapterTitle: chapter.title,
         chapterContent: chapter.content,
         availableImages: extractChapterImages(chapter.content),
+        instruction: instruction || undefined,
+        basePages: basePages?.length ? basePages : undefined,
       },
       user.id,
     );
@@ -316,7 +334,13 @@ export class SlidesService {
    * 也不会冲掉其他页的手工编辑。哈希语义不变：deck 的章节基准仍以整份生成时为准，
    * 章节变了继续走 chapterChanged 提示，由教师决定整份重生成。
    */
-  async regeneratePage(user: User, chapterId: string, index: number) {
+  async regeneratePage(
+    user: User,
+    chapterId: string,
+    index: number,
+    /** 本页的额外要求（可选提示词） */
+    instruction?: string,
+  ) {
     const chapter = await this.loadChapter(chapterId);
     const course = await this.coursesService.getOwnedCourse(user, chapter.courseId);
     if (!chapter.content?.trim()) {
@@ -361,9 +385,20 @@ export class SlidesService {
         chapterTitle: chapter.title,
         chapterContent: chapter.content,
         availableImages: extractChapterImages(chapter.content),
+        instruction: instruction?.trim() || undefined,
       },
       [outlineItem],
       index,
+      // v2：把这一页的**上一版内容**给模型 —— 在原内容上改，而不是重新发挥
+      semantic
+        ? [
+            {
+              intent: (current as SemanticPage).intent,
+              title: current.title,
+              blocks: (current as SemanticPage).blocks,
+            },
+          ]
+        : undefined,
     );
     this.recordGenerateAttempt(course.id);
 

@@ -51,7 +51,7 @@ export class ChapterSlidesController {
     @Param('chapterId', ParseUUIDPipe) chapterId: string,
     @Body() dto: RegeneratePageDto,
   ) {
-    return this.slidesService.regeneratePage(user, chapterId, dto.index);
+    return this.slidesService.regeneratePage(user, chapterId, dto.index, dto.instruction);
   }
 
   /** 保存内容（slides 或 markdown 二选一）、标题、模板、放映配置 */

@@ -48,6 +48,15 @@ export interface DeckSource {
   chapterContent: string;
   /** 章节正文里出现的平台图片（含上下文），LLM 配图的唯一合法来源 */
   availableImages?: ChapterImageRef[];
+  /** 教师的额外要求（可选提示词）：注入 outline / expand 的 prompt，用于精确控制生成 */
+  instruction?: string;
+  /**
+   * **上一版页面**（「优化重生成」用）。给了它：
+   *   · **跳过 outline** —— 沿用既有页序 / intent / 标题，不重新规划结构；
+   *   · expand 时把上一版的内容块一并给模型，要求"保留仍然合适的措辞与要点，只按教师要求调整"。
+   * 用途：多次重生成时改动可控、改进能累积（此前每次都从正文从零规划，结构大改 → 越改越差）。
+   */
+  basePages?: { intent: string; kicker?: string; title?: string; lede?: string; blocks?: unknown[] }[];
 }
 
 /** 从章节正文提取可用的平台图片引用（去重，首次出现为准）；没有则返回空数组 = 不配图 */
@@ -136,7 +145,13 @@ export interface DeckGenerator {
   readonly mode: SlidesGeneratorMode;
   generate(source: DeckSource): Promise<GenerateOutcome>;
   /** 单批扩写（整份生成按批调用；「单页重生成」传 1 页）：页码从 startIndex 起算（0 基） */
-  expandBatch(source: DeckSource, batch: OutlineSlide[], startIndex?: number): Promise<ExpandBatchResult>;
+  expandBatch(
+    source: DeckSource,
+    batch: OutlineSlide[],
+    startIndex?: number,
+    /** 这些页的上一版内容（v2 用它做「在原内容上改」，v1 忽略） */
+    basePages?: { intent: string; title?: string; blocks?: unknown[] }[],
+  ): Promise<ExpandBatchResult>;
 }
 
 // ---------------------------------------------------------------- 文本工具
@@ -1200,49 +1215,74 @@ export class LlmDeckGenerator implements DeckGenerator {
 export class SemanticLlmDeckGenerator implements DeckGenerator {
   /** 本次生成可用的插图（进 prompt 的清单；`assertImagesFromSource` 用它挡幻觉） */
   private lastImages: ChapterImageRef[] = [];
+  /** 教师本次的额外要求（可选提示词） */
+  private instruction = '';
   readonly mode: SlidesGeneratorMode = 'llm';
 
   async generate(source: DeckSource): Promise<GenerateOutcome> {
     // 记下本章插图（进 outline/expand 的 prompt 清单，并用于挡幻觉 fileId）
     this.lastImages = source.availableImages ?? [];
+    this.instruction = (source.instruction ?? '').trim();
     const content = truncate(source.chapterContent || '（本章暂无正文）', SLIDES_SOURCE_MAX_CHARS);
     const warnings: string[] = [];
+    const basePages = (source.basePages ?? []).slice(0, SLIDES_LIMITS.maxSlides);
 
-    // 阶段一：页面计划（失败 = 整份失败，重试一次；与旧路径同口径）
-    let outlineResponse: Awaited<ReturnType<typeof chatJson>> | null = null;
-    let lastOutlineError: Error | null = null;
-    for (let attempt = 0; attempt < 2 && !outlineResponse; attempt++) {
-      try {
-        const response = await chatJson(
-          [
-            { role: 'system', content: SEMANTIC_OUTLINE_SYSTEM },
-            { role: 'user', content: this.outlineUserPrompt(source, content) },
-          ],
-          { maxTokens: SLIDES_MAX_TOKENS, temperature: 0.3, model: SLIDES_OUTLINE_MODEL || undefined },
-        );
-        this.parseOutline(response.content); // 先解析再算成功
-        outlineResponse = response;
-      } catch (error) {
-        lastOutlineError = error as Error;
-        if (attempt === 0) warnings.push(`大纲首次生成失败（${lastOutlineError.message}），已重试`);
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let plan: OutlineSlide[];
+    /** 标题取大纲给的（优化模式没有大纲，就用章节名）；模型名取最后一次调用的 */
+    let deckTitle = source.chapterTitle;
+    let model: string | null = null;
+
+    if (basePages.length) {
+      // 「优化重生成」：沿用既有页计划（页序 / intent / 标题都不动），**不跑 outline** ——
+      // 既省一次调用，也避免结构被重新规划（那是"越改越差"的主因）。
+      plan = basePages.map((p) => ({
+        layout: 'semantic',
+        intent: p.intent,
+        kicker: p.kicker,
+        title: p.title,
+      })) as OutlineSlide[];
+      warnings.push(`已在现有 ${plan.length} 页结构上优化（页面组织保持不变）`);
+    } else {
+      // 阶段一：页面计划（失败 = 整份失败，重试一次；与旧路径同口径）
+      let outlineResponse: Awaited<ReturnType<typeof chatJson>> | null = null;
+      let lastOutlineError: Error | null = null;
+      for (let attempt = 0; attempt < 2 && !outlineResponse; attempt++) {
+        try {
+          const response = await chatJson(
+            [
+              { role: 'system', content: SEMANTIC_OUTLINE_SYSTEM },
+              { role: 'user', content: this.outlineUserPrompt(source, content) },
+            ],
+            { maxTokens: SLIDES_MAX_TOKENS, temperature: 0.3, model: SLIDES_OUTLINE_MODEL || undefined },
+          );
+          this.parseOutline(response.content); // 先解析再算成功
+          outlineResponse = response;
+        } catch (error) {
+          lastOutlineError = error as Error;
+          if (attempt === 0) warnings.push(`大纲首次生成失败（${lastOutlineError.message}），已重试`);
+        }
       }
-    }
-    if (!outlineResponse) throw lastOutlineError ?? new Error('大纲生成失败');
+      if (!outlineResponse) throw lastOutlineError ?? new Error('大纲生成失败');
 
-    const outline = this.parseOutline(outlineResponse.content);
-    const planCount = outline.slides.length;
-    let promptTokens = outlineResponse.usage?.promptTokens ?? 0;
-    let completionTokens = outlineResponse.usage?.completionTokens ?? 0;
-    if (planCount > SLIDES_LIMITS.maxSlides) {
-      warnings.push(`大纲给出 ${planCount} 页，超过上限 ${SLIDES_LIMITS.maxSlides}，已截断`);
+      const outline = this.parseOutline(outlineResponse.content);
+      const planCount = outline.slides.length;
+      deckTitle = outline.deckTitle || source.chapterTitle;
+      model = outlineResponse.model;
+      promptTokens += outlineResponse.usage?.promptTokens ?? 0;
+      completionTokens += outlineResponse.usage?.completionTokens ?? 0;
+      if (planCount > SLIDES_LIMITS.maxSlides) {
+        warnings.push(`大纲给出 ${planCount} 页，超过上限 ${SLIDES_LIMITS.maxSlides}，已截断`);
+      }
+      plan = outline.slides.slice(0, SLIDES_LIMITS.maxSlides);
     }
-    const plan = outline.slides.slice(0, SLIDES_LIMITS.maxSlides);
 
     // 阶段二：分批扩写（批内缺页用计划骨架兜底）
     const pages: SemanticPage[] = [];
     for (let start = 0; start < plan.length; start += SLIDES_EXPAND_BATCH) {
       const batch = plan.slice(start, start + SLIDES_EXPAND_BATCH);
-      const result = await this.expandBatch(source, batch, start);
+      const result = await this.expandBatch(source, batch, start, basePages);
       promptTokens += result.promptTokens;
       completionTokens += result.completionTokens;
       warnings.push(...result.warnings);
@@ -1261,16 +1301,22 @@ export class SemanticLlmDeckGenerator implements DeckGenerator {
     warnings.push(...schemaWarnings);
 
     return {
-      deckTitle: outline.deckTitle || source.chapterTitle,
+      deckTitle,
       slides: validated,
-      model: outlineResponse.model,
+      model,
       tokens: { promptTokens, completionTokens },
       warnings,
     };
   }
 
   /** 单批扩写（整份生成按批调用；「重生成当前页」传 1 页） */
-  async expandBatch(source: DeckSource, batch: OutlineSlide[], startIndex = 0): Promise<ExpandBatchResult> {
+  async expandBatch(
+    source: DeckSource,
+    batch: OutlineSlide[],
+    startIndex = 0,
+    /** 上一版页面（优化模式）：一并给模型，要求保留仍合适的措辞、只按要求调整 */
+    basePages: { intent: string; title?: string; blocks?: unknown[] }[] = [],
+  ): Promise<ExpandBatchResult> {
     const content = truncate(source.chapterContent || '（本章暂无正文）', SLIDES_SOURCE_MAX_CHARS);
     const warnings: string[] = [];
     const plan = batch.map((item) => ({
@@ -1291,9 +1337,17 @@ export class SemanticLlmDeckGenerator implements DeckGenerator {
         const response = await chatJson(
           [
             { role: 'system', content: SEMANTIC_EXPAND_SYSTEM },
-            { role: 'user', content: this.expandUserPrompt(content, plan) },
+            {
+              role: 'user',
+              content: this.expandUserPrompt(content, plan, startIndex, basePages, source.instruction),
+            },
           ],
-          { maxTokens: SLIDES_MAX_TOKENS, temperature: 0.4, model: SLIDES_EXPAND_MODEL || undefined },
+          {
+            maxTokens: SLIDES_MAX_TOKENS,
+            // 优化模式把温度压到 0.2：改动更小、更贴上一版（教师反馈"每次改得太大"）
+            temperature: basePages.length ? 0.2 : 0.4,
+            model: SLIDES_EXPAND_MODEL || undefined,
+          },
         );
         promptTokens += response.usage?.promptTokens ?? 0;
         completionTokens += response.usage?.completionTokens ?? 0;
@@ -1361,15 +1415,35 @@ export class SemanticLlmDeckGenerator implements DeckGenerator {
     ].join('\n');
   }
 
-  private expandUserPrompt(content: string, plan: unknown): string {
-    return [
+  private expandUserPrompt(
+    content: string,
+    plan: unknown,
+    startIndex = 0,
+    basePages: { intent: string; title?: string; blocks?: unknown[] }[] = [],
+    sourceInstruction?: string,
+  ): string {
+    // 与本批计划对应的上一版页面（按意图 + 标题对齐；对不上就不给，避免张冠李戴）
+    const baseForBatch = startIndex === 0 ? [] : [];
+    const lines = [
       '【页面计划（必须原样保持 intent/kicker/title，顺序不变）】',
       JSON.stringify(plan),
-      '',
-      '【章节正文】',
-      content,
-      ...imageManifest(this.lastImages),
-    ].join('\n');
+    ];
+    const instruction = (sourceInstruction ?? this.instruction ?? '').trim();
+    if (instruction) {
+      lines.push('', '【教师额外要求（务必满足；与"铁律"同等优先）】', instruction);
+    }
+    if (basePages.length) {
+      lines.push(
+        '',
+        '【上一版内容（在它基础上改进）】',
+        '下面是这些页面上一次的成品。请**保留其中仍然正确的措辞、要点与数字**，只按教师要求做必要调整；',
+        '不要整页推倒重写、不要无故换说法或删要点（教师希望改动可控、越改越好）。',
+        JSON.stringify(basePages.map((p) => ({ intent: p.intent, title: p.title, blocks: p.blocks }))),
+      );
+    }
+    lines.push('', '【章节正文】', content, ...imageManifest(this.lastImages));
+    void baseForBatch;
+    return lines.join('\n');
   }
 
   private parseOutline(text: string): { deckTitle: string; slides: OutlineSlide[] } {

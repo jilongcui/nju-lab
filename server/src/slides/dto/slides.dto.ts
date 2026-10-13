@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsBoolean,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsObject,
@@ -32,6 +33,25 @@ export class GenerateDeckDto {
   force?: boolean;
 
   /**
+   * 教师的额外要求（可选提示词，≤500 字）：注入生成 prompt，用于精确控制
+   * （例：「第 3 页改成两栏对比」「多用图表，少用要点列表」）。
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  instruction?: string;
+
+  /**
+   * 生成模式：
+   *   · `fresh`（默认）= 从章节正文**重新规划**页面结构；
+   *   · `optimize` = **沿用现有页面结构**（页序 / intent / 标题都不动），只重写内容并满足 `instruction` ——
+   *     多次重生成时改动可控、改进能累积（见 docs/DESIGN-2026-10-11-course-co-teachers.md 相关说明）。
+   */
+  @IsOptional()
+  @IsIn(['fresh', 'optimize'])
+  mode?: 'fresh' | 'optimize';
+
+  /**
    * 乐观锁：客户端加载时拿到的 deck 版本。生成会整体替换内容，
    * 若期间别人已保存/生成过（版本不符）→ 409，避免互相覆盖 + 白烧 token。
    */
@@ -48,6 +68,12 @@ export class RegeneratePageDto {
   @Min(0)
   @Type(() => Number)
   index!: number;
+
+  /** 本页的额外要求（可选提示词，≤500 字）：如「改成左右两栏对照」「这张图换到右侧」 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  instruction?: string;
 }
 
 export class SaveDeckDto {

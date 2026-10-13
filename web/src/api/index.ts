@@ -267,7 +267,15 @@ export const getChapterSlides = (chapterId: string) =>
 /** 触发两阶段生成（异步：立即返回 generating，前端轮询 getChapterSlides） */
 export const generateChapterSlides = (
   chapterId: string,
-  data: { templateId?: string; force?: boolean; version?: number } = {},
+  data: {
+    templateId?: string;
+    force?: boolean;
+    version?: number;
+    /** 教师的额外要求（可选提示词） */
+    instruction?: string;
+    /** 'fresh' 从正文重新规划；'optimize' 沿用现有页结构只重写内容（改动可控） */
+    mode?: 'fresh' | 'optimize';
+  } = {},
 ) =>
   client.post<unknown, { deck: SlideDeckView; cached: boolean }>(
     `/chapters/${chapterId}/slides/generate`,
@@ -275,10 +283,15 @@ export const generateChapterSlides = (
   );
 
 /** 只重新生成某一页（同步：一次 LLM 调用，产物原位替换，其余页不动；0 基页码） */
-export const regenerateChapterSlidePage = (chapterId: string, index: number) =>
+export const regenerateChapterSlidePage = (
+  chapterId: string,
+  index: number,
+  /** 本页的额外要求（可选提示词）：如「改成左右两栏对照」 */
+  instruction?: string,
+) =>
   client.post<unknown, { deck: SlideDeckView; warnings: string[] }>(
     `/chapters/${chapterId}/slides/regenerate-page`,
-    { index },
+    { index, instruction },
     { timeout: 120000 },
   );
 
