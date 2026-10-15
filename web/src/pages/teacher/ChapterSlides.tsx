@@ -666,6 +666,24 @@ export default function ChapterSlides() {
           ),
         },
         {
+          key: 'images',
+          label: '图片',
+          children: (
+            <>
+              <Paragraph type="secondary" style={{ fontSize: 12 }}>
+                选图后在当前页后插入图片页；「换图」「插图到光标」「插入图片页（选版式）」用编辑区上方按钮。
+              </Paragraph>
+              <ImageLibraryPanel
+                active={auxTab === 'images'}
+                compact
+                multiple
+                confirmText="在当前页后插入"
+                onConfirm={handleAuxInsertImages}
+              />
+            </>
+          ),
+        },
+        {
           key: 'experiments',
           label: `实验 ${
             siblings.find((item) => item.id === chapterId)?.projects?.length ?? 0
@@ -772,24 +790,6 @@ export default function ChapterSlides() {
                     />
                   </List.Item>
                 )}
-              />
-            </>
-          ),
-        },
-        {
-          key: 'images',
-          label: '图片',
-          children: (
-            <>
-              <Paragraph type="secondary" style={{ fontSize: 12 }}>
-                选图后在当前页后插入图片页；「换图」「插图到光标」「插入图片页（选版式）」用编辑区上方按钮。
-              </Paragraph>
-              <ImageLibraryPanel
-                active={auxTab === 'images'}
-                compact
-                multiple
-                confirmText="在当前页后插入"
-                onConfirm={handleAuxInsertImages}
               />
             </>
           ),

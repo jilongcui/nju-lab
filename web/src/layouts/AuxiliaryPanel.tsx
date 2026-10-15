@@ -4,7 +4,11 @@ import { useAuxiliaryStore } from '../stores/auxiliary';
 
 const { Text } = Typography;
 
-export const AUX_WIDTH = 280;
+/**
+ * 右栏宽度。280 时 5 个 tab 会被挤成省略号（教师反馈"tab 被压缩了"），调到 360：
+ * 中文双字 tab 能排下，又不至于挤压中间的主内容区。
+ */
+export const AUX_WIDTH = 360;
 
 /** 右侧辅助区：页面说明 / 待办 / 快捷操作，内容由各页面注入 */
 export default function AuxiliaryPanel() {
