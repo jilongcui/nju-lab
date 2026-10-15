@@ -159,6 +159,23 @@
   仅为产物与源码一致 —— 本修复只动后端）。上线后回归：`verify-chapter-experiments.mjs` 25/25、
   `verify-chapter-slides.mjs` 21/21、`verify-course-pages.mjs` 24/24。
 
+**2026-10-13（幻灯片：多版本历史 + 回滚；prompt 文风回摆 v9→v11）**
+
+- **背景**：教师反馈"收紧生成约束后内容变少、语言太精简/太口语，不如上一版"。
+  量化确认属实（收紧版 440–500 字/页、evidence 为电报体短语、notes 前 4 页全空；上一版 477 字 + 完整讲稿）。
+  已把 14 章 deck **回滚到教师偏好的那版**（备份见 `/home/ubuntu/nju-lab-backups/decks-before-regen-*.json`，
+  收紧版另存 `decks-tightened-*.json`）。
+- **prompt 文风回摆**：`v9` 内容充实化（取消"一页最多 3 块"、evidence 改完整短句、code ≤18 行）；
+  `v10` 修 v9 副作用（**每页都必须写 notes** + lede 不许目录式 + schema 校验缺讲稿进 warnings）；
+  `v11` 软化文风（教师认为"贴近口语解释抽象概念"是优点，v10 的"不要口语化"收得过头）。
+- **多版本历史（新表 `slide_deck_versions`，迁移 `1791200000000`）**：每次覆盖前自动存档
+  （regenerate/optimize/manual-save/**pre-restore**）、保留最近 20 版、外键 CASCADE；
+  接口 列出/预览/回滚/删除；右栏新增**「版本」tab**（章节 | 实验 | 生成 | 版本 | 图片）；
+  已导入两次重生成前的备份为历史版本。**实测双向可逆**（回滚→再回滚内容完全一致）+ 乐观锁 409。
+  设计见 `docs/DESIGN-2026-10-10-slides-semantic-html.md` §15。
+- 教训：建表带外键**必须显式 `COLLATE=utf8mb4_unicode_ci`**；前端改动后要 `grep` dist 确认新代码真的打进产物
+  （一次部署被中断 → dist 是旧的 → 界面看不到新 tab 却以为上线了）。
+
 **2026-10-12（幻灯片：修「图/代码页顶掉页脚」+ 收紧内容量约束）**
 
 学员反馈：**有图片或代码时容易超出安全高度**（点名第 2 章 p4/p9/p14、第 3 章 p11）。

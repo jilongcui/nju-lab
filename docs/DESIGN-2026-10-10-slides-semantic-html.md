@@ -558,7 +558,64 @@ v2 链路有三处断点，**三者叠加，只修一处都不会生效**：
 - 断言 `server/tools/assert-semantic-schema.mjs` 24 → **31/31**（新增：清单内保留 / `file:` 前缀归一化 /
   清单外丢弃且不动同页其它块 / 空清单不放图 / 不传清单时宽松）。
 
-### 14.5 前提与后续
+#
+## 15. 历史版本与回滚（2026-10-13）
+
+**为什么做**：教师反馈"收紧生成约束后内容变差、更想要上一版"—— 而那版只存在于重生成前的备份里，
+只能靠运维人工恢复。**"哪一版更好"是教师的主观判断，产品应当让他自己选**，而不是由代码替他决定。
+
+### 15.1 数据模型
+
+`slide_deck_versions`：一次「即将覆盖内容」的操作 → 存一份**完整快照**。
+
+| 字段 | 用途 |
+|---|---|
+| `deckId` / `chapterId` | 外键指 `slide_decks(id)`，**ON DELETE CASCADE**（deck 删了历史一起清） |
+| `slides` / `markdown` / `config` / `templateId` | 完整内容快照（`slides` 是内容真源） |
+| `promptVersion` | 生成时的 prompt 口径（v8/v9/v11…）—— 教师能看懂"这版为什么内容少" |
+| `label` / `reason` | 人话标签 + 来源：`regenerate` / `optimize` / `manual-save` / `pre-restore` / `import` |
+| `tokensUsed` / `model` / `createdBy` / `createdAt` | 成本与追溯 |
+
+保留上限 `MAX_DECK_VERSIONS = 20`（超出删最旧）：它是**后悔药，不是归档系统**。
+
+### 15.2 存档时机（关键：一律在**覆盖之前**）
+
+| 操作 | reason |
+|---|---|
+| 整份重新生成（含优化重生成） | `regenerate` / `optimize` |
+| 单页重生成 | `regenerate` |
+| 教师手动保存内容 | `manual-save` |
+| **回滚之前** | `pre-restore` |
+
+`pre-restore` 是这套设计的关键：**后悔药必须双向** —— 否则"滚回去发现更差"就回不来了。
+
+### 15.3 接口与权限
+
+`GET /chapters/:id/slides/versions`（列表）、`GET …/versions/:versionId`（某版完整内容）、
+`POST …/versions/:versionId/restore`（回滚）、`DELETE …/versions/:versionId`（删某版）。
+读与查看幻灯片同口径（service 判定）；写限课程教师（`@Roles(TEACHER)`，admin 放行）。
+
+回滚走**乐观锁**（客户端持有的 `version` 与库中值不一致 → 409），并在成功后把
+`basedOnChapterHash` 重新对齐当前正文 —— 这版内容是按当时的正文生成的，不该制造假的"内容已变更"提示。
+
+### 15.4 前端
+
+右栏新增「版本」tab（章节 | 实验 | 生成 | 版本 | 图片）：列出 `label` / 页数 / 来源 / 时间，
+每项「回滚」+「删」，切到该 tab 时按需拉取。回滚前用 `Popconfirm` 说明"当前内容会先被存成一版"。
+
+### 15.5 实测
+
+回滚到旧版 → 内容确实换成旧版（第 2 章第 3 页 blocks 从 `claim+image` 变 `evidence+note`）→
+再回滚回来 → **内容与最初完全一致（双向可逆）**；传过期 `version` 回滚被 409 拒绝。
+
+### 15.6 踩过的坑
+
+- 建表**必须显式 `COLLATE=utf8mb4_unicode_ci`**：`slide_decks` 是 `unicode_ci`，MySQL 8 库默认却是
+  `0900_ai_ci`，两边不一致时外键报 `Referencing column … are incompatible`。
+- 前端改动后要**确认 dist 里真有新代码**（`grep` 关键字）：一次部署被中断，dist 还是旧的，
+  界面上看不到新 tab，却以为已上线。
+
+## 14.5 前提与后续
 
 插图能力**依赖正文素材**：目前只有第 2 章（5 张）与第 3 章（3 张）正文里有图，**其余 12 章正文本身无图** ——
 所以不是链路问题。要让更多章节图文并茂，需先往正文加图（章节编辑页右栏「图片」tab 上传并插入
