@@ -114,8 +114,13 @@ export const SLIDES_LLM_TIMEOUT_MS = num('SLIDES_LLM_TIMEOUT_MS', 300_000);
  * 大纲恢复「一页讲透一个要点、内容要充实」；并**新增语言风格铁律**（完整规范的书面表达、
  * 不口语化/不俏皮/术语首次给全称、抽象结论必须带具体对象或数字、讲稿要求表述规范）。
  * 仅保留「同一页不要既有代码又有图片」这一条（防顶掉页脚）。
+ * v10（2026-10-13）：补 v9 的副作用 —— v9 把 notes 要求提到「4–7 句、规范完整」后，
+ * 模型会在封面/目录/分节这类"没内容的页"**直接不写 notes**（实测第 2 章前 4 页 notes 全空）。
+ * v10 显式要求「每一页都必须写 notes、不许留空」并说明仪式页该写什么；
+ * 同时规定 lede 必须给出本页结论、不许写成「本节说明…」的目录式提示（v9 的 lede 太生硬）；
+ * schema 侧新增校验：notes 缺失或 <40 字 → 进 warnings 提示教师补。
  */
-export const SLIDES_PROMPT_VERSION = 'v9';
+export const SLIDES_PROMPT_VERSION = 'v10';
 
 /**
  * 生成语义模型（v2）：新生成的 deck 直接产出 `intent + blocks`（见 semantic.schema.ts），

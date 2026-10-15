@@ -45,11 +45,12 @@ const good = validateSemanticPages(
         { kind: 'claim', text: '把讲什么和怎么排版分开' },
         { kind: 'evidence', items: ['要点一', '要点二', '要点三'] },
       ],
-      notes: '讲稿：这一页强调解耦。',
+      notes: '讲稿：这一页强调内容与版式的解耦。先讲为什么要把它们分开，再讲分开之后各自怎么改。',
     },
     {
       intent: 'relation',
       title: '关系',
+      notes: '讲稿：这一页用关系图来做收束，先点出中心概念，再说明它与两个相邻概念之间的关系。',
       blocks: [
         {
           kind: 'relation',
@@ -66,17 +67,27 @@ const good = validateSemanticPages(
 );
 check('合法页全部通过（无 warning）', good.pages.length === 2 && good.warnings.length === 0, `warnings=${good.warnings.length}`);
 check('页面 id/字段按白名单保留', good.pages[0].intent === 'claim' && good.pages[0].blocks.length === 2);
+const noNotes = validateSemanticPages([{ intent: 'claim', blocks: [{ kind: 'claim', text: 'x' }] }], LIMITS);
+check(
+  '缺讲稿（notes 缺失或过短）→ 记 warning，不静默丢内容',
+  noNotes.warnings.some((w) => w.includes('缺少讲稿')),
+  noNotes.warnings.join(' / '),
+);
 
 // ---------------- 2. intent 非法 → claim；块类型误当 intent → 按归属版式纠正 ----------------
-const badIntent = validateSemanticPages([{ intent: 'whatever', blocks: [{ kind: 'claim', text: 'x' }] }], LIMITS);
+const NOTES = '讲稿：先承接上一页的结论，再把本页的各个要点依次讲清楚，最后自然过渡到下一页要讲的内容。';
+const badIntent = validateSemanticPages(
+  [{ intent: 'whatever', blocks: [{ kind: 'claim', text: 'x' }], notes: NOTES }],
+  LIMITS,
+);
 check('intent 非法降级为 claim 并记 warning', badIntent.pages[0].intent === 'claim' && badIntent.warnings.length === 1);
 
 // 2026-10-10 第 7 章真实生成实测：模型把内容块类型 formula 写成了 intent —— 纠正到归属版式，而不是一律 claim
 const blockAsIntent = validateSemanticPages(
   [
-    { intent: 'formula', blocks: [{ kind: 'formula', tex: 'a^2+b^2=c^2' }] },
-    { intent: 'chart', blocks: [{ kind: 'chart', chart: 'bar', labels: ['A', 'B'], series: [{ name: 's', values: [1, 2] }] }] },
-    { intent: 'compare', blocks: [{ kind: 'compare', left: { title: '左', items: ['a'] }, right: { title: '右', items: ['b'] } }] },
+    { intent: 'formula', notes: NOTES, blocks: [{ kind: 'formula', tex: 'a^2+b^2=c^2' }] },
+    { intent: 'chart', notes: NOTES, blocks: [{ kind: 'chart', chart: 'bar', labels: ['A', 'B'], series: [{ name: 's', values: [1, 2] }] }] },
+    { intent: 'compare', notes: NOTES, blocks: [{ kind: 'compare', left: { title: '左', items: ['a'] }, right: { title: '右', items: ['b'] } }] },
   ],
   LIMITS,
 );
