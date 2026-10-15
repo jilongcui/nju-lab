@@ -27,12 +27,14 @@ import {
 import { isSemanticDeck, semanticToMarkdown, validateSemanticPages, type SemanticPage } from './semantic.schema';
 import { llmDiagnostics } from './llm.client';
 import { SlideDeck, SlideDeckStatus } from './slide-deck.entity';
+import { SlideDeckVersion } from './slide-deck-version.entity';
 import { SlideTemplate } from './slide-template.entity';
 import {
   SLIDES_GENERATE_PER_HOUR,
   SLIDES_GENERATOR,
   SLIDES_LIMITS,
   SLIDES_MODEL,
+  MAX_DECK_VERSIONS,
   SLIDES_PROMPT_VERSION,
 } from './slides.config';
 import {
@@ -68,6 +70,20 @@ import {
  *   · **绝不自动重生成**：章节改了只提示（`chapterChanged`），由教师决定
  *   · 模板只存"调参"，CSS 由 `designToCss` 编译（窄字符集校验后的值才会进 CSS）
  */
+
+/** 历史版本列表项（不含 slides 全量，避免列表接口过大；要看内容用"预览/回滚"） */
+export interface DeckVersionView {
+  id: string;
+  title: string;
+  pages: number;
+  label: string;
+  reason: string;
+  promptVersion: string | null;
+  tokensUsed: number | null;
+  model: string | null;
+  generatedBy: string | null;
+  createdAt: Date;
+}
 
 export interface DeckView {
   id: string;
@@ -134,6 +150,8 @@ export class SlidesService {
   constructor(
     @InjectRepository(SlideDeck)
     private readonly deckRepo: Repository<SlideDeck>,
+    @InjectRepository(SlideDeckVersion)
+    private readonly versionRepo: Repository<SlideDeckVersion>,
     @InjectRepository(SlideTemplate)
     private readonly templateRepo: Repository<SlideTemplate>,
     @InjectRepository(Chapter)
@@ -286,6 +304,8 @@ export class SlidesService {
       const outcome = await generator.generate(source);
       const deck = await this.deckRepo.findOne({ where: { id: deckId } });
       if (!deck) return;
+      // 覆盖前把上一版存进历史（教师可回滚）—— optimize 与彻底重做都能回到生成前
+      await this.archiveVersion(deck, source.basePages?.length ? 'optimize' : 'regenerate', actorId);
       deck.slides = outcome.slides;
       // 语义 deck 的 Markdown 只是只读预览（不接受回写）；旧 deck 仍是双向投影
       deck.markdown = isSemanticDeck(outcome.slides)
@@ -415,6 +435,8 @@ export class SlidesService {
         .filter((slide) => (slide as SlideJson).layout === 'section').length;
       (regenerated as SlideJson).kicker = `第 ${sectionNo} 节`;
     }
+    // 覆盖这一页前存一版（单页重生成也能后悔）
+    await this.archiveVersion(deck, 'regenerate', user.id);
     const slides: DeckSlide[] = [...deck.slides];
     // 保留原页 id：缩略图/编辑态以 id 做 key，原位替换不应引起视图抖动
     slides[index] = { ...(regenerated as unknown as Record<string, unknown>), id: current.id } as DeckSlide;
@@ -493,6 +515,8 @@ export class SlidesService {
           basedOnChapterHash: sha256(chapter.content ?? ''),
         });
       }
+      // 教师手动保存前存一版（新建 deck 时 slides 为空，archiveVersion 会自行跳过）
+      await this.archiveVersion(deck, 'manual-save', user.id);
       deck.slides = slides;
       deck.markdown = isSemanticDeck(slides)
         ? semanticToMarkdown(slides as SemanticPage[])
@@ -664,6 +688,155 @@ export class SlidesService {
       return;
     }
     if (!canEdit) throw new ForbiddenException('没有权限查看该章节的幻灯片');
+  }
+
+  /**
+   * 把 deck 的**当前内容**存成一个历史版本 —— 在"即将覆盖内容"之前调用。
+   *
+   * 为什么在覆盖前存：教师判断"哪一版更好"是主观的，覆盖掉就没了（实测踩过：
+   * 收紧 prompt 重生成后教师更想要旧版，只能靠运维从备份文件恢复）。
+   * 没内容的 deck 不存（首次生成没什么可保存的）；只保留最近 `MAX_DECK_VERSIONS` 版。
+   */
+  private async archiveVersion(
+    deck: SlideDeck,
+    reason: 'regenerate' | 'optimize' | 'manual-save' | 'pre-restore',
+    actorId?: string,
+  ): Promise<void> {
+    if (!deck.slides?.length) return;
+    await this.versionRepo.save(
+      this.versionRepo.create({
+        deckId: deck.id,
+        chapterId: deck.chapterId,
+        title: deck.title,
+        slides: deck.slides,
+        markdown: deck.markdown,
+        templateId: deck.templateId,
+        config: deck.config,
+        tokensUsed: deck.tokensUsed,
+        model: deck.model,
+        generatedBy: deck.generatedBy,
+        promptVersion: SLIDES_PROMPT_VERSION,
+        label: `存档于 ${SLIDES_PROMPT_VERSION} · ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`,
+        reason,
+        createdBy: actorId ?? deck.updatedBy ?? null,
+      }),
+    );
+    // 超出上限则删最旧的几份（历史版本是"后悔药"，不是归档系统）
+    const existing = await this.versionRepo.find({
+      where: { deckId: deck.id },
+      order: { createdAt: 'ASC' },
+      select: ['id', 'createdAt'],
+    });
+    const overflow = existing.length - MAX_DECK_VERSIONS;
+    if (overflow > 0) {
+      const ids = existing.slice(0, overflow).map((v) => v.id);
+      await this.versionRepo.delete(ids);
+    }
+  }
+
+  private toVersionView(v: SlideDeckVersion): DeckVersionView {
+    return {
+      id: v.id,
+      title: v.title,
+      pages: v.slides?.length ?? 0,
+      label: v.label,
+      reason: v.reason,
+      promptVersion: v.promptVersion,
+      tokensUsed: v.tokensUsed,
+      model: v.model,
+      generatedBy: v.generatedBy,
+      createdAt: v.createdAt,
+    };
+  }
+
+  /** 列出该章节 deck 的历史版本（含当前版本，便于前端并排展示） */
+  async listVersions(user: User, chapterId: string) {
+    const chapter = await this.loadChapter(chapterId);
+    await this.coursesService.getOwnedCourse(user, chapter.courseId);
+    const deck = await this.deckRepo.findOne({ where: { chapterId } });
+    if (!deck) return { versions: [] as DeckVersionView[], current: null };
+    const rows = await this.versionRepo.find({
+      where: { deckId: deck.id },
+      order: { createdAt: 'DESC' },
+      take: MAX_DECK_VERSIONS,
+    });
+    return { versions: rows.map((v) => this.toVersionView(v)), current: this.toDeckView(deck) };
+  }
+
+  /** 某历史版本的完整内容（预览用） */
+  async getVersion(user: User, chapterId: string, versionId: string) {
+    const chapter = await this.loadChapter(chapterId);
+    await this.coursesService.getOwnedCourse(user, chapter.courseId);
+    const deck = await this.deckRepo.findOne({ where: { chapterId } });
+    if (!deck) throw new NotFoundException('该章节还没有幻灯片');
+    const v = await this.versionRepo.findOne({ where: { id: versionId, deckId: deck.id } });
+    if (!v) throw new NotFoundException('该历史版本不存在（可能已超出保留数量）');
+    return { version: this.toVersionView(v), slides: v.slides, config: v.config, templateId: v.templateId };
+  }
+
+  /**
+   * 回滚到某个历史版本。
+   *
+   * **回滚前先把"当前内容"也存成一版**（reason=pre-restore）—— 否则"滚回去发现更差"就无法再回来，
+   * 后悔药必须双向。
+   */
+  async restoreVersion(
+    user: User,
+    chapterId: string,
+    versionId: string,
+    expectedVersion?: number,
+  ) {
+    const chapter = await this.loadChapter(chapterId);
+    const course = await this.coursesService.getOwnedCourse(user, chapter.courseId);
+    const deck = await this.deckRepo.findOne({ where: { chapterId } });
+    if (!deck) throw new NotFoundException('该章节还没有幻灯片');
+    if (deck.status === SlideDeckStatus.GENERATING) {
+      throw new ConflictException('该章节正在生成中，请稍候再回滚');
+    }
+    if (expectedVersion !== undefined && expectedVersion !== deck.version) {
+      throw new ConflictException(
+        `幻灯片已被他人修改（当前版本 ${deck.version}，你持有 ${expectedVersion}），请刷新后重试`,
+      );
+    }
+    const v = await this.versionRepo.findOne({ where: { id: versionId, deckId: deck.id } });
+    if (!v) throw new NotFoundException('该历史版本不存在（可能已超出保留数量）');
+
+    await this.archiveVersion(deck, 'pre-restore', user.id);
+
+    deck.slides = v.slides;
+    deck.title = v.title || deck.title;
+    deck.markdown = v.markdown ?? deck.markdown;
+    deck.config = v.config ?? deck.config;
+    deck.generatedBy = 'manual';
+    deck.error = null;
+    deck.warnings = null;
+    deck.updatedBy = user.id;
+    // 回滚后与"当前章节正文"的基准重新对齐：这版内容是按当时的正文生成的，不制造假的"内容已变更"提示
+    deck.basedOnChapterHash = sha256(chapter.content ?? '');
+    deck.sourceHash = null;
+    const saved = await this.deckRepo.save(deck);
+    await this.coursesService.recordAudit({
+      courseId: course.id,
+      action: 'deck_restore',
+      targetType: 'deck',
+      targetId: saved.id,
+      summary: `把「${chapter.title}」的幻灯片回滚到历史版本（${v.label}，${v.slides?.length ?? 0} 页）`,
+      actorId: user.id,
+    });
+    this.logger.log(`幻灯片回滚 deck=${saved.id} 版本=${versionId} 页数=${v.slides?.length ?? 0}`);
+    return { deck: this.toDeckView(saved) };
+  }
+
+  /** 删除某个历史版本（教师自己清理；当前内容不受影响） */
+  async deleteVersion(user: User, chapterId: string, versionId: string) {
+    const chapter = await this.loadChapter(chapterId);
+    await this.coursesService.getOwnedCourse(user, chapter.courseId);
+    const deck = await this.deckRepo.findOne({ where: { chapterId } });
+    if (!deck) throw new NotFoundException('该章节还没有幻灯片');
+    const v = await this.versionRepo.findOne({ where: { id: versionId, deckId: deck.id } });
+    if (!v) throw new NotFoundException('该历史版本不存在');
+    await this.versionRepo.remove(v);
+    return { deleted: true };
   }
 
   private toDeckView(deck: SlideDeck): DeckView {

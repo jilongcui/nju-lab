@@ -156,3 +156,13 @@ export class UpdateTemplateDto {
   @IsObject()
   config?: DeckConfig;
 }
+
+/** 回滚到历史版本 */
+export class RestoreDeckVersionDto {
+  /** 乐观锁：客户端加载时拿到的 deck 版本（不一致说明别人改过，给 409） */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  version?: number;
+}

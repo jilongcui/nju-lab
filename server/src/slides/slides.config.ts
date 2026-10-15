@@ -119,8 +119,18 @@ export const SLIDES_LLM_TIMEOUT_MS = num('SLIDES_LLM_TIMEOUT_MS', 300_000);
  * v10 显式要求「每一页都必须写 notes、不许留空」并说明仪式页该写什么；
  * 同时规定 lede 必须给出本页结论、不许写成「本节说明…」的目录式提示（v9 的 lede 太生硬）；
  * schema 侧新增校验：notes 缺失或 <40 字 → 进 warnings 提示教师补。
+ * v11（2026-10-13）：文风不再"禁口语"。教师对比后认为：**用贴近口语的完整表述解释抽象概念
+ * 是优点**（"把规则写死"比"基于确定性规则的判定逻辑"更好懂），v10 的"不要口语化"收得过头。
+ * v11 改为「规范、完整、准确，同时要好懂」：允许贴近口语的完整表述，只禁俏皮比喻/网络用语/
+ * 玩笑话与公文腔；讲稿也明确"就像在讲课"。内容量与防溢出规则不变。
  */
-export const SLIDES_PROMPT_VERSION = 'v10';
+export const SLIDES_PROMPT_VERSION = 'v11';
+
+/**
+ * 每份 deck 保留的历史版本上限（超出删最旧的）。
+ * 历史版本是"后悔药"，不是归档系统 —— 20 版足够覆盖一轮备课的反复调整。
+ */
+export const MAX_DECK_VERSIONS = 20;
 
 /**
  * 生成语义模型（v2）：新生成的 deck 直接产出 `intent + blocks`（见 semantic.schema.ts），

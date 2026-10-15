@@ -47,15 +47,19 @@ import {
   createSlideTemplate,
   deleteChapterSlides,
   deleteSlideTemplate,
+  deleteSlideVersion,
   generateChapterSlides,
   getChapter,
   getChapterSlides,
+  getSlideVersions,
   getCourse,
   saveChapterSlides,
   syncChapterSlidesHash,
   regenerateChapterSlidePage,
+  restoreSlideVersion,
   updateSlideTemplate,
 } from '../../api';
+import type { DeckVersionItem } from '../../api';
 import type {
   Chapter,
   ChapterSlidesResponse,
@@ -149,6 +153,9 @@ export default function ChapterSlides() {
   const [busy, setBusy] = useState(false);
   /** 教师本次的额外要求（可选提示词）：重生成 / 重生成当前页时随请求下发 */
   const [instruction, setInstruction] = useState('');
+  /** 历史版本：每次重生成/保存前自动存档，教师可回滚（多版并存，见 DESIGN 里的版本一节） */
+  const [versions, setVersions] = useState<DeckVersionItem[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
   const [data, setData] = useState<ChapterSlidesResponse | null>(null);
   const [chapter, setChapter] = useState<Chapter | null>(null);
   const [siblings, setSiblings] = useState<Chapter[]>([]);
@@ -175,7 +182,7 @@ export default function ChapterSlides() {
     { kind: 'insert'; layout: SlideLayout } | { kind: 'replace' } | { kind: 'insert-cursor' } | null
   >(null);
   const mdAreaRef = useRef<TextAreaRef>(null);
-  const [auxTab, setAuxTab] = useState<'chapters' | 'experiments' | 'generate' | 'images'>('chapters');
+  const [auxTab, setAuxTab] = useState<'chapters' | 'experiments' | 'generate' | 'versions' | 'images'>('chapters');
   const editingRef = useRef(editing);
   editingRef.current = editing;
   // 章节 tab/工具栏里「放弃修改并切换」与放映态的章节跳转要绕过路由守卫
@@ -319,6 +326,44 @@ export default function ChapterSlides() {
       if (!(await handleConflict(error))) throw error;
     } finally {
       setBusy(false);
+    }
+  };
+
+  /** 拉历史版本（切到「版本」tab 或回滚/删除后刷新） */
+  const loadVersions = useCallback(async () => {
+    setVersionsLoading(true);
+    try {
+      const res = await getSlideVersions(chapterId);
+      setVersions(res.versions ?? []);
+    } catch {
+      setVersions([]);
+    } finally {
+      setVersionsLoading(false);
+    }
+  }, [chapterId]);
+
+  /** 回滚到历史版本：service 会先把**当前内容**也存一版，所以来回都能换 */
+  const handleRestoreVersion = async (versionId: string) => {
+    setBusy(true);
+    try {
+      await restoreSlideVersion(chapterId, versionId, deck?.version);
+      message.success('已回滚到该历史版本（当前内容已自动存为一版，可再换回）');
+      await load(true);
+      await loadVersions();
+    } catch (error) {
+      if (!(await handleConflict(error))) throw error;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDeleteVersion = async (versionId: string) => {
+    try {
+      await deleteSlideVersion(chapterId, versionId);
+      message.success('已删除该历史版本');
+      await loadVersions();
+    } catch (error) {
+      if (!(await handleConflict(error))) throw error;
     }
   };
 
@@ -573,7 +618,10 @@ export default function ChapterSlides() {
     '章节幻灯片',
     <Tabs
       activeKey={auxTab}
-      onChange={(k) => setAuxTab(k as 'chapters' | 'experiments' | 'generate' | 'images')}
+      onChange={(k) => {
+        setAuxTab(k as 'chapters' | 'experiments' | 'generate' | 'versions' | 'images');
+        if (k === 'versions') void loadVersions();
+      }}
       items={[
         {
           key: 'chapters',
@@ -666,6 +714,65 @@ export default function ChapterSlides() {
                   只想改某一页：用工具栏的「重生成当前页」，它同样会带上这里的提示词。
                 </Paragraph>
               </Space>
+            </>
+          ),
+        },
+        {
+          key: 'versions',
+          label: '版本',
+          children: (
+            <>
+              <Paragraph type="secondary" style={{ fontSize: 12 }}>
+                每次重新生成或保存前，平台会自动把<b>上一版</b>存进这里（保留最近 20 版）。
+                回滚时当前内容也会先存一版 —— 来回都能换，不用怕选错。
+              </Paragraph>
+              <List
+                size="small"
+                loading={versionsLoading}
+                locale={{ emptyText: '还没有历史版本（下次重新生成或保存时会自动存档）' }}
+                dataSource={versions}
+                renderItem={(v) => (
+                  <List.Item
+                    style={{ paddingLeft: 0, paddingRight: 0 }}
+                    actions={[
+                      <Popconfirm
+                        key="restore"
+                        title="回滚到这一版？"
+                        description="当前内容会先被存成一版，可再换回。"
+                        onConfirm={() => handleRestoreVersion(v.id)}
+                      >
+                        <Button size="small" type="link" disabled={busy}>
+                          回滚
+                        </Button>
+                      </Popconfirm>,
+                      <Popconfirm
+                        key="delete"
+                        title="删除这个历史版本？"
+                        description="只删这条历史记录，当前内容不受影响。"
+                        onConfirm={() => handleDeleteVersion(v.id)}
+                      >
+                        <Button size="small" type="link" danger>
+                          删
+                        </Button>
+                      </Popconfirm>,
+                    ]}
+                  >
+                    <List.Item.Meta
+                      title={
+                        <Text style={{ fontSize: 13 }}>
+                          {v.label || '历史版本'}
+                        </Text>
+                      }
+                      description={
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {v.pages} 页 · {v.reason} ·{' '}
+                          {new Date(v.createdAt).toLocaleString('zh-CN', { hour12: false })}
+                        </Text>
+                      }
+                    />
+                  </List.Item>
+                )}
+              />
             </>
           ),
         },

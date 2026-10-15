@@ -11,7 +11,12 @@ import {
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { User, UserRole } from '../users/user.entity';
-import { GenerateDeckDto, RegeneratePageDto, SaveDeckDto } from './dto/slides.dto';
+import {
+  GenerateDeckDto,
+  RegeneratePageDto,
+  RestoreDeckVersionDto,
+  SaveDeckDto,
+} from './dto/slides.dto';
 import { SlidesService } from './slides.service';
 
 /**
@@ -73,6 +78,49 @@ export class ChapterSlidesController {
     @Param('chapterId', ParseUUIDPipe) chapterId: string,
   ) {
     return this.slidesService.syncChapterHash(user, chapterId);
+  }
+
+  /**
+   * 历史版本：列出 / 预览 / 回滚 / 删除。
+   *
+   * 读对师生开放（与查看幻灯片同口径，由 service 判定）；写限课程教师。
+   */
+  @Get(':chapterId/slides/versions')
+  listVersions(
+    @CurrentUser() user: User,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+  ) {
+    return this.slidesService.listVersions(user, chapterId);
+  }
+
+  @Get(':chapterId/slides/versions/:versionId')
+  getVersion(
+    @CurrentUser() user: User,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+    @Param('versionId', ParseUUIDPipe) versionId: string,
+  ) {
+    return this.slidesService.getVersion(user, chapterId, versionId);
+  }
+
+  @Post(':chapterId/slides/versions/:versionId/restore')
+  @Roles(UserRole.TEACHER)
+  restoreVersion(
+    @CurrentUser() user: User,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+    @Param('versionId', ParseUUIDPipe) versionId: string,
+    @Body() dto: RestoreDeckVersionDto,
+  ) {
+    return this.slidesService.restoreVersion(user, chapterId, versionId, dto.version);
+  }
+
+  @Delete(':chapterId/slides/versions/:versionId')
+  @Roles(UserRole.TEACHER)
+  deleteVersion(
+    @CurrentUser() user: User,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+    @Param('versionId', ParseUUIDPipe) versionId: string,
+  ) {
+    return this.slidesService.deleteVersion(user, chapterId, versionId);
   }
 
   @Delete(':chapterId/slides')

@@ -286,6 +286,39 @@ export const generateChapterSlides = (
   );
 
 /** 只重新生成某一页（同步：一次 LLM 调用，产物原位替换，其余页不动；0 基页码） */
+/** 历史版本列表项（不含 slides 全量） */
+export interface DeckVersionItem {
+  id: string;
+  title: string;
+  pages: number;
+  label: string;
+  reason: string;
+  promptVersion: string | null;
+  tokensUsed: number | null;
+  model: string | null;
+  generatedBy: string | null;
+  createdAt: string;
+}
+
+/** 列出该章节 deck 的历史版本（2026-10-13：让教师能回滚到任一历史版本） */
+export const getSlideVersions = (chapterId: string) =>
+  client.get<unknown, { versions: DeckVersionItem[]; current: SlideDeckView | null }>(
+    `/chapters/${chapterId}/slides/versions`,
+  );
+
+/** 回滚到某个历史版本（当前内容会先被自动存成一版，可再换回） */
+export const restoreSlideVersion = (chapterId: string, versionId: string, version?: number) =>
+  client.post<unknown, { deck: SlideDeckView }>(
+    `/chapters/${chapterId}/slides/versions/${versionId}/restore`,
+    { version },
+    { timeout: 60000 },
+  );
+
+export const deleteSlideVersion = (chapterId: string, versionId: string) =>
+  client.delete<unknown, { deleted: boolean }>(
+    `/chapters/${chapterId}/slides/versions/${versionId}`,
+  );
+
 export const regenerateChapterSlidePage = (
   chapterId: string,
   index: number,

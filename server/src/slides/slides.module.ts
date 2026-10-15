@@ -4,6 +4,7 @@ import { Chapter, Course } from '../courses/course.entity';
 import { User } from '../users/user.entity';
 import { CoursesModule } from '../courses/courses.module';
 import { SlideDeck } from './slide-deck.entity';
+import { SlideDeckVersion } from './slide-deck-version.entity';
 import { SlideTemplate } from './slide-template.entity';
 import { ChapterSlidesController } from './slides.controller';
 import { SlideTemplatesController } from './slide-templates.controller';
@@ -20,7 +21,7 @@ import { SlidesService } from './slides.service';
 @Module({
   imports: [
     // User 仓储：乐观锁冲突提示要按 updatedBy 取昵称
-    TypeOrmModule.forFeature([SlideDeck, SlideTemplate, Chapter, Course, User]),
+    TypeOrmModule.forFeature([SlideDeck, SlideDeckVersion, SlideTemplate, Chapter, Course, User]),
     CoursesModule,
   ],
   controllers: [ChapterSlidesController, SlideTemplatesController],
