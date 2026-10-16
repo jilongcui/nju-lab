@@ -408,6 +408,10 @@ export async function buildSemanticDeckHtml(options: StageOptions): Promise<stri
     resolveImage: options.resolveImage,
     footerText: options.footerText,
     renderTex,
+    // 版式开关由**主题**声明：老模板默认全关（观感与改版前一致），
+    // 新主题可逐条打开（见 DeckTheme.layoutFlags）。
+    pinKicker: theme.layoutFlags?.pinKicker === true,
+    chapterOnlyFooter: theme.layoutFlags?.chapterOnlyFooter === true,
   });
   const logo = options.logoDataUrl
     ? `<img class="deck-logo" data-pos="bottom-right" src="${escapeHtml(options.logoDataUrl)}" alt="" />`

@@ -170,6 +170,43 @@ const html2 = await buildSemanticDeckHtml({ pages: PAGES, meta: META, themeId: o
 const stripStyle = (value) => value.replace(/<style>[\s\S]*?<\/style>/g, '').replace(/<title>[\s\S]*?<\/title>/, '');
 check('换主题后 DOM 完全不变（只有 CSS 不同）', stripStyle(html) === stripStyle(html2));
 
+// ---- 版式开关（layoutFlags）：默认主题必须维持改版前的观感，新版式只在新主题生效 ----
+// 背景：库里已生成的章节 deck 会跟着渲染层一起变，"页眉小标固定左上角 + 页脚只写章名"
+// 这两条只允许声明了 layoutFlags 的主题拿到（2026-10 用户明确要求"只让新主题生效"）。
+const kickerInHead = (document_) =>
+  [...document_.querySelectorAll('.slide .ly-head .kicker')].length;
+const pinnedKickers = (document_) => [...document_.querySelectorAll('.slide .slide-kicker')].length;
+check(
+  '默认主题：kicker 仍排在标题上方（老观感不变），没有页面级 .slide-kicker',
+  kickerInHead(doc) > 0 && pinnedKickers(doc) === 0,
+  `in-head=${kickerInHead(doc)} pinned=${pinnedKickers(doc)}`,
+);
+check(
+  '默认主题：页脚仍是「课程 · 章节」',
+  [...doc.querySelectorAll('.deck-footer > span:first-child')].every((el) =>
+    el.textContent.includes('·') || !META.course,
+  ),
+  (doc.querySelector('.deck-footer > span:first-child')?.textContent ?? '').slice(0, 40),
+);
+const njuHtml = await buildSemanticDeckHtml({ pages: PAGES, meta: META, themeId: 'builtin-nju' });
+const njuDoc = new JSDOM(njuHtml).window.document;
+check(
+  '南大风：kicker 抽成页面级 .slide-kicker（不再排在标题上方）',
+  pinnedKickers(njuDoc) > 0 && kickerInHead(njuDoc) === 0,
+  `pinned=${pinnedKickers(njuDoc)} in-head=${kickerInHead(njuDoc)}`,
+);
+check(
+  '南大风：页脚只写章节名（不含课程名）',
+  [...njuDoc.querySelectorAll('.deck-footer > span:first-child')].every(
+    (el) => !META.course || !el.textContent.includes(META.course),
+  ),
+  (njuDoc.querySelector('.deck-footer > span:first-child')?.textContent ?? '').slice(0, 40),
+);
+check(
+  '南大风：装饰层只在该主题的 CSS 里（页面色带/钟楼不会漏进别的主题）',
+  njuHtml.includes('--nju-head-band') && !html.includes('--nju-head-band'),
+);
+
 const academic = DECK_THEMES.find((t) => t.id === 'builtin-academic-white');
 const academicCss = themeCss(academic);
 const fontIdx = academicCss.indexOf('--font-sans');

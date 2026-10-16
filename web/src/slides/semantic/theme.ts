@@ -27,6 +27,19 @@ export interface DeckTheme {
   id: string;
   name: string;
   description: string;
+  /**
+   * **版式开关**（默认全关）：这两条是"结构"级观感差异 —— kicker 的 DOM 位置、页脚文案口径，
+   * 纯 CSS 表达不了（kicker 得真的换一个 DOM 位置才能在老模板里保持"随标题居中"）。
+   *
+   * 默认全关的原因：老模板必须**维持既有观感** —— 平台里已经生成的章节 deck 会跟着一起变，
+   * 那不该是换主题之外的事情（2026-10 用户明确要求"只让新主题生效"）。
+   */
+  layoutFlags?: {
+    /** 页眉小标（kicker）抽成页面级元素、固定钉在内容区左上角（与主标题分离） */
+    pinKicker?: boolean;
+    /** 页脚左侧只写章节名（不再拼「课程 · 章节」） */
+    chapterOnlyFooter?: boolean;
+  };
   /** 设计取向：决定默认标题字号/间距节奏 */
   mood: 'clean' | 'academic' | 'editorial' | 'bold' | 'dark';
   /** vendored 主题 CSS（自带 token 覆盖）；不写则只用下面的 tokens */
@@ -145,8 +158,10 @@ export const DECK_THEMES: DeckTheme[] = [
     name: '南大风',
     description: '南大紫金配色 + 眉首眉尾色带 + 封面/分节页钟楼辅助背景，正式且不素净',
     mood: 'academic',
-    // 装饰层：色带、页脚徽记、钟楼水印（见 decor/nju.ts —— 换主题即消失，DOM 不变）
+    // 装饰层：页首色带、页脚徽记、钟楼水印（见 decor/nju.ts —— 换主题即消失）
     decorCss: njuDecorCss(NJU_HERO_URI),
+    // 版式开关：页眉小标固定左上角 + 页脚只写章节名（只有这个主题开）
+    layoutFlags: { pinKicker: true, chapterOnlyFooter: true },
     tokens: {
       // ---- 画布与文字：整页不是纯白，是南大紫的极淡层次 + 一点暖调（渐变本身在装饰层）----
       '--bg': '#f7f4fb',

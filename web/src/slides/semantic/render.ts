@@ -24,6 +24,14 @@ export interface RenderContext {
   meta: DeckMeta;
   index: number;
   total: number;
+  /**
+   * 版式开关（由主题声明，见 `DeckTheme.layoutFlags`）：
+   * 默认**全关** —— 老模板维持既有观感，只有显式声明的新主题才拿到新版式。
+   * 这两条都是"结构"级差异（kicker 的 DOM 位置、页脚文案口径），不是纯 CSS 能表达的，
+   * 所以必须在这里分流，而不是写死在版式 CSS 里。
+   */
+  pinKicker?: boolean;
+  chapterOnlyFooter?: boolean;
   /** 是否显示页码（页脚右侧） */
   slideNumber: boolean;
   /** 图片解析：`file:` 引用 → 可用 URL（data URL / blob URL）；无则渲染占位 */
@@ -81,13 +89,18 @@ function bIdx(page: Page, kind: Block['kind']): number {
 }
 
 /**
- * 页头：标题 + 导语。
+ * 页头：kicker（可选）+ 标题 + 导语。
  *
- * ⚠️ kicker **不在这里** —— 它已抽成页面级的页眉小标（`.slide-kicker`，见 renderPage）：
- * 跟着主标题走时，标题随内容垂直居中，kicker 每页的落点都不一样，翻页会"跳"。
+ * kicker 的落点由主题开关决定：
+ *   · 默认（老模板）：仍排在标题上方，随内容垂直居中 —— 与改版前完全一致；
+ *   · `pinKicker`（如「南大风」）：不在这里输出，改由 renderPage 抽成页面级的
+ *     `.slide-kicker` 钉在内容区左上角（标题每页落点不同，跟着它排会让 kicker"跳"）。
  */
-function head(page: Page): string {
+function head(page: Page, ctx: RenderContext): string {
   const parts: string[] = [];
+  if (page.kicker && !ctx.pinKicker) {
+    parts.push(`<p class="kicker"${ed('kicker')}>${escapeHtml(page.kicker)}</p>`);
+  }
   if (page.title) parts.push(`<h2 class="ly-title"${ed('title')}>${inline(page.title)}</h2>`);
   if (page.subtitle) parts.push(`<p class="ly-lede"${ed('subtitle')}>${inline(page.subtitle)}</p>`);
   if (page.lede) parts.push(`<p class="ly-lede"${ed('lede')}>${inline(page.lede)}</p>`);
@@ -283,19 +296,19 @@ function renderChart(block: Record<string, unknown> & { kind: 'chart' }): string
 
 function renderFormula(page: Page, ctx: RenderContext): string {
   const block = blockOf(page, 'formula');
-  if (!block) return head(page);
+  if (!block) return head(page, ctx);
   const body = ctx.renderTex
     ? ctx.renderTex(block.tex)
     : `<code class="ly-formula-fallback">${escapeHtml(block.tex)}</code>`;
-  return `${head(page)}<div class="ly-formula">${body}</div>${
+  return `${head(page, ctx)}<div class="ly-formula">${body}</div>${
     block.caption ? `<p class="ly-code-cap">${inline(block.caption)}</p>` : ''
   }`;
 }
 
-function renderData(page: Page): string {
+function renderData(page: Page, ctx: RenderContext): string {
   const chart = blockOf(page, 'chart');
-  if (!chart) return `${head(page)}`;
-  return `${head(page)}${renderChart(chart)}${renderNote(page)}`;
+  if (!chart) return `${head(page, ctx)}`;
+  return `${head(page, ctx)}${renderChart(chart)}${renderNote(page)}`;
 }
 
 
@@ -317,12 +330,13 @@ function renderCover(page: Page): string {
 </div>`;
 }
 
-function renderSection(page: Page): string {
+function renderSection(page: Page, ctx: RenderContext): string {
   const teaser = blockOf(page, 'evidence');
   const note = blockOf(page, 'note');
   const lede = page.lede || note?.text || '';
   return `<div class="ly ly-section">
   ${page.number ? `<div class="ly-section-num">${escapeHtml(page.number)}</div>` : ''}
+  ${page.kicker && !ctx.pinKicker ? `<p class="kicker"${ed('kicker')}>${escapeHtml(page.kicker)}</p>` : ''}
   <h1${ed('title')}>${inline(page.title ?? '')}</h1>
   ${lede ? `<p class="ly-lede"${ed(page.lede ? 'lede' : `blocks.${bIdx(page, 'note')}.text`)}>${inline(lede)}</p>` : ''}
   ${
@@ -335,10 +349,10 @@ function renderSection(page: Page): string {
 </div>`;
 }
 
-function renderToc(page: Page): string {
+function renderToc(page: Page, ctx: RenderContext): string {
   const seq = blockOf(page, 'sequence');
   const items = seq?.items ?? [];
-  return `${head(page)}<div class="ly-toc">${items
+  return `${head(page, ctx)}<div class="ly-toc">${items
     .map(
       (item, i) => `<div class="ly-toc-item">
       <div class="ly-toc-num">${String(i + 1).padStart(2, '0')}</div>
@@ -348,13 +362,13 @@ function renderToc(page: Page): string {
     .join('')}</div>`;
 }
 
-function renderClaim(page: Page): string {
+function renderClaim(page: Page, ctx: RenderContext): string {
   const claim = blockOf(page, 'claim');
   const evidence = blockOf(page, 'evidence');
   const items = evidence?.items ?? [];
   const ci = bIdx(page, 'claim');
   const ei = bIdx(page, 'evidence');
-  return `${head(page)}
+  return `${head(page, ctx)}
   ${claim ? `<p class="ly-claim"${ed(`blocks.${ci}.text`)}>${inline(claim.text)}</p>` : ''}
   ${
     items.length
@@ -367,12 +381,12 @@ function renderClaim(page: Page): string {
   }`;
 }
 
-function renderPillars(page: Page): string {
+function renderPillars(page: Page, ctx: RenderContext): string {
   const seq = blockOf(page, 'sequence');
   const evidence = blockOf(page, 'evidence');
   if (seq?.items.length) {
     const items = seq.items;
-    return `${head(page)}<div class="ly-cards ${colsClass(items.length)}">${items
+    return `${head(page, ctx)}<div class="ly-cards ${colsClass(items.length)}">${items
       .map(
         (item) => `<div class="ly-card"><h4>${inline(item.title)}</h4>${item.desc ? `<p>${inline(item.desc)}</p>` : ''}${
           item.tag ? `<span class="ly-tag">${escapeHtml(item.tag)}</span>` : ''
@@ -382,12 +396,12 @@ function renderPillars(page: Page): string {
   }
   const items = evidence?.items ?? [];
   const ei = bIdx(page, 'evidence');
-  return `${head(page)}<div class="ly-cards ${colsClass(items.length)}">${items
+  return `${head(page, ctx)}<div class="ly-cards ${colsClass(items.length)}">${items
     .map((item, i) => `<div class="ly-card"><p${ed(`blocks.${ei}.items.${i}`)}>${inline(item)}</p></div>`)
     .join('')}</div>`;
 }
 
-function renderContrast(page: Page): string {
+function renderContrast(page: Page, ctx: RenderContext): string {
   const compare = blockOf(page, 'compare');
   const column = (side: { title: string; items: string[]; tone?: string } | undefined, fallback: string) => {
     if (!side) return '';
@@ -396,18 +410,18 @@ function renderContrast(page: Page): string {
       .map((item) => `<li>${inline(item)}</li>`)
       .join('')}</ul></div>`;
   };
-  return `${head(page)}<div class="ly-compare">
+  return `${head(page, ctx)}<div class="ly-compare">
   ${column(compare?.left, '方案 A')}
   <div class="ly-mid">→</div>
   ${column(compare?.right, '方案 B')}
 </div>`;
 }
 
-function renderMetrics(page: Page): string {
+function renderMetrics(page: Page, ctx: RenderContext): string {
   const metric = blockOf(page, 'metric');
   const items = (metric?.items ?? []).slice(0, 4);
   const single = items.length === 1;
-  return `${head(page)}<div class="ly-metrics ${single ? 'cols-2' : colsClass(items.length)}">${items
+  return `${head(page, ctx)}<div class="ly-metrics ${single ? 'cols-2' : colsClass(items.length)}">${items
     .map(
       (item: MetricItem) => `<div class="ly-metric ${item.tone ?? 'neutral'}">
       <div class="ly-metric-v">${escapeHtml(item.value)}${item.unit ? escapeHtml(item.unit) : ''}</div>
@@ -423,10 +437,10 @@ function renderNote(page: Page): string {
   return note ? `<p class="ly-note"${ed(`blocks.${bIdx(page, 'note')}.text`)}>${inline(note.text)}</p>` : '';
 }
 
-function renderSequence(page: Page): string {
+function renderSequence(page: Page, ctx: RenderContext): string {
   const seq = blockOf(page, 'sequence');
   const items = (seq?.items ?? []) as SequenceItem[];
-  return `${head(page)}<div class="ly-steps ${colsClass(items.length)}">${items
+  return `${head(page, ctx)}<div class="ly-steps ${colsClass(items.length)}">${items
     .map(
       (item, i) => `<div class="ly-step">
       <div class="ly-step-n">${i + 1}</div>
@@ -438,7 +452,7 @@ function renderSequence(page: Page): string {
     .join('')}</div>`;
 }
 
-function renderFlow(page: Page): string {
+function renderFlow(page: Page, ctx: RenderContext): string {
   const flow = blockOf(page, 'flow');
   const nodes = (flow?.nodes ?? []) as FlowNode[];
   const body = nodes
@@ -448,13 +462,13 @@ function renderFlow(page: Page): string {
       </div>`,
     )
     .join('<div class="ly-flow-arrow"></div>');
-  return `${head(page)}<div class="ly-flow">${body}</div>${renderNote(page)}`;
+  return `${head(page, ctx)}<div class="ly-flow">${body}</div>${renderNote(page)}`;
 }
 
-function renderArch(page: Page): string {
+function renderArch(page: Page, ctx: RenderContext): string {
   const arch = blockOf(page, 'arch');
   const levels = (arch?.levels ?? []) as ArchLevel[];
-  return `${head(page)}<div class="ly-arch">${levels
+  return `${head(page, ctx)}<div class="ly-arch">${levels
     .map(
       (level) => `<div class="ly-tier${level.highlight ? ' hl' : ''}">
       <div class="ly-tier-name">${escapeHtml(level.name)}</div>
@@ -470,10 +484,10 @@ function renderArch(page: Page): string {
  * 关系图：中心节点 + 卫星节点，坐标在**固定容器**内算死（W=1728, H=650），
  * 连线用二次贝塞尔，因此与内容量无关、永不重叠。
  */
-function renderRelation(page: Page): string {
+function renderRelation(page: Page, ctx: RenderContext): string {
   const relation = blockOf(page, 'relation');
   const nodes = (relation?.nodes ?? []) as RelationNode[];
-  if (!nodes.length) return head(page);
+  if (!nodes.length) return head(page, ctx);
   const center = nodes.find((node) => node.center) ?? nodes[0];
   const satellites = nodes.filter((node) => node !== center).slice(0, 4);
   const W = 1728;
@@ -510,7 +524,7 @@ function renderRelation(page: Page): string {
     )
     .join('');
 
-  return `${head(page)}<div class="ly-rel">
+  return `${head(page, ctx)}<div class="ly-rel">
   <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${paths}</svg>
   <div class="ly-rel-n ly-rel-center" style="left:50%;top:50%">
     <h4>${inline(center.label)}</h4>${center.desc ? `<p>${inline(center.desc)}</p>` : ''}
@@ -519,10 +533,10 @@ function renderRelation(page: Page): string {
 </div>${renderNote(page)}`;
 }
 
-function renderTimeline(page: Page): string {
+function renderTimeline(page: Page, ctx: RenderContext): string {
   const timeline = blockOf(page, 'timeline');
   const points = ((timeline?.points ?? []) as TimelinePoint[]).slice(0, 6);
-  return `${head(page)}<div class="ly-tl"><div class="ly-tl-row" style="grid-template-columns:repeat(${points.length},1fr)">
+  return `${head(page, ctx)}<div class="ly-tl"><div class="ly-tl-row" style="grid-template-columns:repeat(${points.length},1fr)">
   ${points
     .map(
       (point) => `<div class="ly-tl-item${point.highlight ? ' hl' : ''}">
@@ -535,16 +549,16 @@ function renderTimeline(page: Page): string {
 </div></div>`;
 }
 
-function renderTable(page: Page): string {
+function renderTable(page: Page, ctx: RenderContext): string {
   const table = blockOf(page, 'table');
-  if (!table) return `${head(page)}`;
+  if (!table) return `${head(page, ctx)}`;
   const align = table.align ?? [];
   const cell = (value: string, i: number, isHead = false) => {
     const right = align[i] === 'r';
     const tag = isHead ? 'th' : 'td';
     return `<${tag}${right ? ' class="r"' : ''}>${inline(value)}</${tag}>`;
   };
-  return `${head(page)}<table class="ly-table">
+  return `${head(page, ctx)}<table class="ly-table">
   <thead><tr>${table.head.map((h, i) => cell(h, i, true)).join('')}</tr></thead>
   <tbody>${table.rows
     .map((row) => `<tr>${row.map((value, i) => cell(value, i)).join('')}</tr>`)
@@ -552,9 +566,9 @@ function renderTable(page: Page): string {
 </table>${renderNote(page)}`;
 }
 
-function renderCode(page: Page): string {
+function renderCode(page: Page, ctx: RenderContext): string {
   const code = blockOf(page, 'code');
-  if (!code) return `${head(page)}`;
+  if (!code) return `${head(page, ctx)}`;
   const KEYWORDS =
     /\b(def|return|import|from|with|for|in|if|else|class|self|as|not|and|or|None|True|False)\b/g;
   const highlight = (text: string) => text.replace(KEYWORDS, '<span class="kw">$1</span>');
@@ -568,7 +582,7 @@ function renderCode(page: Page): string {
       return highlight(escaped);
     })
     .join('\n');
-  return `${head(page)}<div class="ly-code">
+  return `${head(page, ctx)}<div class="ly-code">
   <div class="ly-code-bar"><i></i><i></i><i></i><span>${escapeHtml(code.lang)}</span></div>
   <pre>${highlighted}</pre>
 </div>${code.caption ? `<p class="ly-code-cap">${inline(code.caption)}</p>` : ''}`;
@@ -597,7 +611,7 @@ function imgFrame(fileId: string, caption: string | undefined, ctx: RenderContex
 
 function renderImage(page: Page, ctx: RenderContext): string {
   const image = blockOf(page, 'image');
-  if (!image) return head(page);
+  if (!image) return head(page, ctx);
   const evidence = blockOf(page, 'evidence');
   const claim = blockOf(page, 'claim');
   const note = blockOf(page, 'note');
@@ -610,12 +624,12 @@ function renderImage(page: Page, ctx: RenderContext): string {
         item.caption ? `<p class="img-cap">${escapeHtml(item.caption)}</p>` : ''
       }</div>`)
       .join('');
-    return `${head(page)}<div class="ly-gallery ${colsClass(items.length)}">${cells}</div>${renderNote(page)}`;
+    return `${head(page, ctx)}<div class="ly-gallery ${colsClass(items.length)}">${cells}</div>${renderNote(page)}`;
   }
 
   // 满幅大图
   if (image.role === 'full') {
-    return `${head(page)}<div class="ly-media full">${imgFrame(image.fileId, image.caption, ctx, true)}</div>${renderNote(page)}`;
+    return `${head(page, ctx)}<div class="ly-media full">${imgFrame(image.fileId, image.caption, ctx, true)}</div>${renderNote(page)}`;
   }
 
   const frame = imgFrame(image.fileId, image.caption, ctx, true);
@@ -637,21 +651,21 @@ function renderImage(page: Page, ctx: RenderContext): string {
         : '';
 
   if (side) {
-    return `${head(page)}<div class="ly-media hero">
+    return `${head(page, ctx)}<div class="ly-media hero">
   <figure class="ly-media-figure">${frame}</figure>
   <div class="ly-media-side">${side}</div>
 </div>`;
   }
-  return `${head(page)}<div class="ly-media inline">${frame}</div>`;
+  return `${head(page, ctx)}<div class="ly-media inline">${frame}</div>`;
 }
 
-function renderSummary(page: Page): string {
+function renderSummary(page: Page, ctx: RenderContext): string {
   const evidence = blockOf(page, 'evidence');
   const claim = blockOf(page, 'claim');
   const items = evidence?.items ?? [];
   const ci = bIdx(page, 'claim');
   const ei = bIdx(page, 'evidence');
-  return `${head(page)}
+  return `${head(page, ctx)}
   ${claim ? `<p class="ly-claim"${ed(`blocks.${ci}.text`)}>${inline(claim.text)}</p>` : ''}
   <div class="ly-summary">${items
     .map(
@@ -777,9 +791,13 @@ function renderBody(page: Page, ctx: RenderContext): string {
 /** 单页 → `<section class="slide">` */
 export function renderPage(page: Page, ctx: RenderContext): string {
   const background = page.background ? ctx.resolveImage?.(page.background.fileId) : undefined;
-  // 页脚左侧默认**只写章节名**（课程名每页重复出现是噪音，课程信息留在封面/导航里就够了）。
-  // 模板调参里的 footerText 仍然优先，教师想写什么都行。
-  const footerText = ctx.footerText || ctx.meta.chapter || ctx.meta.course;
+  // 页脚左侧：默认仍是「课程 · 章节」（老模板观感不变）；
+  // 声明了 chapterOnlyFooter 的主题只写章节名。模板调参的 footerText 两种情况都优先。
+  const footerText =
+    ctx.footerText ||
+    (ctx.chapterOnlyFooter
+      ? ctx.meta.chapter || ctx.meta.course
+      : `${ctx.meta.course}${ctx.meta.chapter ? ` · ${ctx.meta.chapter}` : ''}`);
   const footer =
     page.intent === 'cover'
       ? ''
@@ -800,10 +818,10 @@ export function renderPage(page: Page, ctx: RenderContext): string {
   // data-intent：给主题装饰层用的钩子（"封面/分节页带钟楼辅助背景"这类主题专有构件
   // 需要在不改 DOM 结构的前提下认出页面类型）。它由**渲染层**统一输出，与主题无关 ——
   // 因此"换主题后 DOM 完全不变"仍然成立。
-  // 页眉小标（kicker）：**独立于主标题**，固定钉在内容区左上角（.slide-kicker 用绝对定位）。
+  // 页眉小标（kicker）：只有声明了 pinKicker 的主题才抽成页面级元素、钉在内容区左上角。
   // 封面的 kicker 属于封面构图（ly-cover-kicker），仍随大标题居中，不走这里。
   const kicker =
-    page.kicker && page.intent !== 'cover'
+    page.kicker && page.intent !== 'cover' && ctx.pinKicker
       ? `<p class="kicker slide-kicker"${ed('kicker')}>${escapeHtml(page.kicker)}</p>`
       : '';
   return `<section class="slide${background ? ' has-bg' : ''}" data-intent="${escapeHtml(page.intent)}" data-title="${escapeHtml(title)}"${bgStyle}>
@@ -824,6 +842,9 @@ export function renderPages(
     resolveImage?: (fileId: string) => string | undefined;
     footerText?: string | null;
     renderTex?: (tex: string) => string;
+    /** 版式开关（由主题声明）：见 RenderContext.pinKicker / chapterOnlyFooter */
+    pinKicker?: boolean;
+    chapterOnlyFooter?: boolean;
   } = {},
 ): string {
   return pages
@@ -836,6 +857,8 @@ export function renderPages(
         resolveImage: options.resolveImage,
         footerText: options.footerText,
         renderTex: options.renderTex,
+        pinKicker: options.pinKicker === true,
+        chapterOnlyFooter: options.chapterOnlyFooter === true,
       };
       return renderPage(page, ctx) + renderNotesPage(page, index);
     })
