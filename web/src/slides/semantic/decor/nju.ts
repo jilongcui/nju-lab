@@ -13,7 +13,9 @@
  *      所以装饰里凡要盖住 layouts.css 既有规则的，一律加 `.deck` 前缀提权
  *      （`.deck .ly .kicker` 是 0,3,0 > `.ly .kicker` 的 0,2,0）；
  *   2) 颜色一律走 token（`--nju-*` 在主主题里定义），换主色时装饰跟着变；
- *   3) **不能给承载色带的伪元素整体设 opacity** —— 色带会跟着变淡。所以：
+ *   3) **本文件整体是一个模板字符串：注释里绝不能用反引号**，否则字符串提前闭合、构建失败
+ *      （2026-10 实测：在 CSS 注释里写了带反引号的令牌名，直接构建报错）；
+ *   4) **不能给承载色带的伪元素整体设 opacity** —— 色带会跟着变淡。所以：
  *      · 眉首／眉尾挂在 `.slide` 的 `::before` / `::after` 上（两条全宽带，互不干扰）；
  *      · 钟楼水印走 `.slide` 自身的 `background-image`（第三层），既贴得住页底，
  *        又不占用伪元素；照片的"淡"由第一层遮罩（`--nju-hero-veil`）实现。
@@ -73,13 +75,18 @@ export function njuDecorCss(heroUri: string): string {
 /* ---------- 封面 / 分节页：钟楼辅助背景 ----------
  * 走 .slide 自身的 background（不是伪元素）—— 固定画布下这样能精确贴住页底出血，
  * 且停在眉尾色带的上沿（不进带内，免得压住页码那行字）。
- * 第一层是遮罩（照片用它压淡）；剪影自带淡色，主题里该层为 none。 */
+ * 第一层是可选的 CSS 遮罩（--nju-hero-veil，默认 none —— 实拍照片的压淡与渐隐
+ * 已经烘焙进素材，见 tools/embed-tower-photo.mjs），第二层是钟楼本体。
+ * ⚠️ 若真要启用遮罩层，必须给它显式高度：background-size 里的 auto 对**渐变层**
+ * 等于整个定位区的高度（渐变没有内在比例），会与照片层对不齐、露出硬边。 */
 .deck .slide[data-intent="cover"],
 .deck .slide[data-intent="section"] {
   background-image: var(--nju-hero-veil, none), url("${heroUri}");
   background-repeat: no-repeat;
-  background-position: right -72px bottom 6px, right -72px bottom 6px;
-  background-size: 100% 100%, 560px auto;
+  /* 摆在右下角、微微出血。素材本身已把四周渐隐掉（见 tools/embed-tower-photo.mjs），
+     所以这里不靠"出血藏边"——出血太多反而会把钟楼本体切掉半座。 */
+  background-position: right -26px bottom -14px, right -26px bottom -14px;
+  background-size: var(--nju-hero-w, 560px) auto, var(--nju-hero-w, 560px) auto;
 }
 
 /* ---------- 页脚：徽记 + 字距 + 页码 ---------- */

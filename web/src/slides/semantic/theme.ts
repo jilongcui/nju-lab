@@ -201,13 +201,10 @@ export const DECK_THEMES: DeckTheme[] = [
       // 内容页右上角的同心灵感弧（抽象化的圆弧，不用校徽本体）
       '--nju-corner':
         'radial-gradient(circle at 100% 0, rgba(74,31,124,0) 0 55%, rgba(74,31,124,.09) 55% 58.5%, rgba(74,31,124,0) 58.5% 71%, rgba(201,162,39,.18) 71% 74%, rgba(201,162,39,0) 74%)',
-      // 辅助背景：剪影自带淡色，无需遮罩；换成照片时由这一层把照片压成水印
-      ...(NJU_HERO_IS_PHOTO
-        ? {
-            '--nju-hero-veil':
-              'radial-gradient(closest-side, rgba(247,244,251,.72), rgba(247,244,251,.6) 58%, rgba(247,244,251,0) 100%)',
-          }
-        : {}),
+      // 辅助背景的显示宽度。压淡与边缘渐隐**已经烘焙进素材**（见 tools/embed-tower-photo.mjs）——
+      // 用 CSS 叠遮罩层试过：`background-size: Wpx auto` 对渐变层等于整个定位区高度，
+      // 遮罩与照片高度对不齐，左上会露出硬边。
+      '--nju-hero-w': NJU_HERO_IS_PHOTO ? '600px' : '520px',
     },
   },
   {
