@@ -10,12 +10,20 @@
  *   ① 学生：slides[].notes 全部为空、markdown 里没有 .notes 指令
  *   ② 学生：其它内容一个不少（页数、标题、模板、canEdit=false）—— 别剥太狠
  *   ③ 教师：讲稿**仍在**（不能误伤，否则讲者视图 / 讲稿编辑都没了）
+ *   ④ 学生端 UI：连讲稿浮层的**容器**都不渲染，按 `S` 没有任何反应
+ *      （2026-10-17 实测发现：数据剥了但快捷键还在，学生会弹出一个「（本页没有讲稿）」空浮层）
  *
- * 用法（默认打本机 3100）：
- *   node web/tools/verify-notes-privacy.mjs [chapterId]
- *   VERIFY_API=http://127.0.0.1:3101/api node web/tools/verify-notes-privacy.mjs
+ * 用法：
+ *   node web/tools/verify-notes-privacy.mjs [chapterId]                 # 打线上 /lab（默认）
+ *   VERIFY_BASE=http://127.0.0.1:5199 VERIFY_API=http://127.0.0.1:3100/api node web/tools/verify-notes-privacy.mjs
  */
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
 const API = (process.env.VERIFY_API || 'http://127.0.0.1:3100/api').replace(/\/+$/, '');
+const BASE = (process.env.VERIFY_BASE || 'http://medai.nju.edu.cn/lab').replace(/\/+$/, '');
+const SITE_HOST = 'medai.nju.edu.cn';
+process.env.PLAYWRIGHT_BROWSERS_PATH ||= join(homedir(), '.cache', 'ms-playwright');
 const CHAPTER_ID = process.argv[2] || '7070707c-0d96-4162-aac2-5650e0e277a2';
 
 const results = [];
@@ -87,6 +95,56 @@ check(
   '③ 教师：markdown 里仍带 .notes 指令',
   /<!--\s*\.notes\s*:/.test(String(asTeacher.deck?.markdown ?? '')),
 );
+
+// ---------------- ④ 学生端 UI：讲稿功能本身不存在 ----------------
+const studentAuth = await fetch(`${API}/auth/login`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    username: process.env.VERIFY_STUDENT || 'student1',
+    password: process.env.VERIFY_STUDENT_PASSWORD || 'student123',
+  }),
+}).then((r) => r.json());
+
+const { chromium } = await import('playwright');
+const browser = await chromium.launch({
+  args: BASE.includes(SITE_HOST)
+    ? [`--host-resolver-rules=MAP ${SITE_HOST} 127.0.0.1`, '--ignore-certificate-errors']
+    : [],
+});
+const context = await browser.newContext({ viewport: { width: 1500, height: 950 } });
+await context.addInitScript(
+  ([tk, u]) => {
+    if (window.top !== window) return;
+    localStorage.setItem('nju-lab-auth', JSON.stringify({ state: { token: tk, user: u }, version: 0 }));
+  },
+  [studentAuth.data.accessToken, studentAuth.data.user],
+);
+const page = await context.newPage();
+await page.goto(`${BASE}/student/chapters/${CHAPTER_ID}`, { waitUntil: 'networkidle' });
+await page.waitForTimeout(1200);
+const slideTab = page.locator('.ant-segmented-item:has-text("幻灯片")');
+if (await slideTab.count()) {
+  await slideTab.first().click();
+  await page.waitForTimeout(2500);
+}
+// 让焦点落进幻灯片 iframe（学生真实的操作路径），再按 S
+const deckFrame = page.frames().find((f) => f !== page.mainFrame());
+if (deckFrame) await deckFrame.click('body', { force: true }).catch(() => {});
+await page.keyboard.press('s');
+await page.waitForTimeout(600);
+
+let overlaySeen = false;
+for (const frame of page.frames()) {
+  try {
+    const has = await frame.evaluate(() => !!document.querySelector('.notes-overlay'));
+    if (has) overlaySeen = true;
+  } catch {
+    /* 不可访问的 frame 跳过 */
+  }
+}
+check('④ 学生端：连讲稿浮层容器都没有（按 S 无任何反应）', !overlaySeen);
+await browser.close();
 
 const failed = results.filter(([, ok]) => !ok);
 console.log(`\n${results.length - failed.length}/${results.length} 通过`);

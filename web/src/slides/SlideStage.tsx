@@ -28,6 +28,12 @@ export interface SlideStageProps {
   /** 演示模式：铺满视口 + 父窗口接管键盘 */
   presenting?: boolean;
   /**
+   * 是否允许呼出讲稿浮层（按 `S`）—— 默认 true；**学生端传 false**。
+   * 见 `semantic/stage.ts` 的 `StageOptions.allowNotes`：讲稿数据本来就已剥离，
+   * 这里关掉的是"学生端存在讲稿功能"这件事本身。
+   */
+  allowNotes?: boolean;
+  /**
    * 放映态是否显示右上角控件（翻页/退出）与响应 Esc —— 默认 true。
    * **观众窗口（投屏出去的那一个）必须传 false**：那些控件会连同幻灯片一起投出去，
    * 而且按 Esc 退出会让投影屏露出浏览器界面。
@@ -91,6 +97,7 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
     gotoIndex,
     presenting = false,
     showControls = true,
+    allowNotes = true,
     onExitPresenting,
     keyboard = false,
     editable = false,
@@ -165,6 +172,8 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
             return buildSemanticDeckHtml({
               // 服务端返回的语义页与前端 Page 同构（服务端已按 semantic.schema.ts 校验过）
               pages: pages as Page[],
+              // 学生端（允许看讲稿 = false）连讲稿浮层容器都不渲染
+              allowNotes,
               meta: { course: meta?.course ?? '', chapter: meta?.chapter ?? '' },
               themeId: slideTheme?.id,
               themeOverrides: designToTokenOverrides(slideTheme?.design),
@@ -194,7 +203,7 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
     return () => {
       cancelled = true;
     };
-  }, [slides, template, config, footerText, logoDataUrl, imageDataUrls, effectiveRenderer, slideTheme, meta, editable]);
+  }, [slides, template, config, footerText, logoDataUrl, imageDataUrls, effectiveRenderer, slideTheme, meta, editable, allowNotes]);
 
   // 就绪看门狗：html 已下发但 iframe 迟迟不回 ready（个别环境下 srcdoc 不重载/脚本未跑的竞态，
   // 表现为"转圈永不停"）—— 超时自动重挂载 iframe（换 key），重试 2 次仍不行就给出明确错误。
@@ -298,7 +307,7 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
       } else if (event.key.toLowerCase() === 'o') {
         post('overview');
         event.preventDefault();
-      } else if (event.key.toLowerCase() === 's') {
+      } else if (allowNotes && event.key.toLowerCase() === 's') {
         // 讲稿浮层（讲者视图）：再按一次收起
         post('toggle-notes');
         event.preventDefault();
@@ -311,7 +320,7 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [presenting, showControls, keyboard, post, onExitPresenting]);
+  }, [presenting, showControls, keyboard, allowNotes, post, onExitPresenting]);
 
   const frame = (
     <div

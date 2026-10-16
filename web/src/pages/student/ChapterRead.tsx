@@ -265,7 +265,9 @@ export default function ChapterRead() {
       // 内嵌视图也接管键盘：焦点不在 sandbox iframe 里时 ←/→ 仍能翻页（见该 prop 注释）
       keyboard={!presenting}
       height={560}
-    />
+        // 学生端没有讲稿功能：不渲染讲稿浮层、也不响应 S 键
+        allowNotes={false}
+      />
   );
 
   // 放映：整屏只留演示（与教师端一致），Esc 退出

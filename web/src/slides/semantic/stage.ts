@@ -30,6 +30,14 @@ export interface StageOptions {
   footerText?: string | null;
   /** 页脚 logo（data URL） */
   logoDataUrl?: string | null;
+  /**
+   * 是否允许呼出讲稿浮层（按 `S`）—— **学生端传 false**。
+   *
+   * 讲稿本身已经从数据里剥掉了（见 `slides.service.ts` 的 `deckForViewer`），但快捷键还在：
+   * 学生按 `S` 会弹出一个「（本页没有讲稿）」的空浮层 —— 没有泄露，可是"学生端有讲稿功能"
+   * 这件事本身就不该成立（2026-10-17 用户指出并实测确认）。默认 true，只有显式传 false 才关。
+   */
+  allowNotes?: boolean;
   resolveImage?: (fileId: string) => string | undefined;
   /**
    * 预览态「双击就地编辑」：只有教师端编辑视图打开它。
@@ -45,7 +53,7 @@ export const CANVAS = { width: 1920, height: 1080 } as const;
  * 运行时：缩放适配 + 翻页 + 与父窗口的 postMessage 契约。
  * 写成 ES5 风格的字符串（内联进 srcdoc，不需要打包器处理）。
  */
-function runtimeScript(total: number): string {
+function runtimeScript(total: number, allowNotes: boolean): string {
   return `(function () {
   var deck = document.getElementById('deck');
   /* 讲稿页（.notes-page）是导出的备注页，不参与放映翻页 */
@@ -166,7 +174,8 @@ function runtimeScript(total: number): string {
    * 这里把它读出来放进底部浮层，按 S 呼出/收起 —— 供讲者自己看（双屏投屏时只有讲者屏可见；
    * 单屏放映等于观众也能看到，因此是**手动开启**而非默认打开）。
    */
-  var notesOverlay = document.getElementById('notes-overlay');
+  var allowNotes = ${allowNotes ? 'true' : 'false'};
+  var notesOverlay = allowNotes ? document.getElementById('notes-overlay') : null;
   var notesBody = notesOverlay ? notesOverlay.querySelector('.notes-overlay-body') : null;
   function notesHtml() {
     var page = slides[index];
@@ -181,7 +190,7 @@ function runtimeScript(total: number): string {
     return !!notesOverlay && notesOverlay.classList.contains('open');
   }
   function toggleNotes() {
-    if (!notesOverlay) return;
+    if (!allowNotes || !notesOverlay) return;
     if (isNotesOpen()) notesOverlay.classList.remove('open');
     else { syncNotes(); notesOverlay.classList.add('open'); }
   }
@@ -403,6 +412,7 @@ export async function buildSemanticDeckHtml(options: StageOptions): Promise<stri
       console.warn('[semantic] KaTeX 加载失败，公式降级为源码：', (error as Error).message);
     }
   }
+  const allowNotes = options.allowNotes !== false;
   const body = renderPages(pages, meta, {
     slideNumber: options.slideNumber !== false,
     resolveImage: options.resolveImage,
@@ -432,8 +442,8 @@ ${body}
 ${logo}
 </div>
 ${options.progress === false ? '' : '<div class="progress-bar"><span></span></div>'}
-<div class="notes-overlay" id="notes-overlay"><div class="notes-overlay-body"></div></div>
-<script>${runtimeScript(pages.length)}</script>
+${allowNotes ? '<div class="notes-overlay" id="notes-overlay"><div class="notes-overlay-body"></div></div>' : ''}
+<script>${runtimeScript(pages.length, allowNotes)}</script>
 </body>
 </html>
 `;

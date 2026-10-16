@@ -16,9 +16,13 @@
   判断用 `canEdit`（本课程教师 / admin）而不是 `role === 'student'`，语义更准。
 - **影响面**：学生端幻灯片**不再有任何讲稿**，按 `S` 只会显示「（本页没有讲稿）」；
   教师端完全不受影响（讲稿编辑、讲者视图、导出附录都照旧）。
-- **验证**：新增 `web/tools/verify-notes-privacy.mjs`（纯 API）**5/5** —— 学生 16 页有讲稿 **0** 页、
-  markdown 无 `.notes`、页数/标题/canEdit 没被剥坏；教师 16 页全有讲稿。另做了端到端实测：
-  学生打开章节 → 切「幻灯片」→ 页面 HTML 与 2 个 iframe 帧里都搜不到讲稿正文。
+- **补一刀（同日，用户追问"学生端应该没有 S 快捷键吧"）**：数据剥了但**快捷键还在** ——
+  实测学生端按 `S` 会弹出「（本页没有讲稿）」的空浮层（没泄露，但"学生端有讲稿功能"不该成立）。
+  改法：`StageOptions.allowNotes`（默认 true），学生端 `ChapterRead` 传 `false` →
+  连 `notes-overlay` 容器都不渲染、`toggleNotes()` 直接短路；教师端不受影响（放映/讲者视图照旧按 `S`）。
+- **验证**：`web/tools/verify-notes-privacy.mjs` **6/6** —— 学生 16 页有讲稿 **0** 页、markdown 无
+  `.notes`、页数/标题/canEdit 没被剥坏、教师 16 页全有讲稿、**学生端按 `S` 连浮层容器都查不到**；
+  `verify-presenter.mjs` 仍 11/11（教师端按 `S` 能看到讲稿）。
 - **部署**：只改后端运行时代码 → `npm run build` + kill MainPID（3485589 → **3539343**）。
   前端无需改动、**未部署**。
 
