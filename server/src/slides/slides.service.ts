@@ -179,7 +179,9 @@ export class SlidesService {
     );
 
     return {
-      deck: deck ? this.toDeckView(deck) : null,
+      // 讲稿（notes）**只下发给能编辑这份 deck 的人**：deck 文档里 notes 只是 `display:none`，
+      // 靠 CSS 藏不住 F12，也挡不住放映时按 `S` 呼出的讲稿浮层（2026-10-17 用户确认要堵）。
+      deck: deck ? this.deckForViewer(deck, canEdit) : null,
       chapterHash,
       /** 生成之后章节又被改过 —— 只提示，不自动重生成 */
       chapterChanged: !!deck?.basedOnChapterHash && deck.basedOnChapterHash !== chapterHash,
@@ -987,6 +989,41 @@ export class SlidesService {
     if (!v) throw new NotFoundException('该历史版本不存在');
     await this.versionRepo.remove(v);
     return { deleted: true };
+  }
+
+  /**
+   * 按**观看者**裁剪 deck：能编辑的人拿完整内容（含讲稿），其余人把讲稿剥干净。
+   *
+   * 剥两处，缺一不可：
+   *   · `slides[].notes` —— 渲染进文档的那个字段（观众看不到，但 F12 能看到）；
+   *   · `markdown` 里的 `<!-- .notes: … -->` 指令 —— 讲稿在 MD 投影里同样存着一份（教师可编辑视图用）。
+   */
+  private deckForViewer(deck: SlideDeck, canEdit: boolean): DeckView {
+    const view = this.toDeckView(deck);
+    if (canEdit) return view;
+    return {
+      ...view,
+      slides: (view.slides ?? []).map((slide) => {
+        if (typeof slide !== 'object' || slide === null) return slide;
+        const { notes: _notes, ...rest } = slide as unknown as Record<string, unknown>;
+        return rest as unknown as DeckView['slides'][number];
+      }),
+      markdown: this.stripNotesDirectives(view.markdown ?? ''),
+    };
+  }
+
+  /**
+   * 删掉 Markdown 投影里的讲稿指令行（`<!-- .notes: … -->`）。
+   *
+   * 为什么不复用 `deck-markdown.ts` 的 `NOTES_DIRECTIVE`：那条正则用于**解析**（要求整行精确匹配）；
+   * 这里要的是"把这类行整行抹掉"，自己写一条更直白 —— 讲稿里的换行在 MD 里被编码成字面 `\n`，
+   * 所以一条讲稿恒为单行，按行过滤即可。
+   */
+  private stripNotesDirectives(markdown: string): string {
+    return markdown
+      .split('\n')
+      .filter((line) => !/^\s*<!--\s*\.notes\s*:/.test(line))
+      .join('\n');
   }
 
   private toDeckView(deck: SlideDeck): DeckView {
