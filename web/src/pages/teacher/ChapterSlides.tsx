@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useBlocker, useNavigate, useParams } from 'react-router-dom';
+import { Link, useBlocker, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Alert,
   App,
@@ -36,6 +36,7 @@ import {
   FileImageOutlined,
   FilePdfOutlined,
   PictureOutlined,
+  DesktopOutlined,
   PlayCircleOutlined,
   RedoOutlined,
   ReloadOutlined,
@@ -75,7 +76,10 @@ import type {
   StoredFileInfo,
 } from '../../types';
 import { SEMANTIC_INTENT_OPTIONS } from '../../types';
-import SlideStage from '../../slides/SlideStage';
+import SlideStage, { type SlideStageHandle } from '../../slides/SlideStage';
+import PresenterPanel from '../../slides/PresenterPanel';
+import { createPresentChannel, type PresentChannel } from '../../slides/presentChannel';
+import { withBase } from '../../config';
 import { conflictOf, showConflictDialog } from '../../utils/content-conflict';
 import { collectFileRefs, fetchFileDataUrls } from '../../slides/files';
 import {
@@ -176,6 +180,19 @@ export default function ChapterSlides() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [gotoIndex, setGotoIndex] = useState<number | undefined>(undefined);
   const [presenting, setPresenting] = useState(false);
+  /** 讲者视图（双窗口）：当前窗口显示幻灯片 + 备注面板，另开一个「观众窗口」投屏 */
+  const [presenter, setPresenter] = useState(false);
+  /** 讲者视图计时（毫秒），进入时归零 */
+  const [elapsedMs, setElapsedMs] = useState(0);
+  /** 观众窗口是否还开着（开着才显示 ✓，关掉后可一键重开） */
+  const [audienceOpened, setAudienceOpened] = useState(false);
+  const stageRef = useRef<SlideStageHandle>(null);
+  const audienceWinRef = useRef<Window | null>(null);
+  const channelRef = useRef<PresentChannel | null>(null);
+  const timerStartRef = useRef<number>(0);
+  // `?audience=1` = 这一份渲染是**投给观众看的那一个窗口**：只有幻灯片，没有工具栏、没有讲稿
+  const [searchParams] = useSearchParams();
+  const isAudience = searchParams.get('audience') === '1';
   const [imageDataUrls, setImageDataUrls] = useState<Record<string, string>>({});
   /** 导出 PDF 时是否把每页讲稿作为"备注页"附在后面（讲者讲义/存档用） */
   const [exportWithNotes, setExportWithNotes] = useState(false);
@@ -1129,6 +1146,106 @@ export default function ChapterSlides() {
     />,
   );
 
+  // ---------------- 讲者视图（双窗口）与观众窗口 ----------------
+  //
+  // 场景：教师在自己屏幕上开「讲者视图」（幻灯片 + 备注 + 计时），另开一个「观众窗口」投到投影屏。
+  // 两个窗口是同源的独立页面，用 BroadcastChannel 同步页码（见 slides/presentChannel.ts）。
+  // ⚠️ 本站是 HTTP（无 443），`getScreenDetails()` 这类"自动把窗口投到第二屏"的 API 不可用，
+  //    所以观众窗口要**手动拖到投影屏 + F11**；拖一次浏览器会记住位置。
+  /** 当前页（ref 版）：频道回调里要读最新值，又不能把 currentIndex 放进依赖数组反复重建频道 */
+  const currentIndexRef = useRef(0);
+  const totalPages = previewSlides.length;
+
+  const titleOf = (i: number) =>
+    (previewSlides[i] as { title?: string } | undefined)?.title ?? '';
+  const notesOf = (i: number) =>
+    (previewSlides[i] as { notes?: string } | undefined)?.notes ?? '';
+
+  /** 打开（或重新打开）观众窗口 —— 投屏用它，里面**只有幻灯片**，一个字的备注都没有 */
+  const openAudienceWindow = useCallback(() => {
+    const url = `${withBase(`teacher/chapters/${chapterId}/slides`)}?audience=1`;
+    const win = window.open(url, `nju-lab-audience-${chapterId}`, 'width=1280,height=720');
+    audienceWinRef.current = win;
+    setAudienceOpened(!!win && !win.closed);
+    if (!win) message.warning('观众窗口被浏览器拦截了：请允许本站弹窗后重试');
+  }, [chapterId]);
+
+  /** 退出讲者视图：顺手关掉观众窗口，免得投影屏停在最后一页 */
+  const exitPresenter = useCallback(() => {
+    setPresenter(false);
+    try {
+      audienceWinRef.current?.close();
+    } catch {
+      /* 被浏览器拦住就算了，用户手动关也行 */
+    }
+    audienceWinRef.current = null;
+    setAudienceOpened(false);
+  }, []);
+
+  /** 翻页：更新本地状态 + 广播给观众窗口 */
+  const handleIndexChange = useCallback(
+    (index: number) => {
+      currentIndexRef.current = index;
+      setCurrentIndex(index);
+      channelRef.current?.send({ kind: 'index', index, total: totalPages });
+    },
+    [totalPages],
+  );
+
+  // 讲者窗口：建频道；观众窗口刚打开时会发 hello，把当前页补给它
+  useEffect(() => {
+    if (!presenter || isAudience) return;
+    const channel = createPresentChannel(chapterId);
+    channelRef.current = channel;
+    const off = channel.onMessage((msg) => {
+      if (msg.kind === 'hello') {
+        channel.send({ kind: 'index', index: currentIndexRef.current, total: totalPages });
+      }
+    });
+    return () => {
+      off();
+      channel.close();
+      channelRef.current = null;
+    };
+  }, [presenter, isAudience, chapterId, totalPages]);
+
+  // 讲者窗口：计时（进入讲者视图归零）
+  useEffect(() => {
+    if (!presenter) return;
+    timerStartRef.current = Date.now();
+    setElapsedMs(0);
+    const timer = window.setInterval(() => setElapsedMs(Date.now() - timerStartRef.current), 500);
+    return () => window.clearInterval(timer);
+  }, [presenter]);
+
+  // 讲者窗口：盯着观众窗口是否被手动关掉（关了就在面板上提示"重新打开"）
+  useEffect(() => {
+    if (!presenter) return;
+    const timer = window.setInterval(() => {
+      const win = audienceWinRef.current;
+      setAudienceOpened(!!win && !win.closed);
+    }, 800);
+    return () => window.clearInterval(timer);
+  }, [presenter]);
+
+  // 观众窗口：纯跟随 —— 收到讲者的页码就跳过去，自己不做任何判定
+  useEffect(() => {
+    if (!isAudience) return;
+    const channel = createPresentChannel(chapterId);
+    const off = channel.onMessage((msg) => {
+      if (msg.kind === 'index') stageRef.current?.goto(msg.index);
+    });
+    // deck 构建要几百毫秒，就绪前发出的 goto 会被丢弃 —— 所以 hello 重发几次兜住
+    const timers = [0, 1000, 2500].map((delay) =>
+      window.setTimeout(() => channel.send({ kind: 'hello' }), delay),
+    );
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+      off();
+      channel.close();
+    };
+  }, [isAudience, chapterId]);
+
   if (loading) return <Skeleton active paragraph={{ rows: 10 }} />;
   if (!data || !chapter) return <Empty description="章节不存在" />;
 
@@ -1150,8 +1267,15 @@ export default function ChapterSlides() {
       message.error('JSON 解析失败，请先修正 JSON 再换版式');
     }
   };
-  const stage = (
+  /**
+   * 幻灯片舞台。同一份 props 供三种场景复用：
+   *   · 编辑预览（默认）；
+   *   · 讲者视图（`presenter`）：左栏显示幻灯片，右栏是备注面板，键盘由父窗口接管；
+   *   · 观众窗口（`opts.audience`）：投屏出去的那一个 —— **只渲染幻灯片，连控件都不渲染**。
+   */
+  const renderStage = (opts: { audience?: boolean } = {}) => (
     <SlideStage
+      ref={stageRef}
       onDocument={(doc) => {
         deckHtmlRef.current = doc;
       }}
@@ -1171,15 +1295,61 @@ export default function ChapterSlides() {
       }
       imageDataUrls={imageDataUrls}
       gotoIndex={gotoIndex}
-      onIndexChange={setCurrentIndex}
-      presenting={presenting}
-      onExitPresenting={() => setPresenting(false)}
-      // 预览态允许双击就地编辑（放映态、学生端都不开）
-      editable={canEdit && !presenting}
+      onIndexChange={handleIndexChange}
+      presenting={opts.audience ? true : presenting && !presenter}
+      showControls={!opts.audience}
+      onExitPresenting={() => (presenter ? exitPresenter() : setPresenting(false))}
+      // 讲者视图与放映态都由父窗口接管键盘（含 Esc 退出）；观众窗口什么都不接管
+      keyboard={!opts.audience && (presenting || presenter)}
+      // 预览态允许双击就地编辑（放映态、讲者视图、观众窗口、学生端都不开）
+      editable={canEdit && !presenting && !presenter && !opts.audience}
       onEditText={handleEditText}
-      height={520}
+      height={opts.audience || presenter ? '100%' : 520}
     />
   );
+
+  // ⚠️ 放在这里而不是 renderStage 定义之后：renderStage 内部用到了 handleIndexChange /
+  // exitPresenter（都是 const），在它们初始化之前调用会撞 TDZ（"Cannot access before initialization"）
+  const stage = renderStage();
+
+  // 观众窗口：只有幻灯片（`renderStage({ audience: true })` 已把控件与 Esc 关掉）
+  if (isAudience) return renderStage({ audience: true });
+
+  // 讲者视图：左栏幻灯片 + 右栏备注面板
+  if (presenter) {
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 1200,
+          background: '#000',
+          display: 'flex',
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0, padding: 8, display: 'flex' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>{renderStage()}</div>
+        </div>
+        <PresenterPanel
+          index={currentIndex}
+          total={totalPages}
+          pageTitle={titleOf(currentIndex)}
+          notes={notesOf(currentIndex)}
+          nextTitle={titleOf(currentIndex + 1)}
+          elapsedMs={elapsedMs}
+          onPrev={() => stageRef.current?.prev()}
+          onNext={() => stageRef.current?.next()}
+          onResetTimer={() => {
+            timerStartRef.current = Date.now();
+            setElapsedMs(0);
+          }}
+          onExit={exitPresenter}
+          audienceOpened={audienceOpened}
+          onOpenAudience={openAudienceWindow}
+        />
+      </div>
+    );
+  }
 
 
   if (presenting) {
@@ -1347,6 +1517,21 @@ export default function ChapterSlides() {
             >
               放映
             </Button>
+            <Tooltip title="双窗口讲者视图：本窗口显示幻灯片 + 讲稿 + 计时，另开一个「观众窗口」投屏（那里只有幻灯片，不含讲稿；拖到投影屏后按 F11）">
+              <Button
+                size="small"
+                icon={<DesktopOutlined />}
+                disabled={!deck?.slides?.length}
+                onClick={() => {
+                  setGotoIndex(currentIndex);
+                  // 必须在用户手势里先开窗口，否则会被浏览器当弹窗拦掉
+                  openAudienceWindow();
+                  setPresenter(true);
+                }}
+              >
+                讲者视图
+              </Button>
+            </Tooltip>
             {canEdit && (
               <>
                 <Checkbox

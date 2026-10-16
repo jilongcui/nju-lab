@@ -5,6 +5,27 @@
 
 ## 0. 一句话现状
 
+**2026-10-17（幻灯片：讲者视图 —— 讲稿只有讲者看得见）—— ✅ 已实现并验证（待部署）**
+
+- **需求（用户）**：全屏放映时讲稿（notes）不能被投影出去的学生看到，只有讲者自己可见。
+- **改法（双窗口）**：教师点「讲者视图」→
+  · **讲者窗口**：左侧幻灯片 + 右侧面板（页码 / 计时 / 本页标题 / **大字讲稿** / 下一页标题 / 上下页按钮）；
+  · **观众窗口**（`window.open` 到 `…/slides?audience=1`）：**只有幻灯片** —— 不套平台外壳
+    （`AppLayout` 在 `audience=1` 时直接 `<Outlet />`）、不渲染放映控件（`SlideStage` 新增
+    `showControls=false`，Esc 也不退出，免得投影屏露出浏览器界面）、不含任何讲稿；
+  · 两窗口用 `BroadcastChannel` 同步页码（新窗口先发 `hello`，讲者补发当前页；每次打开重发 3 次，
+    兜住 deck 尚未就绪的那几百毫秒）。
+- **硬限制**：本站是 HTTP（无 443），实测 `isSecureContext=false`、`getScreenDetails` /
+  `documentPictureInPicture` 均 undefined → **不能自动把窗口投到第二屏**，观众窗口要手动拖到投影屏 + F11
+  （拖一次浏览器记住位置）。上 HTTPS 后可升级。
+- **踩坑**：① 观众窗口最初仍带着平台侧边栏（`AppLayout` 是外层路由，光在页面里 early return 不够）；
+  ② 讲者视图的 hooks 一度插在 `if (loading) return` 之后 → "Rendered more hooks than during the
+  previous render"；③ `renderStage()` 在 `handleIndexChange` 之前求值 → TDZ 报错。
+- **验证**：新增 `web/tools/verify-presenter.mjs`（真实浏览器双窗口）**8/8 通过** —— 观众窗口 URL 带
+  `audience=1`、**一个字讲稿都没有**、无放映控件、无讲者面板，且讲者翻页后观众跟到第 2/3 页。
+- **已知缺口（未修）**：deck 文档里仍带 `notes` 文本（只是 `display:none`），**学生端页面按 F12 仍能看到**；
+  要彻底堵住需服务端按角色剥离（见 `docs/SLIDES.md` §5.2）。
+
 **2026-10-17（实验解锁规则放宽：可跳级做实验）—— ✅ 已上线**
 
 - **需求（用户）**：过去要「学习完前面所有的课程」才能做实验，现在允许**跳级学习** —— 学完哪一章，

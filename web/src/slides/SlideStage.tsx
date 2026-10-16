@@ -27,6 +27,12 @@ export interface SlideStageProps {
   gotoIndex?: number;
   /** 演示模式：铺满视口 + 父窗口接管键盘 */
   presenting?: boolean;
+  /**
+   * 放映态是否显示右上角控件（翻页/退出）与响应 Esc —— 默认 true。
+   * **观众窗口（投屏出去的那一个）必须传 false**：那些控件会连同幻灯片一起投出去，
+   * 而且按 Esc 退出会让投影屏露出浏览器界面。
+   */
+  showControls?: boolean;
   onExitPresenting?: () => void;
   /**
    * **非放映态也由父窗口接管翻页键**（←/→/空格/PageUp/PageDown/O/Esc）。输入框里不抢键。
@@ -84,6 +90,7 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
     onIndexChange,
     gotoIndex,
     presenting = false,
+    showControls = true,
     onExitPresenting,
     keyboard = false,
     editable = false,
@@ -296,14 +303,15 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
         post('toggle-notes');
         event.preventDefault();
       } else if (event.key === 'Escape') {
-        // 放映态：直接退出；内嵌态：交给文档自己判（总览开着先关总览）
-        if (presenting) onExitPresenting?.();
-        else post('escape');
+        // 放映态：直接退出（**观众窗口除外** —— 它按 Esc 退出会把浏览器界面露给观众）；
+        // 内嵌态：交给文档自己判（总览开着先关总览）
+        if (presenting && showControls) onExitPresenting?.();
+        else if (!presenting) post('escape');
       }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [presenting, keyboard, post, onExitPresenting]);
+  }, [presenting, showControls, keyboard, post, onExitPresenting]);
 
   const frame = (
     <div
@@ -385,6 +393,8 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
       }}
     >
       <div style={{ flex: 1, minHeight: 0 }}>{frame}</div>
+      {/* 观众窗口（showControls=false）不渲染控件：它会连同幻灯片一起投出去 */}
+      {!showControls ? null : (
       <div
         style={{
           position: 'absolute',
@@ -412,6 +422,7 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
           </Button>
         </Space>
       </div>
+      )}
     </div>
   );
 });

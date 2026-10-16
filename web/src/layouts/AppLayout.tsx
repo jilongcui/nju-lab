@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Avatar,
   Breadcrumb,
@@ -124,6 +124,9 @@ function ColorPalette() {
 }
 
 export default function AppLayout() {
+  const [searchParams] = useSearchParams();
+  /** 观众窗口（讲者视图投屏用的那一个）：内容页自己会去掉工具栏，外壳也一并去掉 */
+  const isAudienceView = searchParams.get('audience') === '1';
   const [collapsed, setCollapsed] = useState(false);
   const { token } = theme.useToken();
   const navigate = useNavigate();
@@ -202,6 +205,10 @@ export default function AppLayout() {
       setPwdBusy(false);
     }
   };
+
+  // 观众窗口（`?audience=1`，讲者视图投屏用的那一个）：**不套平台外壳** ——
+  // 侧边栏/顶栏都会连同幻灯片一起投到投影屏上（2026-10-17 实测踩到）。
+  if (isAudienceView) return <Outlet />;
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
