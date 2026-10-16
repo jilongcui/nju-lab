@@ -132,7 +132,7 @@ export default function CourseDetail() {
         处理报名申请与学生名单（批准即入册，也可直接添加/移出学生）。
       </Paragraph>
       <Paragraph type="secondary">
-        实验默认解锁规则：完成所属章节之前的全部已发布章节。章节下线后学生不可见。
+        实验默认解锁规则：完成本实验所属章节即可领取（学生可跳级学习）。章节下线后学生不可见。
       </Paragraph>
       <Paragraph type="secondary">
         「公开报名」页签控制课程是否出现在公开目录、名额上限与申请开放时间。

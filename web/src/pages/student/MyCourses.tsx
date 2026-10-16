@@ -14,7 +14,7 @@ export default function MyCourses() {
   useAuxiliaryPanel(
     '学习指引',
     <div>
-      <Paragraph type="secondary">按章节顺序学习课程内容并标记完成；满足解锁规则后即可领取章节下的实验。</Paragraph>
+      <Paragraph type="secondary">按章阅读并标记完成：学完哪一章，就能领该章下的实验。可以跳级，不必从头按顺序。</Paragraph>
       <Paragraph type="secondary">
         本地环境准备：安装 Node ≥ 22 与 DSH，并按课程指引配置 nju-lab-student profile。
       </Paragraph>

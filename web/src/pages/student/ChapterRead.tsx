@@ -131,7 +131,7 @@ export default function ChapterRead() {
             children: (
               <>
                 <Paragraph type="secondary" style={{ fontSize: 12 }}>
-                  阅读完成后点击右上角「标记完成」。章节进度会影响后续实验的解锁。
+                  阅读完成后点击右上角「标记完成」——学完本章即可领取本章实验（不必先学完前面的章节）。
                   若老师准备了课件，可用顶部「文档 / 幻灯片」切换。
                 </Paragraph>
                 {siblings.length > 0 && (

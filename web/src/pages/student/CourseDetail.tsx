@@ -27,7 +27,7 @@ export default function StudentCourseDetail() {
     '课程学习',
     <Paragraph type="secondary">
       点击章节进入阅读，读完后标记完成。实验在章节页右侧的「实验」tab 里进入；
-      未解锁的实验需先完成前置章节（章节进度会影响解锁）。
+      未解锁的实验需先完成本实验所属章节。可以跳级学习，不必从头按顺序。
     </Paragraph>,
   );
 

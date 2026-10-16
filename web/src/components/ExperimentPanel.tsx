@@ -48,7 +48,7 @@ export default function ExperimentPanel({
     <>
       <Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
         {mode === 'student'
-          ? '点实验名直接进入实验页；未解锁的实验需先完成前置章节。'
+          ? '点实验名直接进入实验页；未解锁的实验需先完成本实验所属章节。'
           : '点实验名进入该实验详情（实验内容、提交与批改）。'}
       </Paragraph>
       <Text type="secondary" style={{ fontSize: 12 }}>

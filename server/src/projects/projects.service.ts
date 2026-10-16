@@ -356,6 +356,8 @@ export class ProjectsService {
           id: project.id,
           title: project.title,
           deadline: project.deadline,
+          /** 所属章节：学生端用来把实验挂到章节课的「实验」tab（并给解锁规则验证脚本做精确关联） */
+          chapterId: project.chapterId,
           chapterTitle: chapter?.title ?? null,
           /** 难度：学生工作台「待办实验」也显示 */
           difficulty: project.difficulty,
@@ -391,7 +393,7 @@ export class ProjectsService {
       const unlocked = await this.checkUnlock(student.id, project);
       if (!unlocked) {
         throw new ForbiddenException(
-          '尚未满足解锁条件：请先完成该实验所属章节之前的全部已发布章节',
+          '尚未满足解锁条件：请先完成本实验所属章节（在章节页点「标记完成」）',
         );
       }
       assignment.status = AssignmentStatus.CLAIMED;
@@ -418,8 +420,12 @@ export class ProjectsService {
   /**
    * 判定学生是否可领取项目：
    * - type=none：无前置条件
-   * - type=chapters：需完成指定章节
-   * - 默认：完成该实验所属章节之前的全部已发布章节
+   * - type=chapters：需完成指定章节（教师指定，优先级最高）
+   * - 默认（2026-10-17 起）：**完成本实验所属章节**即可
+   *
+   * ⚠️ 默认规则 2026-10-17 从「完成该章节**之前的全部已发布章节**」放宽为「只看本实验所属章节」——
+   * 旧的顺序门禁会把"想直接从第 5 章开始"的学生全锁住（用户反馈：要能跳级学习）。
+   * 现在学完哪一章就能做哪一章的实验，章节之间不再互为前置。
    */
   async checkUnlock(
     studentId: string,
@@ -434,21 +440,14 @@ export class ProjectsService {
     if (rule.type === 'chapters' && rule.chapterIds?.length) {
       requiredChapterIds = rule.chapterIds;
     } else {
+      // 默认：只看本实验**所属**章节（跳级学习 —— 不再拿 chapter.order 跟前面所有章节比）
       const ownChapter = await this.chapterRepo.findOne({
         where: { id: project.chapterId },
       });
       if (!ownChapter) {
         return false;
       }
-      const previousChapters = await this.chapterRepo
-        .createQueryBuilder('chapter')
-        .where('chapter.courseId = :courseId', { courseId: project.courseId })
-        .andWhere('chapter.status = :status', {
-          status: ChapterStatus.PUBLISHED,
-        })
-        .andWhere('chapter.order < :order', { order: ownChapter.order })
-        .getMany();
-      requiredChapterIds = previousChapters.map((c) => c.id);
+      requiredChapterIds = [ownChapter.id];
     }
 
     if (requiredChapterIds.length === 0) {

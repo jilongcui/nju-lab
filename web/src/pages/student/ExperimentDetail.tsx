@@ -94,7 +94,7 @@ export default function ExperimentDetail() {
 
   const unlocked = assignment?.unlocked ?? false;
   const claimed = !!assignment && assignment.status !== 'pending';
-  const unlockHint = '请先完成该实验所属章节之前的全部已发布章节';
+  const unlockHint = '请先完成本实验所属章节（看完后在章节页点「标记完成」）';
   const evalConfig = project.evalConfig;
   const hasEvalConfig =
     !!evalConfig &&

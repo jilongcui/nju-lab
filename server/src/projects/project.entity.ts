@@ -49,8 +49,12 @@ export interface RubricDimension {
   description?: string;
 }
 
-/** 解锁规则。默认（null 或 type=default）：完成所属章节之前的全部已发布章节 */
+/** 解锁规则。默认（null 或 type=default）：完成**本实验所属章节**（2026-10-17 起，可跳级） */
 export interface UnlockRule {
+  /**
+   * 领取实验的门槛。`default`（未配置时的口径）= 完成**本实验所属章节**（2026-10-17 起，
+   * 旧口径是"完成该章节之前的全部已发布章节"）。
+   */
   type: 'default' | 'none' | 'chapters';
   /** type=chapters 时：需完成的章节 id 列表 */
   chapterIds?: string[];

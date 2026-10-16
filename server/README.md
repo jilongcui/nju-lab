@@ -112,7 +112,7 @@ npm run build && npm start  # 编译后以 node dist/main.js 运行
   - 依赖自检：复验容器无外网（`--internal` + SNI 白名单），Python 依赖必须预装在镜像里；包内 `manifest.requires` 声明，驱动开跑前自检，缺失直接失败（不静默降级）。`--check` 只解析与校验包（结构 + 依赖），不跑模型、不烧 token，供上传前自检。
   - 可选 env：`VERIFY_IMAGE` / `VERIFY_TIMEOUT_MS`（默认 600000，evalConfig.timeoutSeconds 优先）/ `VERIFY_MAX_CASES`（**不设 = 交给包内 manifest**，平台级强制覆盖时才设）/ `VERIFY_JUDGE_MODE`（同上）/ `VERIFY_DOCKER_MEMORY` / `VERIFY_DOCKER_CPUS`。
   - 出栈隔离（已实现）：复验容器挂 `--internal` 网络 `nju-verify-egress`（无外网路由：非白名单域名 DNS 黑洞 + 直连 IP 无路由），白名单域名（`api.deepseek.com`、`api.moonshot.cn`）经 `--add-host` 钉到双宿主 SNI 代理容器 `nju-verify-egress-proxy`（nginx stream + ssl_preread，配置 `verify-image/egress-proxy/nginx.conf`）；网络与代理由 runner 每次复验前幂等确保，代理不可用则 fail-closed 报错。架构与运维详见 `verify-image/README.md`。
-- **unlockRule**：默认规则 = 完成该实验所属章节之前的全部已发布章节；也支持 `{ type: 'none' }`（无前置）与 `{ type: 'chapters', chapterIds }`（指定章节）。不满足时 claim 返回 403。
+- **unlockRule**：默认规则 = **完成本实验所属章节**即可领取（2026-10-17 起，支持跳级学习；旧口径是「完成该章节之前的全部已发布章节」）；也支持 `{ type: 'none' }`（无前置）与 `{ type: 'chapters', chapterIds }`（教师指定章节）。不满足时 claim 返回 403。
 - **提交状态机**：`submitted → verifying → verified/failed → graded`；仅复验失败（failed）后允许重新提交。
 - **复用第八节评分体系**：rubric 为 JSON 维度权重（默认：规范完整度 15 / 边界质量 25 / 实测有效性 40 / 证据完整性 10 / 工程效率 10），模拟评分建议以实测有效性为主导。
 

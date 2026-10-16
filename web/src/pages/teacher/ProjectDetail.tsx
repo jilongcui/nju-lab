@@ -349,7 +349,7 @@ export default function ProjectDetail() {
             {project.deadline ? dayjs(project.deadline).format('YYYY-MM-DD HH:mm') : '未设置'}
           </Descriptions.Item>
           <Descriptions.Item label="解锁规则">
-            {project.unlockRule?.type === 'none' ? '无限制' : '完成之前全部已发布章节（默认）'}
+            {project.unlockRule?.type === 'none' ? '无限制' : '完成本实验所属章节（默认）'}
           </Descriptions.Item>
           <Descriptions.Item label="评估模型">{project.evalConfig?.model || '-'}</Descriptions.Item>
           <Descriptions.Item label="推理档位">{project.evalConfig?.reasoningEffort || '-'}</Descriptions.Item>
@@ -464,7 +464,7 @@ export default function ProjectDetail() {
           <Form.Item
             name="chapterId"
             label="所属章节"
-            extra="用于纠正「实验挂错章节」：只可在本课程内移动。默认解锁规则按新章节重新判定（需完成它之前的全部已发布章节）"
+            extra="用于纠正「实验挂错章节」：只可在本课程内移动。默认解锁规则按新章节重新判定（需完成它所属的章节）"
           >
             <Select
               style={{ width: 360 }}
@@ -549,7 +549,7 @@ export default function ProjectDetail() {
               <Select
                 style={{ width: 240 }}
                 options={[
-                  { label: '完成之前全部已发布章节（默认）', value: 'default' },
+                  { label: '完成本实验所属章节（默认）', value: 'default' },
                   { label: '无限制', value: 'none' },
                 ]}
               />

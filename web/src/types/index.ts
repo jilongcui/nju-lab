@@ -266,6 +266,8 @@ export interface AssignmentProjectBrief {
   id: string;
   title: string;
   deadline?: string | null;
+  /** 所属章节 id（学生端把实验挂到章节课的「实验」tab；解锁规则的判定也按它） */
+  chapterId?: string;
   chapterTitle?: string;
   /** 难度等级：null = 未标注 */
   difficulty?: ProjectDifficulty | null;

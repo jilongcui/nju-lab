@@ -469,8 +469,9 @@ export class CoursesService {
       return savedChapter;
     }
     // 用 max(order) + 1 而不是 count + 1：删过章节后 count 会小于现有最大 order，
-    // 再按 count 加一就会与已有章节**撞号**（曾导致同一课程出现两个 order=3，
-    // 而解锁规则用 order 比较前置章节 → 两章互为"之后"，学生领取条件算错）
+    // 再按 count 加一就会与已有章节**撞号**（曾导致同一课程出现两个 order=3）。
+    // 注：默认解锁规则 2026-10-17 起不再拿 order 比前置章节（只看本实验所属章节），
+    // 但 order 仍决定章节展示顺序，撞号依然是脏数据。
     const maxRow = await this.chapterRepo
       .createQueryBuilder('chapter')
       .select('MAX(chapter.order)', 'max')
