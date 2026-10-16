@@ -104,11 +104,28 @@ await audience.waitForTimeout(2000);
 check('观众窗口 URL 带 audience=1', audience.url().includes('audience=1'), audience.url());
 const audienceText = (await audience.evaluate(() => document.body.innerText)).replace(/\s+/g, '');
 const presenterText = (await presenter.evaluate(() => document.body.innerText)).replace(/\s+/g, '');
-check(
-  '① 讲者窗口能看到讲稿',
-  presenterText.includes(notesProbe.replace(/\s+/g, '')),
-  `探针=${notesProbe.slice(0, 8)}…`,
-);
+// 讲稿在 iframe 里（deck 自带的底部浮层），父窗口的 innerText 读不到 → 进 frame 读
+const notesVisible = async () => {
+  for (const frame of presenter.frames()) {
+    try {
+      const text = await frame.evaluate(() => document.body.innerText);
+      if (text.includes(notesProbe)) return true;
+    } catch {
+      /* 跨域/已销毁的 frame 跳过 */
+    }
+  }
+  return false;
+};
+check('① 讲者视图顶部有计时与观众窗口开关', /⏱/.test(presenterText) && presenterText.includes('观众窗口'));
+// 预告放在顶部条左侧（讲稿浮层铺满底部，放右下角会被它压住 —— 见 ChapterSlides 的注释）
+check('① 顶部有下一页预告', presenterText.includes('下一页：'), presenterText.match(/下一页：.{0,16}/)?.[0] ?? '');
+check('① 讲稿默认不显示（没按 S 时看不到）', !(await notesVisible()));
+await presenter.bringToFront();
+await presenter.keyboard.press('s');
+await presenter.waitForTimeout(700);
+check('① 按 S 呼出讲稿浮层后能看到讲稿', await notesVisible(), `探针=${notesProbe.slice(0, 8)}…`);
+await presenter.keyboard.press('s');
+await presenter.waitForTimeout(400);
 check('② 观众窗口里一个字讲稿都没有', !audienceText.includes(notesProbe.replace(/\s+/g, '')));
 check('② 观众窗口没有放映控件（退出/Esc 按钮）', !audienceText.includes('退出（Esc）'));
 check(

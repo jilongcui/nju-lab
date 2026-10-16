@@ -77,7 +77,6 @@ import type {
 } from '../../types';
 import { SEMANTIC_INTENT_OPTIONS } from '../../types';
 import SlideStage, { type SlideStageHandle } from '../../slides/SlideStage';
-import PresenterPanel from '../../slides/PresenterPanel';
 import { createPresentChannel, type PresentChannel } from '../../slides/presentChannel';
 import { withBase } from '../../config';
 import { conflictOf, showConflictDialog } from '../../utils/content-conflict';
@@ -1158,8 +1157,11 @@ export default function ChapterSlides() {
 
   const titleOf = (i: number) =>
     (previewSlides[i] as { title?: string } | undefined)?.title ?? '';
-  const notesOf = (i: number) =>
-    (previewSlides[i] as { notes?: string } | undefined)?.notes ?? '';
+  /** 计时显示（mm:ss） */
+  const formatElapsed = (ms: number) => {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+  };
 
   /** 打开（或重新打开）观众窗口 —— 投屏用它，里面**只有幻灯片**，一个字的备注都没有 */
   const openAudienceWindow = useCallback(() => {
@@ -1315,38 +1317,81 @@ export default function ChapterSlides() {
   // 观众窗口：只有幻灯片（`renderStage({ audience: true })` 已把控件与 Esc 关掉）
   if (isAudience) return renderStage({ audience: true });
 
-  // 讲者视图：左栏幻灯片 + 右栏备注面板
+  // 讲者视图：幻灯片铺满，**不改动幻灯片本身的观感** ——
+  //   · 讲稿照旧按 `S` 呼出（deck 自带的底部浮层，在讲者窗口里点得到、观众窗口里拿不到讲稿）；
+  //   · 顶部只留「计时 + 观众窗口开关 + 退出」（浮在幻灯片上下黑边上，不压内容）；
+  //   · 右下角一行「下一页：…」预告。
+  // 为什么不做右栏面板：试过一版（页码/讲稿/翻页按钮一排），讲者真正的用法是"幻灯片尽量大 + 按 S 看讲稿"，
+  // 右栏反而把幻灯片挤窄了（2026-10-17 用户反馈：做复杂了）。
   if (presenter) {
+    const nextTitle = titleOf(currentIndex + 1);
     return (
       <div
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 1200,
-          background: '#000',
-          display: 'flex',
-        }}
+        style={{ position: 'fixed', inset: 0, zIndex: 1200, background: '#000', display: 'flex' }}
       >
-        <div style={{ flex: 1, minWidth: 0, padding: 8, display: 'flex' }}>
-          <div style={{ flex: 1, minWidth: 0 }}>{renderStage()}</div>
-        </div>
-        <PresenterPanel
-          index={currentIndex}
-          total={totalPages}
-          pageTitle={titleOf(currentIndex)}
-          notes={notesOf(currentIndex)}
-          nextTitle={titleOf(currentIndex + 1)}
-          elapsedMs={elapsedMs}
-          onPrev={() => stageRef.current?.prev()}
-          onNext={() => stageRef.current?.next()}
-          onResetTimer={() => {
-            timerStartRef.current = Date.now();
-            setElapsedMs(0);
+        <div style={{ flex: 1, minWidth: 0 }}>{renderStage()}</div>
+
+        {/* 顶部（幻灯片上下的黑边上）：左侧「下一页」预告 + 右侧「计时 / 观众窗口 / 退出」。
+             半透明、hover 变亮。
+             ⚠️ 预告为什么放这里而不是右下角：按 `S` 呼出的讲稿浮层是个**覆盖层**
+             （`max-height:42vh`、铺满底部整行），放底部会被它压住 —— 而父窗口的元素要么压在
+             浮层之上（字叠字，很乱）要么沉到 iframe 之下（直接看不见），没有中间态。 */}
+        <div
+          style={{
+            position: 'absolute',
+            top: 8,
+            left: 0,
+            right: 0,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '0 20px',
+            gap: 10,
+            opacity: 0.55,
+            transition: 'opacity .2s',
           }}
-          onExit={exitPresenter}
-          audienceOpened={audienceOpened}
-          onOpenAudience={openAudienceWindow}
-        />
+          onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+          onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.55')}
+        >
+          <div
+            style={{
+              // 深色胶囊：预告压在幻灯片内容上（讲者视图里 iframe 底不是黑的），
+              // 纯白字在浅色版面上会直接看不见（2026-10-17 截图发现）
+              background: 'rgba(0,0,0,.45)',
+              color: '#fff',
+              fontSize: 13,
+              padding: '3px 12px',
+              borderRadius: 999,
+              maxWidth: '50%',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              pointerEvents: 'none',
+            }}
+          >
+            {currentIndex + 1 < totalPages
+              ? `下一页：${nextTitle || '（无标题）'}`
+              : '— 已是最后一页 —'}
+          </div>
+          <Space size={10}>
+            <Button
+              size="small"
+              onClick={() => {
+                timerStartRef.current = Date.now();
+                setElapsedMs(0);
+              }}
+              style={{ fontVariantNumeric: 'tabular-nums' }}
+            >
+              ⏱ {formatElapsed(elapsedMs)}
+            </Button>
+            <Button size="small" danger={!audienceOpened} onClick={openAudienceWindow}>
+              {audienceOpened ? '观众窗口 ✓' : '打开观众窗口'}
+            </Button>
+            <Button size="small" onClick={exitPresenter}>
+              退出（Esc）
+            </Button>
+          </Space>
+        </div>
       </div>
     );
   }
