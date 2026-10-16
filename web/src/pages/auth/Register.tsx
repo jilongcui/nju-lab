@@ -4,6 +4,7 @@ import { Button, Card, Form, Input, Segmented, Typography, message, theme } from
 import { ExperimentOutlined, LockOutlined, SmileOutlined, UserOutlined } from '@ant-design/icons';
 import { register } from '../../api';
 import { useAuthStore } from '../../stores/auth';
+import { APP_NAME } from '../../config';
 import type { Role } from '../../types';
 
 const { Title, Text } = Typography;
@@ -49,7 +50,7 @@ export default function Register() {
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <ExperimentOutlined style={{ fontSize: 36, color: token.colorPrimary }} />
           <Title level={3} style={{ margin: '8px 0 4px' }}>
-            注册 NJU-Lab
+            注册 {APP_NAME}
           </Title>
           <Text type="secondary">创建教师或学生账号</Text>
         </div>

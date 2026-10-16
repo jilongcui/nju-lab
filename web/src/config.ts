@@ -15,3 +15,13 @@ export function withBase(path: string): string {
 export function apiUrl(path: string): string {
   return path.startsWith('/api/') ? withBase(`api/${path.slice(5)}`) : path;
 }
+
+/**
+ * 站点名（侧边栏、登录页、浏览器标签都用它）。
+ *
+ * 怎么改：**构建时**给一个环境变量即可 —— `VITE_APP_NAME='分子医学 AI 实验室' npm run build`，
+ * 或在 `web/.env.local`（不进仓库）里写 `VITE_APP_NAME=…`；不设则用下面的默认值。
+ * 为什么放在构建期而不是后端下发：站点名出现在浏览器标签、登录页（未登录、拿不到后端配置）
+ * 这些地方，构建期注入是唯一能覆盖全部场景的时机。
+ */
+export const APP_NAME: string = (import.meta.env.VITE_APP_NAME as string | undefined) || '分子医学AI实验室';

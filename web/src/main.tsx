@@ -6,8 +6,12 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/zh-cn';
 import App from './App';
 import { useThemeStore } from './stores/theme';
+import { APP_NAME } from './config';
 
 dayjs.locale('zh-cn');
+
+// 浏览器标签标题：以 APP_NAME 为唯一来源（index.html 里的标题只是无 JS 时的兜底）
+document.title = `${APP_NAME} · 课程实验一体化平台`;
 
 function Root() {
   const { dark, colorPrimary } = useThemeStore();

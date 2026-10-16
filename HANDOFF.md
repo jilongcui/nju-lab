@@ -5,6 +5,26 @@
 
 ## 0. 一句话现状
 
+**2026-10-17（站点图标 + 站点名可配置 + 教师昵称）—— ✅ 已上线**
+
+- **需求（用户）**：① 浏览器图标换成侧边栏 "NJU-Lab" 前面那个 svg 图标；② 站点名改「分子医学AI实验室」，
+  且**名字要可设置**；③ `teacher` 账号昵称从「示例教师」改成「崔吉龙」（线上两位教师：窦环=窦老师、崔吉龙=崔老师）。
+- **做法**：
+  · `web/public/favicon.svg` —— 复用侧边栏那个图标（Ant Design `ExperimentOutlined`，MIT），
+    填主题默认主色南大紫 `#5c3c92`；`index.html` 用 `<link rel="icon" href="/favicon.svg">`（Vite 自动加 base）。
+  · 站点名统一到 `web/src/config.ts` 的 `APP_NAME`（`VITE_APP_NAME` 可覆盖，默认「分子医学AI实验室」），
+    三处引用（`AppLayout` 侧边栏 / `Login` / `Register`）+ `main.tsx` 写 `document.title`。
+    放构建期的原因：站点名要出现在**未登录**的登录页与浏览器标签，那时拿不到后端配置。
+  · `deploy-web-lab.sh` 补「3b/6 同步 dist 根级静态文件」—— 原先只同步 `assets/` 与 `index.html`，
+    `public/` 下的 favicon 会漏掉（又一个静默失败：本地有图标、线上没有，其余一切正常）。
+  · `server/src/seed.ts` 里 teacher 的初始昵称同步改成「崔吉龙」（`ensureUser` 对已存在用户只跳过，
+    所以线上要单独 update）。
+- **验证**：线上 `/lab/favicon.svg` → 200 `image/svg+xml`；真实浏览器实测 `document.title`
+  = 「分子医学AI实验室 · 课程实验一体化平台」、登录页与侧边栏均显示新名、0 JS 错误；
+  `GET /api/users/teachers` 返回 `teacher 崔吉龙` / `0611010 窦环`。
+- **部署**：前端 `bash deploy/deploy-web-lab.sh`（备份 `20261017-064834`，78 文件 md5 一致、
+  +1 个根级静态文件、资源自检 4/4）；后端未改运行时代码，**未重启**（只更新了 DB 的昵称与 seed 源）。
+
 **2026-10-17（幻灯片：新增「南大风」模板 + 版式开关）—— ✅ 已上线**
 
 - **需求（用户）**：① 现有模板太素净，要南大元素（整页不是纯白、眉首/眉尾有色）；② 封面与分节页

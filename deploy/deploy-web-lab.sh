@@ -66,6 +66,20 @@ for f in "$WEB"/dist/assets/*; do
 done
 echo "   + $(ls "$WEB"/dist/assets | wc -l) 个文件已同步"
 
+step "3b/6 同步 dist 根下的其它静态文件（favicon 等；index.html 留到最后单独切）"
+# 2026-10-17 补：原先只同步 assets/ 与 index.html，public/ 下的 favicon.svg 会漏掉，
+# 表现为「浏览器标签还是默认图标」而线上一切正常 —— 又一个静默失败。
+# 这些文件不被 index.html 以 chunk 形式引用（没有 SPA 回退的 MIME 陷阱），放在 assets 之后、切 HTML 之前即可。
+root_files=0
+for f in "$WEB"/dist/*; do
+  [ -f "$f" ] || continue
+  b="$(basename "$f")"
+  [ "$b" = "index.html" ] && continue
+  cp -f "$f" "$TARGET/$b"
+  root_files=$((root_files + 1))
+done
+echo "   + $root_files 个根级静态文件已同步"
+
 step "4/6 校验 md5（本地 dist ↔ 线上）"
 for f in "$WEB"/dist/assets/*; do
   [ -f "$f" ] || continue

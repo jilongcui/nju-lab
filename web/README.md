@@ -32,6 +32,20 @@ cd web && VITE_BASE=/lab/ npm run build   # base 必须带，否则资源路径�
 cd .. && bash deploy/deploy-web-lab.sh    # 构建 → 备份 → 先 chunk 后 index.html → md5/Content-Type 自检
 ```
 
+**站点名与图标**（2026-10-17）：
+
+- 站点名统一走 `web/src/config.ts` 的 `APP_NAME`（浏览器标签 / 侧边栏 / 登录页 / 注册页都用它），
+  构建期可用环境变量覆盖，不设则用默认值「分子医学AI实验室」：
+  ```bash
+  cd web && VITE_BASE=/lab/ VITE_APP_NAME='分子医学AI实验室' npm run build
+  ```
+  为什么放在构建期：站点名要出现在**未登录**的登录页与浏览器标签上，那时拿不到后端配置。
+- 图标是 `web/public/favicon.svg`（= 侧边栏 "NJU-Lab" 前面那个实验瓶图标 `ExperimentOutlined`，
+  填主题默认主色南大紫 `#5c3c92`），`index.html` 里以 `/favicon.svg` 引用（Vite 会自动加 `VITE_BASE`）。
+- ⚠️ 部署脚本同步的是 `dist/assets/*` + `dist/index.html`：新增 `public/` 下的静态文件时，
+  确认脚本的「3b」步把 `dist` 根级文件也带上（2026-10-17 补的），否则会出现
+  「本地有图标、线上还是默认图标」而其余一切正常。
+
 两条铁律（2026-09-29 踩过，详见 `HANDOFF.md` §2.2）：
 
 1. **先写 `assets/` 新 chunk，最后换 `index.html`** —— 顺序反了，缺失的 `.js` 会被 SPA 回退成 `200 text/html`，**页面白屏但 curl 状态码一切正常**。

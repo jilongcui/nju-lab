@@ -84,7 +84,9 @@ async function seed() {
   const teacher = await ensureUser(
     'teacher',
     'teacher123',
-    '示例教师',
+    // 2026-10-17：这个账号在线上就是「崔老师」，昵称与库里的实际值保持一致
+    // （ensureUser 对已存在的用户只跳过、不覆盖，所以改名要同时改库）
+    '崔吉龙',
     UserRole.TEACHER,
   );
   const student1 = await ensureUser(

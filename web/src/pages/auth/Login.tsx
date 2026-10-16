@@ -4,7 +4,7 @@ import { Alert, Button, Card, Form, Input, Typography, theme } from 'antd';
 import { ExperimentOutlined, LockOutlined, UserOutlined } from '@ant-design/icons';
 import { login } from '../../api';
 import { useAuthStore } from '../../stores/auth';
-import { withBase } from '../../config';
+import { APP_NAME, withBase } from '../../config';
 import { consumeReturnTo, peekReturnTo, rememberReturnTo } from '../../session';
 
 const { Title, Text } = Typography;
@@ -65,7 +65,7 @@ export default function Login() {
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <ExperimentOutlined style={{ fontSize: 36, color: token.colorPrimary }} />
           <Title level={3} style={{ margin: '8px 0 4px' }}>
-            NJU-Lab
+            {APP_NAME}
           </Title>
           <Text type="secondary">课程 + 实验一体化教学平台</Text>
         </div>

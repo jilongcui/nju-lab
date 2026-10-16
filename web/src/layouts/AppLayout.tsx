@@ -36,7 +36,7 @@ import {
   SunOutlined,
 } from '@ant-design/icons';
 import { changePassword, issueApiToken, revokeApiTokens } from '../api';
-import { withBase } from '../config';
+import { APP_NAME, withBase } from '../config';
 import { useAuthStore } from '../stores/auth';
 import { PRESET_COLORS, useThemeStore } from '../stores/theme';
 import AuxiliaryPanel from './AuxiliaryPanel';
@@ -227,7 +227,7 @@ export default function AppLayout() {
           <ExperimentOutlined style={{ fontSize: 22, color: token.colorPrimary }} />
           {!collapsed && (
             <Text strong style={{ fontSize: 16, whiteSpace: 'nowrap' }}>
-              NJU-Lab
+              {APP_NAME}
             </Text>
           )}
         </div>
