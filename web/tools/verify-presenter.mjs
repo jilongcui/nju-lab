@@ -117,29 +117,37 @@ const notesVisible = async () => {
   return false;
 };
 check('① 讲者视图顶部有计时与观众窗口开关', /⏱/.test(presenterText) && presenterText.includes('观众窗口'));
-/** 「下一页」预告底边距窗口底的距离（px）；找不到元素返回 null */
-const previewBottomGap = () =>
+/** 「下一页」预告距窗口右边/底边的距离（px）；找不到元素返回 null */
+const previewGaps = () =>
   presenter.evaluate(() => {
     const el = [...document.querySelectorAll('div')].find((d) =>
       d.children.length === 0 && d.textContent?.startsWith('下一页：'),
     );
     if (!el) return null;
-    return Math.round(window.innerHeight - el.getBoundingClientRect().bottom);
+    const rect = el.getBoundingClientRect();
+    return {
+      right: Math.round(window.innerWidth - rect.right),
+      bottom: Math.round(window.innerHeight - rect.bottom),
+    };
   });
 
-check('① 底部有下一页预告', presenterText.includes('下一页：'), presenterText.match(/下一页：.{0,16}/)?.[0] ?? '');
-const gapClosed = await previewBottomGap();
-check('① 预告贴底（距窗口底 < 40px）', gapClosed !== null && gapClosed < 40, `gap=${gapClosed}`);
+check('① 有下一页预告', presenterText.includes('下一页：'), presenterText.match(/下一页：.{0,16}/)?.[0] ?? '');
+const gapClosed = await previewGaps();
+check(
+  '① 预告在右下角（距右/底各 < 40px）',
+  gapClosed !== null && gapClosed.right < 40 && gapClosed.bottom < 40,
+  `距右=${gapClosed?.right} 距底=${gapClosed?.bottom}`,
+);
 check('① 讲稿默认不显示（没按 S 时看不到）', !(await notesVisible()));
 await presenter.bringToFront();
 await presenter.keyboard.press('s');
 await presenter.waitForTimeout(700);
 check('① 按 S 呼出讲稿浮层后能看到讲稿', await notesVisible(), `探针=${notesProbe.slice(0, 8)}…`);
-const gapOpen = await previewBottomGap();
+const gapOpen = await previewGaps();
 check(
-  '① 浮层打开时预告上移、让开浮层',
-  gapOpen !== null && gapClosed !== null && gapOpen > gapClosed,
-  `闭合 gap=${gapClosed} → 打开 gap=${gapOpen}`,
+  '① 浮层打开时预告上移、让开浮层（仍在右侧）',
+  gapOpen !== null && gapClosed !== null && gapOpen.bottom > gapClosed.bottom && gapOpen.right < 40,
+  `闭合 距底=${gapClosed?.bottom} → 打开 距底=${gapOpen?.bottom}（距右=${gapOpen?.right}）`,
 );
 await presenter.keyboard.press('s');
 await presenter.waitForTimeout(400);

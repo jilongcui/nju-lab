@@ -1404,7 +1404,8 @@ export default function ChapterSlides() {
             right: 20,
             bottom: notesBox.open ? notesBox.height + 12 : 12,
             display: 'flex',
-            justifyContent: 'flex-start',
+            // 右下角（用户 2026-10-17 明确要求；左对齐那版是临时的）
+            justifyContent: 'flex-end',
             pointerEvents: 'none',
             transition: 'bottom .3s var(--ease)',
           }}

@@ -1,0 +1,1 @@
+sudo apt-get update && sudo apt-get install -y libasound2 libatk1.0-0 libatk-bridge2.0-0 libatspi2.0-0 libcairo2 libcups2 libgbm1 libpango-1.0-0 libxdamage1 libxkbcommon0 fonts-liberation fonts-unifont fonts-noto-cjk fonts-wqy-zenhei
