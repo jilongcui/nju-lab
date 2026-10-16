@@ -1086,3 +1086,59 @@
   size: 1920px 1080px;
   margin: 0;
 }
+
+/* ---------- 讲稿浮层（讲者视图，按 S 呼出） ---------- */
+/* 容器（.notes-overlay / .open）来自 vendored base.css；这里只补内部排版 */
+.notes-overlay-body {
+  max-width: 1440px;
+  margin: 0 auto;
+}
+.notes-overlay-body p {
+  margin: 0 0 0.6em;
+}
+.notes-overlay-body p:last-child {
+  margin-bottom: 0;
+}
+.notes-overlay-body .notes-empty {
+  opacity: 0.6;
+  margin: 0;
+}
+
+/* ---------- 讲稿页（导出的"备注页"） ---------- */
+/* 默认隐藏：放映时看不到、也不会被翻到（运行时选页已排除 .notes-page，这里是双保险） */
+.notes-page {
+  display: none;
+}
+.notes-page-inner {
+  max-width: 1500px;
+}
+.notes-page-head {
+  font-size: calc(26px * var(--fs-boost, 1));
+  font-weight: 700;
+  color: var(--text-1);
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 12px;
+  margin-bottom: 22px;
+}
+.notes-page-body p {
+  font-size: calc(19px * var(--fs-boost, 1));
+  line-height: 1.85;
+  margin: 0 0 0.7em;
+  color: var(--text-1);
+}
+.notes-page-body .notes-empty {
+  color: var(--text-3);
+}
+
+/* 导出 PDF 时：勾选「附讲稿」才打印备注页（.with-notes-pages 由导出逻辑加到 .deck 上） */
+@media print {
+  .deck.with-notes-pages .notes-page {
+    display: flex;
+    page-break-after: always;
+    break-after: page;
+  }
+  .deck.with-notes-pages .notes-page .deck-footer,
+  .deck.with-notes-pages .notes-page .deck-header {
+    display: none;
+  }
+}

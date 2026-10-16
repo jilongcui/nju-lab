@@ -691,6 +691,67 @@ export class SlidesService {
   }
 
   /**
+   * 只更新某一页的讲稿（notes）。
+   *
+   * 为什么不复用 `save`（整体替换 slides）：讲稿不属于版面内容，改它不该触发版式校验；
+   * 而且整体替换的冲突面大 —— 两位老师分别改不同页的讲稿不应互相阻塞。
+   * 仍然会**先存档 + 检查乐观锁**，所以回滚与并发保护都还在。
+   */
+  async updatePageNotes(
+    user: User,
+    chapterId: string,
+    index: number,
+    notes: string | undefined,
+    expectedVersion?: number,
+  ) {
+    const chapter = await this.loadChapter(chapterId);
+    const course = await this.coursesService.getOwnedCourse(user, chapter.courseId);
+    const deck = await this.deckRepo.findOne({ where: { chapterId } });
+    if (!deck?.slides?.length) {
+      throw new NotFoundException('该章节还没有幻灯片，请先生成');
+    }
+    if (deck.status === SlideDeckStatus.GENERATING) {
+      throw new ConflictException('该章节正在生成中，请稍候再改讲稿');
+    }
+    if (expectedVersion !== undefined && expectedVersion !== deck.version) {
+      throw new ConflictException(
+        `幻灯片已被他人修改（当前版本 ${deck.version}，你持有 ${expectedVersion}），请刷新后重试`,
+      );
+    }
+    if (!Number.isInteger(index) || index < 0 || index >= deck.slides.length) {
+      throw new BadRequestException(`页码超出范围（共 ${deck.slides.length} 页）`);
+    }
+
+    await this.archiveVersion(deck, 'manual-save', user.id);
+
+    const slides: DeckSlide[] = [...deck.slides];
+    const page: Record<string, unknown> = { ...(slides[index] as unknown as Record<string, unknown>) };
+    const trimmed = (notes ?? '').trim();
+    if (trimmed) {
+      page.notes = trimmed.slice(0, SLIDES_LIMITS.maxNotes);
+    } else {
+      delete page.notes;
+    }
+    slides[index] = page as unknown as DeckSlide;
+    deck.slides = slides;
+    // Markdown 是只读投影，改讲稿后同步重建（讲稿以 <!-- .notes: --> 形式带在 Markdown 里）
+    deck.markdown = isSemanticDeck(slides)
+      ? semanticToMarkdown(slides as SemanticPage[])
+      : toMarkdown(slides as SlideJson[]);
+    deck.updatedBy = user.id;
+    const saved = await this.deckRepo.save(deck);
+    await this.coursesService.recordAudit({
+      courseId: course.id,
+      action: 'deck_save',
+      targetType: 'deck',
+      targetId: saved.id,
+      summary: `修改了「${chapter.title}」第 ${index + 1} 页的讲稿`,
+      actorId: user.id,
+    });
+    return { deck: this.toDeckView(saved) };
+  }
+
+  /**
    * 把 deck 的**当前内容**存成一个历史版本 —— 在"即将覆盖内容"之前调用。
    *
    * 为什么在覆盖前存：教师判断"哪一版更好"是主观的，覆盖掉就没了（实测踩过：

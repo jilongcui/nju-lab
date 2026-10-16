@@ -4,7 +4,9 @@ import {
   Delete,
   Get,
   Param,
+  ParseIntPipe,
   ParseUUIDPipe,
+  Patch,
   Post,
   Put,
 } from '@nestjs/common';
@@ -16,6 +18,7 @@ import {
   RegeneratePageDto,
   RestoreDeckVersionDto,
   SaveDeckDto,
+  UpdatePageNotesDto,
 } from './dto/slides.dto';
 import { SlidesService } from './slides.service';
 
@@ -68,6 +71,18 @@ export class ChapterSlidesController {
     @Body() dto: SaveDeckDto,
   ) {
     return this.slidesService.save(user, chapterId, dto);
+  }
+
+  /** 只更新某一页的讲稿（不进版面，不触发版式校验；仍带存档与乐观锁） */
+  @Patch(':chapterId/slides/pages/:index/notes')
+  @Roles(UserRole.TEACHER)
+  updatePageNotes(
+    @CurrentUser() user: User,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+    @Param('index', ParseIntPipe) index: number,
+    @Body() dto: UpdatePageNotesDto,
+  ) {
+    return this.slidesService.updatePageNotes(user, chapterId, index, dto.notes, dto.version);
   }
 
   /** 「保留现有 deck，仅对齐章节基准哈希」（章节改了但不想重生成时用） */

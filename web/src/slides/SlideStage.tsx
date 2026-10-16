@@ -273,6 +273,10 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
       } else if (event.key.toLowerCase() === 'o') {
         post('overview');
         event.preventDefault();
+      } else if (event.key.toLowerCase() === 's') {
+        // 讲稿浮层（讲者视图）：再按一次收起
+        post('toggle-notes');
+        event.preventDefault();
       } else if (event.key === 'Escape') {
         // 放映态：直接退出；内嵌态：交给文档自己判（总览开着先关总览）
         if (presenting) onExitPresenting?.();

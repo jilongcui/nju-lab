@@ -286,6 +286,21 @@ export const generateChapterSlides = (
   );
 
 /** 只重新生成某一页（同步：一次 LLM 调用，产物原位替换，其余页不动；0 基页码） */
+/**
+ * 只更新某一页的**讲稿**（notes）：讲稿不进版面，所以不跟"改内容块"走整体替换
+ * （整体替换会触发版式校验，且冲突面大 —— 两人分别改不同页讲稿不该互相阻塞）。
+ */
+export const updateChapterSlidePageNotes = (
+  chapterId: string,
+  index: number,
+  notes: string,
+  version?: number,
+) =>
+  client.patch<unknown, { deck: SlideDeckView }>(
+    `/chapters/${chapterId}/slides/pages/${index}/notes`,
+    { notes, version },
+  );
+
 /** 历史版本列表项（不含 slides 全量） */
 export interface DeckVersionItem {
   id: string;

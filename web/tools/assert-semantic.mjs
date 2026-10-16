@@ -68,10 +68,13 @@ await esbuild.build({
 const { buildSemanticDeckHtml, CANVAS, DECK_THEMES, themeCss, PAGES, META, LEGACY_SLIDES, legacyDeckToPages, designToTokenOverrides, isSemanticDeck } =
   await import(pathToFileURL(bundle).href);
 
+// 宿主（iframe 外层）的键盘转发也在这里断言：S 键要转给文档，否则按 S 无反应
+const slideStageSrc = readFileSync(join(webRoot, 'src/slides/SlideStage.tsx'), 'utf8');
 const html = await buildSemanticDeckHtml({ pages: PAGES, meta: META, themeId: 'builtin-platform-blue' });
 const dom = new JSDOM(html);
 const doc = dom.window.document;
-const slides = [...doc.querySelectorAll('.slide')];
+// 正文页（排除导出用的讲稿页 .notes-page，放映时也是这么选的）
+const slides = [...doc.querySelectorAll('.slide:not(.notes-page)')];
 
 // ---------------- 1. 承载与结构 ----------------
 check('页数与样张一致', slides.length === PAGES.length, `${slides.length}/${PAGES.length}`);
@@ -233,6 +236,10 @@ check(
 check(
   '总览开着时"点两侧翻页"不生效（否则点缩略图会被再翻一页）',
   html.includes("if (isOverviewOpen()) return;") && html.includes('event.stopPropagation();'),
+);
+check(
+  '讲稿浮层：宿主把 S 键转成 toggle-notes 动作（否则按 S 无反应 —— 实测踩过）',
+  html.includes('toggle-notes') && slideStageSrc.includes("post('toggle-notes')"),
 );
 check(
   '宿主页面的 Esc 交给文档判（escape 动作）',
@@ -416,13 +423,44 @@ const v2Pages = [
     title: '分层',
     blocks: [{ kind: 'arch', levels: [{ name: 'L1', cells: [{ title: 'a' }, { title: 'b' }] }, { name: 'L2', cells: [{ title: 'c' }] }] }],
   },
-  { intent: 'summary', kicker: '小结', title: '三句话', blocks: [{ kind: 'evidence', items: ['一', '二', '三'] }] },
+  {
+    intent: 'summary',
+    kicker: '小结',
+    title: '三句话',
+    blocks: [{ kind: 'evidence', items: ['一', '二', '三'] }],
+    notes: '这一页收束全篇：先回顾三个要点，再点出它们之间的关系，最后过渡到下一节要做的事。',
+  },
 ];
 check('v2 deck 被识别为语义 deck（按结构，不靠版本号）', isSemanticDeck(v2Pages) === true);
 check('v1 deck 不会被误判为语义 deck', isSemanticDeck(LEGACY_SLIDES) === false);
 const v2Html = await buildSemanticDeckHtml({ pages: v2Pages, meta: META, themeId: 'builtin-platform-blue' });
 const v2Doc = new JSDOM(v2Html).window.document;
-check('v2 deck 直接渲染：页数一致', v2Doc.querySelectorAll('.slide').length === v2Pages.length);
+
+// ---------------- 6.3 讲稿页（导出备注页，2026-10-13）----------------
+check(
+  '每页都生成了一张讲稿页（导出的备注页）',
+  v2Doc.querySelectorAll('.notes-page').length === v2Pages.length,
+);
+check(
+  '讲稿页默认隐藏且不参与放映翻页（运行时按 .slide:not(.notes-page) 选页）',
+  html.includes('.notes-page') && html.includes(".slide:not(.notes-page)") && html.includes('.deck.with-notes-pages'),
+);
+check(
+  '讲稿内容进了讲稿页（不是只有空占位）',
+  v2Doc.querySelectorAll('.notes-page .notes-page-body p').length > 0 &&
+    [...v2Doc.querySelectorAll('.notes-page')].some((section) =>
+      section.textContent.includes('这一页收束全篇'),
+    ),
+);
+check(
+  '没有讲稿的页给出「本页没有讲稿」占位（而不是空白页）',
+  v2Doc.querySelectorAll('.notes-page .notes-empty').length === v2Pages.length - 1,
+);
+
+check(
+  'v2 deck 直接渲染：页数一致',
+  v2Doc.querySelectorAll('.slide:not(.notes-page)').length === v2Pages.length,
+);
 check(
   'v2 deck 直接渲染：图示版式全部落地（关系图/管线/时间线/分层）',
   v2Doc.querySelectorAll('.ly-rel-center').length === 1 &&
@@ -478,7 +516,7 @@ const mediaHtml = await buildSemanticDeckHtml({
 });
 const mediaDoc = new JSDOM(mediaHtml).window.document;
 
-const barPage = mediaDoc.querySelectorAll('.slide')[0];
+const barPage = mediaDoc.querySelectorAll('.slide:not(.notes-page)')[0];
 check('图表：柱状图 SVG 渲染（柱数 = 数据点数）', barPage.querySelectorAll('.ly-chart-bar').length === 3);
 check('图表：高亮数据点被标记', barPage.querySelectorAll('.ly-chart-bar.hl').length === 1);
 check(
@@ -488,11 +526,11 @@ check(
 check('图表：数值标签显示真实数据', [...barPage.querySelectorAll('.ly-chart-value')].some((n) => n.textContent.includes('0.745')));
 check('图表页的补充说明只渲染一次（兜底不重复）', barPage.querySelectorAll('.ly-note').length === 1);
 check('图表：环形图带图例与占比', (() => {
-  const donut = mediaDoc.querySelectorAll('.slide')[1];
+  const donut = mediaDoc.querySelectorAll('.slide:not(.notes-page)')[1];
   return donut.querySelectorAll('.ly-chart-arc').length === 3 && donut.querySelectorAll('.ly-donut-item').length === 3;
 })());
 
-const formulaPage = mediaDoc.querySelectorAll('.slide')[2];
+const formulaPage = mediaDoc.querySelectorAll('.slide:not(.notes-page)')[2];
 check('公式：KaTeX 产出 MathML（不依赖内联字体）', formulaPage.querySelectorAll('.ly-formula math').length === 1);
 // KaTeX 的 MathML 输出把 LaTeX 源码放在 <annotation>（供复制/无障碍，不参与渲染）
 check(
@@ -501,7 +539,7 @@ check(
     formulaPage.querySelector('.ly-formula annotation')?.textContent.includes('Attention') === true,
 );
 
-const bgPage = mediaDoc.querySelectorAll('.slide')[3];
+const bgPage = mediaDoc.querySelectorAll('.slide:not(.notes-page)')[3];
 check('页级背景：section 带 has-bg 与背景图', bgPage.classList.contains('has-bg') && /background-image/.test(bgPage.getAttribute('style') ?? ''));
 check('页级背景：压暗遮罩按 dim 生成', !!bgPage.querySelector('.ly-bg-scrim'));
 

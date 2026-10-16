@@ -166,3 +166,23 @@ export class RestoreDeckVersionDto {
   @Type(() => Number)
   version?: number;
 }
+
+/**
+ * 只更新某一页的**讲稿**（notes）—— 讲稿是讲者的话，不进版面，
+ * 因此不跟"改内容块"走同一条整体替换路径：整体替换会牵动版式校验，
+ * 而且冲突面大（两个人分别改不同页的讲稿不该互相阻塞）。
+ */
+export class UpdatePageNotesDto {
+  /** 讲稿正文；留空表示删除该页讲稿 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(4000)
+  notes?: string;
+
+  /** 乐观锁：客户端持有的 deck 版本 */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  version?: number;
+}

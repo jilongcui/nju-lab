@@ -43,7 +43,8 @@ export const CANVAS = { width: 1920, height: 1080 } as const;
 function runtimeScript(total: number): string {
   return `(function () {
   var deck = document.getElementById('deck');
-  var slides = [].slice.call(deck.querySelectorAll('.slide'));
+  /* 讲稿页（.notes-page）是导出的备注页，不参与放映翻页 */
+  var slides = [].slice.call(deck.querySelectorAll('.slide:not(.notes-page)'));
   var total = ${total};
   var index = 0;
   var readyPosted = false;
@@ -152,12 +153,41 @@ function runtimeScript(total: number): string {
   }
 
   var bar = document.querySelector('.progress-bar > span');
+
+  /**
+   * 讲稿浮层（讲者视图）。
+   *
+   * 讲稿按惯例对观众隐藏（vendored base.css 里 .notes{display:none}），所以放映时默认看不到。
+   * 这里把它读出来放进底部浮层，按 S 呼出/收起 —— 供讲者自己看（双屏投屏时只有讲者屏可见；
+   * 单屏放映等于观众也能看到，因此是**手动开启**而非默认打开）。
+   */
+  var notesOverlay = document.getElementById('notes-overlay');
+  var notesBody = notesOverlay ? notesOverlay.querySelector('.notes-overlay-body') : null;
+  function notesHtml() {
+    var page = slides[index];
+    var el = page ? page.querySelector('.notes') : null;
+    return el ? el.innerHTML : '';
+  }
+  function syncNotes() {
+    if (!notesBody) return;
+    notesBody.innerHTML = notesHtml() || '<p class="notes-empty">（本页没有讲稿）</p>';
+  }
+  function isNotesOpen() {
+    return !!notesOverlay && notesOverlay.classList.contains('open');
+  }
+  function toggleNotes() {
+    if (!notesOverlay) return;
+    if (isNotesOpen()) notesOverlay.classList.remove('open');
+    else { syncNotes(); notesOverlay.classList.add('open'); }
+  }
+
   function paint() {
     for (var i = 0; i < slides.length; i += 1) {
       slides[i].classList.toggle('is-active', i === index);
       slides[i].classList.toggle('is-prev', i < index);
     }
     if (bar) bar.style.width = ((index + 1) / total * 100) + '%';
+    if (isNotesOpen()) syncNotes();
   }
 
   function postReady() {
@@ -181,6 +211,8 @@ function runtimeScript(total: number): string {
     else if (data.action === 'prev') show(index - 1);
     else if (data.action === 'goto' && typeof data.index === 'number') show(data.index);
     else if (data.action === 'overview') toggleOverview();
+    else if (data.action === 'notes') { if (isNotesOpen() !== !!data.open) toggleNotes(); }
+    else if (data.action === 'toggle-notes') toggleNotes();
     else if (data.action === 'escape') {
       /* 宿主页面的 Esc：总览开着先关总览，否则回传"退出放映"由页面决定 */
       if (isOverviewOpen()) closeOverview();
@@ -192,11 +224,13 @@ function runtimeScript(total: number): string {
     if (event.key === 'Escape' || event.key === 'Esc') {
       event.preventDefault();
       /* 总览开着时 Esc 先关总览（放映态再按一次才退出放映） */
+      if (isNotesOpen()) { toggleNotes(); return; }
       if (isOverviewOpen()) { closeOverview(); return; }
       post({ type: 'exit-present' });
       return;
     }
     if (event.key === 'o' || event.key === 'O') { toggleOverview(); event.preventDefault(); return; }
+    if (event.key === 's' || event.key === 'S') { toggleNotes(); event.preventDefault(); return; }
     /* 总览开着时不吃翻页键：点击缩略图跳页，方向键留给"移动选择"以外的场景（避免误翻） */
     if (isOverviewOpen()) return;
     if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') { show(index + 1); event.preventDefault(); }
@@ -316,6 +350,7 @@ ${body}
 ${logo}
 </div>
 ${options.progress === false ? '' : '<div class="progress-bar"><span></span></div>'}
+<div class="notes-overlay" id="notes-overlay"><div class="notes-overlay-body"></div></div>
 <script>${runtimeScript(pages.length)}</script>
 </body>
 </html>

@@ -783,8 +783,8 @@ export function renderPages(
   } = {},
 ): string {
   return pages
-    .map((page, index) =>
-      renderPage(page, {
+    .map((page, index) => {
+      const ctx: RenderContext = {
         meta,
         index,
         total: pages.length,
@@ -792,7 +792,30 @@ export function renderPages(
         resolveImage: options.resolveImage,
         footerText: options.footerText,
         renderTex: options.renderTex,
-      }),
-    )
+      };
+      return renderPage(page, ctx) + renderNotesPage(page, index);
+    })
     .join('\n');
+}
+
+/**
+ * 讲稿页（"备注页"）。
+ *
+ * 打印 PDF 时给讲者当讲义用，所以它必须：① **默认 `display:none`**（放映时既看不到、
+ * 也不会被翻页翻到 —— 运行时用 `.slide:not(.notes-page)` 选页，这里只是稳妥的双保险）；
+ * ② 只在导出且开启"附讲稿"时由 `.deck.with-notes-pages` 打开（见 layouts.css 的 @media print）。
+ */
+function renderNotesPage(page: Page, index: number): string {
+  const notes = String(page.notes ?? '').trim();
+  const body = notes
+    ? escapeHtml(notes).split('\n').map((line) => (line.trim() ? `<p>${line}</p>` : '')).join('')
+    : '<p class="notes-empty">（本页没有讲稿）</p>';
+  return `<section class="slide notes-page" data-notes-page="${index}">
+  <div class="ly">
+    <div class="notes-page-inner">
+      <div class="notes-page-head">第 ${index + 1} 页 · ${escapeHtml(page.title ?? '')}</div>
+      <div class="notes-page-body">${body}</div>
+    </div>
+  </div>
+</section>`;
 }

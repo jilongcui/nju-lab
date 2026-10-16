@@ -5,6 +5,7 @@ import {
   App,
   Button,
   Card,
+  Checkbox,
   Col,
   ColorPicker,
   Divider,
@@ -57,6 +58,7 @@ import {
   syncChapterSlidesHash,
   regenerateChapterSlidePage,
   restoreSlideVersion,
+  updateChapterSlidePageNotes,
   updateSlideTemplate,
 } from '../../api';
 import type { DeckVersionItem } from '../../api';
@@ -83,7 +85,6 @@ import {
   imageMarkdownSnippet,
   splitMarkdownPages,
 } from '../../slides/imageActions';
-import ExperimentPanel from '../../components/ExperimentPanel';
 import ImagePickerDrawer from '../../components/ImagePickerDrawer';
 import ImageLibraryPanel from '../../components/ImageLibraryPanel';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
@@ -155,6 +156,10 @@ export default function ChapterSlides() {
   const [instruction, setInstruction] = useState('');
   /** 历史版本：每次重生成/保存前自动存档，教师可回滚（多版并存，见 DESIGN 里的版本一节） */
   const [versions, setVersions] = useState<DeckVersionItem[]>([]);
+  /** 当前页讲稿草稿（讲稿不进版面，单独编辑与保存） */
+  const [notesDraft, setNotesDraft] = useState('');
+  /** 导出 PDF 时是否把每页讲稿作为"备注页"附在后面（讲者讲义/存档用） */
+  const [exportWithNotes, setExportWithNotes] = useState(false);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [data, setData] = useState<ChapterSlidesResponse | null>(null);
   const [chapter, setChapter] = useState<Chapter | null>(null);
@@ -182,7 +187,7 @@ export default function ChapterSlides() {
     { kind: 'insert'; layout: SlideLayout } | { kind: 'replace' } | { kind: 'insert-cursor' } | null
   >(null);
   const mdAreaRef = useRef<TextAreaRef>(null);
-  const [auxTab, setAuxTab] = useState<'chapters' | 'experiments' | 'generate' | 'versions' | 'images'>('chapters');
+  const [auxTab, setAuxTab] = useState<'chapters' | 'images' | 'notes' | 'generate' | 'versions'>('chapters');
   const editingRef = useRef(editing);
   editingRef.current = editing;
   // 章节 tab/工具栏里「放弃修改并切换」与放映态的章节跳转要绕过路由守卫
@@ -321,6 +326,26 @@ export default function ChapterSlides() {
       message.success(
         result.cached ? '内容未变，已复用现有幻灯片' : '已开始生成，稍候即可预览',
       );
+      await load(true);
+    } catch (error) {
+      if (!(await handleConflict(error))) throw error;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** 讲稿草稿跟随当前页（翻页、切换章节、保存后重载都要同步） */
+  useEffect(() => {
+    const page = deck?.slides?.[currentIndex] as { notes?: string } | undefined;
+    setNotesDraft(String(page?.notes ?? ''));
+  }, [deck, currentIndex]);
+
+  /** 保存当前页讲稿（走专用接口：只改 notes，不触发版式校验） */
+  const handleSaveNotes = async () => {
+    setBusy(true);
+    try {
+      await updateChapterSlidePageNotes(chapterId, currentIndex, notesDraft, deck?.version);
+      message.success(`第 ${currentIndex + 1} 页讲稿已保存`);
       await load(true);
     } catch (error) {
       if (!(await handleConflict(error))) throw error;
@@ -619,7 +644,7 @@ export default function ChapterSlides() {
     <Tabs
       activeKey={auxTab}
       onChange={(k) => {
-        setAuxTab(k as 'chapters' | 'experiments' | 'generate' | 'versions' | 'images');
+        setAuxTab(k as 'chapters' | 'images' | 'notes' | 'generate' | 'versions');
         if (k === 'versions') void loadVersions();
       }}
       items={[
@@ -659,7 +684,7 @@ export default function ChapterSlides() {
                 }}
               />
               <Paragraph type="secondary" style={{ fontSize: 12, marginTop: 8 }}>
-                放映时：<Text code>←/→</Text> 翻页、<Text code>空格</Text> 下一页、<Text code>O</Text> 总览、
+                放映时：<Text code>←/→</Text> 翻页、<Text code>空格</Text> 下一页、<Text code>O</Text> 总览、<Text code>S</Text> 讲稿、
                 <Text code>Esc</Text> 退出。章节正文改动后只会提示，不会自动重新生成。
               </Paragraph>
             </>
@@ -684,11 +709,75 @@ export default function ChapterSlides() {
           ),
         },
         {
-          key: 'experiments',
-          label: `实验 ${
-            siblings.find((item) => item.id === chapterId)?.projects?.length ?? 0
-          }`,
-          children: <ExperimentPanel chapters={siblings} currentChapterId={chapterId} mode="teacher" />,
+          key: 'notes',
+          label: '讲稿',
+          children: (
+            <>
+              <Paragraph type="secondary" style={{ fontSize: 12 }}>
+                讲稿只给讲者看，<b>不会出现在幻灯片版面</b>上（放映时按 <Text code>S</Text> 可呼出浮层）。
+                下面是第 {currentIndex + 1} 页。
+              </Paragraph>
+              <Input.TextArea
+                rows={7}
+                value={notesDraft}
+                onChange={(e) => setNotesDraft(e.target.value)}
+                placeholder="这一页你要怎么讲？写下来，放映时能对着念。"
+                style={{ marginBottom: 10 }}
+              />
+              <Space style={{ marginBottom: 12 }}>
+                <Button
+                  size="small"
+                  type="primary"
+                  loading={busy}
+                  disabled={!deck || deck.status === 'generating'}
+                  onClick={handleSaveNotes}
+                >
+                  保存第 {currentIndex + 1} 页讲稿
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() =>
+                    setNotesDraft(
+                      String(
+                        (deck?.slides?.[currentIndex] as { notes?: string } | undefined)?.notes ?? '',
+                      ),
+                    )
+                  }
+                >
+                  还原
+                </Button>
+              </Space>
+              <Divider style={{ margin: '4px 0 12px' }} />
+              <Paragraph type="secondary" style={{ fontSize: 12 }}>
+                全部讲稿（点一行跳到那一页）：
+              </Paragraph>
+              <List
+                size="small"
+                dataSource={deck?.slides ?? []}
+                renderItem={(p, i) => {
+                  const n = String((p as { notes?: string }).notes ?? '');
+                  return (
+                    <List.Item
+                      onClick={() => setCurrentIndex(i)}
+                      style={{
+                        cursor: 'pointer',
+                        paddingLeft: 0,
+                        paddingRight: 0,
+                        background: i === currentIndex ? token.colorPrimaryBg : undefined,
+                      }}
+                    >
+                      <Text
+                        style={{ fontSize: 12 }}
+                        ellipsis={{ tooltip: n || '（本页无讲稿）' }}
+                      >
+                        {i + 1}. {n ? n.slice(0, 24) : '（本页无讲稿）'}
+                      </Text>
+                    </List.Item>
+                  );
+                }}
+              />
+            </>
+          ),
         },
         {
           key: 'generate',
@@ -843,7 +932,11 @@ export default function ChapterSlides() {
       message.warning('幻灯片还没准备好，请稍候再试');
       return;
     }
-    const printable = doc.replace(
+    // 讲稿页（.notes-page）默认 display:none；勾选"附讲稿"后加 .with-notes-pages 让打印时显示
+    const withNotes = exportWithNotes
+      ? doc.replace('<div class="deck" id="deck">', '<div class="deck with-notes-pages" id="deck">')
+      : doc;
+    const printable = withNotes.replace(
       '</body>',
       '<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},500)})</' + 'script></body>',
     );
@@ -853,7 +946,11 @@ export default function ChapterSlides() {
       message.warning('浏览器拦截了新窗口：请允许弹出窗口后重试');
       return;
     }
-    message.info('已打开打印视图：打印对话框里把「目标」选成「另存为 PDF」，纸张横向、边距选「无」');
+    message.info(
+      exportWithNotes
+        ? '已打开打印视图（含讲稿备注页）：把「目标」选成「另存为 PDF」，纸张横向、边距选「无」'
+        : '已打开打印视图：打印对话框里把「目标」选成「另存为 PDF」，纸张横向、边距选「无」',
+    );
   };
 
   /** 「换版式」：只改当前页的 intent（内容块不动），保存后由渲染层换一套版式 */
@@ -1272,9 +1369,17 @@ export default function ChapterSlides() {
                   >
                     放弃改动
                   </Button>
-                  <Button icon={<FilePdfOutlined />} onClick={exportPdf}>
-                    导出 PDF
-                  </Button>
+                  <Checkbox
+                    checked={exportWithNotes}
+                    onChange={(e) => setExportWithNotes(e.target.checked)}
+                  >
+                    附讲稿
+                  </Checkbox>
+                  <Tooltip title="导出为 PDF；勾选「附讲稿」会把每页讲稿作为备注页排在该页后面（做讲义/存档用）">
+                    <Button icon={<FilePdfOutlined />} onClick={exportPdf}>
+                      导出 PDF
+                    </Button>
+                  </Tooltip>
                 </Space>
               )}
             </Col>
