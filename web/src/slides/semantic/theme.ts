@@ -181,11 +181,9 @@ export const DECK_THEMES: DeckTheme[] = [
       '--nju-paper-3': '#f8f3ea',
       '--nju-halo-a': 'rgba(124,75,181,.17)',
       '--nju-halo-b': 'rgba(201,162,39,.15)',
-      // 眉首：左深紫 → 右金的细带；眉尾：一条素净的细线（不做色带/不做金线）
+      // 眉首：左深紫 → 右金的细带（眉尾**不做装饰**，只留页脚那一行字）
       '--nju-head-band': 'linear-gradient(90deg,#34155c 0%,#4a1f7c 30%,#6a3d9a 60%,#b98a2e 100%)',
       '--nju-head-h': '14px',
-      '--nju-foot-line': 'rgba(74,31,124,.22)',
-      '--nju-foot-line-offset': '76px',
       '--nju-foot-ink': '#5a4a75',
       '--nju-mark': 'linear-gradient(135deg,#4a1f7c 0%,#7c4bb5 52%,#c9a227 100%)',
       '--nju-kicker': '#7c4bb5',

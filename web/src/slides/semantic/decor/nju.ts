@@ -49,20 +49,10 @@ export function njuDecorCss(heroUri: string): string {
   pointer-events: none;
 }
 
-/* ---------- 眉尾：版心下沿一条细线 ----------
- * 只留线、不做色带：渐变带投影出来发脏（用户反馈"不干净"），金线也一并去掉。
- * 位置 = 内容安全区下沿（画布 1080 − 72），页脚文字落在它下面，二者不打架。 */
-.deck .slide::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: var(--nju-foot-line-offset, 76px);
-  height: 2px;
-  background: var(--nju-foot-line);
-  z-index: 4;
-  pointer-events: none;
-}
+/* ---------- 眉尾 ----------
+ * 色带 → 金线 → 细线，三版都被"碍事/多余"的理由拿掉了，最后**不做任何眉尾装饰**：
+ * 投影与打印（导出 PDF）里，页脚那一行字本身就是收口，再加线反而是噪音。
+ * 页脚文字照旧走 .deck-footer（见下），底部留白保持干净。 */
 
 /* ---------- 内容页右上角：同心灵感弧（封面/分节页已有钟楼，用下面的规则换掉） ----------
  * 走 .slide 的 background-image（背景层）而不是伪元素：装饰永远在内容之下，
