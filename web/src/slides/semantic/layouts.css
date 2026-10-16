@@ -66,9 +66,16 @@
   gap: 10px;
   margin-bottom: 30px;
 }
-/* 页眉小标（kicker）：**固定在内容区左上角**，与主标题分开。
- * 为什么不能跟标题一起排版：内容整体垂直居中，标题每页落点不同，kicker 跟着就"跳"。
+/* 页眉小标（kicker）：默认排在标题上方（见 .ly .kicker）。
  * 类名里保留 kicker —— base.css 的字号/字重/颜色（.kicker）与 has-bg 下的白字规则都还匹配。 */
+.ly .kicker {
+  font-size: calc(17px * var(--fs-boost, 1));
+  letter-spacing: 0.18em;
+  margin: 0;
+}
+/* 声明了 layoutFlags.pinKicker 的主题（目前只有「南大风」）：同一个 kicker 抽成页面级元素、
+ * 固定钉在内容区左上角，与主标题彻底分开 —— 内容整体垂直居中，标题每页落点不同，
+ * 跟着它排会让 kicker 翻页时"跳"。字号/字距与上面保持一致，换位置不改观感。 */
 .slide-kicker {
   position: absolute;
   top: 30px;
