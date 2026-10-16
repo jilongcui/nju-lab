@@ -299,12 +299,14 @@ function renderCover(page: Page): string {
   const pills = (evidence?.items ?? []).slice(0, 5);
   return `<div class="ly ly-cover">
   <div class="ly-rule"></div>
-  ${page.kicker ? `<p class="ly-cover-kicker">${escapeHtml(page.kicker)}</p>` : ''}
-  <h1>${inline(page.title ?? '')}</h1>
-  ${page.subtitle ? `<p class="ly-cover-sub">${inline(page.subtitle)}</p>` : ''}
+  ${page.kicker ? `<p class="ly-cover-kicker"${ed('kicker')}>${escapeHtml(page.kicker)}</p>` : ''}
+  <h1${ed('title')}>${inline(page.title ?? '')}</h1>
+  ${page.subtitle ? `<p class="ly-cover-sub"${ed('subtitle')}>${inline(page.subtitle)}</p>` : ''}
   ${
     pills.length
-      ? `<div class="ly-pills">${pills.map((item) => `<span class="pill">${escapeHtml(item)}</span>`).join('')}</div>`
+      ? `<div class="ly-pills">${pills
+          .map((item, i) => `<span class="pill"${ed(`blocks.${bIdx(page, 'evidence')}.items.${i}`)}>${escapeHtml(item)}</span>`)
+          .join('')}</div>`
       : ''
   }
 </div>`;

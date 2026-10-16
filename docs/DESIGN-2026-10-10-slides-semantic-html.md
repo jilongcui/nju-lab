@@ -656,3 +656,46 @@ v2 链路有三处断点，**三者叠加，只修一处都不会生效**：
 → `@media print` 下逐页显示（`page-break-after: always`），做讲义/存档用。
 
 讲稿页**不参与放映翻页**：运行时按 `.slide:not(.notes-page)` 选页（渲染层也让它 `display:none` 双保险）。
+
+## 17. 预览态「双击就地编辑」（2026-10-13）
+
+教师的意见：源码编辑是"逃生舱门"，与其摆在屏幕中央，不如**直接在预览上改** —— 所见即所得。
+
+### 17.1 范围：只做纯文本
+
+渲染层给**纯文本容器**打 `data-edit="<路径>"`（路径形如 `title`、`blocks.2.text`、`blocks.1.items.0`）：
+
+| 标记了 | 没标（走「源码」） |
+|---|---|
+| `title` / `lede` / `kicker` / `subtitle`（含封面、分节页） | 表格行列、关系图节点、图表数值 |
+| `claim.text`、`evidence` 的每条要点、`note.text` | 流程图/架构图/时间线的结构 |
+| `quote.text` / `cite` | 图片块（换图用工具栏） |
+
+**为什么只做文本**：改结构牵一发动全身（校验、版式、缩略图），就地编辑容易做出"看起来对、其实是坏的"中间态。
+
+### 17.2 交互
+
+宿主声明 `editable` → `.deck` 加 `.is-editable` → 双击进入 `contenteditable`（全选），
+回车提交、Esc 取消、失焦提交，回传 `post({ type: 'edit-text', path, value })`。
+
+**编辑期间必须屏蔽放映快捷键与翻页手势**（否则打字被当成翻页）：
+- 键盘监听用**捕获阶段**，保证先于通用的 keydown；
+- 通用的键盘/点击翻页各加一处 `if (editingEl) return;` 让路。
+
+⚠️ 只提交 `textContent`：该字段原有的内联强调（`**粗体**`）会退化为纯文本 —— 这是"就地改字"的取舍。
+
+### 17.3 服务端
+
+`PATCH /chapters/:id/slides/pages/:index/fields`，body `{ path, value, version? }`：
+
+- **白名单正则**只放纯文本字段（`title|lede|kicker|subtitle|number` +
+  `blocks.N.{text,caption,cite,title,desc,label,detail,tag}` + `blocks.N.items.M`），其余一律 400；
+- 索引越界明确报错（"可能刚重新生成过，请刷新"）；
+- 仍然**先存档 + 校验乐观锁** —— 改错能回滚，并发有保护。
+
+### 17.4 实测与踩坑
+
+端到端：预览 79 个可编辑元素 → 双击标题 → 回车提交**确实落库** → 改回原文后无残留。
+
+踩的坑：起初 `editable` 块里只加了 `dblclick`/`focusout`，**漏了 Enter/Esc 的 keydown**，
+而通用 keydown 里我又写了 `if (editingEl) return` 让路 → 回车完全没反应。补上捕获阶段的按键处理才通。

@@ -159,6 +159,17 @@
   仅为产物与源码一致 —— 本修复只动后端）。上线后回归：`verify-chapter-experiments.mjs` 25/25、
   `verify-chapter-slides.mjs` 21/21、`verify-course-pages.mjs` 24/24。
 
+**2026-10-13（幻灯片：预览里双击就地编辑 + 源码编辑收进右栏）**
+
+- **布局**：中间由「缩略列表(5) + 编辑区(8) + 预览(11)」改为「缩略列表(5) + 预览(19)」（预览 700 → 800px）；
+  JSON/Markdown 编辑整体搬进右栏 tab「源码」。⚠️ 搬 `useAuxiliaryPanel` 时踩了两次 React #310（白屏）——
+  **hook 必须在所有 early return 之前**，且要把它引用的派生值（`previewSlides`/`semanticDeck`/`exportPdf`）一起摆正。
+- **就地编辑**：渲染层给纯文本容器打 `data-edit`（标题/lede/kicker/主张/要点/注释/引文，含封面与分节页）；
+  运行时长按 `editable` 声明启用双击编辑（回车提交、Esc 取消、编辑期间屏蔽所有放映快捷键与翻页手势）；
+  服务端 `PATCH …/pages/:index/fields` 按 path 更新**单个文本字段**（白名单 + 存档 + 乐观锁）。
+  结构化块（表格/关系图/图表）不打标，仍走「源码」。实测端到端通、无残留。断言 94 → 99。
+  设计见 `docs/DESIGN-2026-10-10-slides-semantic-html.md` §17。
+
 **2026-10-13（幻灯片：讲稿 notes 的三种展示）**
 
 - **问题**：教师问"为什么 PPT 看不到 notes"。讲稿其实**一直**渲染进文档（每页 `<div class="notes">`），
