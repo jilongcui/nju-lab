@@ -59,7 +59,13 @@ const notesProbe = String(slides[0]?.notes ?? '').trim().slice(0, 12);
 if (!notesProbe) throw new Error('该章节第 1 页没有讲稿，无法验证"观众看不到讲稿"');
 console.log(`探针讲稿（第 1 页前 12 字）：${notesProbe}\n`);
 
-const browser = await chromium.launch();
+// 打线上时把域名指到本机（走真实 nginx 链路），与其它 verify 脚本一致
+const SITE_HOST = 'medai.nju.edu.cn';
+const browser = await chromium.launch({
+  args: BASE.includes(SITE_HOST)
+    ? [`--host-resolver-rules=MAP ${SITE_HOST} 127.0.0.1`, '--ignore-certificate-errors']
+    : [],
+});
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 // 登录态：与平台前端一致（zustand persist 的 key）
 await context.addInitScript(
