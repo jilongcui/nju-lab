@@ -45,8 +45,13 @@
 - **验证**：新增 `web/tools/verify-presenter.mjs`（真实浏览器双窗口）**8/8 通过** —— 观众窗口 URL 带
   `audience=1`、**一个字讲稿都没有**、无放映控件、无讲者面板，且讲者翻页后观众跟到第 2/3 页。
 - **部署**：`bash deploy/deploy-web-lab.sh`（备份 `20261017-072206`，线上 chunk 含「讲者视图」）；
-  部署后**打线上域名再跑一次 verify-presenter**，同样 8/8（该脚本已支持 `--host-resolver-rules` 走真实
-  nginx 链路）。只改前端，后端未动。
+  部署后**打线上域名再跑一次 verify-presenter**（该脚本已支持 `--host-resolver-rules` 走真实 nginx 链路）。
+  只改前端，后端未动。
+- **当天晚些的简化（用户反馈"做复杂了"）**：删掉右侧面板（`PresenterPanel.tsx`），讲者窗口保持
+  幻灯片铺满，顶栏只留「下页预告 + 计时 + 观众窗口开关 + 退出」，讲稿仍按 `S`。
+  重新部署（备份 `20261017-073729`），线上 verify-presenter 扩到 **11/11**；
+  当前生效 chunk `assets/index-B86zYrFh.js`（已确认不含旧面板文案）。
+  ⚠️ 查线上产物时注意 `assets/` **只增不删**：`grep` 会命中历史 chunk，要按 `index.html` 当前引用的那个查。
 - **已知缺口（未修）**：deck 文档里仍带 `notes` 文本（只是 `display:none`），**学生端页面按 F12 仍能看到**；
   要彻底堵住需服务端按角色剥离（见 `docs/SLIDES.md` §5.2）。
 
