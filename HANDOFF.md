@@ -23,8 +23,9 @@
 - **验证**：`web/tools/verify-notes-privacy.mjs` **6/6** —— 学生 16 页有讲稿 **0** 页、markdown 无
   `.notes`、页数/标题/canEdit 没被剥坏、教师 16 页全有讲稿、**学生端按 `S` 连浮层容器都查不到**；
   `verify-presenter.mjs` 仍 11/11（教师端按 `S` 能看到讲稿）。
-- **部署**：只改后端运行时代码 → `npm run build` + kill MainPID（3485589 → **3539343**）。
-  前端无需改动、**未部署**。
+- **部署**：后端 `npm run build` + kill MainPID（3485589 → **3539343**）；
+  前端（`allowNotes` 那一刀）`bash deploy/deploy-web-lab.sh`（备份 `20261017-074440`）。
+  部署后线上实测：`verify-notes-privacy` **6/6**、`verify-presenter` **11/11**。
 
 **2026-10-17（幻灯片：讲者视图 —— 讲稿只有讲者看得见）—— ✅ 已上线**
 
