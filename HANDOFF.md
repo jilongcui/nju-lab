@@ -1670,13 +1670,26 @@ $ws_out_host`）：上游已把 Host 改对，所以它现在退化为恒等映�
 章节正文可上传插图，正文有图时 LLM 生成自动配图（prompt v4，服务端有防幻觉闸）。
 **生成前必读 §9.4a**：deepseek-flash/v4-pro 是推理模型，预算含推理开销（已加 `reasoning_effort=low` 修复）。
 
+**2026-10-10 起是语义渲染器（v2）**：模型只表达「教学意图 + 内容块」，版式由渲染层映射
+（关系图 / 管线 / 时间线 / 分层 / 数据图 / LaTeX 公式 / 页级背景图都能出）；导出 PDF 自带备注页。
+功能指南见 `docs/SLIDES.md`，设计见 `docs/DESIGN-2026-10-10-slides-semantic-html.md`。
+
+**2026-10-17 这一轮的增量**（都记在 §0 与 §9.8）：
+- **主题装饰层 +「南大风」模板**（`DeckTheme.decorCss`）：眉首紫金带、封面/分节页钟楼辅助背景
+  （素材可换成实拍照片，`web/tools/embed-tower-photo.mjs` 一条命令）；老模板观感不变。
+- **版式开关 `DeckTheme.layoutFlags`（默认全关）**：`pinKicker`（页眉小标固定左上角）、
+  `chapterOnlyFooter`（页脚只写章节名）—— 只在新主题生效，历史 deck 不被连带改样。
+- **讲者视图（双窗口）**：讲者窗口 = 幻灯片 + 讲稿 + 计时；观众窗口（`?audience=1`）只有幻灯片。
+  受 HTTP 限制不能自动投屏（`getScreenDetails` 不可用），观众窗口手动拖到投影屏 + F11。
+- **讲稿隐私**：`getDeck` 按观看者裁剪，学生拿不到 `notes`（slides 与 markdown 两处都剥）。
+
 ### 9.2 已交付
 
 | 层 | 内容 |
 |---|---|
 | 后端 | `server/src/slides/`（13 个文件）：两阶段生成（先大纲、再分批扩写；**单批失败局部降级**为大纲骨架）、`SLIDES_GENERATOR=mock\|llm` 双轨、JSON ⇄ Markdown 投影与**合并保存**（页级高级设置不丢）、模板编译（调参 → CSS）、10 个 API |
 | 数据 | 迁移 `server/src/migrations/1790636383317-SlideDecks.ts`：`slide_decks`（**一章一 deck**；`basedOnChapterHash` 管"章节已变更"提示、`sourceHash` 管缓存命中）、`slide_templates`（只存调参 `design` + `baseTheme`，不存 CSS）——**已在生产库执行** |
-| 前端 | `web/src/slides/`（渲染层：SlideJson → **自包含 srcdoc 文档** + `SlideStage` iframe + `files.ts` 图片内联）、教师端 `/teacher/chapters/:chapterId/slides`、学生端章节页切换、章节编辑页「幻灯片」入口 |
+| 前端 | `web/src/slides/`（渲染层：SlideJson → **自包含 srcdoc 文档** + `SlideStage` iframe + `files.ts` 图片内联）、教师端 `/teacher/chapters/:chapterId/slides`（含**讲者视图** `PresenterPanel` + `presentChannel` 跨窗口同步）、学生端章节页切换、章节编辑页「幻灯片」入口 |
 | 部署 | 前端已同步 `/var/www/lab`（走 `deploy/deploy-web-lab.sh`）；后端已 `npm run build` + 重启（新 dist 生效） |
 | 设计 | `docs/DESIGN-2026-09-29-chapter-slides.md`：已确认决策、数据模型、API 契约、安全矩阵、实测记录 |
 
