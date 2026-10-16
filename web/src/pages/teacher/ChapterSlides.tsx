@@ -185,6 +185,8 @@ export default function ChapterSlides() {
   const [elapsedMs, setElapsedMs] = useState(0);
   /** 观众窗口是否还开着（开着才显示 ✓，关掉后可一键重开） */
   const [audienceOpened, setAudienceOpened] = useState(false);
+  /** 讲稿浮层的开合与高度（文档内回传）：讲者视图据此把「下一页」预告让开它 */
+  const [notesBox, setNotesBox] = useState({ open: false, height: 0 });
   const stageRef = useRef<SlideStageHandle>(null);
   const audienceWinRef = useRef<Window | null>(null);
   const channelRef = useRef<PresentChannel | null>(null);
@@ -1172,6 +1174,17 @@ export default function ChapterSlides() {
     if (!win) message.warning('观众窗口被浏览器拦截了：请允许本站弹窗后重试');
   }, [chapterId]);
 
+  /** 关掉观众窗口（顶栏那个按钮是**开关**：开着时点它就是关） */
+  const closeAudienceWindow = useCallback(() => {
+    try {
+      audienceWinRef.current?.close();
+    } catch {
+      /* 被浏览器拦住就算了 */
+    }
+    audienceWinRef.current = null;
+    setAudienceOpened(false);
+  }, []);
+
   /** 退出讲者视图：顺手关掉观众窗口，免得投影屏停在最后一页 */
   const exitPresenter = useCallback(() => {
     setPresenter(false);
@@ -1306,6 +1319,7 @@ export default function ChapterSlides() {
       // 预览态允许双击就地编辑（放映态、讲者视图、观众窗口、学生端都不开）
       editable={canEdit && !presenting && !presenter && !opts.audience}
       onEditText={handleEditText}
+      onNotesChange={setNotesBox}
       height={opts.audience || presenter ? '100%' : 520}
     />
   );
@@ -1340,39 +1354,15 @@ export default function ChapterSlides() {
           style={{
             position: 'absolute',
             top: 8,
-            left: 0,
             right: 0,
             display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
             padding: '0 20px',
-            gap: 10,
             opacity: 0.55,
             transition: 'opacity .2s',
           }}
           onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
           onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.55')}
         >
-          <div
-            style={{
-              // 深色胶囊：预告压在幻灯片内容上（讲者视图里 iframe 底不是黑的），
-              // 纯白字在浅色版面上会直接看不见（2026-10-17 截图发现）
-              background: 'rgba(0,0,0,.45)',
-              color: '#fff',
-              fontSize: 13,
-              padding: '3px 12px',
-              borderRadius: 999,
-              maxWidth: '50%',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              pointerEvents: 'none',
-            }}
-          >
-            {currentIndex + 1 < totalPages
-              ? `下一页：${nextTitle || '（无标题）'}`
-              : '— 已是最后一页 —'}
-          </div>
           <Space size={10}>
             <Button
               size="small"
@@ -1384,13 +1374,60 @@ export default function ChapterSlides() {
             >
               ⏱ {formatElapsed(elapsedMs)}
             </Button>
-            <Button size="small" danger={!audienceOpened} onClick={openAudienceWindow}>
-              {audienceOpened ? '观众窗口 ✓' : '打开观众窗口'}
-            </Button>
+            <Tooltip
+              title={
+                audienceOpened
+                  ? '点击关闭观众窗口'
+                  : '打开观众窗口（拖到投影屏后按 F11 全屏）'
+              }
+            >
+              <Button
+                size="small"
+                type={audienceOpened ? 'primary' : 'default'}
+                onClick={audienceOpened ? closeAudienceWindow : openAudienceWindow}
+              >
+                {audienceOpened ? '观众窗口 ✓' : '打开观众窗口'}
+              </Button>
+            </Tooltip>
             <Button size="small" onClick={exitPresenter}>
               退出（Esc）
             </Button>
           </Space>
+        </div>
+
+        {/* 「下一页」预告：贴底，但**让开讲稿浮层** —— 浮层一打开就占住底部整行，
+             压在它上面的父窗口元素会字叠字（高度由文档内回传，讲稿短的页浮层也矮）。 */}
+        <div
+          style={{
+            position: 'absolute',
+            left: 20,
+            right: 20,
+            bottom: notesBox.open ? notesBox.height + 12 : 12,
+            display: 'flex',
+            justifyContent: 'flex-start',
+            pointerEvents: 'none',
+            transition: 'bottom .3s var(--ease)',
+          }}
+        >
+          <div
+            style={{
+              // 深色胶囊：预告压在幻灯片内容上（讲者视图里 iframe 底不是黑的），
+              // 纯白字在浅色版面上会直接看不见（2026-10-17 截图发现）
+              background: 'rgba(0,0,0,.45)',
+              color: '#fff',
+              fontSize: 13,
+              padding: '3px 12px',
+              borderRadius: 999,
+              maxWidth: '70%',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {currentIndex + 1 < totalPages
+              ? `下一页：${nextTitle || '（无标题）'}`
+              : '— 已是最后一页 —'}
+          </div>
         </div>
       </div>
     );

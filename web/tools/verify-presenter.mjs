@@ -117,13 +117,30 @@ const notesVisible = async () => {
   return false;
 };
 check('① 讲者视图顶部有计时与观众窗口开关', /⏱/.test(presenterText) && presenterText.includes('观众窗口'));
-// 预告放在顶部条左侧（讲稿浮层铺满底部，放右下角会被它压住 —— 见 ChapterSlides 的注释）
-check('① 顶部有下一页预告', presenterText.includes('下一页：'), presenterText.match(/下一页：.{0,16}/)?.[0] ?? '');
+/** 「下一页」预告底边距窗口底的距离（px）；找不到元素返回 null */
+const previewBottomGap = () =>
+  presenter.evaluate(() => {
+    const el = [...document.querySelectorAll('div')].find((d) =>
+      d.children.length === 0 && d.textContent?.startsWith('下一页：'),
+    );
+    if (!el) return null;
+    return Math.round(window.innerHeight - el.getBoundingClientRect().bottom);
+  });
+
+check('① 底部有下一页预告', presenterText.includes('下一页：'), presenterText.match(/下一页：.{0,16}/)?.[0] ?? '');
+const gapClosed = await previewBottomGap();
+check('① 预告贴底（距窗口底 < 40px）', gapClosed !== null && gapClosed < 40, `gap=${gapClosed}`);
 check('① 讲稿默认不显示（没按 S 时看不到）', !(await notesVisible()));
 await presenter.bringToFront();
 await presenter.keyboard.press('s');
 await presenter.waitForTimeout(700);
 check('① 按 S 呼出讲稿浮层后能看到讲稿', await notesVisible(), `探针=${notesProbe.slice(0, 8)}…`);
+const gapOpen = await previewBottomGap();
+check(
+  '① 浮层打开时预告上移、让开浮层',
+  gapOpen !== null && gapClosed !== null && gapOpen > gapClosed,
+  `闭合 gap=${gapClosed} → 打开 gap=${gapOpen}`,
+);
 await presenter.keyboard.press('s');
 await presenter.waitForTimeout(400);
 check('② 观众窗口里一个字讲稿都没有', !audienceText.includes(notesProbe.replace(/\s+/g, '')));
@@ -146,6 +163,20 @@ await presenter.keyboard.press('ArrowRight');
 await presenter.waitForTimeout(1200);
 const audienceIndex2 = await audience.title();
 check('③ 再翻一页：观众跟到第 3 页', audienceIndex2 === 'deck-index:2', `title=${audienceIndex2}`);
+
+// ④ 观众窗口那个按钮是**开关**：开着时点一下应关掉，再点又开
+await presenter.bringToFront();
+await presenter.locator('button:has-text("观众窗口")').first().click();
+await presenter.waitForTimeout(1200);
+check('④ 点「观众窗口 ✓」会把观众窗口关掉', audience.isClosed());
+
+const [audience2] = await Promise.all([
+  context.waitForEvent('page', { timeout: 15000 }),
+  presenter.locator('button:has-text("打开观众窗口")').first().click(),
+]);
+await audience2.waitForLoadState('networkidle');
+await audience2.waitForTimeout(1500);
+check('④ 再点一次又打开（按钮是开关，不是"重开"）', audience2.url().includes('audience=1'), audience2.url());
 
 await browser.close();
 const failed = results.filter(([, ok]) => !ok);

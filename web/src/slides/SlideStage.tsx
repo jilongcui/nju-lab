@@ -55,6 +55,11 @@ export interface SlideStageProps {
   editable?: boolean;
   /** 就地编辑提交（path 如 `title` / `blocks.1.items.0`，value 是新文本） */
   onEditText?: (path: string, value: string) => void;
+  /**
+   * 讲稿浮层的开合与高度（文档内回传）。讲者视图据此把「下一页」预告挪到浮层正上方。
+   * 回调走 ref（理由同 onDocument）：父组件传内联箭头函数不会导致文档重建。
+   */
+  onNotesChange?: (state: { open: boolean; height: number }) => void;
   height?: number | string;
   /**
    * 渲染器：`semantic`（新，默认）= 语义模型 + 固定 1920×1080 舞台；
@@ -102,6 +107,7 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
     keyboard = false,
     editable = false,
     onEditText,
+    onNotesChange,
     height = 520,
     renderer,
     slideTheme,
@@ -138,6 +144,8 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
   /** 就地编辑回调同走 ref（理由同 onDocument） */
   const onEditTextRef = useRef(onEditText);
   onEditTextRef.current = onEditText;
+  const onNotesChangeRef = useRef(onNotesChange);
+  onNotesChangeRef.current = onNotesChange;
 
   /** 生效的渲染器：显式 prop 优先，其次环境变量回退，最后默认新版 */
   const effectiveRenderer: 'semantic' | 'reveal' =
@@ -229,6 +237,9 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
         __deck?: boolean;
         type?: string;
         index?: number;
+        /** type === 'notes' 时：讲稿浮层是否打开、占多高 */
+        open?: boolean;
+        height?: number;
       };
       if (data.__deck !== true) return;
       if (data.type === 'exit-present') {
@@ -239,6 +250,11 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
       if (data.type === 'deck-error') {
         // iframe 内脚本异常：仅记录（个别异常不致命，失败判定交给就绪看门狗）
         console.warn('[SlideStage] iframe 内脚本异常：', (data as { message?: string }).message);
+        return;
+      }
+      if (data.type === 'notes') {
+        // 讲稿浮层的开合/高度（讲者视图要把「下一页」预告让开它）
+        onNotesChangeRef.current?.({ open: data.open === true, height: Number(data.height) || 0 });
         return;
       }
       if (data.type === 'ready') {

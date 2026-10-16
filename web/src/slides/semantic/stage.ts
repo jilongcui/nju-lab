@@ -182,9 +182,25 @@ function runtimeScript(total: number, allowNotes: boolean): string {
     var el = page ? page.querySelector('.notes') : null;
     return el ? el.innerHTML : '';
   }
+  /**
+   * 把讲稿浮层的状态回传给宿主：{open, height}。
+   *
+   * 讲者视图要据此把「下一页」预告**挪到浮层正上方**（浮层一打开就占住底部整行，
+   * 预告放底部会被它压住）。高度实测回传而不是让宿主猜 —— 浮层是 max-height:42vh 的
+   * 自适应高度，讲稿短的页会矮一大截。
+   * ⚠️ 本函数体是模板字符串：注释里绝不能出现反引号（会提前闭合），assert-semantic 会拦。
+   */
+  function postNotesState() {
+    post({
+      type: 'notes',
+      open: isNotesOpen(),
+      height: notesOverlay ? notesOverlay.offsetHeight : 0,
+    });
+  }
   function syncNotes() {
     if (!notesBody) return;
     notesBody.innerHTML = notesHtml() || '<p class="notes-empty">（本页没有讲稿）</p>';
+    postNotesState();
   }
   function isNotesOpen() {
     return !!notesOverlay && notesOverlay.classList.contains('open');
@@ -193,6 +209,7 @@ function runtimeScript(total: number, allowNotes: boolean): string {
     if (!allowNotes || !notesOverlay) return;
     if (isNotesOpen()) notesOverlay.classList.remove('open');
     else { syncNotes(); notesOverlay.classList.add('open'); }
+    postNotesState();
   }
 
   /**
