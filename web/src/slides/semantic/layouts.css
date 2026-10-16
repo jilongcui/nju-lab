@@ -66,10 +66,18 @@
   gap: 10px;
   margin-bottom: 30px;
 }
-.ly .kicker {
+/* 页眉小标（kicker）：**固定在内容区左上角**，与主标题分开。
+ * 为什么不能跟标题一起排版：内容整体垂直居中，标题每页落点不同，kicker 跟着就"跳"。
+ * 类名里保留 kicker —— base.css 的字号/字重/颜色（.kicker）与 has-bg 下的白字规则都还匹配。 */
+.slide-kicker {
+  position: absolute;
+  top: 30px;
+  left: 96px;
+  right: 96px;
+  z-index: 2;
+  margin: 0;
   font-size: calc(17px * var(--fs-boost, 1));
   letter-spacing: 0.18em;
-  margin: 0;
 }
 .ly h2.ly-title {
   font-size: calc(54px * var(--ly-scale) * var(--fs-boost, 1));

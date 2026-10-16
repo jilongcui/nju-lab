@@ -80,9 +80,14 @@ function bIdx(page: Page, kind: Block['kind']): number {
   return page.blocks.findIndex((block) => block.kind === kind);
 }
 
+/**
+ * 页头：标题 + 导语。
+ *
+ * ⚠️ kicker **不在这里** —— 它已抽成页面级的页眉小标（`.slide-kicker`，见 renderPage）：
+ * 跟着主标题走时，标题随内容垂直居中，kicker 每页的落点都不一样，翻页会"跳"。
+ */
 function head(page: Page): string {
   const parts: string[] = [];
-  if (page.kicker) parts.push(`<p class="kicker"${ed('kicker')}>${escapeHtml(page.kicker)}</p>`);
   if (page.title) parts.push(`<h2 class="ly-title"${ed('title')}>${inline(page.title)}</h2>`);
   if (page.subtitle) parts.push(`<p class="ly-lede"${ed('subtitle')}>${inline(page.subtitle)}</p>`);
   if (page.lede) parts.push(`<p class="ly-lede"${ed('lede')}>${inline(page.lede)}</p>`);
@@ -318,7 +323,6 @@ function renderSection(page: Page): string {
   const lede = page.lede || note?.text || '';
   return `<div class="ly ly-section">
   ${page.number ? `<div class="ly-section-num">${escapeHtml(page.number)}</div>` : ''}
-  ${page.kicker ? `<p class="kicker"${ed('kicker')}>${escapeHtml(page.kicker)}</p>` : ''}
   <h1${ed('title')}>${inline(page.title ?? '')}</h1>
   ${lede ? `<p class="ly-lede"${ed(page.lede ? 'lede' : `blocks.${bIdx(page, 'note')}.text`)}>${inline(lede)}</p>` : ''}
   ${
@@ -773,13 +777,14 @@ function renderBody(page: Page, ctx: RenderContext): string {
 /** 单页 → `<section class="slide">` */
 export function renderPage(page: Page, ctx: RenderContext): string {
   const background = page.background ? ctx.resolveImage?.(page.background.fileId) : undefined;
+  // 页脚左侧默认**只写章节名**（课程名每页重复出现是噪音，课程信息留在封面/导航里就够了）。
+  // 模板调参里的 footerText 仍然优先，教师想写什么都行。
+  const footerText = ctx.footerText || ctx.meta.chapter || ctx.meta.course;
   const footer =
     page.intent === 'cover'
       ? ''
       : `<div class="deck-footer">
-    <span>${escapeHtml(
-      ctx.footerText || `${ctx.meta.course}${ctx.meta.chapter ? ` · ${ctx.meta.chapter}` : ''}`,
-    )}</span>
+    <span>${escapeHtml(footerText)}</span>
     ${ctx.slideNumber ? `<span class="slide-number" data-current="${ctx.index + 1}" data-total="${ctx.total}"></span>` : ''}
   </div>`;
   const notes = page.notes ? `<div class="notes">${escapeHtml(page.notes)}</div>` : '';
@@ -795,8 +800,15 @@ export function renderPage(page: Page, ctx: RenderContext): string {
   // data-intent：给主题装饰层用的钩子（"封面/分节页带钟楼辅助背景"这类主题专有构件
   // 需要在不改 DOM 结构的前提下认出页面类型）。它由**渲染层**统一输出，与主题无关 ——
   // 因此"换主题后 DOM 完全不变"仍然成立。
+  // 页眉小标（kicker）：**独立于主标题**，固定钉在内容区左上角（.slide-kicker 用绝对定位）。
+  // 封面的 kicker 属于封面构图（ly-cover-kicker），仍随大标题居中，不走这里。
+  const kicker =
+    page.kicker && page.intent !== 'cover'
+      ? `<p class="kicker slide-kicker"${ed('kicker')}>${escapeHtml(page.kicker)}</p>`
+      : '';
   return `<section class="slide${background ? ' has-bg' : ''}" data-intent="${escapeHtml(page.intent)}" data-title="${escapeHtml(title)}"${bgStyle}>
   ${scrim}
+  ${kicker}
   ${renderBody(page, ctx)}
   ${footer}
   ${notes}

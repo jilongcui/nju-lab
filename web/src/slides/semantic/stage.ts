@@ -26,7 +26,7 @@ export interface StageOptions {
   themeOverrides?: Record<string, string>;
   slideNumber?: boolean;
   progress?: boolean;
-  /** 页脚左侧文案；缺省「课程 · 章节」 */
+  /** 页脚左侧文案；缺省只写章节名（课程名不重复进页脚） */
   footerText?: string | null;
   /** 页脚 logo（data URL） */
   logoDataUrl?: string | null;

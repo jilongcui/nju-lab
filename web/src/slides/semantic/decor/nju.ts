@@ -49,15 +49,17 @@ export function njuDecorCss(heroUri: string): string {
   pointer-events: none;
 }
 
-/* ---------- 眉尾：底部色带（上沿一条金线，带内留给页脚文字） ---------- */
+/* ---------- 眉尾：版心下沿一条细线 ----------
+ * 只留线、不做色带：渐变带投影出来发脏（用户反馈"不干净"），金线也一并去掉。
+ * 位置 = 内容安全区下沿（画布 1080 − 72），页脚文字落在它下面，二者不打架。 */
 .deck .slide::after {
   content: '';
   position: absolute;
-  inset: 0;
-  background-image: var(--nju-foot-band);
-  background-repeat: no-repeat;
-  background-position: left bottom;
-  background-size: 100% var(--nju-foot-h, 76px);
+  left: 0;
+  right: 0;
+  bottom: var(--nju-foot-line-offset, 76px);
+  height: 2px;
+  background: var(--nju-foot-line);
   z-index: 4;
   pointer-events: none;
 }
@@ -115,15 +117,15 @@ export function njuDecorCss(heroUri: string): string {
   letter-spacing: 0.08em;
 }
 
-/* ---------- 页头小标（kicker）：左侧紫金短条 ---------- */
-.deck .ly .kicker {
+/* ---------- 页眉小标（kicker，已固定在左上角）：左侧紫金短条 ---------- */
+.deck .slide-kicker {
   display: flex;
   align-items: center;
   gap: 12px;
   letter-spacing: 0.2em;
   color: var(--nju-kicker);
 }
-.deck .ly .kicker::before {
+.deck .slide-kicker::before {
   content: '';
   flex: none;
   width: 40px;
