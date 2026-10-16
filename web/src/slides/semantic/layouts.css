@@ -1144,19 +1144,19 @@
 }
 
 /* ---------- 预览态「双击就地编辑」 ---------- */
-/* 只有编辑视图给 .deck 加 .is-editable，学生端/放映/导出完全无感 */
+/*
+ * 纪律：**绝不改变幻灯片原本的样式**。就地编辑只允许"零视觉侵入"的提示，
+ * 因为教师看到的就是最终效果，任何边框/底色/圆角都会让预览与放映、导出不一致。
+ *
+ *   · 常态：只有光标变文本光标（不改颜色、不加边框、不动圆角、不动背景）；
+ *   · 编辑中：只画 outline —— outline **不占布局空间、不覆盖背景**，改完即消失。
+ *
+ * 尤其**不能**用 `outline: dashed transparent` 之类的"隐形占位"：透明描边在打印/导出时
+ * 可能被渲染成实线，直接污染 PDF。
+ */
 .deck.is-editable [data-edit] {
   cursor: text;
-  border-radius: 3px;
-  transition: outline-color 0.15s ease;
-  outline: 1px dashed transparent;
-  outline-offset: 3px;
-}
-.deck.is-editable [data-edit]:hover {
-  outline-color: var(--accent);
 }
 .deck.is-editable [data-edit].is-editing {
   outline: 2px solid var(--accent);
-  outline-offset: 3px;
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }

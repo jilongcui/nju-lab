@@ -460,7 +460,16 @@ check(
     html.includes('if (editingEl) return;'),
 );
 check(
-  '编辑期间的主键盘监听会主动让路（避免打字被当成翻页/总览）',
+  '就地编辑零视觉侵入：只允许 cursor / outline（禁 border-radius、background、transparent 描边）',
+  (() => {
+    const start = layoutsCss.indexOf('.deck.is-editable');
+    if (start < 0) return false;
+    const block = layoutsCss.slice(start);
+    return !/border-radius/.test(block) && !/background/.test(block) && !/transparent/.test(block);
+  })(),
+);
+check(
+  '就地编辑期间的主键盘监听会主动让路（避免打字被当成翻页/总览）',
   (html.match(/if \(editingEl\) return;/g) || []).length >= 2,
 );
 
