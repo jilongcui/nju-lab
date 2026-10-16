@@ -159,6 +159,23 @@
   仅为产物与源码一致 —— 本修复只动后端）。上线后回归：`verify-chapter-experiments.mjs` 25/25、
   `verify-chapter-slides.mjs` 21/21、`verify-course-pages.mjs` 24/24。
 
+**2026-10-13（幻灯片：修「导出 PDF」）**
+
+教师反馈"PDF 下载不成功"。实测结论：**导出链路本身是通的**（新窗口正常打开、`window.print` 被触发、
+不勾选时产出 18 页 3.2MB 的 PDF），失败有两个真实原因：
+
+1. **入口找不到**：上一轮把导出按钮随编辑区一起搬进了右栏「源码」tab → 教师看不到。
+   已移回**工具栏**（放映按钮旁），配「附讲稿」勾选。
+2. **「附讲稿」静默失效**（勾了还是 18 页）：`exportPdf` 原用 `replace('class="deck', …)` 加
+   `.with-notes-pages`，但文档前面的 `<style>` 里（vendored base.css 的注释与示例）**也含
+   `class="deck` 字样** —— replace 改的是注释里那个，body 里的 `.deck` 没动。
+   **改为锚定 `id="deck"` 的正则替换**。
+   ⚠️ 诊断时被 `printable.includes('with-notes-pages')` 误导过：那串在 <style> 里本来就有，
+   检查必须看 **DOM 里的 class**，不能拿整份 HTML 做 `includes`。
+
+实测（Playwright 全链路 + `emulateMedia('print')`）：不勾 → 18 页；勾上 → **36 页**
+（正文 18 + 讲稿备注页 18，print 媒体下 18 个讲稿页均可见），3.3MB。断言 100 → 102。
+
 **2026-10-13（幻灯片：预览里双击就地编辑 + 源码编辑收进右栏）**
 
 - **布局**：中间由「缩略列表(5) + 编辑区(8) + 预览(11)」改为「缩略列表(5) + 预览(19)」（预览 700 → 800px）；

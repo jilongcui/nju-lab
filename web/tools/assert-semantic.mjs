@@ -478,7 +478,7 @@ check(
 // ---------------- 6.3 讲稿页（导出备注页，2026-10-13）----------------
 check(
   '导出「附讲稿」锚定 id="deck" 替换（用 class="deck 会改到 <style> 里的同名字样而静默失效）',
-  /\/<div class="deck\[^"\]\*" id="deck">\//.test(chapterSlidesSrc) &&
+  chapterSlidesSrc.includes('/<div class="deck[^"]*" id="deck">/') &&
     chapterSlidesSrc.includes('with-notes-pages'),
 );
 check(
