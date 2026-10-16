@@ -11,11 +11,17 @@
  *
  * 字体：**不引用任何 CDN**（沙箱 iframe + 内网/离线场景都不适合），
  * 使用系统中英字体栈，按平台历史模板的字体取向分配 sans/serif/mono。
+ *
+ * 2026-10 起主题多了一层可选的**装饰层**（`decorCss`，见 `decor/nju.ts`）：
+ * token 只能表达颜色/字号/圆角这类标量，"南大风"要的眉首眉尾色带、封面钟楼辅助背景
+ * 是图形，token 表达不了。装饰层仍按主题编译，换主题即消失、DOM 不变。
  */
 import academicPaper from '../vendor/html-ppt/themes/academic-paper.css?raw';
 import swissGrid from '../vendor/html-ppt/themes/swiss-grid.css?raw';
 import editorialSerif from '../vendor/html-ppt/themes/editorial-serif.css?raw';
 import bauhaus from '../vendor/html-ppt/themes/bauhaus.css?raw';
+import { NJU_HERO_IS_PHOTO, NJU_HERO_URI } from './assets/hero';
+import { njuDecorCss } from './decor/nju';
 
 export interface DeckTheme {
   id: string;
@@ -25,6 +31,15 @@ export interface DeckTheme {
   mood: 'clean' | 'academic' | 'editorial' | 'bold' | 'dark';
   /** vendored 主题 CSS（自带 token 覆盖）；不写则只用下面的 tokens */
   vendorCss?: string;
+  /**
+   * **装饰层**：token 之外的结构化构件（眉首/眉尾色带、封面与分节页的辅助背景图形）。
+   *
+   * 与 token 的分工：token 只表达"颜色/字号/圆角"这类**标量**，表达不了
+   * "顶部 14px 的紫金带""封面右下角的钟楼水印"这类**图形**；而这类图形恰是"南大风"
+   * 这类主题真正的观感来源。它仍只存在于该主题编译出的 CSS 里 —— 换主题即消失，
+   * DOM 不变（断言「换主题后 DOM 完全不变」照样成立）。
+   */
+  decorCss?: string;
   tokens: Record<string, string>;
 }
 
@@ -123,6 +138,76 @@ export const DECK_THEMES: DeckTheme[] = [
       '--radius-lg': '20px',
       '--shadow': '0 10px 28px rgba(52,26,90,.08), 0 2px 6px rgba(52,26,90,.04)',
       '--shadow-lg': '0 22px 54px rgba(52,26,90,.13)',
+    },
+  },
+  {
+    id: 'builtin-nju',
+    name: '南大风',
+    description: '南大紫金配色 + 眉首眉尾色带 + 封面/分节页钟楼辅助背景，正式且不素净',
+    mood: 'academic',
+    // 装饰层：色带、页脚徽记、钟楼水印（见 decor/nju.ts —— 换主题即消失，DOM 不变）
+    decorCss: njuDecorCss(NJU_HERO_URI),
+    tokens: {
+      // ---- 画布与文字：整页不是纯白，是南大紫的极淡层次 + 一点暖调（渐变本身在装饰层）----
+      '--bg': '#f7f4fb',
+      '--bg-soft': '#efe9f7',
+      '--surface': '#ffffff',
+      '--surface-2': '#f3eefa',
+      '--border': 'rgba(74,31,124,.14)',
+      '--border-strong': 'rgba(74,31,124,.30)',
+      '--text-1': '#231a33',
+      '--text-2': '#524668',
+      '--text-3': '#8b80a3',
+      // ---- 南大紫为主、金为辅 ----
+      '--accent': '#4a1f7c',
+      '--accent-ink': '#ffffff',
+      '--accent-2': '#8b5cf6',
+      '--accent-3': '#c9a227',
+      '--accent-soft': 'color-mix(in srgb, #4a1f7c 12%, transparent)',
+      '--good': '#15803d',
+      '--warn': '#b45309',
+      '--bad': '#b91c1c',
+      '--grad': 'linear-gradient(120deg,#4a1f7c,#7c4bb5 55%,#c9a227)',
+      '--grad-soft': 'linear-gradient(120deg,#f1ebfa,#faf3e6)',
+      // ---- 庄重一点：圆角收敛、阴影更柔 ----
+      '--radius': '10px',
+      '--radius-sm': '7px',
+      '--radius-lg': '16px',
+      '--shadow': '0 10px 30px rgba(74,31,124,.09), 0 2px 6px rgba(74,31,124,.05)',
+      '--shadow-lg': '0 24px 56px rgba(74,31,124,.16)',
+      // ---- 装饰层专属令牌（--nju-*，不被课程模板调参覆盖）----
+      '--nju-paper-1': '#fbf9fe',
+      '--nju-paper-2': '#f4effa',
+      '--nju-paper-3': '#f8f3ea',
+      '--nju-halo-a': 'rgba(124,75,181,.17)',
+      '--nju-halo-b': 'rgba(201,162,39,.15)',
+      // 眉首：左深紫 → 右金；眉尾：淡紫渐隐 + 上沿一条金线
+      '--nju-head-band': 'linear-gradient(90deg,#34155c 0%,#4a1f7c 30%,#6a3d9a 60%,#b98a2e 100%)',
+      '--nju-foot-band':
+        'linear-gradient(0deg, rgba(74,31,124,.15) 0%, rgba(74,31,124,.09) 66%, rgba(74,31,124,0) 94%, rgba(201,162,39,.85) 94%, rgba(201,162,39,.85) 100%)',
+      '--nju-head-h': '14px',
+      '--nju-foot-h': '76px',
+      '--nju-foot-ink': '#5a4a75',
+      '--nju-mark': 'linear-gradient(135deg,#4a1f7c 0%,#7c4bb5 52%,#c9a227 100%)',
+      '--nju-kicker': '#7c4bb5',
+      '--nju-ink-strong': '#2a1a42',
+      '--nju-ink-accent': '#4a1f7c',
+      '--nju-body': '#4e4463',
+      '--nju-pill-bg': 'rgba(255,255,255,.74)',
+      '--nju-pill-border': 'rgba(74,31,124,.18)',
+      '--nju-card-border': 'rgba(74,31,124,.13)',
+      '--nju-thead-bg': 'rgba(74,31,124,.06)',
+      '--nju-num-grad': 'linear-gradient(135deg,#4a1f7c 0%,#8b5cf6 48%,#c9a227 100%)',
+      // 内容页右上角的同心灵感弧（抽象化的圆弧，不用校徽本体）
+      '--nju-corner':
+        'radial-gradient(circle at 100% 0, rgba(74,31,124,0) 0 55%, rgba(74,31,124,.09) 55% 58.5%, rgba(74,31,124,0) 58.5% 71%, rgba(201,162,39,.18) 71% 74%, rgba(201,162,39,0) 74%)',
+      // 辅助背景：剪影自带淡色，无需遮罩；换成照片时由这一层把照片压成水印
+      ...(NJU_HERO_IS_PHOTO
+        ? {
+            '--nju-hero-veil':
+              'radial-gradient(closest-side, rgba(247,244,251,.72), rgba(247,244,251,.6) 58%, rgba(247,244,251,0) 100%)',
+          }
+        : {}),
     },
   },
   {
@@ -237,8 +322,12 @@ export function findTheme(id: string | undefined | null): DeckTheme {
 }
 
 /**
- * 编译主题 CSS：**字体栈 → vendor token → 本主题 token**（后者覆盖前者）。
+ * 编译主题 CSS：**字体栈 → vendor token → 本主题 token → 装饰层 → 课程调参覆盖**。
  * 字体放在最前面，确保 vendor 主题里的 Google Fonts 指向被系统字体栈顶掉。
+ *
+ * 装饰层（`decorCss`）排在最后：它只由选择器规则组成（色带、水印、页脚徽记），
+ * 与其后的 token 覆盖互不干扰 —— 课程模板调参改的是 `--accent` 这类基础令牌，
+ * 装饰读的就是这些令牌，因此"教师改主色、装饰跟着变"。
  */
 export function themeCss(theme: DeckTheme, overrides: Record<string, string> = {}): string {
   const fromTokens = (tokens: Record<string, string>) =>
@@ -251,6 +340,7 @@ export function themeCss(theme: DeckTheme, overrides: Record<string, string> = {
     Object.keys(theme.tokens).length ? `:root {\n${fromTokens(theme.tokens)}\n}` : '',
     // 课程自定义模板的调参覆盖（旧 TemplateDesign → token，见 legacy.ts）
     Object.keys(overrides).length ? `:root {\n${fromTokens(overrides)}\n}` : '',
+    theme.decorCss?.trim() ?? '',
   ];
   return parts.filter(Boolean).join('\n');
 }

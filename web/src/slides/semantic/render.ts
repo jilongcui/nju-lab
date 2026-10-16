@@ -792,7 +792,10 @@ export function renderPage(page: Page, ctx: RenderContext): string {
         page.background?.blur ? 'backdrop-filter:blur(6px);' : ''
       }background:rgba(6,8,14,${(page.background?.dim ?? 0.52).toFixed(2)})"></div>`
     : '';
-  return `<section class="slide${background ? ' has-bg' : ''}" data-title="${escapeHtml(title)}"${bgStyle}>
+  // data-intent：给主题装饰层用的钩子（"封面/分节页带钟楼辅助背景"这类主题专有构件
+  // 需要在不改 DOM 结构的前提下认出页面类型）。它由**渲染层**统一输出，与主题无关 ——
+  // 因此"换主题后 DOM 完全不变"仍然成立。
+  return `<section class="slide${background ? ' has-bg' : ''}" data-intent="${escapeHtml(page.intent)}" data-title="${escapeHtml(title)}"${bgStyle}>
   ${scrim}
   ${renderBody(page, ctx)}
   ${footer}

@@ -82,6 +82,30 @@ export const BUILTIN_TEMPLATES: BuiltinTemplateDef[] = [
     config: { transition: 'fade', slideNumber: 'c/t', progress: true },
   },
   {
+    id: 'builtin-nju',
+    name: '南大风',
+    description: '南大紫金配色 + 眉首眉尾色带 + 封面/分节页钟楼辅助背景，正式且不素净',
+    // 旧渲染器（reveal 回退路径）的基座主题；语义渲染器只看前端 DECK_THEMES 里的同 id 主题
+    baseTheme: 'beige',
+    design: {
+      primary: '#4a1f7c',
+      // ⚠️ 与前端主题的 --bg 保持一致：语义渲染器会把 design.background 覆盖到 --bg 上，
+      //    这里给白色的话，南大风的浅紫底会被调参悄悄抹掉
+      background: '#f7f4fb',
+      text: '#231a33',
+      accent: '#8b5cf6',
+      fontFamily:
+        "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'HarmonyOS Sans SC', 'Source Han Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif",
+      headingFontFamily:
+        "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'HarmonyOS Sans SC', 'Source Han Sans SC', 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif",
+      radius: 10,
+      density: 'cozy',
+      fontScale: 'standard',
+      cardStyle: 'soft',
+    },
+    config: { transition: 'fade', slideNumber: 'c/t', progress: true },
+  },
+  {
     id: 'builtin-academic-white',
     name: '学术白',
     description: '高可读性衬线体，适合理论讲解与公式较多的章节',
