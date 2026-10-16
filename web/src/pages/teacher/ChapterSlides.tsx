@@ -286,6 +286,10 @@ export default function ChapterSlides() {
 
   const deck = data?.deck ?? null;
   const canEdit = data?.canEdit ?? false;
+  // 这两个派生值放在这里：右侧「源码编辑」tab 要用它们，而面板注入必须早于下面的 early return
+  const previewSlides: DeckSlide[] = deck?.slides ?? [];
+  /** v2 语义 deck：Markdown 只读、编辑面收窄为「换主题 / 换版式 / 重生成当前页」 */
+  const semanticDeck = !!deck?.semantic;
   const siblingIndex = siblings.findIndex((item) => item.id === chapterId);
   const prevChapter = siblingIndex > 0 ? siblings[siblingIndex - 1] : null;
   const nextChapter =
@@ -639,6 +643,66 @@ export default function ChapterSlides() {
   };
 
   // 右栏辅助区：Tabs —— 章节（兄弟章节切换，带未保存检查）/ 实验（**当前章**的实验）/ 生成 / 图片
+
+  // 路由离开守卫：编辑区有未保存内容时拦截（菜单、面包屑、返回章节编辑、浏览器后退）。
+  // 章节 tab/工具栏的切换不走这里（allowLeaveRef 已单独确认过）。
+  const blocker = useBlocker(() => editingRef.current && !allowLeaveRef.current);
+  const guardOpenRef = useRef(false);
+  useEffect(() => {
+    if (blocker.state !== 'blocked') {
+      guardOpenRef.current = false;
+      return;
+    }
+    if (guardOpenRef.current) return;
+    guardOpenRef.current = true;
+    modal.confirm({
+      title: '当前幻灯片有未保存的修改',
+      content: '离开后这些修改将丢失，确定离开吗？',
+      okText: '放弃修改并离开',
+      okButtonProps: { danger: true },
+      cancelText: '继续编辑',
+      onOk: () => {
+        guardOpenRef.current = false;
+        blocker.proceed();
+      },
+      onCancel: () => {
+        guardOpenRef.current = false;
+        blocker.reset();
+      },
+    });
+  }, [blocker, modal]);
+
+  /**
+   * 导出 PDF：把当前这份**自包含文档**放进新窗口并唤起打印，由浏览器「另存为 PDF」。
+   * 零服务端依赖（不需要 Chromium），分页由文档内的 @media print 负责（每页一画布）。
+   */
+  const exportPdf = () => {
+    const doc = deckHtmlRef.current;
+    if (!doc) {
+      message.warning('幻灯片还没准备好，请稍候再试');
+      return;
+    }
+    // 讲稿页（.notes-page）默认 display:none；勾选"附讲稿"后加 .with-notes-pages 让打印时显示
+    const withNotes = exportWithNotes
+      ? doc.replace('<div class="deck" id="deck">', '<div class="deck with-notes-pages" id="deck">')
+      : doc;
+    const printable = withNotes.replace(
+      '</body>',
+      '<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},500)})</' + 'script></body>',
+    );
+    const url = URL.createObjectURL(new Blob([printable], { type: 'text/html' }));
+    const win = window.open(url, '_blank');
+    if (!win) {
+      message.warning('浏览器拦截了新窗口：请允许弹出窗口后重试');
+      return;
+    }
+    message.info(
+      exportWithNotes
+        ? '已打开打印视图（含讲稿备注页）：把「目标」选成「另存为 PDF」，纸张横向、边距选「无」'
+        : '已打开打印视图：打印对话框里把「目标」选成「另存为 PDF」，纸张横向、边距选「无」',
+    );
+  };
+
   useAuxiliaryPanel(
     '章节幻灯片',
     <Tabs
@@ -780,6 +844,170 @@ export default function ChapterSlides() {
           ),
         },
         {
+          key: 'source',
+          label: '源码',
+          children: (
+            <>
+              <Paragraph type="secondary" style={{ fontSize: 12 }}>
+                JSON / Markdown 源码编辑 —— <b>高级改动</b>用。常规调整请用「生成」「讲稿」与模板调参。
+              </Paragraph>
+                {canEdit && (
+                  <Space size={8} style={{ marginBottom: 8 }} wrap>
+                    <Dropdown
+                      menu={{
+                        items: IMAGE_LAYOUT_OPTIONS.map((opt) => ({
+                          key: opt.value,
+                          label: opt.label,
+                        })),
+                        onClick: ({ key }) =>
+                          setPicker({ kind: 'insert', layout: key as SlideLayout }),
+                      }}
+                    >
+                      <Button size="small" icon={<FileImageOutlined />}>
+                        插入图片页
+                      </Button>
+                    </Dropdown>
+                    <Tooltip title="替换当前页的图片（当前编辑区文本生效；多图页请直接在文本里改）">
+                      <Button
+                        size="small"
+                        disabled={!currentPageHasSingleImage}
+                        onClick={() => setPicker({ kind: 'replace' })}
+                      >
+                        换图
+                      </Button>
+                    </Tooltip>
+                    {mode === 'markdown' && (
+                      <Tooltip title="把图片引用插到 MD 文本光标处（给并排页补图、凑多图网格都用它）">
+                        <Button
+                          size="small"
+                          icon={<PictureOutlined />}
+                          onClick={() => setPicker({ kind: 'insert-cursor' })}
+                        >
+                          插图到光标
+                        </Button>
+                      </Tooltip>
+                    )}
+                  </Space>
+                )}
+                <Tabs
+                  size="small"
+                  activeKey={mode}
+                  onChange={(key) => setMode(key as 'json' | 'markdown')}
+                  items={[
+                    {
+                      key: 'json',
+                      label: 'JSON',
+                      children: (
+                        <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            {semanticDeck
+                              ? '结构化编辑（v2）：intent / blocks / notes —— 换版式改 intent，内容块不用动'
+                              : '结构化编辑：layout / bullets / code / quote / notes / attrs'}
+                          </Text>
+                          {semanticDeck && (
+                            <Space size={8}>
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                本页版式
+                              </Text>
+                              <Select
+                                size="small"
+                                style={{ width: 156 }}
+                                value={
+                                  'intent' in (previewSlides[currentIndex] ?? {})
+                                    ? (previewSlides[currentIndex] as SemanticPage).intent
+                                    : undefined
+                                }
+                                options={SEMANTIC_INTENT_OPTIONS}
+                                onChange={(value) => applyIntent(value as SemanticIntent)}
+                              />
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                改完点「保存内容」
+                              </Text>
+                            </Space>
+                          )}
+                          <Input.TextArea
+                            value={jsonText}
+                            onChange={(e) => {
+                              setJsonText(e.target.value);
+                              setEditing(true);
+                            }}
+                            autoSize={{ minRows: 16, maxRows: 24 }}
+                            style={{ fontFamily: 'monospace', fontSize: 12 }}
+                          />
+                          {jsonError && <Alert type="error" showIcon message={jsonError} />}
+                        </Space>
+                      ),
+                    },
+                    {
+                      key: 'markdown',
+                      label: 'Markdown',
+                      children: (
+                        <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            {semanticDeck
+                              ? '只读预览：新版 deck（语义模型）由「意图 + 内容块」构成，改内容请用「重生成当前页」'
+                              : '日常写作：'}
+                            {!semanticDeck && (
+                              <>
+                                <Text code>&lt;!-- .slide: layout=bullets --&gt;</Text> 设页属性、
+                                <Text code>---</Text> 分页、<Text code>&lt;!-- .notes: … --&gt;</Text> 讲者备注
+                              </>
+                            )}
+                          </Text>
+                          <Input.TextArea
+                            ref={mdAreaRef}
+                            value={mdText}
+                            readOnly={semanticDeck}
+                            onChange={(e) => {
+                              setMdText(e.target.value);
+                              setEditing(true);
+                            }}
+                            autoSize={{ minRows: 16, maxRows: 24 }}
+                            style={{ fontFamily: 'monospace', fontSize: 12, background: semanticDeck ? undefined : undefined }}
+                          />
+                        </Space>
+                      ),
+                    },
+                  ]}
+                />
+                {canEdit && (
+                  <Space>
+                    <Button
+                      type="primary"
+                      icon={<SaveOutlined />}
+                      loading={busy}
+                      disabled={!editing || !!jsonError}
+                      onClick={handleSaveContent}
+                    >
+                      保存内容
+                    </Button>
+                    <Button
+                      disabled={!editing}
+                      onClick={() => {
+                        setJsonText(JSON.stringify(deck?.slides ?? [], null, 2));
+                        setMdText(deck?.markdown ?? '');
+                        setEditing(false);
+                      }}
+                    >
+                      放弃改动
+                    </Button>
+                    <Checkbox
+                      checked={exportWithNotes}
+                      onChange={(e) => setExportWithNotes(e.target.checked)}
+                    >
+                      附讲稿
+                    </Checkbox>
+                    <Tooltip title="导出为 PDF；勾选「附讲稿」会把每页讲稿作为备注页排在该页后面（做讲义/存档用）">
+                      <Button icon={<FilePdfOutlined />} onClick={exportPdf}>
+                        导出 PDF
+                      </Button>
+                    </Tooltip>
+                  </Space>
+                )}
+            </>
+          ),
+        },
+        {
           key: 'generate',
           label: '生成',
           children: (
@@ -887,71 +1115,9 @@ export default function ChapterSlides() {
     />,
   );
 
-  // 路由离开守卫：编辑区有未保存内容时拦截（菜单、面包屑、返回章节编辑、浏览器后退）。
-  // 章节 tab/工具栏的切换不走这里（allowLeaveRef 已单独确认过）。
-  const blocker = useBlocker(() => editingRef.current && !allowLeaveRef.current);
-  const guardOpenRef = useRef(false);
-  useEffect(() => {
-    if (blocker.state !== 'blocked') {
-      guardOpenRef.current = false;
-      return;
-    }
-    if (guardOpenRef.current) return;
-    guardOpenRef.current = true;
-    modal.confirm({
-      title: '当前幻灯片有未保存的修改',
-      content: '离开后这些修改将丢失，确定离开吗？',
-      okText: '放弃修改并离开',
-      okButtonProps: { danger: true },
-      cancelText: '继续编辑',
-      onOk: () => {
-        guardOpenRef.current = false;
-        blocker.proceed();
-      },
-      onCancel: () => {
-        guardOpenRef.current = false;
-        blocker.reset();
-      },
-    });
-  }, [blocker, modal]);
-
   if (loading) return <Skeleton active paragraph={{ rows: 10 }} />;
   if (!data || !chapter) return <Empty description="章节不存在" />;
 
-  const previewSlides: DeckSlide[] = deck?.slides ?? [];
-  /** v2 语义 deck：Markdown 只读、编辑面收窄为「换主题 / 换版式 / 重生成当前页」 */
-  const semanticDeck = !!deck?.semantic;
-
-  /**
-   * 导出 PDF：把当前这份**自包含文档**放进新窗口并唤起打印，由浏览器「另存为 PDF」。
-   * 零服务端依赖（不需要 Chromium），分页由文档内的 @media print 负责（每页一画布）。
-   */
-  const exportPdf = () => {
-    const doc = deckHtmlRef.current;
-    if (!doc) {
-      message.warning('幻灯片还没准备好，请稍候再试');
-      return;
-    }
-    // 讲稿页（.notes-page）默认 display:none；勾选"附讲稿"后加 .with-notes-pages 让打印时显示
-    const withNotes = exportWithNotes
-      ? doc.replace('<div class="deck" id="deck">', '<div class="deck with-notes-pages" id="deck">')
-      : doc;
-    const printable = withNotes.replace(
-      '</body>',
-      '<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},500)})</' + 'script></body>',
-    );
-    const url = URL.createObjectURL(new Blob([printable], { type: 'text/html' }));
-    const win = window.open(url, '_blank');
-    if (!win) {
-      message.warning('浏览器拦截了新窗口：请允许弹出窗口后重试');
-      return;
-    }
-    message.info(
-      exportWithNotes
-        ? '已打开打印视图（含讲稿备注页）：把「目标」选成「另存为 PDF」，纸张横向、边距选「无」'
-        : '已打开打印视图：打印对话框里把「目标」选成「另存为 PDF」，纸张横向、边距选「无」',
-    );
-  };
 
   /** 「换版式」：只改当前页的 intent（内容块不动），保存后由渲染层换一套版式 */
   const applyIntent = (intent: SemanticIntent) => {
@@ -997,6 +1163,7 @@ export default function ChapterSlides() {
       height={520}
     />
   );
+
 
   if (presenting) {
     return (
@@ -1044,6 +1211,8 @@ export default function ChapterSlides() {
       </>
     );
   }
+
+
 
   return (
     <Space direction="vertical" size={12} style={{ width: '100%' }}>
@@ -1228,162 +1397,7 @@ export default function ChapterSlides() {
                 ))}
               </div>
             </Col>
-            <Col span={8}>
-              {canEdit && (
-                <Space size={8} style={{ marginBottom: 8 }} wrap>
-                  <Dropdown
-                    menu={{
-                      items: IMAGE_LAYOUT_OPTIONS.map((opt) => ({
-                        key: opt.value,
-                        label: opt.label,
-                      })),
-                      onClick: ({ key }) =>
-                        setPicker({ kind: 'insert', layout: key as SlideLayout }),
-                    }}
-                  >
-                    <Button size="small" icon={<FileImageOutlined />}>
-                      插入图片页
-                    </Button>
-                  </Dropdown>
-                  <Tooltip title="替换当前页的图片（当前编辑区文本生效；多图页请直接在文本里改）">
-                    <Button
-                      size="small"
-                      disabled={!currentPageHasSingleImage}
-                      onClick={() => setPicker({ kind: 'replace' })}
-                    >
-                      换图
-                    </Button>
-                  </Tooltip>
-                  {mode === 'markdown' && (
-                    <Tooltip title="把图片引用插到 MD 文本光标处（给并排页补图、凑多图网格都用它）">
-                      <Button
-                        size="small"
-                        icon={<PictureOutlined />}
-                        onClick={() => setPicker({ kind: 'insert-cursor' })}
-                      >
-                        插图到光标
-                      </Button>
-                    </Tooltip>
-                  )}
-                </Space>
-              )}
-              <Tabs
-                size="small"
-                activeKey={mode}
-                onChange={(key) => setMode(key as 'json' | 'markdown')}
-                items={[
-                  {
-                    key: 'json',
-                    label: 'JSON',
-                    children: (
-                      <Space direction="vertical" style={{ width: '100%' }} size={8}>
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          {semanticDeck
-                            ? '结构化编辑（v2）：intent / blocks / notes —— 换版式改 intent，内容块不用动'
-                            : '结构化编辑：layout / bullets / code / quote / notes / attrs'}
-                        </Text>
-                        {semanticDeck && (
-                          <Space size={8}>
-                            <Text type="secondary" style={{ fontSize: 12 }}>
-                              本页版式
-                            </Text>
-                            <Select
-                              size="small"
-                              style={{ width: 156 }}
-                              value={
-                                'intent' in (previewSlides[currentIndex] ?? {})
-                                  ? (previewSlides[currentIndex] as SemanticPage).intent
-                                  : undefined
-                              }
-                              options={SEMANTIC_INTENT_OPTIONS}
-                              onChange={(value) => applyIntent(value as SemanticIntent)}
-                            />
-                            <Text type="secondary" style={{ fontSize: 12 }}>
-                              改完点「保存内容」
-                            </Text>
-                          </Space>
-                        )}
-                        <Input.TextArea
-                          value={jsonText}
-                          onChange={(e) => {
-                            setJsonText(e.target.value);
-                            setEditing(true);
-                          }}
-                          autoSize={{ minRows: 16, maxRows: 24 }}
-                          style={{ fontFamily: 'monospace', fontSize: 12 }}
-                        />
-                        {jsonError && <Alert type="error" showIcon message={jsonError} />}
-                      </Space>
-                    ),
-                  },
-                  {
-                    key: 'markdown',
-                    label: 'Markdown',
-                    children: (
-                      <Space direction="vertical" style={{ width: '100%' }} size={8}>
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          {semanticDeck
-                            ? '只读预览：新版 deck（语义模型）由「意图 + 内容块」构成，改内容请用「重生成当前页」'
-                            : '日常写作：'}
-                          {!semanticDeck && (
-                            <>
-                              <Text code>&lt;!-- .slide: layout=bullets --&gt;</Text> 设页属性、
-                              <Text code>---</Text> 分页、<Text code>&lt;!-- .notes: … --&gt;</Text> 讲者备注
-                            </>
-                          )}
-                        </Text>
-                        <Input.TextArea
-                          ref={mdAreaRef}
-                          value={mdText}
-                          readOnly={semanticDeck}
-                          onChange={(e) => {
-                            setMdText(e.target.value);
-                            setEditing(true);
-                          }}
-                          autoSize={{ minRows: 16, maxRows: 24 }}
-                          style={{ fontFamily: 'monospace', fontSize: 12, background: semanticDeck ? undefined : undefined }}
-                        />
-                      </Space>
-                    ),
-                  },
-                ]}
-              />
-              {canEdit && (
-                <Space>
-                  <Button
-                    type="primary"
-                    icon={<SaveOutlined />}
-                    loading={busy}
-                    disabled={!editing || !!jsonError}
-                    onClick={handleSaveContent}
-                  >
-                    保存内容
-                  </Button>
-                  <Button
-                    disabled={!editing}
-                    onClick={() => {
-                      setJsonText(JSON.stringify(deck.slides, null, 2));
-                      setMdText(deck.markdown);
-                      setEditing(false);
-                    }}
-                  >
-                    放弃改动
-                  </Button>
-                  <Checkbox
-                    checked={exportWithNotes}
-                    onChange={(e) => setExportWithNotes(e.target.checked)}
-                  >
-                    附讲稿
-                  </Checkbox>
-                  <Tooltip title="导出为 PDF；勾选「附讲稿」会把每页讲稿作为备注页排在该页后面（做讲义/存档用）">
-                    <Button icon={<FilePdfOutlined />} onClick={exportPdf}>
-                      导出 PDF
-                    </Button>
-                  </Tooltip>
-                </Space>
-              )}
-            </Col>
-            <Col span={11}>{stage}</Col>
+            <Col span={19}>{stage}</Col>
           </Row>
         )}
       </Card>
