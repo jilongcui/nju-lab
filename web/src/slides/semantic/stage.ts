@@ -31,6 +31,11 @@ export interface StageOptions {
   /** 页脚 logo（data URL） */
   logoDataUrl?: string | null;
   resolveImage?: (fileId: string) => string | undefined;
+  /**
+   * 预览态「双击就地编辑」：只有教师端编辑视图打开它。
+   * 关闭时（学生端、放映、导出）连光标与 hover 提示都不会出现。
+   */
+  editable?: boolean;
 }
 
 /** 画布尺寸（base.css 的 `.deck` 默认值，这里显式写出来供断言与运行时共用） */
@@ -181,6 +186,75 @@ function runtimeScript(total: number): string {
     else { syncNotes(); notesOverlay.classList.add('open'); }
   }
 
+  /**
+   * 预览态「双击就地编辑」（仅当宿主声明 editable）。
+   *
+   * 只改**纯文本**：双击带 data-edit 的容器 → contenteditable，回车/失焦提交、Esc 取消。
+   * 编辑期间屏蔽翻页与快捷键（否则打字会被当成翻页或总览）。
+   * 注意：提交的是 textContent，所以该字段原有的内联强调（**粗体**）会退化为纯文本 —— 这是
+   * "就地改字"的取舍，要保留富文本请用右栏「源码」。
+   */
+  var editable = deck.classList.contains('is-editable');
+  var editingEl = null;
+  function stopEdit(commit) {
+    if (!editingEl) return;
+    var el = editingEl;
+    editingEl = null;
+    el.contentEditable = 'false';
+    el.classList.remove('is-editing');
+    var original = el.getAttribute('data-orig') || '';
+    var value = (el.textContent || '').trim();
+    if (commit) {
+      if (value !== original.trim()) post({ type: 'edit-text', path: el.getAttribute('data-edit') || '', value: value });
+      else el.innerHTML = el.getAttribute('data-orig-html') || el.innerHTML;
+    } else {
+      el.textContent = original;
+    }
+    el.removeAttribute('data-orig');
+    el.removeAttribute('data-orig-html');
+  }
+  function beginEdit(el) {
+    if (editingEl) stopEdit(true);
+    editingEl = el;
+    el.setAttribute('data-orig', (el.textContent || '').trim());
+    el.setAttribute('data-orig-html', el.innerHTML);
+    el.contentEditable = 'true';
+    el.classList.add('is-editing');
+    el.focus();
+    var range = document.createRange();
+    range.selectNodeContents(el);
+    var sel = window.getSelection();
+    if (sel) { sel.removeAllRanges(); sel.addRange(range); }
+  }
+  if (editable) {
+    deck.addEventListener('dblclick', function (event) {
+      var el = event.target && event.target.closest ? event.target.closest('[data-edit]') : null;
+      if (!el || el.isContentEditable) return;
+      event.preventDefault();
+      event.stopPropagation();
+      beginEdit(el);
+    });
+    document.addEventListener('focusout', function (event) {
+      if (editingEl && event.target === editingEl) stopEdit(true);
+    });
+    /* 回车提交、Esc 取消。用**捕获阶段**：下面的通用 keydown（翻页/总览/讲稿）注册得更晚，
+       捕获比冒泡先到，确保编辑期间这两个键不会被当成放映快捷键。 */
+    document.addEventListener('keydown', function (event) {
+      if (!editingEl) return;
+      if (event.key === 'Escape' || event.key === 'Esc') {
+        event.preventDefault();
+        event.stopPropagation();
+        stopEdit(false);
+        return;
+      }
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        stopEdit(true);
+      }
+    }, true);
+  }
+
   function paint() {
     for (var i = 0; i < slides.length; i += 1) {
       slides[i].classList.toggle('is-active', i === index);
@@ -221,6 +295,8 @@ function runtimeScript(total: number): string {
   });
 
   document.addEventListener('keydown', function (event) {
+    /* 就地编辑期间不抢任何键：打字、回车、Esc 都归编辑框 */
+    if (editingEl) return;
     if (event.key === 'Escape' || event.key === 'Esc') {
       event.preventDefault();
       /* 总览开着时 Esc 先关总览（放映态再按一次才退出放映） */
@@ -238,6 +314,8 @@ function runtimeScript(total: number): string {
   });
 
   document.addEventListener('click', function (event) {
+    /* 就地编辑期间不翻页（在文字上点击是定位光标） */
+    if (editingEl) return;
     /* 总览开着时只认缩略图点击 —— 否则点缩略图会被这条"点两侧翻页"再翻一页（2026-10-10 实测） */
     if (isOverviewOpen()) return;
     if (event.defaultPrevented) return;
@@ -345,7 +423,7 @@ export async function buildSemanticDeckHtml(options: StageOptions): Promise<stri
 <style>${layoutsCss}</style>
 </head>
 <body>
-<div class="deck" id="deck">
+<div class="deck${options.editable ? ' is-editable' : ''}" id="deck">
 ${body}
 ${logo}
 </div>

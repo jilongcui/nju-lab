@@ -58,6 +58,7 @@ import {
   syncChapterSlidesHash,
   regenerateChapterSlidePage,
   restoreSlideVersion,
+  updateChapterSlidePageField,
   updateChapterSlidePageNotes,
   updateSlideTemplate,
 } from '../../api';
@@ -357,6 +358,21 @@ export default function ChapterSlides() {
       setBusy(false);
     }
   };
+
+  /** 预览里双击改完文字 → 保存该字段（服务端白名单只放纯文本字段） */
+  const handleEditText = useCallback(
+    async (path: string, value: string) => {
+      try {
+        await updateChapterSlidePageField(chapterId, currentIndex, path, value, deck?.version);
+        message.success('已保存', 1);
+        await load(true);
+      } catch (error) {
+        if (!(await handleConflict(error))) throw error;
+      }
+    },
+    // load/handleConflict 是稳定引用（useCallback 定义在组件内），此处只依赖真正变化的值
+    [chapterId, currentIndex, deck?.version, load, handleConflict],
+  );
 
   /** 拉历史版本（切到「版本」tab 或回滚/删除后刷新） */
   const loadVersions = useCallback(async () => {
@@ -1160,6 +1176,9 @@ export default function ChapterSlides() {
       onIndexChange={setCurrentIndex}
       presenting={presenting}
       onExitPresenting={() => setPresenting(false)}
+      // 预览态允许双击就地编辑（放映态、学生端都不开）
+      editable={canEdit && !presenting}
+      onEditText={handleEditText}
       height={520}
     />
   );

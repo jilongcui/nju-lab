@@ -691,6 +691,95 @@ export class SlidesService {
   }
 
   /**
+   * 就地编辑允许的字段路径白名单。
+   *
+   * 只放**纯文本**字段：`title`/`lede`/`kicker`/`subtitle`/`number`，
+   * 以及块内的 `text`/`caption`/`cite`/`title`/`desc`/`label`/`detail`/`tag` 与 `items.<i>`。
+   * 结构化字段（表格行列、关系图节点、图表数值…）**故意不放行** —— 那些改动牵一发动全身，
+   * 走右栏「源码」更安全。
+   */
+  private static readonly EDITABLE_FIELD_PATH =
+    /^(title|lede|kicker|subtitle|number|blocks\.\d+\.(text|caption|cite|title|desc|label|detail|tag)|blocks\.\d+\.items\.\d+)$/;
+
+  /** 按路径更新某一页的单个文本字段（预览态双击就地编辑用） */
+  async updatePageField(
+    user: User,
+    chapterId: string,
+    index: number,
+    path: string,
+    value: string | undefined,
+    expectedVersion?: number,
+  ) {
+    const chapter = await this.loadChapter(chapterId);
+    const course = await this.coursesService.getOwnedCourse(user, chapter.courseId);
+    const deck = await this.deckRepo.findOne({ where: { chapterId } });
+    if (!deck?.slides?.length) {
+      throw new NotFoundException('该章节还没有幻灯片，请先生成');
+    }
+    if (deck.status === SlideDeckStatus.GENERATING) {
+      throw new ConflictException('该章节正在生成中，请稍候再改内容');
+    }
+    if (expectedVersion !== undefined && expectedVersion !== deck.version) {
+      throw new ConflictException(
+        `幻灯片已被他人修改（当前版本 ${deck.version}，你持有 ${expectedVersion}），请刷新后重试`,
+      );
+    }
+    if (!Number.isInteger(index) || index < 0 || index >= deck.slides.length) {
+      throw new BadRequestException(`页码超出范围（共 ${deck.slides.length} 页）`);
+    }
+    if (!SlidesService.EDITABLE_FIELD_PATH.test(path)) {
+      throw new BadRequestException(`该字段不支持就地编辑（${path}）`);
+    }
+
+    const trimmed = (value ?? '').trim().slice(0, 400);
+    const slides: DeckSlide[] = [...deck.slides];
+    const page = { ...(slides[index] as unknown as Record<string, unknown>) };
+    const segs = path.split('.');
+
+    if (segs[0] === 'blocks') {
+      const bi = Number(segs[1]);
+      const blocks = [...((page.blocks as Record<string, unknown>[]) ?? [])];
+      if (!Number.isInteger(bi) || bi < 0 || bi >= blocks.length) {
+        throw new BadRequestException('该页没有这个内容块（可能刚重新生成过，请刷新）');
+      }
+      const block = { ...blocks[bi] };
+      if (segs[2] === 'items') {
+        const ii = Number(segs[3]);
+        const items = Array.isArray(block.items) ? [...(block.items as unknown[])] : null;
+        if (!items || !Number.isInteger(ii) || ii < 0 || ii >= items.length) {
+          throw new BadRequestException('该页没有这条要点（可能刚重新生成过，请刷新）');
+        }
+        items[ii] = trimmed;
+        block.items = items;
+      } else {
+        block[segs[2]] = trimmed;
+      }
+      blocks[bi] = block;
+      page.blocks = blocks;
+    } else {
+      page[segs[0]] = trimmed;
+    }
+
+    await this.archiveVersion(deck, 'manual-save', user.id);
+    slides[index] = page as unknown as DeckSlide;
+    deck.slides = slides;
+    deck.markdown = isSemanticDeck(slides)
+      ? semanticToMarkdown(slides as SemanticPage[])
+      : toMarkdown(slides as SlideJson[]);
+    deck.updatedBy = user.id;
+    const saved = await this.deckRepo.save(deck);
+    await this.coursesService.recordAudit({
+      courseId: course.id,
+      action: 'deck_save',
+      targetType: 'deck',
+      targetId: saved.id,
+      summary: `就地编辑了「${chapter.title}」第 ${index + 1} 页的 ${path}`,
+      actorId: user.id,
+    });
+    return { deck: this.toDeckView(saved) };
+  }
+
+  /**
    * 只更新某一页的讲稿（notes）。
    *
    * 为什么不复用 `save`（整体替换 slides）：讲稿不属于版面内容，改它不该触发版式校验；

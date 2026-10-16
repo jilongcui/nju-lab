@@ -18,6 +18,7 @@ import {
   RegeneratePageDto,
   RestoreDeckVersionDto,
   SaveDeckDto,
+  UpdatePageFieldDto,
   UpdatePageNotesDto,
 } from './dto/slides.dto';
 import { SlidesService } from './slides.service';
@@ -71,6 +72,25 @@ export class ChapterSlidesController {
     @Body() dto: SaveDeckDto,
   ) {
     return this.slidesService.save(user, chapterId, dto);
+  }
+
+  /** 预览态就地编辑：更新某一页的单个文本字段（白名单校验；仍带存档与乐观锁） */
+  @Patch(':chapterId/slides/pages/:index/fields')
+  @Roles(UserRole.TEACHER)
+  updatePageField(
+    @CurrentUser() user: User,
+    @Param('chapterId', ParseUUIDPipe) chapterId: string,
+    @Param('index', ParseIntPipe) index: number,
+    @Body() dto: UpdatePageFieldDto,
+  ) {
+    return this.slidesService.updatePageField(
+      user,
+      chapterId,
+      index,
+      dto.path,
+      dto.value,
+      dto.version,
+    );
   }
 
   /** 只更新某一页的讲稿（不进版面，不触发版式校验；仍带存档与乐观锁） */

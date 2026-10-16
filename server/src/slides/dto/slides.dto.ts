@@ -186,3 +186,31 @@ export class UpdatePageNotesDto {
   @Type(() => Number)
   version?: number;
 }
+
+/**
+ * 预览态「双击就地编辑」：按路径更新某一页的**单个文本字段**。
+ *
+ * path 形如 `title` / `lede` / `blocks.2.text` / `blocks.1.items.0`。
+ * 之所以不整体替换 slides：就地编辑只碰一个字符串，整体替换会牵动版式校验、冲突面也大。
+ * 允许的字段在 service 里用白名单正则卡住（只放纯文本字段）。
+ */
+export class UpdatePageFieldDto {
+  /** 字段路径（白名单见 SlidesService.EDITABLE_FIELD_PATH） */
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(120)
+  path!: string;
+
+  /** 新的文本；留空表示清空该字段 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(600)
+  value?: string;
+
+  /** 乐观锁：客户端持有的 deck 版本 */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  version?: number;
+}

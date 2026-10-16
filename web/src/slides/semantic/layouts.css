@@ -1142,3 +1142,21 @@
     display: none;
   }
 }
+
+/* ---------- 预览态「双击就地编辑」 ---------- */
+/* 只有编辑视图给 .deck 加 .is-editable，学生端/放映/导出完全无感 */
+.deck.is-editable [data-edit] {
+  cursor: text;
+  border-radius: 3px;
+  transition: outline-color 0.15s ease;
+  outline: 1px dashed transparent;
+  outline-offset: 3px;
+}
+.deck.is-editable [data-edit]:hover {
+  outline-color: var(--accent);
+}
+.deck.is-editable [data-edit].is-editing {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}

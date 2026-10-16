@@ -36,6 +36,13 @@ export interface SlideStageProps {
    * （2026-10-10 学员反馈：按 → 反而跳回「文档」）。放映态本来就接管，无需传。
    */
   keyboard?: boolean;
+  /**
+   * 预览态允许「双击文字就地编辑」：只有教师端编辑视图打开。
+   * 学生端 / 放映 / 导出都不传，连 hover 提示都不会出现。
+   */
+  editable?: boolean;
+  /** 就地编辑提交（path 如 `title` / `blocks.1.items.0`，value 是新文本） */
+  onEditText?: (path: string, value: string) => void;
   height?: number | string;
   /**
    * 渲染器：`semantic`（新，默认）= 语义模型 + 固定 1920×1080 舞台；
@@ -79,6 +86,8 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
     presenting = false,
     onExitPresenting,
     keyboard = false,
+    editable = false,
+    onEditText,
     height = 520,
     renderer,
     slideTheme,
@@ -112,6 +121,9 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
   /** onDocument 走 ref：父组件传内联箭头函数不会导致 effect 重复构建 */
   const onDocumentRef = useRef(onDocument);
   onDocumentRef.current = onDocument;
+  /** 就地编辑回调同走 ref（理由同 onDocument） */
+  const onEditTextRef = useRef(onEditText);
+  onEditTextRef.current = onEditText;
 
   /** 生效的渲染器：显式 prop 优先，其次环境变量回退，最后默认新版 */
   const effectiveRenderer: 'semantic' | 'reveal' =
@@ -154,6 +166,7 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
               footerText,
               logoDataUrl,
               resolveImage: (fileId) => imageDataUrls?.[`file:${fileId}`] ?? imageDataUrls?.[fileId],
+              editable,
             });
           })();
     docPromise
@@ -174,7 +187,7 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
     return () => {
       cancelled = true;
     };
-  }, [slides, template, config, footerText, logoDataUrl, imageDataUrls, effectiveRenderer, slideTheme, meta]);
+  }, [slides, template, config, footerText, logoDataUrl, imageDataUrls, effectiveRenderer, slideTheme, meta, editable]);
 
   // 就绪看门狗：html 已下发但 iframe 迟迟不回 ready（个别环境下 srcdoc 不重载/脚本未跑的竞态，
   // 表现为"转圈永不停"）—— 超时自动重挂载 iframe（换 key），重试 2 次仍不行就给出明确错误。
@@ -215,6 +228,11 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
       if (data.type === 'ready') {
         console.info(`[SlideStage] 已就绪（${Date.now() - htmlSetAtRef.current}ms）`);
         setReady(true);
+      }
+      if (data.type === 'edit-text') {
+        const payload = data as unknown as { path?: string; value?: string };
+        if (payload.path) onEditTextRef.current?.(payload.path, payload.value ?? '');
+        return;
       }
       if (typeof data.index === 'number') onIndexChange?.(data.index);
     }

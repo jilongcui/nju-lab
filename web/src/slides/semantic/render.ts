@@ -64,12 +64,28 @@ function colsClass(count: number, max = 4): string {
   return `cols-${Math.min(max, gridCols(count))}`;
 }
 
+/**
+ * 预览态「双击就地编辑」的标记。
+ *
+ * 只给**纯文本容器**打标（标题 / lede / 主张 / 要点 / 注释 / 引文）—— 结构化块（表格、关系图、
+ * 流程图…）不做就地编辑，改它们请用右栏「源码」。运行时仅在宿主声明 `editable` 时启用，
+ * 所以观众态 / 学生端完全无感。
+ */
+function ed(path: string): string {
+  return ` data-edit="${path}" title="双击编辑"`;
+}
+
+/** 块在 page.blocks 里的下标，用于拼 data-edit 路径 */
+function bIdx(page: Page, kind: Block['kind']): number {
+  return page.blocks.findIndex((block) => block.kind === kind);
+}
+
 function head(page: Page): string {
   const parts: string[] = [];
-  if (page.kicker) parts.push(`<p class="kicker">${escapeHtml(page.kicker)}</p>`);
-  if (page.title) parts.push(`<h2 class="ly-title">${inline(page.title)}</h2>`);
-  if (page.subtitle) parts.push(`<p class="ly-lede">${inline(page.subtitle)}</p>`);
-  if (page.lede) parts.push(`<p class="ly-lede">${inline(page.lede)}</p>`);
+  if (page.kicker) parts.push(`<p class="kicker"${ed('kicker')}>${escapeHtml(page.kicker)}</p>`);
+  if (page.title) parts.push(`<h2 class="ly-title"${ed('title')}>${inline(page.title)}</h2>`);
+  if (page.subtitle) parts.push(`<p class="ly-lede"${ed('subtitle')}>${inline(page.subtitle)}</p>`);
+  if (page.lede) parts.push(`<p class="ly-lede"${ed('lede')}>${inline(page.lede)}</p>`);
   return parts.length ? `<div class="ly-head">${parts.join('')}</div>` : '';
 }
 
@@ -300,12 +316,14 @@ function renderSection(page: Page): string {
   const lede = page.lede || note?.text || '';
   return `<div class="ly ly-section">
   ${page.number ? `<div class="ly-section-num">${escapeHtml(page.number)}</div>` : ''}
-  ${page.kicker ? `<p class="kicker">${escapeHtml(page.kicker)}</p>` : ''}
-  <h1>${inline(page.title ?? '')}</h1>
-  ${lede ? `<p class="ly-lede">${inline(lede)}</p>` : ''}
+  ${page.kicker ? `<p class="kicker"${ed('kicker')}>${escapeHtml(page.kicker)}</p>` : ''}
+  <h1${ed('title')}>${inline(page.title ?? '')}</h1>
+  ${lede ? `<p class="ly-lede"${ed(page.lede ? 'lede' : `blocks.${bIdx(page, 'note')}.text`)}>${inline(lede)}</p>` : ''}
   ${
     teaser?.items.length
-      ? `<div class="ly-teaser">${teaser.items.map((item) => `<span>${escapeHtml(item)}</span>`).join('')}</div>`
+      ? `<div class="ly-teaser">${teaser.items
+          .map((item, i) => `<span${ed(`blocks.${bIdx(page, 'evidence')}.items.${i}`)}>${escapeHtml(item)}</span>`)
+          .join('')}</div>`
       : ''
   }
 </div>`;
@@ -328,13 +346,15 @@ function renderClaim(page: Page): string {
   const claim = blockOf(page, 'claim');
   const evidence = blockOf(page, 'evidence');
   const items = evidence?.items ?? [];
+  const ci = bIdx(page, 'claim');
+  const ei = bIdx(page, 'evidence');
   return `${head(page)}
-  ${claim ? `<p class="ly-claim">${inline(claim.text)}</p>` : ''}
+  ${claim ? `<p class="ly-claim"${ed(`blocks.${ci}.text`)}>${inline(claim.text)}</p>` : ''}
   ${
     items.length
       ? `<div class="ly-evidence ${items.length > 3 ? 'cols-2' : ''}">${items
           .map(
-            (item, i) => `<div class="ly-ev"><span class="ly-ev-i">${String(i + 1).padStart(2, '0')}</span><span>${inline(item)}</span></div>`,
+            (item, i) => `<div class="ly-ev"><span class="ly-ev-i">${String(i + 1).padStart(2, '0')}</span><span${ed(`blocks.${ei}.items.${i}`)}>${inline(item)}</span></div>`,
           )
           .join('')}</div>`
       : ''
@@ -355,8 +375,9 @@ function renderPillars(page: Page): string {
       .join('')}</div>`;
   }
   const items = evidence?.items ?? [];
+  const ei = bIdx(page, 'evidence');
   return `${head(page)}<div class="ly-cards ${colsClass(items.length)}">${items
-    .map((item) => `<div class="ly-card"><p>${inline(item)}</p></div>`)
+    .map((item, i) => `<div class="ly-card"><p${ed(`blocks.${ei}.items.${i}`)}>${inline(item)}</p></div>`)
     .join('')}</div>`;
 }
 
@@ -393,7 +414,7 @@ function renderMetrics(page: Page): string {
 
 function renderNote(page: Page): string {
   const note = blockOf(page, 'note');
-  return note ? `<p class="ly-note">${inline(note.text)}</p>` : '';
+  return note ? `<p class="ly-note"${ed(`blocks.${bIdx(page, 'note')}.text`)}>${inline(note.text)}</p>` : '';
 }
 
 function renderSequence(page: Page): string {
@@ -549,10 +570,11 @@ function renderCode(page: Page): string {
 
 function renderQuote(page: Page): string {
   const quote = blockOf(page, 'quote');
+  const qi = bIdx(page, 'quote');
   return `<div class="ly ly-quote">
   <div class="ly-quote-mark">“</div>
-  <blockquote>${inline(quote?.text ?? page.title ?? '')}</blockquote>
-  ${quote?.cite ? `<div class="ly-quote-cite">— ${escapeHtml(quote.cite)}</div>` : ''}
+  <blockquote${ed(quote ? `blocks.${qi}.text` : 'title')}>${inline(quote?.text ?? page.title ?? '')}</blockquote>
+  ${quote?.cite ? `<div class="ly-quote-cite"${ed(`blocks.${qi}.cite`)}>— ${escapeHtml(quote.cite)}</div>` : ''}
 </div>`;
 }
 
@@ -621,10 +643,15 @@ function renderSummary(page: Page): string {
   const evidence = blockOf(page, 'evidence');
   const claim = blockOf(page, 'claim');
   const items = evidence?.items ?? [];
+  const ci = bIdx(page, 'claim');
+  const ei = bIdx(page, 'evidence');
   return `${head(page)}
-  ${claim ? `<p class="ly-claim">${inline(claim.text)}</p>` : ''}
+  ${claim ? `<p class="ly-claim"${ed(`blocks.${ci}.text`)}>${inline(claim.text)}</p>` : ''}
   <div class="ly-summary">${items
-    .map((item, i) => `<div class="ly-sum-item"><b>${String(i + 1).padStart(2, '0')}</b><span>${inline(item)}</span></div>`)
+    .map(
+      (item, i) =>
+        `<div class="ly-sum-item"><b>${String(i + 1).padStart(2, '0')}</b><span${ed(`blocks.${ei}.items.${i}`)}>${inline(item)}</span></div>`,
+    )
     .join('')}</div>`;
 }
 

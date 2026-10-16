@@ -436,6 +436,34 @@ check('v1 deck 不会被误判为语义 deck', isSemanticDeck(LEGACY_SLIDES) ===
 const v2Html = await buildSemanticDeckHtml({ pages: v2Pages, meta: META, themeId: 'builtin-platform-blue' });
 const v2Doc = new JSDOM(v2Html).window.document;
 
+// ---------------- 6.2 预览就地编辑（2026-10-13）----------------
+check(
+  '纯文本容器带 data-edit 标记（标题/lede/主张/要点/注释）',
+  html.includes('data-edit="title"') && html.includes('data-edit="blocks.') &&
+    html.includes('data-edit="lede"'),
+);
+check(
+  '可编辑开关只影响编辑视图（.deck.is-editable 由宿主声明，默认不带）',
+  html.includes('is-editable') === false || !/class="deck is-editable"/.test(html),
+);
+const editableHtml = await buildSemanticDeckHtml({ pages: PAGES, meta: META, themeId: 'builtin-platform-blue', editable: true });
+check(
+  '声明 editable 时 .deck 带上 .is-editable',
+  /class="deck is-editable"/.test(editableHtml),
+);
+check(
+  '运行时实现就地编辑：双击进入 + 回车/Esc 提交或取消 + 编辑期间屏蔽翻页',
+  html.includes("addEventListener('dblclick'") &&
+    html.includes('isContentEditable') &&
+    html.includes("event.key === 'Enter'") &&
+    html.includes('editingEl') &&
+    html.includes('if (editingEl) return;'),
+);
+check(
+  '编辑期间的主键盘监听会主动让路（避免打字被当成翻页/总览）',
+  (html.match(/if \(editingEl\) return;/g) || []).length >= 2,
+);
+
 // ---------------- 6.3 讲稿页（导出备注页，2026-10-13）----------------
 check(
   '每页都生成了一张讲稿页（导出的备注页）',
