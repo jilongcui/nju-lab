@@ -5,6 +5,31 @@
 
 ## 0. 一句话现状
 
+**2026-10-17（幻灯片：新增「南大风」模板 + 版式开关）—— ✅ 已上线**
+
+- **需求（用户）**：① 现有模板太素净，要南大元素（整页不是纯白、眉首/眉尾有色）；② 封面与分节页
+  用南大钟楼照片当辅助背景；③ 版面要干净（眉尾色带/金线/细线都不要）；④ 页脚只留章名；
+  ⑤ 页眉小标（kicker）固定在左上角、与主标题分开；⑥ **平台上已生成的课件观感不能变**。
+- **做法**：
+  · 主题层新增**装饰层**（`DeckTheme.decorCss`，`web/src/slides/semantic/decor/nju.ts`）——
+    token 只能表达颜色/字号/圆角这类标量，"眉首紫金带""封面右下角钟楼"是图形，token 表达不了。
+    装饰只在该主题编译出的 CSS 里，换主题即消失、DOM 不变。
+  · 新主题 `builtin-nju`「南大风」：非纯白浅紫→米色渐变底 + 眉首紫金带 + 页脚徽记 + 内容页右上同心弧
+    + 封面/分节页钟楼辅助背景。钟楼素材位 `assets/nju-hero-photo.ts`（内联 WebP data URI），
+    由 `node web/tools/embed-tower-photo.mjs <照片>` 裁切/压淡/边缘渐隐后写入；留空回落自绘矢量剪影。
+  · 版式开关 `DeckTheme.layoutFlags`（**默认全关**）：`pinKicker`（kicker 抽成页面级 `.slide-kicker`
+    钉在左上角）、`chapterOnlyFooter`（页脚只写章名）。默认关就是为了需求 ⑥ —— 渲染是数据驱动的，
+    改渲染层会连带平台已生成的 deck 一起变样，那不该是换主题之外的副作用。
+  · 渲染层补 `data-intent`（装饰层认页型的钩子；对所有主题一致输出，不影响"换主题 DOM 不变"）。
+- **验证**：`assert-semantic` **107/107**（新增 5 条把两边的 kicker/页脚行为钉住）、前后端 tsc 干净；
+  库里 **14 份历史 deck** 用老模板走当前渲染器全量实测 —— 页数/内容/观感与改版前一致、0 报错；
+  南大风样张（真实模型生成）第 2 章 16 页 / 第 3 章 19 页，见 `web/tools/shots/semantic/generated/`。
+- **部署**：前端 `bash deploy/deploy-web-lab.sh`（备份 `20261017-063557`，78 文件 md5 一致、资源自检 4/4）；
+  后端 `npm run build` + kill MainPID（947561 → **3427824**）。冒烟：`/lab/` 200 → `/lab/login` 渲染正常、
+  0 JS 错误；线上 chunk 含 `builtin-nju` / `pinKicker` / `chapterOnlyFooter`。
+- **注**：教师端「换模板」列表由后端 `BUILTIN_TEMPLATES` 提供，**前后端必须一起上**，否则教师端看不到新模板。
+- 详见 §9.8。
+
 **2026-10-13（教师端章节列表只给统计信息 + 章节课右栏「实验」tab 只列当前章）—— ✅ 已上线**
 
 - **问题（用户反馈）**：
@@ -1704,6 +1729,34 @@ flash-v3 vs pro-v3 五章对比：**flash 结构/覆盖更好**（pro 有一章�
 - 工具：`web/tools/review-decks.mjs`（盲评截图）、`web/tools/assert-render.mjs`（jsdom 断言）、`web/tools/verify-slides.mjs`（浏览器断言）
 - 相关提交：`f1aa90b`（后端 + 迁移）、`f7aa0f0`（前端）、`412503b`（放映浮层/点击翻页修复）、
   `3859b40`（切 LLM + prompt v3 + 版式系统升级 + 盲评定版）
+
+### 9.8 主题装饰层与版式开关（2026-10-17）
+
+- **为什么要有"装饰层"**：渲染层原本只有配色 token（`--bg/--accent/--radius…`），表达不了
+  "顶部一条紫金带""封面右下角一座钟楼"这类**图形** —— 而这类图形正是"南大风"的观感来源。
+  现在主题可以带一段 `decorCss`，与 token 一起在 `themeCss()` 里编译。它仍只存在于该主题的 CSS 中：
+  换主题即消失、DOM 一个字节都不变（原有断言照旧通过）。
+- **新主题「南大风」（`builtin-nju`）**：非纯白浅紫→米色渐变底、眉首紫金细带、页脚徽记、
+  内容页右上角同心弧、封面/分节页的钟楼辅助背景；圆角与阴影收得更庄重。**眉尾不做装饰**
+  （色带 → 金线 → 细线三版都因"投影上发脏/多余"被拿掉，最后只留页脚那一行字收口）。
+- **钟楼素材位**：`web/src/slides/semantic/assets/nju-hero-photo.ts`（内联 WebP data URI，留空则回落
+  `nju-tower.svg` 自绘剪影）。换图一条命令：`node web/tools/embed-tower-photo.mjs <照片路径>`
+  （`--crop=` 原图比例裁切 / `--crop-ratio=` 居中裁 / `--fade=` 压淡与渐隐 / `--preview=` 先看效果 /
+  `--clear` 还原剪影）。压淡与**椭圆 alpha 边缘渐隐**都烘焙进素材 —— 试过在 CSS 里叠遮罩层，
+  三个坑都会**静默**露边（底色刷边有色差、圆形的四角融不掉、渐变层 `auto` 高度与照片对不齐），
+  细节见 `docs/SLIDES.md` §5。
+- **版式开关 `DeckTheme.layoutFlags`（默认全关）**：
+  · `pinKicker` —— kicker 抽成页面级 `.slide-kicker`、绝对定位钉在内容区左上角（top 30px / left 96px），
+    与主标题分开。原先它排在标题上方，而正文垂直居中、标题每页落点不同，kicker 跟着"跳"。
+  · `chapterOnlyFooter` —— 页脚左侧只写章节名；默认仍是「课程 · 章节」。
+  这两条是**结构**级差异（kicker 的 DOM 位置、页脚文案口径），纯 CSS 表达不了，所以按主题分流。
+  **默认全关的原因**：渲染层是数据驱动的，一改就**连带平台已生成的 deck 一起变样** ——
+  教师没动过任何东西、样子却变了，不该是换主题之外的副作用。目前只有「南大风」打开这两条。
+- **验证**：`node web/tools/assert-semantic.mjs` **107/107**（含默认主题 kicker 必须在 `.ly-head` 内且
+  文档里没有 `.slide-kicker`、南大风反之、装饰层不外溢）；历史 deck 回归见 §0 那条记录。
+- **文件**：`web/src/slides/semantic/decor/nju.ts`（装饰层）、`assets/hero.ts` + `assets/nju-tower.svg`、
+  `assets/nju-hero-photo.ts`（素材位）、`web/tools/embed-tower-photo.mjs`（换图）、
+  `theme.ts`（`DeckTheme.decorCss` / `layoutFlags`）、`render.ts` + `stage.ts`（开关透传）。
 
 ## 10. 调试与取证手段（2026-09-29 建立，别再用"读代码猜"）
 
