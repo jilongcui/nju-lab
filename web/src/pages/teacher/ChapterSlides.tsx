@@ -159,8 +159,6 @@ export default function ChapterSlides() {
   const [versions, setVersions] = useState<DeckVersionItem[]>([]);
   /** 当前页讲稿草稿（讲稿不进版面，单独编辑与保存） */
   const [notesDraft, setNotesDraft] = useState('');
-  /** 导出 PDF 时是否把每页讲稿作为"备注页"附在后面（讲者讲义/存档用） */
-  const [exportWithNotes, setExportWithNotes] = useState(false);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [data, setData] = useState<ChapterSlidesResponse | null>(null);
   const [chapter, setChapter] = useState<Chapter | null>(null);
@@ -179,6 +177,8 @@ export default function ChapterSlides() {
   const [gotoIndex, setGotoIndex] = useState<number | undefined>(undefined);
   const [presenting, setPresenting] = useState(false);
   const [imageDataUrls, setImageDataUrls] = useState<Record<string, string>>({});
+  /** 导出 PDF 时是否把每页讲稿作为"备注页"附在后面（讲者讲义/存档用） */
+  const [exportWithNotes, setExportWithNotes] = useState(false);
   /** 当前放映文档的 HTML（SlideStage 构建完成时回填）—— 导出 PDF 用 */
   const deckHtmlRef = useRef<string | null>(null);
 
@@ -692,17 +692,25 @@ export default function ChapterSlides() {
    * 导出 PDF：把当前这份**自包含文档**放进新窗口并唤起打印，由浏览器「另存为 PDF」。
    * 零服务端依赖（不需要 Chromium），分页由文档内的 @media print 负责（每页一画布）。
    */
-  const exportPdf = () => {
+  const exportPdf = (withNotesPages = false) => {
     const doc = deckHtmlRef.current;
     if (!doc) {
       message.warning('幻灯片还没准备好，请稍候再试');
       return;
     }
-    // 讲稿页（.notes-page）默认 display:none；勾选"附讲稿"后加 .with-notes-pages 让打印时显示
-    const withNotes = exportWithNotes
-      ? doc.replace('<div class="deck" id="deck">', '<div class="deck with-notes-pages" id="deck">')
-      : doc;
-    const printable = withNotes.replace(
+    // 讲稿页（.notes-page）默认 display:none；要"附讲稿"时加 .with-notes-pages 让打印时显示。
+    // ⚠️ 不能用固定串 '<div class="deck" id="deck">' 匹配 —— 编辑态的实际 class 是
+    // 'deck is-editable'，固定串永远匹配不上，会静默丢掉备注页（实测踩过：PDF 仍是 18 页）。
+    let printable = doc.replace(' is-editable', '');
+    if (withNotesPages) {
+      // ⚠️ 必须锚定 `id="deck"`：文档前面的 <style> 里（vendored base.css 的注释与选择器）也含
+      // `class="deck` 字样，用 `replace('class="deck', …)` 会改到注释里那个，body 里的 .deck 纹丝不动
+      // —— 表现为「附讲稿」静默失效（实测踩过，PDF 仍是 18 页）。
+      printable = printable.replace(/<div class="deck[^"]*" id="deck">/, (tag) =>
+        tag.replace('class="deck', 'class="deck with-notes-pages'),
+      );
+    }
+    printable = printable.replace(
       '</body>',
       '<script>window.addEventListener("load",function(){setTimeout(function(){window.print()},500)})</' + 'script></body>',
     );
@@ -713,9 +721,10 @@ export default function ChapterSlides() {
       return;
     }
     message.info(
-      exportWithNotes
+      withNotesPages
         ? '已打开打印视图（含讲稿备注页）：把「目标」选成「另存为 PDF」，纸张横向、边距选「无」'
         : '已打开打印视图：打印对话框里把「目标」选成「另存为 PDF」，纸张横向、边距选「无」',
+      4,
     );
   };
 
@@ -1007,17 +1016,6 @@ export default function ChapterSlides() {
                     >
                       放弃改动
                     </Button>
-                    <Checkbox
-                      checked={exportWithNotes}
-                      onChange={(e) => setExportWithNotes(e.target.checked)}
-                    >
-                      附讲稿
-                    </Checkbox>
-                    <Tooltip title="导出为 PDF；勾选「附讲稿」会把每页讲稿作为备注页排在该页后面（做讲义/存档用）">
-                      <Button icon={<FilePdfOutlined />} onClick={exportPdf}>
-                        导出 PDF
-                      </Button>
-                    </Tooltip>
                   </Space>
                 )}
             </>
@@ -1349,6 +1347,26 @@ export default function ChapterSlides() {
             >
               放映
             </Button>
+            {canEdit && (
+              <>
+                <Checkbox
+                  checked={exportWithNotes}
+                  onChange={(e) => setExportWithNotes(e.target.checked)}
+                >
+                  附讲稿
+                </Checkbox>
+                <Tooltip title="在新窗口打开打印视图，用浏览器「另存为 PDF」（纸张横向、边距选无）；勾选「附讲稿」会把每页讲稿排在该页后面">
+                  <Button
+                    size="small"
+                    icon={<FilePdfOutlined />}
+                    disabled={!deck?.slides?.length}
+                    onClick={() => exportPdf(exportWithNotes)}
+                  >
+                    导出 PDF
+                  </Button>
+                </Tooltip>
+              </>
+            )}
             {deck?.status === 'ready' && canEdit && (
               <Popconfirm
                 title={`用 LLM 重写第 ${currentIndex + 1} 页？`}

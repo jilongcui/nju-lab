@@ -70,6 +70,8 @@ const { buildSemanticDeckHtml, CANVAS, DECK_THEMES, themeCss, PAGES, META, LEGAC
 
 // 宿主（iframe 外层）的键盘转发也在这里断言：S 键要转给文档，否则按 S 无反应
 const slideStageSrc = readFileSync(join(webRoot, 'src/slides/SlideStage.tsx'), 'utf8');
+// 导出 PDF 的宿主逻辑也在这里断言
+const chapterSlidesSrc = readFileSync(join(webRoot, 'src/pages/teacher/ChapterSlides.tsx'), 'utf8');
 const html = await buildSemanticDeckHtml({ pages: PAGES, meta: META, themeId: 'builtin-platform-blue' });
 const dom = new JSDOM(html);
 const doc = dom.window.document;
@@ -474,6 +476,16 @@ check(
 );
 
 // ---------------- 6.3 讲稿页（导出备注页，2026-10-13）----------------
+check(
+  '导出「附讲稿」锚定 id="deck" 替换（用 class="deck 会改到 <style> 里的同名字样而静默失效）',
+  /\/<div class="deck\[^"\]\*" id="deck">\//.test(chapterSlidesSrc) &&
+    chapterSlidesSrc.includes('with-notes-pages'),
+);
+check(
+  '导出前剥掉编辑态痕迹（is-editable 不该进导出文档）',
+  chapterSlidesSrc.includes("replace(' is-editable', '')"),
+);
+
 check(
   '每页都生成了一张讲稿页（导出的备注页）',
   v2Doc.querySelectorAll('.notes-page').length === v2Pages.length,
