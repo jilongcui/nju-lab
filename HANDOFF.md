@@ -159,6 +159,22 @@
   仅为产物与源码一致 —— 本修复只动后端）。上线后回归：`verify-chapter-experiments.mjs` 25/25、
   `verify-chapter-slides.mjs` 21/21、`verify-course-pages.mjs` 24/24。
 
+**2026-10-13（幻灯片：讲稿 notes 的三种展示）**
+
+- **问题**：教师问"为什么 PPT 看不到 notes"。讲稿其实**一直**渲染进文档（每页 `<div class="notes">`），
+  但被 `base.css` 的 `.notes{display:none!important}` 对观众隐藏，而平台没有讲者视图
+  （vendored 套件只带了 `.notes-overlay` 样式，`runtime.js` 未引入）→ 唯一能看到的地方是 JSON 的 notes 字段。
+- **编辑态**：右栏新增「讲稿」tab（**章节 | 图片 | 讲稿 | 生成 | 版本**）—— 当前页讲稿可编辑保存，
+  另有全部讲稿列表可点行跳页。服务端新增专用接口
+  `PATCH /chapters/:id/slides/pages/:index/notes`（只改 notes、不触发版式校验、带存档 + 乐观锁）。
+- **放映态**：按 `S` 呼出/收起底部讲稿浮层（复用 vendored `.notes-overlay` 样式），翻页跟随。
+  **默认关闭**（单屏放映时观众也会看到）。
+  ⚠️ 坑：键盘由宿主 `SlideStage` 转发给 iframe，起初没转 `S` → 按 S 毫无反应；已补 `toggle-notes`。
+- **导出**：勾选「附讲稿」→ 每页后附讲稿备注页（`.notes-page` + `.with-notes-pages` + @media print）。
+  讲稿页不参与放映翻页（运行时按 `.slide:not(.notes-page)` 选页）。
+- 实测：讲稿框 227 字与数据一致 → 改写保存落库 → 还原一致；放映按 S 展开并显示当前页讲稿、翻页跟随。
+  断言 89 → 94。设计见 `docs/DESIGN-2026-10-10-slides-semantic-html.md` §16。
+
 **2026-10-13（幻灯片：多版本历史 + 回滚；prompt 文风回摆 v9→v11）**
 
 - **背景**：教师反馈"收紧生成约束后内容变少、语言太精简/太口语，不如上一版"。
