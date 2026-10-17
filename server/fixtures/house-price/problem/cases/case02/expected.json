@@ -1,0 +1,17 @@
+{
+  "note": "参考水平（不是标准答案）：baseline 用于核对学生报的基线是否可信，reference 用于识别『可疑地过于好』的结果；n_rows 用于核对切分是否覆盖全部样本。硬性达标判据见 manifest.json 的 assertions，语义判据见 judge.md。",
+  "n_rows": 150,
+  "baseline": {
+    "name": "average_price_per_m2",
+    "unit_price_wan": 2.5232,
+    "mae": 9.1921
+  },
+  "reference": {
+    "model": "LinearRegression(area_m2)",
+    "mae": 5.9585
+  },
+  "accept": {
+    "mae_max_ratio_to_baseline": 0.8,
+    "baseline_tolerance": 0.15
+  }
+}

@@ -1,0 +1,115 @@
+# 机器学习入门实验二：按面积估算房子总价（回归 · easy）
+
+**定位（easy 档）**：第 2 章《机器学习基本理论和实践》的**入门**实验 —— 只为理解回归的基本概念、
+做一次完整的小流程。例子是"中介按面积报价"，只有**一个特征**，散点图一眼就能看懂；
+模型由学生在入门模型里自选。与同章的 medium 实验 `aq-forecast`（多特征 + 持久性基线）**不重复**：
+那个是"真实业务 + 多特征 + 达标线"的完整应用，本实验是"先把六步走通一遍"。
+
+**形态：应用驱动**（`docs/EXPERIMENT-DESIGN-FRAMEWORK.md` §2.6）—— 学生拿到的是**需求**
+（按面积报价、要比"平均单价 × 面积"明显更准），而不是"用某个模型、按某个口径写代码"。
+
+**教学向设计**（§3.5 七件事）：学习目标 / 知识铺垫 / 导学步骤 / 参考资料与 FAQ 见下方
+「项目字段文案」；参考实现随包下发（`problem/reference/`）、骨架留解释层、反思环节落在骨架的
+「能力边界」「实测档案」。
+
+```
+house-price/
+├── problem/            → problem.zip        题目包（**随包下发给学生**）
+│   ├── manifest.json   IO 契约（outputFile=output.json）+ 8 条确定性断言
+│   ├── task.md         需求 + 六步流程 + 数据字典 + 交付格式
+│   ├── judge.md        语义判据（图是否看图说话、指标自洽、可疑地过于好、基线定义）
+│   ├── README.md       导学
+│   ├── cases/case0N/{data.csv, expected.json}
+│   └── reference/      参考实现（一元线性回归 + 两张图）
+├── skill-template/     → skill-template.zip 学生起点（结构已搭好，两处 TODO 自己填）
+├── tools/gen_data.py                        造题工具：固定种子合成数据（**不下发**）
+└── README.md
+```
+
+## 场景与数据
+
+- 应用：房产中介按建筑面积估算成交总价
+- 对应章节：课程第 2 章《机器学习基本理论和实践》（回归问题的第一个例子）
+- 数据：固定种子合成（`tools/gen_data.py` 可重跑，逐字节相同）
+
+| 列 | 含义 |
+|---|---|
+| `area_m2` | 建筑面积（m²） |
+| `total_price_wan` | 目标：成交总价（万元） |
+
+| case | 规模 | 特点 |
+|---|---|---|
+| case01 | 200 行 | 一线城市：单价高（2.8 万/m²）、房子大（41~150 m²） |
+| case02 | 150 行 | 小城市：单价低（2.2 万/m²）、房子小（35~128 m²） |
+
+**数据规律**：`总价 = 固定价值（30 / 22 万元）+ 单价 × 面积 + 噪声`。
+固定价值那一项正是"平均单价 × 面积"会漏掉的东西 —— 小户型被高估、大户型被低估。
+
+## 判据设计要点
+
+1. **达标线卡"不建模"**：`metrics.mae ≤ 0.78~0.80 × baseline.mae`。
+   现有做法（平均单价 × 面积）的比值恒为 1.0，过不了；带截距的线性回归约 0.65，
+   所以"必须真的把固定价值学出来"才能过。
+2. **基线可信**：断言核对 `baseline.mae` 与参考值相差 ≤15%，防止学生虚报一个很差的基线来显得提升大。
+3. **基线口径写死**：平均单价**只用训练集**估 —— 用测试集估等于偷看答案（`judge.md` 里也判这一点）。
+4. **切分覆盖 + 占比**：`n_train + n_test === n_rows`、测试集占比 20%~40%。
+5. **图要说人话**：两张图（看数据散点 / 评估预测-实际 + 残差），每张 `takeaway` ≥10 字，
+   语义上要求"说出关系与误差偏向"（judge 判，不写数字）。
+
+## 出题时的实测依据（2026-10-17）
+
+| 指标 | case01 | case02 |
+|---|---|---|
+| 现有做法（平均单价 × 面积）MAE | 9.2710 | 9.1921 |
+| 参考实现（一元线性回归）MAE | **6.0905** | **5.9585** |
+| 比值 | **0.66** | **0.65** |
+| 达标线（比值上限） | 0.78 | 0.80 |
+
+- 造题时量的全量两端：case01 基线 12.26 → 线性回归 6.61（0.54）；case02 基线 9.87 → 5.85（0.59）。
+- 线卡在中间偏松（easy 档）：不建模过不了，带截距的线性回归能过且留 12~15 个百分点余量。
+- `expected.json` 由参考实现在**与复验同一个镜像**（`nju-lab-verify:0.2.0-rc.2-pkg6`）里生成。
+
+## 项目字段文案（建项目时用）
+
+- **title**：入门实验：按面积估算房子总价（回归 · 容易）
+- **difficulty**：`easy`
+- **content**（学生详情页首屏 = task.md 的「业务背景 + 你的任务」）：
+
+  > 房产中介要按面积给房子估个挂牌价。店里的老办法是"平均单价 × 面积"，但小户型会报高、
+  > 大户型会报低 —— 因为总价里有一块跟面积无关的固定价值。你的任务：用面积估总价，
+  > 在测试集上 MAE 至少比"平均单价 × 面积"低 20%；固定随机种子、写清切分；
+  > 看数据画一张图、评估画一张预测-实际图，并给每张图写一句结论。
+
+- **objectives**（学完能讲清什么）：
+  1. 回归任务的"基线"是什么、为什么没有基线就说不清模型好不好；
+  2. 为什么"平均单价 × 面积"会系统性偏差、**截距**在回归里代表什么；
+  3. MAE 与 R² 分别告诉业务什么、残差图能看出什么。
+- **background**：一个数值特征 → 一个数值目标；`train_test_split`；最小二乘拟合直线；
+  截距与斜率的含义；MAE 的单位与业务可读性。
+- **description**（导学步骤，≤8 步）：
+  读 `task.md` → 画面积-总价散点 → 算"平均单价 × 面积"的基线 → 训练线性回归 →
+  算 MAE / R² → 画预测-实际与残差 → 对照 `judge.md` 自测两个 case → 补全 `SKILL.md` 的边界与实测档案。
+- **references**：`sklearn` 的 `LinearRegression` / `mean_absolute_error` 文档；
+  `problem/reference/scripts/train.py`（示范实现）。
+- **faq**：为什么我的模型 MAE 和基线差不多？（很可能没让模型拟合截距，或基线用测试集算的）；
+  为什么小户型误差特别大？（固定价值摊到小面积上，偏差最明显）；
+  R² 很高但 MAE 不低，是不是有问题？（不是，两者回答不同问题；业务看 MAE）。
+
+## 打包 / 自检 / 复验
+
+```sh
+cd server/fixtures/house-price
+rm -f problem.zip skill-template.zip
+(cd problem && zip -qr ../problem.zip .) && (cd skill-template && zip -qr ../skill-template.zip .)
+
+# ① 结构 + 依赖自检（不烧 token）
+docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg6 \
+  --check --skill /p/skill-template.zip --problem /p/problem.zip
+
+# ② 参考实现复验（应 2/2 通过 = 题目可解 + 判据不误杀）
+cd /home/ubuntu/nju-lab && mkdir -p .verify-scratch/out
+docker run --rm --env-file server/.env --memory 2g -e VERIFY_REASONING_EFFORT=low \
+  -v "$PWD/server/fixtures/house-price:/p:ro" -v "$PWD/.verify-scratch/out:/outputs" \
+  nju-lab-verify:0.2.0-rc.2-pkg6 --skill /p/problem/reference --problem /p/problem.zip \
+  --out /outputs/house-price.json --timeout-ms 300000
+```

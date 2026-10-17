@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "name": "dl-mlp-digits",
+  "title": "入门实验：分拣手写数字（三分类 · 神经网络）",
+  "outputFile": "output.json",
+  "inputs": ["data.csv"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整（含训练历史）",
+      "expr": "['model','n_train','n_test','metrics','baseline','training','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null && out[k] !== '')"
+    },
+    {
+      "name": "图表说明齐全（至少 2 张图，每张一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 2 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "accuracy 与 macro_f1 在 [0,1] 之间",
+      "expr": "typeof out.metrics.accuracy === 'number' && out.metrics.accuracy >= 0 && out.metrics.accuracy <= 1 && typeof out.metrics.macro_f1 === 'number' && out.metrics.macro_f1 >= 0 && out.metrics.macro_f1 <= 1"
+    },
+    {
+      "name": "切分覆盖全部样本",
+      "expr": "out.n_train + out.n_test === expected.n_rows"
+    },
+    {
+      "name": "测试集占比在 20%~40%",
+      "expr": "out.n_test / (out.n_train + out.n_test) >= 0.2 && out.n_test / (out.n_train + out.n_test) <= 0.4"
+    },
+    {
+      "name": "基线报告可信（与参考值相差 ≤0.10）",
+      "expr": "abs(out.baseline.accuracy - expected.baseline.accuracy) <= expected.accept.baseline_accuracy_tolerance"
+    },
+    {
+      "name": "达标：测试集 accuracy ≥ 0.92",
+      "expr": "out.metrics.accuracy >= expected.accept.accuracy_min"
+    },
+    {
+      "name": "防退化：macro F1 ≥ 0.90（三个数字都要认得）",
+      "expr": "out.metrics.macro_f1 >= expected.accept.macro_f1_min"
+    },
+    {
+      "name": "真的训练了：逐轮损失至少 5 轮、且最后一轮低于第一轮",
+      "expr": "out.training && Array.isArray(out.training.history) && out.training.history.length >= 5 && out.training.history.every((h) => h && typeof h.train_loss === 'number') && out.training.history[out.training.history.length - 1].train_loss < out.training.history[0].train_loss"
+    },
+    {
+      "name": "说清训练过程（notes ≥20 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 20"
+    }
+  ],
+  "requires": { "python": ["torch", "sklearn", "pandas", "numpy", "matplotlib"] }
+}

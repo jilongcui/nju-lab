@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "name": "dl-score-regression",
+  "title": "入门实验：按练习情况估算期末成绩（回归 · 神经网络）",
+  "outputFile": "output.json",
+  "inputs": ["data.csv"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整（含训练历史）",
+      "expr": "['model','n_train','n_test','metrics','baseline','training','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null && out[k] !== '')"
+    },
+    {
+      "name": "图表说明齐全（至少 2 张图，每张一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 2 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "指标与基线是正数",
+      "expr": "typeof out.metrics.mae === 'number' && out.metrics.mae > 0 && typeof out.baseline.mae === 'number' && out.baseline.mae > 0"
+    },
+    {
+      "name": "切分覆盖全部样本",
+      "expr": "out.n_train + out.n_test === expected.n_rows"
+    },
+    {
+      "name": "测试集占比在 20%~40%",
+      "expr": "out.n_test / (out.n_train + out.n_test) >= 0.2 && out.n_test / (out.n_train + out.n_test) <= 0.4"
+    },
+    {
+      "name": "基线报告可信（与参考值相差 ≤15%）",
+      "expr": "abs(out.baseline.mae - expected.baseline.mae) <= expected.accept.baseline_tolerance * expected.baseline.mae"
+    },
+    {
+      "name": "达标：MAE 比「一律报平均分」低 ≥45%",
+      "expr": "out.metrics.mae <= expected.accept.mae_max_ratio_to_baseline * out.baseline.mae"
+    },
+    {
+      "name": "真的训练了：逐轮损失至少 5 轮、且最后一轮低于第一轮",
+      "expr": "out.training && Array.isArray(out.training.history) && out.training.history.length >= 5 && out.training.history.every((h) => h && typeof h.train_loss === 'number') && out.training.history[out.training.history.length - 1].train_loss < out.training.history[0].train_loss"
+    },
+    {
+      "name": "说清训练过程（notes ≥20 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 20"
+    }
+  ],
+  "requires": { "python": ["torch", "sklearn", "pandas", "numpy", "matplotlib"] }
+}
