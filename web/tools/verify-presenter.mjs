@@ -172,6 +172,39 @@ await presenter.waitForTimeout(1200);
 const audienceIndex2 = await audience.title();
 check('③ 再翻一页：观众跟到第 3 页', audienceIndex2 === 'deck-index:2', `title=${audienceIndex2}`);
 
+// ⑤ 批注（白板）：讲者画线 → 两边都出现；指针同步；翻页清空
+const countStrokes = (page) =>
+  page.evaluate(() => document.querySelectorAll('[data-annotation="stroke"]').length);
+const hasPointer = (page) =>
+  page.evaluate(() => !!document.querySelector('[data-annotation="pointer"]'));
+
+await presenter.bringToFront();
+const box = await presenter.locator('div:has(> svg)').first().boundingBox();
+const cx = box.x + box.width / 2;
+const cy = box.y + box.height / 2;
+await presenter.mouse.move(cx - 120, cy - 60);
+await presenter.mouse.down();
+await presenter.mouse.move(cx, cy, { steps: 6 });
+await presenter.mouse.move(cx + 120, cy + 60, { steps: 6 });
+await presenter.mouse.up();
+await presenter.waitForTimeout(500);
+
+check('⑤ 讲者窗口画出线了', (await countStrokes(presenter)) === 1, `strokes=${await countStrokes(presenter)}`);
+check('⑤ 观众窗口收到同一条线', (await countStrokes(audience)) === 1, `strokes=${await countStrokes(audience)}`);
+await presenter.mouse.move(cx + 40, cy - 30);
+await presenter.waitForTimeout(300);
+check('⑤ 观众窗口出现讲者的光标光点', await hasPointer(audience));
+
+await presenter.keyboard.press('ArrowRight');
+await presenter.waitForTimeout(600);
+check(
+  '⑤ 翻页自动清除批注（两边都清）',
+  (await countStrokes(presenter)) === 0 && (await countStrokes(audience)) === 0,
+  `讲者=${await countStrokes(presenter)} 观众=${await countStrokes(audience)}`,
+);
+await presenter.keyboard.press('ArrowLeft');
+await presenter.waitForTimeout(500);
+
 // ④ 观众窗口那个按钮是**开关**：开着时点一下应关掉，再点又开
 await presenter.bringToFront();
 await presenter.locator('button:has-text("观众窗口")').first().click();

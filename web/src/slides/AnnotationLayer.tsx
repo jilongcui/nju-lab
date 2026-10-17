@@ -1,0 +1,206 @@
+/**
+ * 讲者视图的「白板」层：盖在幻灯片之上，**接管鼠标**用来指点和画线。
+ *
+ * 三件事：
+ *   1. 把鼠标位置换算成 **deck 画布坐标**（1920×1080）后回调出去 —— 讲者窗口广播、观众窗口画光点；
+ *   2. 按住拖动画线（一条线 = 按下→拖动→松开），逐条回调；
+ *   3. 渲染指针光点与已画的线。
+ *
+ * 为什么覆盖层用 `viewBox="0 0 1920 1080"` + `preserveAspectRatio="xMidYMid meet"`：
+ * deck 画布本身就是按 `min(vw/1920, vh/1080)` 居中缩放的（letterbox），这一套 SVG 规则与它**完全一致**
+ * —— 于是"画布坐标"既是广播用的坐标系，也是 SVG 里直接可用的坐标系，不需要在两端各写一遍缩放。
+ *
+ * ⚠️ 覆盖层会挡住 iframe 里的鼠标交互（点两侧翻页 / 双击编辑等）——这是刻意的：
+ * 讲者视图里翻页靠键盘与顶栏按钮，鼠标专门用来讲解（2026-10-17 用户确认「默认接管」）。
+ * `readOnly`（观众窗口）时不接管鼠标，只渲染收到的东西。
+ */
+import { useCallback, useRef, useState } from 'react';
+import type { AnnotationStroke } from './presentChannel';
+
+/** deck 画布尺寸（与 semantic/stage.ts 的 CANVAS 一致） */
+const CANVAS = { width: 1920, height: 1080 };
+
+/** 画笔颜色（投影上对比度优先，暖色打头） */
+export const PEN_COLORS = [
+  { name: '红', value: '#ff3b30' },
+  { name: '黄', value: '#ffcc00' },
+  { name: '蓝', value: '#0a84ff' },
+  { name: '绿', value: '#34c759' },
+] as const;
+
+/** 画笔粗细（单位是 deck 画布像素，投影到任何尺寸都等比） */
+export const PEN_WIDTHS = [
+  { name: '细', value: 3 },
+  { name: '中', value: 6 },
+  { name: '粗', value: 12 },
+] as const;
+
+export type AnnotationTool = 'pointer' | 'pen';
+
+export interface AnnotationLayerProps {
+  /** 已画的线（讲者窗口是本地状态，观众窗口来自广播） */
+  strokes: AnnotationStroke[];
+  /** 当前指针位置（画布坐标）；null = 不在幻灯片上 */
+  pointer: { x: number; y: number } | null;
+  /** 观众窗口：只渲染，不接管鼠标 */
+  readOnly?: boolean;
+  /**
+   * 层级。默认 3（讲者窗口：幻灯片是普通内嵌渲染，压住它即可）。
+   * **观众窗口必须传更高的值**：那里的 `SlideStage` 是放映态（`position: fixed; z-index: 1200`），
+   * 用默认值会被它整个盖住 —— 表现是"线画了、数据也到了，投影上就是看不见"（实测踩到）。
+   */
+  zIndex?: number;
+  tool?: AnnotationTool;
+  color?: string;
+  width?: number;
+  /** 指针移动（节流后） */
+  onPointer?: (point: { x: number; y: number } | null) => void;
+  /** 画完一条线 */
+  onStroke?: (stroke: AnnotationStroke) => void;
+}
+
+export default function AnnotationLayer({
+  strokes,
+  pointer,
+  readOnly = false,
+  zIndex = 3,
+  tool = 'pen',
+  color = '#ff3b30',
+  width = 5,
+  onPointer,
+  onStroke,
+}: AnnotationLayerProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [draft, setDraft] = useState<{ x: number; y: number }[] | null>(null);
+  /**
+   * 草稿同时存一份在 ref 里。
+   * ⚠️ 不能在 `setDraft` 的 updater 里回调 `onStroke` —— React StrictMode 会双调用 updater
+   * 来探测副作用，结果是**画一条线出两条**（2026-10-17 被 verify-presenter 抓到的）。
+   */
+  const draftRef = useRef<{ x: number; y: number }[] | null>(null);
+  const drawingRef = useRef(false);
+  const lastPointerSentRef = useRef(0);
+
+  /**
+   * 屏幕坐标 → deck 画布坐标。与 deck 的缩放规则一致：
+   * `scale = min(w/1920, h/1080)`，画布居中（多出来的部分是黑边）。
+   * 落在黑边上的点会被夹到画布边缘（画到边上比"点不动"更好用）。
+   */
+  const toCanvas = useCallback((clientX: number, clientY: number) => {
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) return null;
+    const scale = Math.min(rect.width / CANVAS.width, rect.height / CANVAS.height);
+    const offsetX = (rect.width - CANVAS.width * scale) / 2;
+    const offsetY = (rect.height - CANVAS.height * scale) / 2;
+    const x = (clientX - rect.left - offsetX) / scale;
+    const y = (clientY - rect.top - offsetY) / scale;
+    return {
+      x: Math.max(0, Math.min(CANVAS.width, x)),
+      y: Math.max(0, Math.min(CANVAS.height, y)),
+    };
+  }, []);
+
+  const handleMove = useCallback(
+    (event: React.MouseEvent) => {
+      const point = toCanvas(event.clientX, event.clientY);
+      if (!point) return;
+      // 指针广播节流到 ~25fps：跨窗口消息不必逐像素发
+      const now = Date.now();
+      if (now - lastPointerSentRef.current > 40) {
+        lastPointerSentRef.current = now;
+        onPointer?.(point);
+      }
+      if (drawingRef.current && tool === 'pen') {
+        const next = draftRef.current ? [...draftRef.current, point] : [point];
+        draftRef.current = next;
+        setDraft(next);
+      }
+    },
+    [toCanvas, onPointer, tool],
+  );
+
+  const handleDown = useCallback(
+    (event: React.MouseEvent) => {
+      const point = toCanvas(event.clientX, event.clientY);
+      if (!point) return;
+      if (tool !== 'pen') return;
+      drawingRef.current = true;
+      draftRef.current = [point];
+      setDraft([point]);
+      event.preventDefault();
+    },
+    [toCanvas, tool],
+  );
+
+  const finishStroke = useCallback(() => {
+    if (!drawingRef.current) return;
+    drawingRef.current = false;
+    const points = draftRef.current;
+    draftRef.current = null;
+    setDraft(null);
+    // 点太少（单击）不当作一条线 —— 那只是想指一下
+    if (points && points.length > 2) onStroke?.({ points, color, width });
+  }, [color, width, onStroke]);
+
+  const toPath = (points: { x: number; y: number }[]) =>
+    points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+
+  return (
+    <div
+      ref={rootRef}
+      onMouseMove={readOnly ? undefined : handleMove}
+      onMouseDown={readOnly ? undefined : handleDown}
+      onMouseUp={readOnly ? undefined : finishStroke}
+      onMouseLeave={() => {
+        if (readOnly) return;
+        finishStroke();
+        onPointer?.(null);
+      }}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        // 讲者窗口必须接管鼠标（否则画不了）；观众窗口穿透，免得挡住自己（投影上也没人操作）
+        pointerEvents: readOnly ? 'none' : 'auto',
+        // 画笔模式下用十字光标（"正在画"的即时反馈）；仅指示时用默认箭头
+        cursor: !readOnly && tool === 'pen' ? 'crosshair' : 'default',
+        zIndex,
+      }}
+    >
+      <svg
+        viewBox={`0 0 ${CANVAS.width} ${CANVAS.height}`}
+        preserveAspectRatio="xMidYMid meet"
+        style={{ width: '100%', height: '100%', display: 'block' }}
+      >
+        {strokes.map((stroke, i) => (
+          <path
+            key={i}
+            data-annotation="stroke"
+            d={toPath(stroke.points)}
+            fill="none"
+            stroke={stroke.color}
+            strokeWidth={stroke.width}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ))}
+        {draft && draft.length > 1 ? (
+          <path
+            data-annotation="draft"
+            d={toPath(draft)}
+            fill="none"
+            stroke={color}
+            strokeWidth={width}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : null}
+        {pointer ? (
+          <g data-annotation="pointer">
+            <circle cx={pointer.x} cy={pointer.y} r={26} fill="rgba(255,59,48,.22)" />
+            <circle cx={pointer.x} cy={pointer.y} r={9} fill="#ff3b30" stroke="#fff" strokeWidth={3} />
+          </g>
+        ) : null}
+      </svg>
+    </div>
+  );
+}

@@ -13,11 +13,32 @@
  * （`storage` 只在**其它**窗口触发，正好天然互斥）。
  */
 
+/**
+ * 一条批注笔画。坐标一律用 **deck 画布坐标**（1920×1080），不是屏幕像素 ——
+ * 讲者窗口与投影窗口的尺寸、宽高比都可能不同，只有画布坐标能让两边精确对齐
+ * （各自的覆盖层用 `viewBox="0 0 1920 1080"` + `preserveAspectRatio="xMidYMid meet"`，
+ * 与 deck 画布的 letterbox 规则一致）。
+ */
+export interface AnnotationStroke {
+  points: { x: number; y: number }[];
+  color: string;
+  /** 线宽（画布像素，即 1920 宽画布下的粗细） */
+  width: number;
+}
+
 export type PresentMessage =
   /** 讲者换页了 */
   | { kind: 'index'; index: number; total: number; from: string }
   /** 观众窗口刚打开，请讲者把当前页发过来 */
-  | { kind: 'hello'; from: string };
+  | { kind: 'hello'; from: string }
+  /** 讲者鼠标位置（画布坐标）：投影上画一个光点，观众就知道在指哪里 */
+  | { kind: 'pointer'; x: number; y: number; from: string }
+  /** 鼠标离开幻灯片：投影上把光点收起来 */
+  | { kind: 'pointer-off'; from: string }
+  /** 讲者画完一条线（按下→拖动→松开算一条） */
+  | { kind: 'stroke'; stroke: AnnotationStroke; from: string }
+  /** 清空批注（翻页或手动） */
+  | { kind: 'clear'; from: string };
 
 /**
  * 分配式 Omit：直接对联合类型用 `Omit<Msg, 'from'>` 会把联合**塌成一个**（只剩公共字段），

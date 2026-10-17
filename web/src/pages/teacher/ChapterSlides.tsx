@@ -77,7 +77,16 @@ import type {
 } from '../../types';
 import { SEMANTIC_INTENT_OPTIONS } from '../../types';
 import SlideStage, { type SlideStageHandle } from '../../slides/SlideStage';
-import { createPresentChannel, type PresentChannel } from '../../slides/presentChannel';
+import {
+  createPresentChannel,
+  type AnnotationStroke,
+  type PresentChannel,
+} from '../../slides/presentChannel';
+import AnnotationLayer, {
+  PEN_COLORS,
+  PEN_WIDTHS,
+  type AnnotationTool,
+} from '../../slides/AnnotationLayer';
 import { withBase } from '../../config';
 import { conflictOf, showConflictDialog } from '../../utils/content-conflict';
 import { collectFileRefs, fetchFileDataUrls } from '../../slides/files';
@@ -187,6 +196,13 @@ export default function ChapterSlides() {
   const [audienceOpened, setAudienceOpened] = useState(false);
   /** 讲稿浮层的开合与高度（文档内回传）：讲者视图据此把「下一页」预告让开它 */
   const [notesBox, setNotesBox] = useState({ open: false, height: 0 });
+  /** 批注（白板）：已画的线、指针位置、画笔设置 —— 讲者窗口操作，观众窗口只渲染 */
+  const [strokes, setStrokes] = useState<AnnotationStroke[]>([]);
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
+  const [tool, setTool] = useState<AnnotationTool>('pen');
+  // 显式标注类型：PEN_COLORS/PEN_WIDTHS 是 as const，不标注会被推成字面量类型
+  const [penColor, setPenColor] = useState<string>(PEN_COLORS[0].value);
+  const [penWidth, setPenWidth] = useState<number>(PEN_WIDTHS[0].value);
   const stageRef = useRef<SlideStageHandle>(null);
   const audienceWinRef = useRef<Window | null>(null);
   const channelRef = useRef<PresentChannel | null>(null);
@@ -1197,14 +1213,38 @@ export default function ChapterSlides() {
     setAudienceOpened(false);
   }, []);
 
-  /** 翻页：更新本地状态 + 广播给观众窗口 */
+  /**
+   * 清空批注。翻页时自动调用（每页独立 —— 讲本页时不残留上一页的圈画，2026-10-17 用户确认）；
+   * 顶栏也有一个手动「清除」。`broadcast=false` 用于观众窗口收到 clear 后清本地，避免回声。
+   */
+  const clearAnnotations = useCallback((broadcast = true) => {
+    setStrokes([]);
+    setPointer(null);
+    if (broadcast) channelRef.current?.send({ kind: 'clear' });
+  }, []);
+
+  /** 把讲者窗口这边的指针/笔画广播给观众窗口 */
+  const sendPointer = useCallback((point: { x: number; y: number } | null) => {
+    setPointer(point);
+    if (point) channelRef.current?.send({ kind: 'pointer', x: point.x, y: point.y });
+    else channelRef.current?.send({ kind: 'pointer-off' });
+  }, []);
+
+  const sendStroke = useCallback((stroke: AnnotationStroke) => {
+    setStrokes((prev) => [...prev, stroke]);
+    channelRef.current?.send({ kind: 'stroke', stroke });
+  }, []);
+
+  /** 翻页：更新本地状态 + 广播给观众窗口 + 清掉本页批注 */
   const handleIndexChange = useCallback(
     (index: number) => {
+      const changed = index !== currentIndexRef.current;
       currentIndexRef.current = index;
       setCurrentIndex(index);
       channelRef.current?.send({ kind: 'index', index, total: totalPages });
+      if (changed) clearAnnotations();
     },
-    [totalPages],
+    [totalPages, clearAnnotations],
   );
 
   // 讲者窗口：建频道；观众窗口刚打开时会发 hello，把当前页补给它
@@ -1248,7 +1288,21 @@ export default function ChapterSlides() {
     if (!isAudience) return;
     const channel = createPresentChannel(chapterId);
     const off = channel.onMessage((msg) => {
-      if (msg.kind === 'index') stageRef.current?.goto(msg.index);
+      if (msg.kind === 'index') {
+        stageRef.current?.goto(msg.index);
+        // 翻页 = 每页批注独立（讲者那边也会发 clear，这里兜住消息顺序）
+        setStrokes([]);
+        setPointer(null);
+      } else if (msg.kind === 'pointer') {
+        setPointer({ x: msg.x, y: msg.y });
+      } else if (msg.kind === 'pointer-off') {
+        setPointer(null);
+      } else if (msg.kind === 'stroke') {
+        setStrokes((prev) => [...prev, msg.stroke]);
+      } else if (msg.kind === 'clear') {
+        setStrokes([]);
+        setPointer(null);
+      }
     });
     // deck 构建要几百毫秒，就绪前发出的 goto 会被丢弃 —— 所以 hello 重发几次兜住
     const timers = [0, 1000, 2500].map((delay) =>
@@ -1329,7 +1383,16 @@ export default function ChapterSlides() {
   const stage = renderStage();
 
   // 观众窗口：只有幻灯片（`renderStage({ audience: true })` 已把控件与 Esc 关掉）
-  if (isAudience) return renderStage({ audience: true });
+  // + 一层**只读**白板：把讲者的光标与笔画投出来，自己不吃鼠标事件
+  if (isAudience) {
+    return (
+      <div style={{ position: 'fixed', inset: 0 }}>
+        {renderStage({ audience: true })}
+        {/* 放映态的 SlideStage 是 fixed + z-index 1200，白板层必须更高才看得见 */}
+        <AnnotationLayer readOnly zIndex={1300} strokes={strokes} pointer={pointer} />
+      </div>
+    );
+  }
 
   // 讲者视图：幻灯片铺满，**不改动幻灯片本身的观感** ——
   //   · 讲稿照旧按 `S` 呼出（deck 自带的底部浮层，在讲者窗口里点得到、观众窗口里拿不到讲稿）；
@@ -1343,7 +1406,18 @@ export default function ChapterSlides() {
       <div
         style={{ position: 'fixed', inset: 0, zIndex: 1200, background: '#000', display: 'flex' }}
       >
-        <div style={{ flex: 1, minWidth: 0 }}>{renderStage()}</div>
+        <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+          {renderStage()}
+          <AnnotationLayer
+            strokes={strokes}
+            pointer={pointer}
+            tool={tool}
+            color={penColor}
+            width={penWidth}
+            onPointer={sendPointer}
+            onStroke={sendStroke}
+          />
+        </div>
 
         {/* 顶部（幻灯片上下的黑边上）：左侧「下一页」预告 + 右侧「计时 / 观众窗口 / 退出」。
              半透明、hover 变亮。
@@ -1357,13 +1431,67 @@ export default function ChapterSlides() {
             right: 0,
             display: 'flex',
             padding: '0 20px',
+            // 必须高于白板层（AnnotationLayer 是 z-index 3），否则按钮被它拦住点不到
+            zIndex: 4,
             opacity: 0.55,
             transition: 'opacity .2s',
           }}
           onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
           onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.55')}
         >
-          <Space size={10}>
+          <Space size={8}>
+            {/* 批注工具：白板层常驻接管鼠标（用户确认"默认接管"），翻页用键盘或这里的按钮 */}
+            <Tooltip title={tool === 'pen' ? '当前：按住拖动画线（点击切到"只指示"）' : '当前：只同步光标（点击切到画笔）'}>
+              <Button
+                size="small"
+                type={tool === 'pen' ? 'primary' : 'default'}
+                onClick={() => setTool(tool === 'pen' ? 'pointer' : 'pen')}
+              >
+                {tool === 'pen' ? '✏️ 画笔' : '🎯 指示'}
+              </Button>
+            </Tooltip>
+            <Space size={4}>
+              {PEN_COLORS.map((item) => (
+                <button
+                  key={item.value}
+                  title={`${item.name}笔`}
+                  onClick={() => {
+                    setPenColor(item.value);
+                    setTool('pen');
+                  }}
+                  style={{
+                    width: 20,
+                    height: 20,
+                    padding: 0,
+                    borderRadius: '50%',
+                    background: item.value,
+                    border: penColor === item.value ? '2px solid #fff' : '1px solid rgba(255,255,255,.45)',
+                    boxShadow: penColor === item.value ? '0 0 0 1px rgba(0,0,0,.35)' : 'none',
+                    cursor: 'pointer',
+                  }}
+                />
+              ))}
+            </Space>
+            <Space size={2}>
+              {PEN_WIDTHS.map((item) => (
+                <Button
+                  key={item.value}
+                  size="small"
+                  type={penWidth === item.value ? 'primary' : 'default'}
+                  onClick={() => {
+                    setPenWidth(item.value);
+                    setTool('pen');
+                  }}
+                >
+                  {item.name}
+                </Button>
+              ))}
+            </Space>
+            <Tooltip title="清空本页批注（翻页会自动清）">
+              <Button size="small" onClick={() => clearAnnotations()}>
+                清除
+              </Button>
+            </Tooltip>
             <Button
               size="small"
               onClick={() => {
@@ -1403,6 +1531,7 @@ export default function ChapterSlides() {
             left: 20,
             right: 20,
             bottom: notesBox.open ? notesBox.height + 12 : 12,
+            zIndex: 4,
             display: 'flex',
             // 右下角（用户 2026-10-17 明确要求；左对齐那版是临时的）
             justifyContent: 'flex-end',
