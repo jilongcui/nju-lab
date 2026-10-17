@@ -615,12 +615,49 @@ const media = [
     blocks: [{ kind: 'evidence', items: ['背景图铺满', '压暗遮罩保证可读'] }],
     background: { fileId: '11111111-1111-1111-1111-111111111111', dim: 0.6 },
   },
+  {
+    // v13：表格 + 图同页 —— 图排在**表格下方**（教师要求"表 + 图时图在列表下面"）
+    intent: 'table',
+    title: '常见计算模型的线性部分与激活函数',
+    blocks: [
+      {
+        kind: 'table',
+        head: ['模型', '线性部分', '激活'],
+        rows: [
+          ['线性回归', '是', '无'],
+          ['逻辑回归', '是', 'Sigmoid'],
+        ],
+      },
+      { kind: 'image', fileId: '22222222-2222-2222-2222-222222222222', caption: '激活函数一' },
+      { kind: 'image', fileId: '22222222-2222-2222-2222-222222222222', caption: '激活函数二' },
+    ],
+  },
+  {
+    // v13 回归：代码页 + 单图仍**左右并排**（垂直堆叠会顶掉页脚，2026-10-12 实测）
+    intent: 'example',
+    title: '代码 + 单图仍并排',
+    blocks: [
+      { kind: 'code', lang: 'python', content: 'print(1)' },
+      { kind: 'image', fileId: '22222222-2222-2222-2222-222222222222', caption: '单图' },
+    ],
+  },
+  {
+    // v13：封面只有标题 + 一句话（一句话写在 lede，不是 subtitle —— 生成侧就是这么写的）
+    intent: 'cover',
+    kicker: '第 2 章',
+    title: '机器学习基本理论和实践',
+    lede: '机器学习不把规则写死，而是让数据自己说话。',
+    blocks: [],
+  },
 ];
 const mediaHtml = await buildSemanticDeckHtml({
   pages: media,
   meta: META,
   themeId: 'builtin-platform-blue',
-  resolveImage: (fileId) => (fileId === '11111111-1111-1111-1111-111111111111' ? 'data:image/png;base64,AAAA' : undefined),
+  resolveImage: (fileId) =>
+    fileId === '11111111-1111-1111-1111-111111111111' || fileId === '22222222-2222-2222-2222-222222222222'
+      ? 'data:image/png;base64,AAAA'
+      : undefined,
 });
 const mediaDoc = new JSDOM(mediaHtml).window.document;
 
@@ -650,6 +687,39 @@ check(
 const bgPage = mediaDoc.querySelectorAll('.slide:not(.notes-page)')[3];
 check('页级背景：section 带 has-bg 与背景图', bgPage.classList.contains('has-bg') && /background-image/.test(bgPage.getAttribute('style') ?? ''));
 check('页级背景：压暗遮罩按 dim 生成', !!bgPage.querySelector('.ly-bg-scrim'));
+
+// ---- v13：表 + 图同页 → 图排在表格**下方**（不再左右并排）；代码页 + 单图仍并排 ----
+const tableFigPage = mediaDoc.querySelectorAll('.slide:not(.notes-page)')[4];
+check(
+  '表格页带图：图排在表格下方（.ly-figs-below，是叠排不是两栏）',
+  tableFigPage.querySelectorAll('.ly-figs-below .img-frame').length === 2 &&
+    tableFigPage.querySelectorAll('.ly-split').length === 0,
+  `figs=${tableFigPage.querySelectorAll('.ly-figs-below .img-frame').length}`,
+);
+check(
+  '表格页带图：图片在表格之后（DOM 顺序 = 视觉顺序）',
+  (() => {
+    const table = tableFigPage.querySelector('.ly-table');
+    const figs = tableFigPage.querySelector('.ly-figs-below');
+    if (!table || !figs) return false;
+    return (table.compareDocumentPosition(figs) & 4) !== 0; // 4 = DOCUMENT_POSITION_FOLLOWING
+  })(),
+);
+const codeFigPage = mediaDoc.querySelectorAll('.slide:not(.notes-page)')[5];
+check(
+  '代码页 + 单图仍是左右两栏（垂直堆叠会顶掉页脚，v13 不动这条）',
+  codeFigPage.querySelectorAll('.ly-split').length === 1 &&
+    codeFigPage.querySelectorAll('.ly-figs-below').length === 0,
+);
+const coverPage = mediaDoc.querySelectorAll('.slide:not(.notes-page)')[6];
+check(
+  '封面：一句话读 lede（v2 生成侧写在 lede，此前只认 subtitle → 一直没上屏）',
+  coverPage.querySelector('.ly-cover-sub')?.textContent === '机器学习不把规则写死，而是让数据自己说话。',
+);
+check(
+  '封面：没有要点胶囊（blocks 为空就是干净封面）',
+  coverPage.querySelectorAll('.ly-pills .pill').length === 0,
+);
 
 // ---------------- 11. 模板调参映射 + 打印样式（P4）----------------
 const tuned = designToTokenOverrides({

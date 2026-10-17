@@ -432,7 +432,9 @@ export function validateSemanticPages(
     const blocks = (Array.isArray(item.blocks) ? item.blocks : [])
       .map((block) => normalizeBlock(block, warnings, pageNo, allowedImageIds))
       .filter((block): block is SemanticBlock => !!block);
-    if (!blocks.length) {
+    // 封面例外（v13）：封面只有 kicker/title/lede，**下面不放要点**（教师要求：要点留给分节与内容页）。
+    // 所以空 blocks 的 cover 是合法页，不能按"没有可用内容块"丢掉 —— 丢了整份 deck 就少一页。
+    if (!blocks.length && intent !== 'cover') {
       warnings.push(`第 ${pageNo} 页没有可用内容块，已跳过`);
       return;
     }
@@ -543,13 +545,17 @@ export const SEMANTIC_OUTLINE_SYSTEM = [
   '{"deckTitle": string, "pages": [{"intent": string, "kicker": string, "title": string, "lede": string, "keyPoint": string, "plan": string[]}]}',
   `intent 只能取：${SEMANTIC_INTENTS.join(' | ')}。`,
   '**intent 是「版式」，只能取上面这一串；claim/evidence/metric/sequence/flow/arch/relation/timeline/compare/table/chart/formula/code/quote/note 是「内容块类型」，只能出现在 plan 里，绝不许当 intent 用。**',
-  'plan 是本页要用的内容块类型，从 claim/evidence/metric/sequence/flow/arch/relation/timeline/compare/table/chart/formula/code/quote/image/note 里选 1–2 个。',
+  'plan 是本页要用的内容块类型，从 claim/evidence/metric/sequence/flow/arch/relation/timeline/compare/table/chart/formula/code/quote/image/note 里选 1–2 个',
+  '（**cover 页的 plan 留空**；表格页可以再带 image，见 3.6）。',
   '',
   '【整体结构】',
-  '1) 第 1 页 intent=cover（title 用章节名，kicker 用课程名，lede 一句话交代本章要解决什么）；',
+  '1) 第 1 页 intent=cover（title 用章节名，kicker 用课程名，lede 一句话交代本章要解决什么）。',
+  '**封面只有标题 + 一句话，下面不放要点**（plan 留空）—— 要点留给分节页与内容页。',
   '第 2 页 intent=toc 作「本章脉络」；最后一页 intent=summary 作小结。首尾页都不许省。',
   '2) 通读正文，梳理 2–4 个分节：每节用一页 intent=section 打头（kicker 写「第 N 节」，lede 一句话说清本节要讲清什么），',
   '其下跟 1–3 页内容页。短章可省分节页，把页数让给内容页。',
+  '**分节页只给 2–3 条极简要点**（plan 写 evidence；每条是 ≤12 字的主题词短语，如「监督学习」「无监督学习」「半监督学习」），',
+  '不要写完整句子、不要带补充说明 —— 承接与过渡都放进讲稿（notes）。',
   '',
   '【选型——这是本任务的重点，务必按内容形态选，不要一水儿 claim】',
   '3) 讲清一个论断并给若干支撑 → claim；两件事/两条路线对照 → contrast；并列 2–4 个要素 → pillars；',
@@ -562,6 +568,8 @@ export const SEMANTIC_OUTLINE_SYSTEM = [
   '3.5) **一页讲透一个要点，内容要充实**：正文里支撑它的关键细节、数字、例子都要规划进这一页',
   '（不要为了显得简洁而丢内容）。但**同一页不要既有代码又有图片**——代码与图分页，',
   '或用"两栏对照"页把代码与要点并排放。',
+  '3.6) **正文里紧挨着表格（或同一段落里）的插图，跟那一页走**：plan 写 table + image ——',
+  '不要为了"一页只能一种块"把图和表拆成两页，图会排在表格下方一起展示（最多 4 张）。',
   '4) 一份 deck 至少要出现 3 种不同的内容页 intent（不许全是 claim）；relation/flow/arch/timeline 这类"图示页"',
   '只在正文确有相应结构时使用，**不要为了好看硬凑**。',
   `5) 总页数不超过 ${20} 页（含首尾）。`,
@@ -604,18 +612,20 @@ export const SEMANTIC_EXPAND_SYSTEM = [
   SEMANTIC_BLOCK_SPEC,
   '',
   '【铁律】',
-  '0) 【语言风格｜最重要】面向研究生的课程材料，要求**规范、完整、准确，同时让人读得懂**：',
+  '0) 【语言风格｜最重要】面向研究生的课程材料，要求**准确、完整、好读，而且讲得生动**：',
   '   · 写**完整的句子或完整的短语结构**，**不要关键词串、不要电报体**；',
   '   · 解释抽象概念时**可以用贴近口语、贴近直觉的完整表述**（如"把规则写死"这种说法是好的，',
   '     它比"基于确定性规则的判定逻辑"更容易理解）——**好懂是优点，不要为了显得正式而写成公文腔**；',
-  '   · 但仍然**不要俏皮比喻、不要网络用语、不要玩笑话**；术语首次出现给全称',
+  '   · **允许用贴切的类比或生活化场景把机制讲明白**（"单个 Agent 像一名员工，多智能体协作像 MDT 会诊"），',
+  '     生动一点没关系；但**不要网络用语、不要玩笑话、不要为俏皮而俏皮**，术语首次出现给全称',
   '     （如「检索增强生成（RAG）」）；',
   '   · 抽象结论必须带**具体对象、数字或机制**（「准确率提升 12%」优于「效果更好」）；',
-  '   · 宁可多写几个字把话说完整，也不要为了短而丢掉信息。',
+  '   · 宁可多写几个字把话说完整，也不要为了短而丢掉信息；**简洁不等于只剩关键词**。',
   '1) intent / kicker / title 必须与给定计划**完全一致**，顺序不许变，不许增删页。',
   '2) 数字必须来自正文，不许编造；正文没给的数字就不要写 metric。',
   '3) **每页内容要充实**：按 intent 把该讲的话讲全（一般 2–4 个块），正文里的关键数字、机制、例子',
-  '都要落到页面上；不要为了"简洁"而只写几句空话。但**同一页不要既有代码又有图片**',
+  '都要落到页面上；**页面文字本身也要把话说完整**（一条要点是一个读得懂的短句，不是几个词拼起来）——',
+  '不要为了"简洁"而只写几句空话。但**同一页不要既有代码又有图片**',
   '（图另起一页，或用"两栏对照"页把代码与要点并排），也不要把一页堆到溢出。',
   'evidence 每条一个完整短句（≤28 字）、3–5 条；metric ≤4 个；relation ≤6 节点；code ≤18 行。',
   '4) notes 是**讲者讲稿**，**每一页都必须写、不许留空** —— 含封面/目录/分节页：',
@@ -635,9 +645,12 @@ export const SEMANTIC_EXPAND_SYSTEM = [
   '6) notes 是**一个字符串**（不是数组），口播 4–7 句连成一段，`[ ]` 内联在需要它的那句话之后。',
   '7) 字符串内部不要使用英文双引号；需要引用时用中文引号「」。',
   '8) 【intent 与 blocks 必须匹配，且箭头左边**只能**是上面的 intent 白名单，右边才是块类型】',
-  'cover→evidence；toc→sequence；section→evidence（本节导读，可省）；',
+  'cover→**不写 blocks**（只给 kicker/title/lede，封面上不放要点）；toc→sequence；',
+  'section→evidence（本节导读：2–3 条 ≤12 字的主题词短语，不写完整句）；',
   'claim→claim + evidence（本页有公式时再加 formula）；contrast→compare；pillars→sequence 或 evidence；metric→metric；sequence→sequence；',
-  'flow→flow；arch→arch；relation→relation；timeline→timeline；table→table；data→chart；image→image；',
+  'flow→flow；arch→arch；relation→relation；timeline→timeline；data→chart；image→image；',
+  'table→table（**可再加 image**：正文里与表格同段落的插图都放进来，1–4 张，排在表格下方）；',
   'example→code；quote→quote；',
-  'summary→claim 或 evidence。除 note（本页补充说明）外，**不要在同一页混入别的块类型**。',
+  'summary→claim 或 evidence。',
+  '除 note（本页补充说明）与 image（表格/要点页的附图，见上）外，**不要在同一页混入别的块类型**。',
 ].join('\n');

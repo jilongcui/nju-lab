@@ -278,6 +278,49 @@ const junk = validateSemanticPages(
 check('非法/空块全部丢弃，空页被跳过（不留畸形页）', junk.pages.length === 0, `pages=${junk.pages.length}`);
 check('丢弃时给出可读 warning', junk.warnings.length >= 2, `warnings=${junk.warnings.length}`);
 
+// ---------------- 5b. 封面允许没有内容块（v13）----------------
+// 教师要求「封面就不要列主题下面的要点了」→ 封面的 blocks 为空是**合法**页，
+// 不能按「没有可用内容块」丢掉（丢了整份 deck 会少一页，分节/内容页的序号全乱）。
+const coverEmpty = validateSemanticPages(
+  [
+    { intent: 'cover', kicker: '第 2 章', title: '机器学习基本理论和实践', lede: '从原理到场景', blocks: [] },
+    { intent: 'claim', title: '神经元', blocks: [{ kind: 'claim', text: '线性变换叠加非线性激活' }] },
+  ],
+  LIMITS,
+);
+check(
+  '封面 blocks 为空仍保留该页（只有标题 + 一句话）',
+  coverEmpty.pages.length === 2 && coverEmpty.pages[0].intent === 'cover' && coverEmpty.pages[0].blocks.length === 0,
+  `pages=${coverEmpty.pages.length}`,
+);
+check(
+  '非封面页的空 blocks 仍按「没有可用内容块」跳过',
+  coverEmpty.warnings.every((w) => !w.includes('第 1 页没有可用内容块')),
+);
+
+// ---------------- 5c. 表格页带图（v13）----------------
+// 正文里与表格同段落的插图跟这一页走：plan 写 table + image，校验层不能把 image 当"混块"丢掉。
+const tableWithImage = validateSemanticPages(
+  [
+    {
+      intent: 'table',
+      title: '常见计算模型的线性部分与激活函数',
+      blocks: [
+        { kind: 'table', head: ['模型', '激活'], rows: [['线性回归', '无']] },
+        { kind: 'image', fileId: '11111111-1111-1111-1111-111111111111', caption: '激活函数' },
+        { kind: 'image', fileId: '22222222-2222-2222-2222-222222222222', caption: 'Sigmoid' },
+      ],
+    },
+  ],
+  { ...LIMITS },
+  new Set(['11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222']),
+);
+check(
+  '表格页可以同时带 image 块（表 + 图同页，图排在下方）',
+  tableWithImage.pages[0]?.blocks.filter((b) => b.kind === 'image').length === 2,
+  `blocks=${tableWithImage.pages[0]?.blocks.map((b) => b.kind).join(',')}`,
+);
+
 // ---------------- 6. 结构自辨识 ----------------
 check('v2 deck 被识别为语义 deck', isSemanticDeck([{ intent: 'cover', blocks: [] }]) === true);
 check('v1 deck 不会被误判为语义 deck', isSemanticDeck([{ id: 'x', layout: 'cover', bullets: ['a'] }]) === false);

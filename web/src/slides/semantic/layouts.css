@@ -892,6 +892,23 @@
   line-height: 1.5;
 }
 
+/* 表格/要点页的附图（v13）：图排在内容**下方**一行，不再左右并排 ——
+   表格本身占宽，并排会把表挤窄；教师要求"表 + 图时图在表格下面"。
+   多张图等分一行（最多 4 张），高度压小，避免顶掉页脚（画布 1080 高，页眉+表格已占大半）。 */
+.ly-figs-below {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 18px;
+  margin-top: 22px;
+}
+.ly-figs-below .img-frame {
+  --ly-img-box-h: 230px;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 380px;
+}
+
 /* 图与内容并排：内容多的页（如代码页带图）避免垂直堆叠顶掉页脚 */
 .ly-split {
   display: grid;

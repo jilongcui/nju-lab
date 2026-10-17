@@ -843,6 +843,22 @@ export class SlidesService {
   }
 
   /**
+   * 两份内容是否**完全相同**（slides + markdown）。
+   *
+   * 用途：① 存档去重（内容没变就不再存一版）；② 回滚短路（当前已经是那一版就不再写库）。
+   * 比的是 JSON 序列化结果 —— 同一列里读出来的对象，键顺序一致，够用且不需要 deep-equal 依赖。
+   */
+  private sameDeckContent(
+    a: { slides?: unknown; markdown?: string | null },
+    b: { slides?: unknown; markdown?: string | null },
+  ): boolean {
+    return (
+      JSON.stringify(a.slides ?? null) === JSON.stringify(b.slides ?? null) &&
+      String(a.markdown ?? '') === String(b.markdown ?? '')
+    );
+  }
+
+  /**
    * 把 deck 的**当前内容**存成一个历史版本 —— 在"即将覆盖内容"之前调用。
    *
    * 为什么在覆盖前存：教师判断"哪一版更好"是主观的，覆盖掉就没了（实测踩过：
@@ -855,6 +871,15 @@ export class SlidesService {
     actorId?: string,
   ): Promise<void> {
     if (!deck.slides?.length) return;
+    // **内容没变就不存**（2026-10-17 修）：此前每次回滚都会把"当前内容"存一版，教师来回切换
+    // A/B 两版就会堆出一串一模一样的记录 —— 实测某章 deck 版本号已到 30、列表里大量重复。
+    // 判据取**最近一版**：slides 与 markdown 都相同 → 这版已经在列表里，直接跳过。
+    const latest = await this.versionRepo.findOne({
+      where: { deckId: deck.id },
+      order: { createdAt: 'DESC' },
+      select: ['id', 'slides', 'markdown'],
+    });
+    if (latest && this.sameDeckContent(latest, deck)) return;
     await this.versionRepo.save(
       this.versionRepo.create({
         deckId: deck.id,
@@ -952,6 +977,13 @@ export class SlidesService {
     }
     const v = await this.versionRepo.findOne({ where: { id: versionId, deckId: deck.id } });
     if (!v) throw new NotFoundException('该历史版本不存在（可能已超出保留数量）');
+
+    // 当前内容**已经是这一版** → 什么都不写：不回档、不产生新版本、不记审计。
+    // （教师来回点"回滚"只是换着看，不该每次都在版本列表里留一条一模一样的记录。）
+    if (this.sameDeckContent(v, deck)) {
+      this.logger.log(`幻灯片回滚跳过：当前内容与该历史版本一致 deck=${deck.id} 版本=${versionId}`);
+      return { deck: this.toDeckView(deck) };
+    }
 
     await this.archiveVersion(deck, 'pre-restore', user.id);
 

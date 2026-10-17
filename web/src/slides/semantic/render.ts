@@ -316,11 +316,18 @@ function renderData(page: Page, ctx: RenderContext): string {
 function renderCover(page: Page): string {
   const evidence = blockOf(page, 'evidence');
   const pills = (evidence?.items ?? []).slice(0, 5);
+  // 封面的一句话：生成侧把「本章要解决什么」写在 `lede`（大纲规则），老 deck 写在 `subtitle`；
+  // 两个都认 —— 此前只读 subtitle，v2 生成的封面**一句话一直没上屏**（教师看到的是"只有大标题"）。
+  const oneLiner = page.subtitle || page.lede;
   return `<div class="ly ly-cover">
   <div class="ly-rule"></div>
   ${page.kicker ? `<p class="ly-cover-kicker"${ed('kicker')}>${escapeHtml(page.kicker)}</p>` : ''}
   <h1${ed('title')}>${inline(page.title ?? '')}</h1>
-  ${page.subtitle ? `<p class="ly-cover-sub"${ed('subtitle')}>${inline(page.subtitle)}</p>` : ''}
+  ${
+    oneLiner
+      ? `<p class="ly-cover-sub"${ed(page.subtitle ? 'subtitle' : 'lede')}>${inline(oneLiner)}</p>`
+      : ''
+  }
   ${
     pills.length
       ? `<div class="ly-pills">${pills
@@ -760,8 +767,10 @@ function renderBody(page: Page, ctx: RenderContext): string {
   const leftovers = page.blocks.filter((block) => !consumed.includes(block.kind));
 
   /**
-   * 图片与主内容**并排**，不垂直堆叠（2026-10-12 实测：代码页 + 图垂直堆叠时会顶掉页脚，
-   * 第 2 章第 14 页超出 72px；学员的建议也是"代码和图片用左右布局"）。
+   * 图片的排法分两种（v13）：
+   *   · **表格页 / 一页多张图 → 图排在内容下方一行** —— 表格本身就占宽，左右并排会把表挤窄；
+   *     教师明确要求"表 + 图时图在表格下面"，多张图并排也会挤成一列细缝。
+   *   · 其余（代码页 + 单图等）仍**并排**：垂直堆叠会顶掉页脚（2026-10-12 实测，代码页 + 图超出 72px）。
    * 其余兜底块（note/formula/…）仍走下方的 .ly-extra。
    */
   const images = leftovers.filter((block) => block.kind === 'image');
@@ -779,6 +788,9 @@ function renderBody(page: Page, ctx: RenderContext): string {
         ),
       )
       .join('');
+    if (page.intent === 'table' || images.length > 1) {
+      return `<div class="ly">${inner}${extra}<div class="ly-figs-below">${figs}</div></div>`;
+    }
     return `<div class="ly"><div class="ly-split">
   <div class="ly-split-main">${inner}</div>
   <div class="ly-split-media">${figs}</div>

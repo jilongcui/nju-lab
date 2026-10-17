@@ -426,7 +426,7 @@ export default function ChapterSlides() {
     setBusy(true);
     try {
       await restoreSlideVersion(chapterId, versionId, deck?.version);
-      message.success('已回滚到该历史版本（当前内容已自动存为一版，可再换回）');
+      message.success('已回滚到该历史版本（当前内容已存为一版，可再换回；内容相同时不重复存）');
       await load(true);
       await loadVersions();
     } catch (error) {
@@ -1110,6 +1110,7 @@ export default function ChapterSlides() {
               <Paragraph type="secondary" style={{ fontSize: 12 }}>
                 每次重新生成或保存前，平台会自动把<b>上一版</b>存进这里（保留最近 20 版）。
                 回滚时当前内容也会先存一版 —— 来回都能换，不用怕选错。
+                <b>内容没变时不会重复存档</b>（来回切换版本不会堆出一串一样的记录）。
               </Paragraph>
               <List
                 size="small"
