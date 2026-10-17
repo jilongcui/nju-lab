@@ -31,6 +31,16 @@ export default defineConfig([
     dts: true,
   },
   {
+    // client 半里**不依赖 React 的纯判定逻辑**（面板列哪些任务 / 打开面板补下发哪些），
+    // 单独出 ESM 产物给 L1 测试 import：浏览器侧的 `lib/client/index.js` 被包成
+    // 自注册 classic script（见下），Node 里 import 不了。
+    entry: ['src/client/panel-logic.ts'],
+    outDir: 'lib/shared',
+    format: ['esm'],
+    platform: 'node',
+    dts: true,
+  },
+  {
     entry: ['src/client/index.tsx'],
     outDir: 'lib/client',
     format: ['cjs'],

@@ -5,7 +5,31 @@
 
 ## 0. 一句话现状
 
-**2026-10-17（页面结构 v13：封面不放要点 / 分节页极简 / 表 + 图同页 / 版本去重）—— ✅ 已上线**
+**2026-10-18（DSH 客户端面板：只列已领取 + 打开即材料化）—— 🧩 源码就绪，未发布**
+
+- **需求（用户）**：① 学生在平台点「领取」、状态变「已领取」后，进 DSH 还要再点一次「重新下载」才能拿到
+  模板/题目包 —— 想问能不能直接进虚拟环境就学；② 面板把**未领取**的实验也全列出来，任务一多就很长，
+  "只展示那些已领取的实验"。
+- **口径**：① **面板只列已领取**（`claimed` / `submitted`）——未领取的不进列表，底部只留一行
+  「另有 N 个未领取的实验（显示/收起）」，展开后仍可在面板里领取；② **打开面板即材料化** ——
+  已领取但工作区没有材料的任务，面板挂载后自动串行下发一次（平台对 claimed/submitted 的 claim 是
+  幂等重发：不改状态、不动提交记录、顺带重新钉定评估条件），成功后横幅报落盘目录，失败退回手动
+  「重新下载」；每个任务**每次挂载只自动试一次**（避免网络抖动时静默重试循环）。
+- **实现**：新增 `dsh/nju-lab-client/src/client/panel-logic.ts`（纯判定：`visibleAssignments` /
+  `pendingCount` / `pendingAutoMaterialize`，不依赖 React），tsdown 增第三个 entry → `lib/shared/`
+  （ESM，给 L1 测试 import；浏览器侧 `lib/client/index.js` 是自注册 classic script，Node 里 import 不了）。
+  `ClaimPanel.tsx` 增自动下发 effect（`autoTried` ref 去重、`busy` 进依赖避免与学生手动操作抢同一次下载）
+  与列表过滤；host 半（`panel.ts` / `actions.ts`）**未改**——`downloaded` 本来就是 host 实测目录得出的。
+- **验证**：`tsc --noEmit` 过；`npm test` **75 条（69 L1 pass + 6 L2 skip，无 `DSH_BIN`）**，
+  新增 `test/panel-logic.test.mjs` 11 条覆盖两条口径（含"pending 绝不自动领""submitted 换机需补"）；
+  **真 Chromium 实测 18/18**（`npm run test:browser` → `test/panel-browser.mjs`，Playwright 取自
+  `web/node_modules`、Chromium 在 `~/.cache/ms-playwright`，脚本自带 `PLAYWRIGHT_BROWSERS_PATH`）：
+  默认列表只出现 claimed/submitted、未领取两态都不出现、汇总行「另有 2 个」、自动下发**只发 1 次**
+  且请求体是缺材料那个、已落盘的 submitted 不重复下发、刷新后不再下发、失败时错误横幅带平台原因且
+  按钮退回「重新下载」、失败也只试 1 次。截图 `.verify-scratch/panel-shots/{default,failed}.png`。
+- **未发布**：只改了插件源码并重建了本地 `lib/`；`dsh/kit` 安装包与镜像**未重打**，学生端要等下次
+  kit 重发才生效（重打流程见 `docs/UPGRADE-playbook.md`）。
+
 
 - **需求（教师）**：① v12 生成的内容"不如以前风趣简洁"，尤其封面与分节页 —— **封面不要列要点**、
   **分节页要点要极简**、正文描述要完整；② 机器学习第 7 页是数据表，教师加了**四张激活函数图**，

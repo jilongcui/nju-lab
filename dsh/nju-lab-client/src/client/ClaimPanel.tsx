@@ -14,11 +14,20 @@
  *    平台对 claimed/submitted 的 claim 都幂等重发材料，不影响提交记录；
  *  - 未领取 → 提交禁用（平台会 400「请先领取任务再提交」）。
  *
+ * 2026-10-18 两条口径（用户明确）：
+ *  - **列表只列已领取**（claimed / submitted）：未领取的实验不进列表，只在底部留一行
+ *    「另有 N 个未领取」。学生身上可能有十几个待领取任务，面板要回答的是"我正在做哪几个"。
+ *  - **打开面板即材料化**：状态已 claimed/submitted 但本地工作区没有材料的任务，挂在
+ *    面板上就自动下发一次（平台对这两态的 claim 是幂等重发，不改状态、不动提交记录）。
+ *    学生在平台上领完实验、进 DSH 就已在环境里，不必再点一次；失败才退回手动「重新下载」。
+ *
  * 每次动作的结果（成功 / 失败）渲染成可关闭的横幅，并把 host 半返回的结构化细节
  * （落盘路径、Skill 根、文件哈希、submission id）摊开 —— 出问题时要能自己看出
  * 是"没找到 SKILL.md"还是"哈希不符"，而不是只得到一句 502。
  */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+
+import { pendingAutoMaterialize, pendingCount, visibleAssignments } from './panel-logic.ts'
 
 const ROUTES = {
   assignments: '/api/nju-lab.assignments',
@@ -212,6 +221,18 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
   const [banner, setBanner] = useState<Banner | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(false)
+  /** 自动材料化是否在跑：跑的时候把按钮按下去，免得学生和你抢同一次下载。 */
+  const [autoBusy, setAutoBusy] = useState(false)
+  /**
+   * 本次挂载里自动试过的任务 id。
+   *
+   * 只活在这一个组件实例里：面板挂载 = 进入某个会话，换会话重新挂载就再试一次
+   * （那时工作区也换了，本来就该重新判断）。记录它是因为「失败」也要算试过 ——
+   * 否则快照刷新 → effect 重跑 → 再失败，会变成静默的重试循环。
+   */
+  const autoTried = useRef<Set<string>>(new Set())
+  /** 是否展开未领取的实验（默认收起 —— 面板只回答"我正在做哪几个"）。 */
+  const [showPending, setShowPending] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -235,6 +256,74 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
   useEffect(() => {
     void load()
   }, [load])
+
+  /**
+   * 打开面板就把已领取实验的材料补到工作区（口径见文件头）。
+   *
+   * 串行而不是 `Promise.all`：一次开面板可能要补好几个实验，并行会把带宽和平台
+   * 下载路径同时打满，而且失败时横幅里说不清是哪一份先坏的。数量本来就不多
+   * （一个学生同时在做的一般 1–3 个），串行的体感代价可以接受。
+   */
+  const autoMaterialize = useCallback(
+    async (snap: SnapshotDto) => {
+      const targets = pendingAutoMaterialize(
+        snap.assignments,
+        snap.downloaded ?? [],
+        autoTried.current,
+      )
+      if (targets.length === 0) return
+      const sessionId = getSessionId?.()
+      // 面板挂在会话上：会话还没选中时干脆不下发 —— 否则材料会落到进程启动目录，
+      // 而不是这个会话的工作区，学生之后在会话里找不到它。这时不记 autoTried，
+      // 但本组件也不订阅会话选中，所以实际表现是"这次不自动，学生手动点一下"。
+      if (getSessionId && !sessionId) return
+      for (const target of targets) autoTried.current.add(target.id)
+      const details: string[] = []
+      let failed = 0
+      setAutoBusy(true)
+      setBanner(null)
+      for (const target of targets) {
+        try {
+          const outcome = await call<ClaimOutcomeDto>(ROUTES.claim, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ assignmentId: target.id, sessionId }),
+          })
+          details.push(`${target.project?.title ?? target.id}：已下发到 ${outcome.dir}`)
+          if (outcome.unzipError) {
+            details.push(`⚠ 模板解压失败（ZIP 已落盘，可手动处理）：${outcome.unzipError.split('\n')[0]}`)
+          }
+        } catch (e) {
+          failed += 1
+          details.push(
+            `${target.project?.title ?? target.id}：下发失败 —— ${e instanceof Error ? e.message : String(e)}`,
+          )
+        }
+      }
+      setAutoBusy(false)
+      setBanner({
+        kind: failed > 0 ? 'error' : 'ok',
+        title:
+          failed > 0
+            ? `${failed} 个已领取实验的材料没下发成功，可在列表里点「重新下载」重试`
+            : '已自动下发已领取实验的材料（平台幂等重发，不影响提交记录）',
+        details,
+      })
+      // 刷新快照：downloaded 与钉定条件都会变
+      await load()
+    },
+    [getSessionId, load],
+  )
+
+  // 依赖 snapshot 对象：每次 load 都换新对象 → effect 重跑，但 autoTried 已经把
+  // 试过的 id 记下，缺材料的集合为空时立即返回（不会自激）。`busy` 也进依赖：
+  // 学生正在手动领取/提交时不抢同一次下载；手动动作结束后 busy 回 null，effect
+  // 重跑一次，把剩下真正缺材料的任务补上。
+  useEffect(() => {
+    if (!snapshot || !snapshot.tokenConfigured) return
+    if (busy !== null) return
+    void autoMaterialize(snapshot)
+  }, [snapshot, busy, autoMaterialize])
 
   /** 领取与提交只是两个 POST，成功后统一刷新快照。 */
   const act = useCallback(
@@ -297,6 +386,13 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
 
   const evalConfig = snapshot?.evalConfig ?? null
   const tokenConfigured = snapshot?.tokenConfigured ?? false
+  /** 列表内容：默认只有已领取的实验；`showPending` 是学生自己按开的口子。 */
+  const listed = !snapshot
+    ? []
+    : showPending
+      ? snapshot.assignments
+      : visibleAssignments(snapshot.assignments)
+  const pendingTotal = snapshot ? pendingCount(snapshot.assignments) : 0
 
   /** 插件自更新：host 拉平台安装包覆盖插件目录，重启 dsh 生效。 */
   const doUpdate = async () => {
@@ -334,6 +430,10 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
 
       {banner && <Banner banner={banner} onClose={() => setBanner(null)} />}
 
+      {autoBusy && (
+        <div style={{ ...dim, marginTop: 8 }}>正在把已领取实验的材料下发到工作区…</div>
+      )}
+
       {snapshot?.update?.available && (
         <div
           style={{
@@ -368,7 +468,7 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
       )}
 
       {snapshot &&
-        snapshot.assignments.map((a) => {
+        listed.map((a) => {
           const deadline = formatDeadline(a.project?.deadline)
           const overdue = isOverdue(a.project?.deadline)
           const claimed = a.status !== 'pending'
@@ -408,7 +508,7 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 <button
                   style={button}
-                  disabled={isBusy || blocked || (claimed && !canRedownload)}
+                  disabled={isBusy || blocked || autoBusy || (claimed && !canRedownload)}
                   title={
                     !a.unlocked
                       ? '尚未满足解锁条件，暂时不能领取'
@@ -424,7 +524,7 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
                 </button>
                 <button
                   style={button}
-                  disabled={isBusy || blocked || !claimed}
+                  disabled={isBusy || blocked || autoBusy || !claimed}
                   title={
                     claimed
                       ? a.submission
@@ -441,8 +541,27 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
           )
         })}
 
-      {snapshot && tokenConfigured && !snapshot.assignments.length && (
-        <div style={{ ...dim, marginTop: 8 }}>（没有分配给你的任务）</div>
+      {snapshot && tokenConfigured && !listed.length && (
+        <div style={{ ...dim, marginTop: 8 }}>
+          {snapshot.assignments.length === 0
+            ? '（没有分配给你的任务）'
+            : '还没有已领取的实验。'}
+        </div>
+      )}
+
+      {/* 未领取的不进列表（口径见文件头）：这里只留一行汇总 + 学生自己按开的入口 */}
+      {snapshot && tokenConfigured && pendingTotal > 0 && (
+        <div style={{ ...dim, marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span>另有 {pendingTotal} 个未领取的实验（领取后出现在这里）</span>
+          <button
+            style={linkButton}
+            disabled={busy !== null}
+            title={showPending ? '只显示已领取的实验' : '临时展开未领取的实验（可在这里领取）'}
+            onClick={() => setShowPending((value) => !value)}
+          >
+            {showPending ? '收起' : '显示'}
+          </button>
+        </div>
       )}
 
       <div

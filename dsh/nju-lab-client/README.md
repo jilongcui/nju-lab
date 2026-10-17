@@ -3,7 +3,7 @@
 NJU-Lab 的**定制 DSH 客户端插件**（host 半 + client 半）。
 
 - **host 半**（Node，`src/host/`）：平台 API 客户端（含上传/下载）、`agent/request` 评估条件锁定、三个平台工具、ClaimPanel 的 HTTP 路由、证据采集（`.dshc` 证据包：会话审计事件导出 + 脱敏 + 完整性哈希）、模型引导（system prompt 段 + `nju-lab-experiment` skill）。
-- **client 半**（浏览器，`src/client/`）：右侧栏的任务面板（列表 / 领取 / 提交 / 显示钉定条件）。
+- **client 半**（浏览器，`src/client/`）：右侧栏的任务面板（只列已领取的实验 / 打开即补下发材料 / 领取 / 提交 / 显示钉定条件）。
 
 ## 结构
 
@@ -28,6 +28,7 @@ nju-lab-client/
   src/client/         # 浏览器面
     index.tsx         # 两阶段注册右侧栏 tab（type + body + title + guide）+ 自动打开 + 设置卡片注册
     ClaimPanel.tsx    # 任务面板：同源 fetch 取数，token 不进浏览器
+    panel-logic.ts    # 面板的纯判定（列哪些任务 / 打开面板补下发哪些）；单独出 lib/shared 供 L1 测试
     SettingsCard.tsx  # 设置页「NJU-Lab 平台」卡片（settingsScope 读写 serverUrl/token）
 ```
 
@@ -41,13 +42,19 @@ npm run typecheck  # host 与 client 两半都干净
 
 ## 测试
 
-L2 需要一个 `dsh` 可执行文件（仓库不内置）。它按 `DSH_BIN` → `PATH` 的顺序查找，找不到会 **skip**（TAP 里是 `ok … # SKIP`，**不是**通过）。所以 L2 的结论必须带 `DSH_BIN` 跑；不带的话 64 条里那 6 条 L2 静默 skip，`npm test` 仍显示全绿。
+L2 需要一个 `dsh` 可执行文件（仓库不内置）。它按 `DSH_BIN` → `PATH` 的顺序查找，找不到会 **skip**（TAP 里是 `ok … # SKIP`，**不是**通过）。所以 L2 的结论必须带 `DSH_BIN` 跑；不带的话 75 条里那 6 条 L2 静默 skip，`npm test` 仍显示全绿。
 
 ```sh
 npm test                                 # L1 + L2
 DSH_BIN=/path/to/dsh npm test            # 追加真 DSH 端到端
 DSH_BIN=/path/to/dsh npm run test:e2e    # 只跑 L2
+npm run test:browser                     # 面板的浏览器验证（18 条断言 + 截图）
 ```
+
+`npm run test:browser`（`test/panel-browser.mjs`）用 `web/` 里的 Playwright + Chromium 把 `ClaimPanel`
+真渲染一遍：默认只列已领取、自动下发只挑缺材料的、失败只试一次并退回「重新下载」。它不在 `npm test`
+里（要 Chromium 与系统库，学生机不一定有），脚本会自己设 `PLAYWRIGHT_BROWSERS_PATH`；截图落在
+`.verify-scratch/panel-shots/`（gitignored）。
 
 没有 dsh 时先装一个，装完就在 PATH 上，之后的 `npm test` 会自动带上 L2：
 
@@ -67,6 +74,8 @@ npm i -g @deepseek-ai/dsh@0.2.0-rc.2
 - `test/evidence.test.mjs` — L1：`.dshc` 只留 `approval/*`、`permission/*`、按 `cwd` 归属会话、超长字段截断、`integrity` 口径、无持久化时的降级
 - `test/eval-state.test.mjs` — L1：评估条件的落盘 / 恢复 / 清理 / 损坏与形状不对时的容错；用"同一工作区第二次 `apply()`"模拟重启，断言条件回到新 agent 的工具面（`restrict` 收到 allow），并验证优先级（平台条件 > 配置默认）与回落
 - `test/guidance.test.mjs` — L1：引导段的注册面（段名前缀、排序位、文字要点）与 skill 的合法性（kebab-case 名、描述 ≤ 目录渲染上限、`source` 必须是字符串）；以及缺 `systemPrompt` / `skills` 时的软依赖行为与卸载撤销
+- `test/panel-logic.test.mjs` — L1：面板两条口径的纯判定（只列已领取；自动下发只挑「已领取 + 已解锁 + 本地无材料 + 本次未试过」）
+- `test/panel-browser.mjs` — 浏览器：真 Chromium 渲染 `ClaimPanel`，断言默认列表、自动下发的请求体、刷新不重复下发、失败退回手动（`npm run test:browser`）
 - `test/dsh-e2e.test.mjs` — L2（6 条）：真跑 `dsh --profile headless`，断言工具进入模型工具面、`restrict` 收窄生效、claim 之后同一会话即受约束、`.dshc` 采到本会话的审计事件、引导与 skill **真的到达模型**（system prompt 段 + skill 目录 + `skill` 工具加载正文）、**重启进程后条件仍被钉定**
 
 ## 学生如何使用
@@ -190,10 +199,10 @@ build-kit.sh 生成 kit-version.json（日期 + git rev）
 | `nju_lab_submit` | ✅ 打包/哈希/上传/提交；真实平台联调后库里是 `skillZipRef=file:<id>` |
 | Skill 根探测（REQ §1.0） | ✅ `resolveSkillRoot`：`<dir>/SKILL.md` → 唯一子目录含 `SKILL.md` → 报错。claim 与 submit 两处同语义；传 `skill/` 或 Skill 根本身都能提交 |
 | 打包 / 解压 | ✅ 纯 JS（`src/host/zip.ts`：写 store、读 store + deflate），不依赖学生机器上的 `zip`/`unzip` |
-| ClaimPanel | ✅ 列表 / 领取 / 提交 / 显示钉定条件；host 路由已在真 `dsh web` 上验证（`GET /api/nju-lab.assignments` → 200）。交互与状态对齐 host 半：未解锁/无 token/未领取时按钮禁用并给出原因（`title` 提示），已领取后领取按钮变「已领取」、提交按钮才可用；**云端 claimed 但本地无材料（换机/清理）时按钮变「重新下载」**——平台对 claimed 任务的 claim 幂等重发材料，快照新增 `downloaded`（本地已落盘的任务 id）供面板判断；动作结果渲染成可关闭的成功/失败横幅，并摊开落盘目录、每个下载物（名称/大小/路径）、Skill 根、解压失败警告、submission id、两个 sha256 前缀与本地 ZIP 路径；截止时间过期标红 |
+| ClaimPanel | ✅ 列表 / 领取 / 提交 / 显示钉定条件；host 路由已在真 `dsh web` 上验证（`GET /api/nju-lab.assignments` → 200）。交互与状态对齐 host 半：未解锁/无 token/未领取时按钮禁用并给出原因（`title` 提示），已领取后领取按钮变「已领取」、提交按钮才可用；**云端 claimed 但本地无材料（换机/清理）时按钮变「重新下载」**——平台对 claimed 任务的 claim 幂等重发材料，快照新增 `downloaded`（本地已落盘的任务 id）供面板判断；动作结果渲染成可关闭的成功/失败横幅，并摊开落盘目录、每个下载物（名称/大小/路径）、Skill 根、解压失败警告、submission id、两个 sha256 前缀与本地 ZIP 路径；截止时间过期标红。**2026-10-18 两条口径**：① **只列已领取**（claimed/submitted）的实验——未领取的不进列表，底部只留一行「另有 N 个未领取（显示/收起）」，展开后仍可在面板里领取；② **打开面板即材料化**——已领取但 `downloaded` 缺席的任务在面板挂载后自动串行下发一次（平台幂等），成功后横幅报落盘目录，失败则回退到手动「重新下载」（每个任务每次挂载只自动试一次，见 `src/client/panel-logic.ts`） |
 | 登录与 token | ✅ 插件侧两个来源：DSH **设置页**的 `nju-lab` 节（`ctx.settings.installSection`，即时生效）+ `NJU_LAB_TOKEN` 环境变量作默认；缺失/被拒给可读提示。平台侧 `POST /api/me/tokens` + `revoke`（D-Lite+，`tokenVersion` 整体吊销）已实测可用 |
 | 评估条件跨进程持久化 | ✅ `src/host/eval-state.ts`：claim 后写 `<workspace>/nju-lab/pinned-eval-config.json`，启动时恢复（优先于配置里的默认值），平台本次未下发条件时清掉旧值；文件损坏/形状不对只警告并忽略。L2 实测：两趟**独立** `dsh` 进程，第二趟一启动工具面就已被收窄（含 `bash`、不含 `web_fetch`） |
-| 测试 | ✅ 64 条（58 L1 + 6 L2），带 `DSH_BIN` 真跑 `dsh` 时 **64 pass / 0 fail / 0 skip**；不带则 6 条 L2 静默 skip。真模型也验证过会自己调用工具 |
+| 测试 | ✅ 75 条（69 L1 + 6 L2），带 `DSH_BIN` 真跑 `dsh` 时 **75 pass / 0 fail / 0 skip**；不带则 6 条 L2 静默 skip。真模型也验证过会自己调用工具。`test/panel-logic.test.mjs`（11 条）覆盖面板的两条口径：只列已领取、自动补下发只挑「已领取 + 已解锁 + 本地无材料 + 本次未试过」。另有**真 Chromium** 验证 `test/panel-browser.mjs`（`npm run test:browser`，18 条断言） |
 | 模型引导 | ✅ `src/host/guidance.ts`：常驻 system prompt 段（`nju-lab:workflow`，order 1800）+ 通过 `ctx.skills.register()` 注册的 `nju-lab-experiment` skill（目录 + 按需加载 + `/nju-lab-experiment`）。L2 实测（真 headless DSH）：引导文字出现在请求的 system 消息里，skill 目录列出该名字，模型调 `skill` 后拿回 `<skill_content name="nju-lab-experiment">` 正文 |
 | 插件自更新 | ✅ `src/host/update.ts`：`kit-version.json`（build-kit 注入日期 + git rev）判新旧，面板顶部「立即更新」→ 拉平台 `/kit/` zip 解出 `nju-lab-client/` 覆盖插件目录（先清 `lib/`），重启 dsh 生效；5 分钟检查缓存、失败静默降级；`NJU_LAB_PLUGIN_DIR` 为测试/调试逃生门。L1 全链路实测（mock 平台供 zip + 假插件目录）：报更新 → 覆盖 → 旧产物清除 → 再查无更新 |
 | `evalConfig.tools` 白名单 | ✅ 能力名 → DSH 工具名映射（`shell`→`bash`、`fs`→`read/write/edit/glob/grep`），在 `agent/created` 用 `agent.ctx.tools.restrict({ allow })` 生效，并在 claim 之后对**已存在**的 agent 补一刀。未知能力名忽略并显式警告 |

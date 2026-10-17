@@ -39,7 +39,8 @@
     "pretest": "npm run build",
     "test": "node --test test/*.test.mjs",
     "pretest:e2e": "npm run build",
-    "test:e2e": "node --test test/dsh-e2e.test.mjs"
+    "test:e2e": "node --test test/dsh-e2e.test.mjs",
+    "test:browser": "node test/panel-browser.mjs"
   },
   "dependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
