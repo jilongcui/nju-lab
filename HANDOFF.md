@@ -5,7 +5,7 @@
 
 ## 0. 一句话现状
 
-**2026-10-17（提交时点名 SKILL.md 的过程项：只警告不阻断）—— 🧩 源码就绪，未发布**
+**2026-10-17（提交时点名 SKILL.md 的过程项：只警告不阻断）—— ✅ 已上线**
 
 - **来由（用户）**：有学生提交后收到 agent 复盘"你跳过了第⑥步，SKILL.md 里两节还是模板 TODO，
   平台扫的就是那两节"。核对属实——但**链路上没有任何一环在提交前提醒**：
@@ -22,7 +22,17 @@
 - **验证**：`tsc --noEmit` 过；`npm test` **77 条（71 L1 pass + 6 L2 skip，无 `DSH_BIN`）**；
   新增 2 条在 `test/host-tools.test.mjs`：① 模板 TODO 原样提交 → 输出含两条提醒且
   `platform.submissions.length === 1`（证明没被拦）；② 两节写成自己的话 → 输出不含"会被扣分"。
-- **未发布**：插件源码改了，要重建 workspace 镜像（→ pkg10）与重打 kit 才到学生端。
+- **部署（2026-10-17 15:45 完成）**：
+  · **workspace 镜像 `nju-lab-workspace:0.2.0-rc.2-pkg10`**（`FROM verify:pkg6`；容器内
+    `lib/host/index.js` md5 `65d6944d…` 与本地构建一致，含 `scanSkillDoc`）；`workspace.config.ts`
+    默认 tag 切 pkg10 → `server npm run build` → kill MainPID（**327983 → 383811**）。pkg9 / pkg8 留作回滚点；
+  · **学生 kit**：`kit-version.json = 20261017-1545-497a6d3`，投放 `/var/www/lab/kit/nju-lab-student-kit.zip`
+    （旧包备份 `.20261017-1522.bak`）；包内 `lib/host/index.js` 含新检查代码。
+  · **重启代价**：又 reclaim 了一次工作台容器（日志 `容器 0acae7782896 ≠ 当前 3c5340ed0179`）——
+    学生下次进入会重建容器，材料由面板自动下发补回。
+  · **冒烟**：`GET /lab/ → 200`；独立起 pkg10 容器 → `[nju-lab-client] host half loaded` +
+    `WORKSPACE_READY port=9090` + `/?token=… → 303` → `/ → 200` → `GET /api/nju-lab.assignments` **200**。容器跑完即删。
+  · **回滚**：默认 tag 改回 pkg9 + `npm run build` + kill 重启；kit 用 `.20261017-1522.bak` 改回主名。
 
 
 - **需求（用户）**：① 学生在平台点「领取」、状态变「已领取」后，进 DSH 还要再点一次「重新下载」才能拿到
