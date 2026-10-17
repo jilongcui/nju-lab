@@ -5,7 +5,25 @@
 
 ## 0. 一句话现状
 
-**2026-10-17（DSH 客户端面板：只列已领取 + 打开即材料化）—— ✅ 已上线**
+**2026-10-17（提交时点名 SKILL.md 的过程项：只警告不阻断）—— 🧩 源码就绪，未发布**
+
+- **来由（用户）**：有学生提交后收到 agent 复盘"你跳过了第⑥步，SKILL.md 里两节还是模板 TODO，
+  平台扫的就是那两节"。核对属实——但**链路上没有任何一环在提交前提醒**：
+  `submitAssignment` 只做 `resolveSkillRoot`（找 SKILL.md）→ 收集文件 → 哈希 → 打包 → 上传，
+  **不读 SKILL.md 内容**；平台的 `scanSkillMd`（`server/verify-image/run-eval.mjs`）在复验时才扫，
+  只扣分不打回。用户口径：**加警告，提交照常完成**。
+- **实现**：`dsh/nju-lab-client/src/host/actions.ts` 新增并导出 `scanSkillDoc(skillRoot)`，口径与平台
+  `scanSkillMd` **逐条对齐**（`## 能力边界` 非空且不含 `TODO`；踩坑记录按行计数，兼容"独立二级标题"
+  与"实测档案里的列表项"两种写法）。`submitAssignment` 在打包前调用它，结果放进 `SubmitOutcome.skillDoc`：
+  · `boundariesDocumented=false` → 提醒"能力边界还是模板占位，自动建议分少 10 分"；
+  · `pitfallsRecorded=0` → 提醒"实测档案里没有踩坑记录，过程维度会丢分"。
+  工具输出（`tools.ts renderSubmit`）、面板提交横幅（`ClaimPanel.tsx`）都会列出这些提醒，并说明
+  "补写后可再交一版，历史版本保留、各自独立复验"。工具描述的英文也补了这句（不拦截但会点名）。
+- **验证**：`tsc --noEmit` 过；`npm test` **77 条（71 L1 pass + 6 L2 skip，无 `DSH_BIN`）**；
+  新增 2 条在 `test/host-tools.test.mjs`：① 模板 TODO 原样提交 → 输出含两条提醒且
+  `platform.submissions.length === 1`（证明没被拦）；② 两节写成自己的话 → 输出不含"会被扣分"。
+- **未发布**：插件源码改了，要重建 workspace 镜像（→ pkg10）与重打 kit 才到学生端。
+
 
 - **需求（用户）**：① 学生在平台点「领取」、状态变「已领取」后，进 DSH 还要再点一次「重新下载」才能拿到
   模板/题目包 —— 想问能不能直接进虚拟环境就学；② 面板把**未领取**的实验也全列出来，任务一多就很长，

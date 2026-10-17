@@ -323,6 +323,78 @@ describe('host half: nju_lab_submit', () => {
       )
     })
   })
+
+  // 2026-10-17：SKILL.md 过程项自检（与平台复验 run-eval.mjs scanSkillMd 同口径）。
+  // 口径是「只警告不阻断」——学生交了 v1 才发现两节还是模板 TODO 的情况，从这里第一次被点名。
+  test('模板 TODO 未填：提交照常成功，但输出点名会被扣分的两节', async () => {
+    await withClient({}, async ({ harness, platform }) => {
+      await harness.tool('nju_lab_claim').execute({ assignmentId: 'a-unlocked' })
+      const skillDir = await mkdtemp(join(tmpdir(), 'nju-doc-'))
+      await writeFile(
+        join(skillDir, 'SKILL.md'),
+        [
+          '# demo skill',
+          '',
+          '## 能力边界（TODO：学生补全）',
+          '',
+          '- TODO：**不处理**哪些情况？',
+          '',
+          '## 实测档案（TODO：学生填写，dossier）',
+          '',
+          '- 自测时间：',
+          '- 踩坑记录（pitfalls）：',
+          '  （每条写成一行）',
+          '',
+        ].join('\n'),
+      )
+
+      const out = await harness.tool('nju_lab_submit').execute({
+        assignmentId: 'a-unlocked',
+        skillDir,
+      })
+
+      assert.match(out, /submitted a-unlocked/, '警告不能变成拦截')
+      assert.match(out, /过程记录会被扣分/)
+      assert.match(out, /「能力边界」还是模板占位/)
+      assert.match(out, /「实测档案」里没有踩坑记录/)
+      assert.equal(platform.submissions.length, 1, '提交确实完成了')
+    })
+  })
+
+  test('两节都写成自己的话时不出现警告', async () => {
+    await withClient({}, async ({ harness }) => {
+      await harness.tool('nju_lab_claim').execute({ assignmentId: 'a-unlocked' })
+      const skillDir = await mkdtemp(join(tmpdir(), 'nju-doc-ok-'))
+      await writeFile(
+        join(skillDir, 'SKILL.md'),
+        [
+          '# demo skill',
+          '',
+          '## 能力边界',
+          '',
+          '- 能处理：UTF-8 的 CSV，表头唯一',
+          '- 不处理：GBK 编码、合并单元格、表头重名',
+          '',
+          '## 实测档案',
+          '',
+          '- 自测时间：2026-10-17',
+          '- 用例通过率：2/2',
+          '- 踩坑记录（pitfalls）：',
+          '  - 表头有空列：按列名取值抛 KeyError，改成按位置取值后通过',
+          '  - 数值列混入空字符串：直接 float() 抛错，先做空值归一',
+          '',
+        ].join('\n'),
+      )
+
+      const out = await harness.tool('nju_lab_submit').execute({
+        assignmentId: 'a-unlocked',
+        skillDir,
+      })
+
+      assert.match(out, /submitted a-unlocked/)
+      assert.doesNotMatch(out, /会被扣分/, '两节都写好了就不该再提醒')
+    })
+  })
 })
 
 describe('host half: platform auth', () => {

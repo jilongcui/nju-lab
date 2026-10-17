@@ -86,6 +86,73 @@ export interface ClaimOutcome {
   evalConfig: EvalConfig | null
 }
 
+/**
+ * SKILL.md 过程项检查结果。
+ *
+ * 口径**必须**与平台复验一致（`server/verify-image/run-eval.mjs` 的 `scanSkillMd`）：
+ * 否则"本地说没问题、复验却扣分"比不提示更糟。改一边就要同步改另一边。
+ */
+export interface SkillDocCheck {
+  /** `## 能力边界` 非空且不含 TODO 残留 */
+  boundariesDocumented: boolean
+  /** 「踩坑记录」下的列表项条数（不含 TODO 行） */
+  pitfallsRecorded: number
+  /** 给人看的提醒；两项都合格时为空数组 */
+  warnings: string[]
+}
+
+/**
+ * 扫提交目录里的 `SKILL.md`，把平台**提交后才扣分**的两项提前到提交那一刻说明。
+ *
+ * 2026-10-17 起用途：`nju_lab_submit` 与面板的提交动作返回里带上 `warnings`，
+ * **不阻断提交**（用户口径：警告不拦截）。学生交完 v1 才发现"两节还是模板 TODO"
+ * 的情况，从这里第一次被点名。
+ */
+export async function scanSkillDoc(skillRoot: string): Promise<SkillDocCheck> {
+  const file = join(skillRoot, 'SKILL.md')
+  let md: string
+  try {
+    md = await readFile(file, 'utf8')
+  } catch {
+    // resolveSkillRoot 已经保证 SKILL.md 存在，走到这里通常是权限问题
+    return {
+      boundariesDocumented: false,
+      pitfallsRecorded: 0,
+      warnings: [`读不到 ${file}，无法检查能力边界与实测档案`],
+    }
+  }
+  /** 取某个二级标题到下一个二级标题之间的正文。 */
+  const section = (title: string): string => {
+    const m = new RegExp(`##[^\\n]*${title}[^\\n]*\\n([\\s\\S]*?)(?=\\n## |$)`).exec(md)
+    return m?.[1] ?? ''
+  }
+  const boundary = section('能力边界')
+  const boundariesDocumented = boundary.trim() !== '' && !boundary.includes('TODO')
+
+  // 踩坑记录可能是独立二级标题，也可能是「实测档案」小节里的列表项（平台模板即后者）
+  let pitfallsText = section('踩坑记录')
+  if (!pitfallsText.trim()) {
+    const m = /踩坑记录[^\n]*\n((?:[ \t]+(?:[-*]|\d+\.)[^\n]*\n?)+)/.exec(md)
+    pitfallsText = m?.[1] ?? ''
+  }
+  const pitfallsRecorded = pitfallsText
+    .split('\n')
+    .filter((line) => /^\s*(?:[-*]|\d+\.)\s*\S/.test(line) && !line.includes('TODO')).length
+
+  const warnings: string[] = []
+  if (!boundariesDocumented) {
+    warnings.push(
+      'SKILL.md 的「能力边界」还是模板占位（含 TODO）—— 平台复验按未填写计，自动建议分少 10 分',
+    )
+  }
+  if (pitfallsRecorded === 0) {
+    warnings.push(
+      'SKILL.md 的「实测档案」里没有踩坑记录（每条一行、按行计数）—— 过程维度（能力边界质量 / 实测有效性）会丢分',
+    )
+  }
+  return { boundariesDocumented, pitfallsRecorded, warnings }
+}
+
 export interface SubmitOutcome {
   assignmentId: string
   /** 实际被打包的 Skill 根 */
@@ -95,6 +162,8 @@ export interface SubmitOutcome {
   skillZip: { fileId: string; sha256: string }
   capsule: { fileId: string; sha256: string }
   submission: { id: string; status: string; version?: number }
+  /** SKILL.md 过程项检查（只警告不阻断 —— 提交本身已经成功） */
+  skillDoc: SkillDocCheck
 }
 
 export interface NjuLabActions {
@@ -319,6 +388,10 @@ export function createActions(
       const skillRoot = await resolveSkillRoot(given)
       const files = await collectFiles(skillRoot)
 
+      // 过程项检查：与平台复验同口径，但**只警告不阻断**（见 scanSkillDoc 注释）。
+      // 放在打包前算，是因为它读的是同一个 skillRoot，与上传内容一致。
+      const skillDoc = await scanSkillDoc(skillRoot)
+
       // ZIP 内路径：Skill 根比 `given` 深一层时保留那层目录名 —— 即"单层顶层目录"
       // 风格（`csv-cleaner/SKILL.md`），与服务端复验的探测语义一致。
       const prefix = skillRoot === given ? '' : `${basename(skillRoot)}/`
@@ -382,6 +455,7 @@ export function createActions(
           status: submission?.status ?? '(unknown)',
           version: submission?.version,
         },
+        skillDoc,
       }
     },
   }

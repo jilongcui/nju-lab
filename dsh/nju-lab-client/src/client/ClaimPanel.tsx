@@ -107,6 +107,8 @@ interface SubmitOutcomeDto {
   skillZip: { fileId: string; sha256: string }
   capsule: { fileId: string; sha256: string }
   submission: { id: string; status: string }
+  /** SKILL.md 过程项检查（host 半与平台复验同口径；只警告不阻断提交） */
+  skillDoc?: { boundariesDocumented: boolean; pitfallsRecorded: number; warnings: string[] }
 }
 
 /** 一次动作的结果。成功与失败分开渲染，且可关闭。 */
@@ -358,6 +360,7 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ assignmentId, sessionId }),
           })
+          const docWarnings = outcome.skillDoc?.warnings ?? []
           setBanner({
             kind: 'ok',
             title: `提交成功：submission ${outcome.submission.id}（${statusText(outcome.submission.status)}）`,
@@ -366,6 +369,10 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
               `skill.zip sha256：${shortHash(outcome.skillZip.sha256)}`,
               `evidence.dshc sha256：${shortHash(outcome.capsule.sha256)}`,
               `本地产物：${outcome.zipPath}`,
+              // 提交成功但过程记录还空着 —— 平台复验会扣分，这里当场说清楚
+              ...(docWarnings.length
+                ? ['⚠ SKILL.md 过程记录会被扣分（提交本身已成功，可补写后交新版本）：', ...docWarnings]
+                : []),
             ],
           })
         }

@@ -57,6 +57,7 @@ function renderClaim(outcome: ClaimOutcome): string {
 }
 
 function renderSubmit(outcome: SubmitOutcome, note?: string): string {
+  const warnings = outcome.skillDoc?.warnings ?? []
   return [
     `submitted ${outcome.assignmentId}`,
     `- Skill 根: ${outcome.skillRoot}`,
@@ -65,6 +66,15 @@ function renderSubmit(outcome: SubmitOutcome, note?: string): string {
     `- capsule: file:${outcome.capsule.fileId} sha256=${outcome.capsule.sha256}`,
     `- submission: id=${outcome.submission.id} status=${outcome.submission.status}`,
     ...(note ? [`- note: ${note}`] : []),
+    // 提交已经成功，这里只点名"平台复验会扣的分"，让学生当场决定要不要补写后重交。
+    ...(warnings.length
+      ? [
+          '',
+          '⚠ 已提交，但 SKILL.md 的过程记录会被扣分：',
+          ...warnings.map((w) => `- ${w}`),
+          '（补写后可以再交一版：历史版本保留、各自独立复验。要我把这两节的结构和例子给你吗？）',
+        ]
+      : []),
   ].join('\n')
 }
 
@@ -121,7 +131,7 @@ export function registerTools(ctx: Context, actions: NjuLabActions): void {
     defineTool({
       name: TOOL_NAMES.submit,
       description:
-        'Submit a Skill directory as an assignment: hashes every file, packs a ZIP, builds the .dshc capsule, uploads both, then submits.',
+        'Submit a Skill directory as an assignment: hashes every file, packs a ZIP, builds the .dshc capsule, uploads both, then submits. Never blocks on an unfinished SKILL.md, but reports which process sections (能力边界 / 实测档案) are still template TODOs — the verifier deducts for those.',
       parameters: {
         assignmentId: { type: 'string', required: true, description: 'assignment id' },
         skillDir: { type: 'string', required: true, description: 'local Skill directory to submit' },
