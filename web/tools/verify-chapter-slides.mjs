@@ -100,7 +100,12 @@ try {
 
   const frame = await deckFrame(page);
   check('幻灯片文档已加载（iframe 内 .deck 就绪）', !!frame);
-  const pageCount = frame ? await frame.evaluate(() => document.querySelectorAll('.slide').length) : 0;
+  // 只数**放映页**：导出用的讲稿页（`.notes-page`，2026-10-13 起每页配一张）也是 `<section class="slide">`，
+  // 但它不参与放映、也不进总览的缩略图墙 —— 早先这里数的是 `.slide`，讲稿页上线后就会把期望值翻倍
+  //（实测 15 页 deck 数成 30），于是"缩略图数量 = 幻灯片页数"这类断言假失败。
+  const pageCount = frame
+    ? await frame.evaluate(() => document.querySelectorAll('.slide:not(.notes-page)').length)
+    : 0;
   check('幻灯片有内容（页数 ≥ 2）', pageCount >= 2, `页数 ${pageCount}`);
 
   // ---------------- ① 提示条在演示下方 ----------------

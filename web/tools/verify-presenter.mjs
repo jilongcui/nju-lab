@@ -143,6 +143,29 @@ await presenter.bringToFront();
 await presenter.keyboard.press('s');
 await presenter.waitForTimeout(700);
 check('① 按 S 呼出讲稿浮层后能看到讲稿', await notesVisible(), `探针=${notesProbe.slice(0, 8)}…`);
+// 讲稿分两层（prompt v12）：`[ …… ]` 是给讲者的**备课提示**（不念出来），渲染成 .notes-cue（斜体压淡）。
+// 第 1 页讲稿里若有方括号片段，浮层里就必须有对应的 .notes-cue —— 否则弱化没生效（两种口吻又混在一起了）。
+// 没写 `[ ]` 的旧 deck 跳过这条（[ ] 是约定不是结构，旧 deck 不需要重生成）。
+const cueProbe = (String(slides[0]?.notes ?? '').match(/[\[［][^\[\]［］\n]{1,120}[\]］]/) ?? [])[0] ?? '';
+if (cueProbe) {
+  let cueOk = false;
+  for (const frame of presenter.frames()) {
+    try {
+      cueOk = await frame.evaluate(
+        (probe) => [...document.querySelectorAll('.notes-cue')].some((el) => el.textContent === probe),
+        cueProbe,
+      );
+    } catch {
+      /* 跨域/已销毁的 frame 跳过 */
+    }
+    if (cueOk) break;
+  }
+  check(
+    '① 讲稿里的 [ …… ] 备课提示渲染成 .notes-cue（弱化成提示，不是口播）',
+    cueOk,
+    `探针=${cueProbe.slice(0, 16)}…`,
+  );
+}
 const gapOpen = await previewGaps();
 check(
   '① 浮层打开时预告上移、让开浮层（仍在右侧）',
