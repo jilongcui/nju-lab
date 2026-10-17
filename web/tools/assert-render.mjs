@@ -91,7 +91,7 @@ const slides = [
     layout: 'bullets',
     title: XSS_TITLE,
     bullets: ['正常要点', '<img src=x onerror=alert(1)>', '[点我](javascript:alert(1))'],
-    notes: '讲稿备注',
+    notes: '讲稿备注[此处稍停]',
   },
   { id: 's4', layout: 'steps', title: '操作步骤', bullets: ['第一步', '第二步', '第三步'] },
   {
@@ -197,7 +197,13 @@ if (!html.startsWith('__ERROR__')) {
 
   // —— 既有不变量 ——
   check('代码块内容被转义', html.includes('&lt;script&gt;'));
-  check('讲者备注 aside.notes', html.includes('<aside class="notes">讲稿备注</aside>'));
+  check('讲者备注 aside.notes', html.includes('<aside class="notes">讲稿备注'));
+  check(
+    '讲稿里的 [ …… ] 备课提示弱化成 .notes-cue（v1 渲染路径同口径）',
+    html.includes('<span class="notes-cue">[此处稍停]</span>') &&
+      !html.includes('[此处稍停]</aside>') &&
+      html.includes('.reveal .notes-cue'),
+  );
   check('桥接脚本存在', html.includes('__deckAction'));
 }
 

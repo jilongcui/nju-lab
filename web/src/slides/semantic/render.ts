@@ -19,6 +19,7 @@ import type {
   SequenceItem,
   TimelinePoint,
 } from './types';
+import { renderNotesHtml } from '../notesCue';
 
 export interface RenderContext {
   meta: DeckMeta;
@@ -805,7 +806,8 @@ export function renderPage(page: Page, ctx: RenderContext): string {
     <span>${escapeHtml(footerText)}</span>
     ${ctx.slideNumber ? `<span class="slide-number" data-current="${ctx.index + 1}" data-total="${ctx.total}"></span>` : ''}
   </div>`;
-  const notes = page.notes ? `<div class="notes">${escapeHtml(page.notes)}</div>` : '';
+  // 讲稿：口播 + `[ …… ]` 内联的备课提示（后者弱化成 .notes-cue，见 notesCue.ts）
+  const notes = page.notes ? `<div class="notes">${renderNotesHtml(page.notes)}</div>` : '';
   const title = page.title ?? ctx.meta.chapter;
   const bgStyle = background
     ? ` style="background-image:url('${escapeHtml(background)}');background-size:cover;background-position:center"`
@@ -875,7 +877,10 @@ export function renderPages(
 function renderNotesPage(page: Page, index: number): string {
   const notes = String(page.notes ?? '').trim();
   const body = notes
-    ? escapeHtml(notes).split('\n').map((line) => (line.trim() ? `<p>${line}</p>` : '')).join('')
+    ? notes
+        .split('\n')
+        .map((line) => (line.trim() ? `<p>${renderNotesHtml(line)}</p>` : ''))
+        .join('')
     : '<p class="notes-empty">（本页没有讲稿）</p>';
   return `<section class="slide notes-page" data-notes-page="${index}">
   <div class="ly">

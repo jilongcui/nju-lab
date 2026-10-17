@@ -1,4 +1,5 @@
 import type { SlideDeckConfig, SlideImage, SlideJson } from '../types';
+import { renderNotesHtml } from './notesCue';
 import {
   escapeAttribute,
   escapeHtml,
@@ -35,6 +36,8 @@ const BASE_OVERRIDES = `
 .reveal .deck-two-col { display: flex; gap: 1.4em; text-align: left; }
 .reveal .deck-two-col > div { flex: 1 1 0; min-width: 0; }
 .reveal .deck-footer { pointer-events: none; }
+/* 讲稿里的备课提示（[ …… ] 方括号内联）：讲者不念的那部分，斜体压淡，与口播区分开 */
+.reveal .notes-cue { font-style: italic; opacity: 0.7; }
 .reveal section img.deck-image { max-height: 55vh; width: auto; }
 .reveal .deck-caption { font-size: 0.5em; opacity: 0.7; margin-top: 0.4em; }
 
@@ -342,7 +345,7 @@ function renderSection(slide: SlideJson, input: DeckRenderInput): string {
   }
 
   const notes = slide.notes
-    ? `<aside class="notes">${escapeHtml(slide.notes)}</aside>`
+    ? `<aside class="notes">${renderNotesHtml(slide.notes)}</aside>`
     : '';
 
   return `<section ${attrs.join(' ')}>${renderLayoutBody(slide, input)}${renderFooter(

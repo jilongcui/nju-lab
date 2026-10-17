@@ -146,7 +146,7 @@ const evil = [
       { kind: 'code', lang: '<b>js</b>', content: '</pre><script>alert(2)</script>' },
       { kind: 'table', head: ['<script>alert(3)</script>'], rows: [['javascript:alert(4)']] },
     ],
-    notes: '</div><script>alert(5)</script>',
+    notes: '</div><script>alert(5)</script>[<b>提示</b>]',
   },
 ];
 const evilHtml = await buildSemanticDeckHtml({ pages: evil, meta: META, themeId: 'builtin-platform-blue' });
@@ -163,6 +163,12 @@ check(
   ),
 );
 check('讲稿里的注入同样被转义（notes 只做文本）', !/alert\(5\)/.test(evilHtml) || !/<\/div><script>/.test(evilHtml));
+check(
+  '讲稿里的 [ …… ] 备课提示也只做文本（提示里的标签进不了文档）',
+  evilDoc.querySelectorAll('.slide:not(.notes-page) .notes-cue').length === 1 &&
+    evilDoc.querySelector('.slide:not(.notes-page) .notes-cue').textContent === '[<b>提示</b>]' &&
+    !evilHtml.includes('<b>提示</b>'),
+);
 
 // ---------------- 5. 主题解耦 ----------------
 const other = DECK_THEMES.find((t) => t.id === 'builtin-nju-purple');
@@ -467,7 +473,7 @@ const v2Pages = [
     kicker: '小结',
     title: '三句话',
     blocks: [{ kind: 'evidence', items: ['一', '二', '三'] }],
-    notes: '这一页收束全篇：先回顾三个要点，再点出它们之间的关系，最后过渡到下一节要做的事。',
+    notes: '这一页收束全篇：先回顾三个要点，再点出它们之间的关系，最后过渡到下一节要做的事。[此处稍停，等他们记完再翻页]',
   },
 ];
 check('v2 deck 被识别为语义 deck（按结构，不靠版本号）', isSemanticDeck(v2Pages) === true);
@@ -541,6 +547,22 @@ check(
 check(
   '没有讲稿的页给出「本页没有讲稿」占位（而不是空白页）',
   v2Doc.querySelectorAll('.notes-page .notes-empty').length === v2Pages.length - 1,
+);
+// 讲稿分两层（prompt v12，2026-10-17）：可照读的口播 + `[ …… ]` 内联的**备课提示**。
+// 提示渲染成 `.notes-cue`（斜体压淡），讲者一眼知道哪句出声、哪句只是提示；
+// 讲稿浮层（按 S 呼出）读的就是 `.notes` 的 innerHTML，所以这两条同时管住浮层与 PDF 备注页。
+check(
+  '讲稿里的 [ …… ] 备课提示渲染成 .notes-cue（浮层里一眼分得清）',
+  v2Doc.querySelectorAll('.slide:not(.notes-page) .notes-cue').length === 1 &&
+    v2Doc.querySelector('.slide:not(.notes-page) .notes-cue').textContent ===
+      '[此处稍停，等他们记完再翻页]',
+);
+check(
+  '讲稿页（导出备注页）同样弱化提示，口播正文原样保留',
+  v2Doc.querySelectorAll('.notes-page .notes-cue').length === 1 &&
+    (v2Doc.querySelector('.notes-page .notes-cue')?.closest('p')?.textContent ?? '').startsWith(
+      '这一页收束全篇：',
+    ),
 );
 
 check(

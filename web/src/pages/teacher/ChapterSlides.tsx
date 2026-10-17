@@ -838,13 +838,15 @@ export default function ChapterSlides() {
             <>
               <Paragraph type="secondary" style={{ fontSize: 12 }}>
                 讲稿只给讲者看，<b>不会出现在幻灯片版面</b>上（放映时按 <Text code>S</Text> 可呼出浮层）。
+                正文写成<b>可以照着念的口播</b>；<b>不念出来的提示</b>（动作/节奏、易错点）用方括号包起来，
+                例如 <Text code>[此处稍停]</Text> —— 放映时它会弱化显示，一眼分得清哪句出声。
                 下面是第 {currentIndex + 1} 页。
               </Paragraph>
               <Input.TextArea
                 rows={7}
                 value={notesDraft}
                 onChange={(e) => setNotesDraft(e.target.value)}
-                placeholder="这一页你要怎么讲？写下来，放映时能对着念。"
+                placeholder="这一页你要怎么讲？写下来，放映时能对着念。不念的提示放进方括号，如 [此处稍停]。"
                 style={{ marginBottom: 10 }}
               />
               <Space style={{ marginBottom: 12 }}>
