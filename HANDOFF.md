@@ -5,7 +5,7 @@
 
 ## 0. 一句话现状
 
-**2026-10-18（DSH 客户端面板：只列已领取 + 打开即材料化）—— 🧩 源码就绪，未发布**
+**2026-10-17（DSH 客户端面板：只列已领取 + 打开即材料化）—— ✅ 已上线**
 
 - **需求（用户）**：① 学生在平台点「领取」、状态变「已领取」后，进 DSH 还要再点一次「重新下载」才能拿到
   模板/题目包 —— 想问能不能直接进虚拟环境就学；② 面板把**未领取**的实验也全列出来，任务一多就很长，
@@ -27,8 +27,22 @@
   默认列表只出现 claimed/submitted、未领取两态都不出现、汇总行「另有 2 个」、自动下发**只发 1 次**
   且请求体是缺材料那个、已落盘的 submitted 不重复下发、刷新后不再下发、失败时错误横幅带平台原因且
   按钮退回「重新下载」、失败也只试 1 次。截图 `.verify-scratch/panel-shots/{default,failed}.png`。
-- **未发布**：只改了插件源码并重建了本地 `lib/`；`dsh/kit` 安装包与镜像**未重打**，学生端要等下次
-  kit 重发才生效（重打流程见 `docs/UPGRADE-playbook.md`）。
+- **部署（2026-10-17 15:21 完成）**：
+  · **workspace 镜像 `nju-lab-workspace:0.2.0-rc.2-pkg9`**（`FROM nju-lab-verify:0.2.0-rc.2-pkg6`，
+    内含本次插件产物：`lib/shared/panel-logic.js` + 新面板文案已核对）；`workspace.config.ts` 默认 tag
+    切到 pkg9 → `server npm run build` → kill MainPID（**3968467 → 327983**）。**pkg8 保留作回滚点**；
+    `verify` 镜像不变（本次未动复验逻辑，仍是 pkg6）。
+  · **学生 kit 重打**：`cd dsh/kit && PLATFORM_URL=http://medai.nju.edu.cn/lab ./build-kit.sh` →
+    `kit-version.json = 20261017-1521-68fff6f`（含本次 commit），`DSH_VERSION` 仍 `0.2.0-rc.2`；
+    投放 `/var/www/lab/kit/nju-lab-student-kit.zip`（旧包备份 `.20261010-1456.bak`）。学生端既有
+    客户端会凭 kit 版本差异提示插件自更新。
+  · **重启代价**：打断了当时那个活跃工作台会话（预期内）—— 日志确认
+    `reclaiming workspace container nju-ws-98f010f2: 镜像已升级（容器 430c4bb068f6 ≠ 当前 0acae7782896）`。
+  · **冒烟**：`GET /lab/ → 200`；独立起一个 pkg9 容器 → `[nju-lab-client] host half loaded` +
+    `WORKSPACE_READY port=9090` + `/?token=… → 303`（cookie）→ `/ → 200` →
+    `GET /api/nju-lab.assignments` **200**（返回里带 `downloaded`，新面板依赖这个字段）。容器跑完即删。
+  · **回滚**：`WORKSPACE_IMAGE` / 代码默认值改回 `pkg8` + `npm run build` + kill 重启；kit 把
+    `/var/www/lab/kit/nju-lab-student-kit.zip.20261010-1456.bak` 改回主名。
 
 
 - **需求（教师）**：① v12 生成的内容"不如以前风趣简洁"，尤其封面与分节页 —— **封面不要列要点**、
