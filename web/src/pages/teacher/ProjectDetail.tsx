@@ -30,6 +30,7 @@ import {
   getProject,
   getProjectDashboard,
   listProjectSubmissions,
+  resetAssignment,
   publishProject,
   updateProject,
   uploadFile,
@@ -134,6 +135,17 @@ export default function ProjectDetail() {
       </Paragraph>
     </div>,
   );
+
+  /** 教师替某个学生重置领取状态（历史提交保留，学生需要重新领取） */
+  const handleResetAssignment = async (assignmentId: string) => {
+    try {
+      await resetAssignment(assignmentId);
+      message.success('已重置为未领取（历史提交仍保留）');
+      await load();
+    } catch {
+      /* 错误已由 axios 拦截器统一提示 */
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -441,8 +453,30 @@ export default function ProjectDetail() {
             },
             {
               title: '操作',
-              render: (_, r) =>
-                r.submission ? <Link to={`/teacher/submissions/${r.submission.id}/grade`}>批改</Link> : '-',
+              render: (_, r) => (
+                <Space size={8}>
+                  {r.submission ? (
+                    <Link to={`/teacher/submissions/${r.submission.id}/grade`}>批改</Link>
+                  ) : null}
+                  {r.assignmentStatus !== 'pending' ? (
+                    <Popconfirm
+                      title="重置这个学生的领取状态？"
+                      description="重置后他需要重新领取（会重新下发模板）；历史提交仍保留。"
+                      okText="重置"
+                      cancelText="取消"
+                      onConfirm={() => void handleResetAssignment(r.assignmentId)}
+                    >
+                      <Button size="small" type="link" danger>
+                        重置领取
+                      </Button>
+                    </Popconfirm>
+                  ) : (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      未领取
+                    </Text>
+                  )}
+                </Space>
+              ),
             },
           ]}
         />

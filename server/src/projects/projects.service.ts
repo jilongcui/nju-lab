@@ -415,6 +415,36 @@ export class ProjectsService {
     };
   }
 
+  /**
+   * 重置领取状态（2026-10-22 用户确认：学生自助 + 教师端都能重置）。
+   *
+   * 语义：`claimed`/`submitted` → `pending`，清掉 `claimedAt`；**提交记录一律不删**
+   * （评分留痕，重新提交会生成新版本）。已是 `pending` 时幂等返回。
+   *
+   * 权限：学生本人；或该项目的课程教师。其他情况由 `assertCourseOwner` 抛 403。
+   */
+  async resetAssignment(user: User, assignmentId: string) {
+    const assignment = await this.assignmentRepo.findOne({
+      where: { id: assignmentId },
+      relations: ['project'],
+    });
+    if (!assignment) {
+      throw new NotFoundException('任务不存在');
+    }
+    if (assignment.studentId !== user.id) {
+      // 不是本人 → 必须是他/她所教课程的教师
+      await this.assertCourseOwner(user, assignment.project.courseId);
+    }
+    if (assignment.status === AssignmentStatus.PENDING) {
+      return { reset: false, assignment: { id: assignment.id, status: assignment.status } };
+    }
+    assignment.status = AssignmentStatus.PENDING;
+    assignment.claimedAt = null;
+    await this.assignmentRepo.save(assignment);
+    // 只回 id/status：前端只需要"重置成功没有"，不必把整个项目实体（含题面 markdown）回传
+    return { reset: true, assignment: { id: assignment.id, status: assignment.status } };
+  }
+
   // ---------- 解锁规则 ----------
 
   /**

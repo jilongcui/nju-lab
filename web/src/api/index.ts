@@ -205,6 +205,15 @@ export const completeChapter = (id: string) =>
 export const listMyAssignments = () => client.get<unknown, Assignment[]>('/me/assignments');
 export const claimAssignment = (id: string) =>
   client.post<unknown, ClaimResult>(`/assignments/${id}/claim`);
+
+/**
+ * 重置领取状态（`claimed`/`submitted` → `pending`，历史提交保留）。
+ * 学生本人用于「重新开始」；教师用于在项目详情里替某个学生重置。
+ */
+export const resetAssignment = (id: string) =>
+  client.post<unknown, { reset: boolean; assignment: { id: string; status: string } }>(
+    `/assignments/${id}/reset`,
+  );
 export interface SubmitPayload {
   /** 已上传文件 id（POST /api/files 获得），与 ref+sha256 直填二选一 */
   skillZipFileId?: string;

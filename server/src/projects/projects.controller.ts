@@ -82,6 +82,17 @@ export class AssignmentsController {
   claim(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.projectsService.claimAssignment(user, id);
   }
+
+  /**
+   * 重置领取状态：`claimed`/`submitted` → `pending`（提交记录保留）。
+   *
+   * 学生本人可以「重新开始」；教师可以在项目详情里替某个学生重置。
+   */
+  @Post(':id/reset')
+  @Roles(UserRole.STUDENT, UserRole.TEACHER)
+  reset(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.projectsService.resetAssignment(user, id);
+  }
 }
 
 @Controller('me')

@@ -8,15 +8,22 @@ import {
   Descriptions,
   Empty,
   message,
+  Popconfirm,
   Skeleton,
   Space,
   Table,
   Tooltip,
   Typography,
 } from 'antd';
-import { DownloadOutlined, LockOutlined, RocketOutlined } from '@ant-design/icons';
+import { DownloadOutlined, LockOutlined, ReloadOutlined, RocketOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { claimAssignment, downloadStoredFile, getProject, listMyAssignments } from '../../api';
+import {
+  claimAssignment,
+  downloadStoredFile,
+  getProject,
+  listMyAssignments,
+  resetAssignment,
+} from '../../api';
 import type { Assignment, ExperimentProject, RubricItem } from '../../types';
 import StatusTag from '../../components/StatusTag';
 import MarkdownView from '../../components/MarkdownView';
@@ -43,6 +50,7 @@ export default function ExperimentDetail() {
   const [project, setProject] = useState<ExperimentProject | null>(null);
   const [assignment, setAssignment] = useState<Assignment | null>(null);
   const [claiming, setClaiming] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   useAuxiliaryPanel(
     '实验须知',
@@ -85,6 +93,22 @@ export default function ExperimentDetail() {
     }
   };
 
+  /**
+   * 重新开始：把任务重置回「未领取」（历史提交保留，平台不动评分记录）。
+   * 学生自助入口 —— 之前只能找老师或改库。
+   */
+  const handleReset = async () => {
+    if (!assignment) return;
+    setResetting(true);
+    try {
+      await resetAssignment(assignment.id);
+      message.success('已重置为未领取，可重新领取（之前的提交仍保留）');
+      await load();
+    } finally {
+      setResetting(false);
+    }
+  };
+
   if (loading) {
     return <Skeleton active paragraph={{ rows: 10 }} />;
   }
@@ -114,9 +138,20 @@ export default function ExperimentDetail() {
           {assignment && <StatusTag status={assignment.status} />}
         </Space>
         {claimed ? (
-          <Button icon={<RocketOutlined />} disabled>
-            已领取
-          </Button>
+          <Space>
+            {/* 顶部已有「已领取」状态标签，这里只留动作按钮，避免同一句话出现三遍 */}
+            <Popconfirm
+              title="重新开始这个实验？"
+              description="会把你重置为「未领取」，重新领取会下发新模板；之前的提交记录仍保留。"
+              okText="重新开始"
+              cancelText="取消"
+              onConfirm={() => void handleReset()}
+            >
+              <Button icon={<ReloadOutlined />} loading={resetting}>
+                重新开始
+              </Button>
+            </Popconfirm>
+          </Space>
         ) : (
           <Tooltip title={!unlocked ? unlockHint : undefined}>
             <Button

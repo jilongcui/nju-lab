@@ -105,9 +105,15 @@ iris-classify/
     所以分类模型交出的通常是概率，而不是一个硬答案。
   - **多数类基线**：不建模、一律报数量最多的品种。数据均衡时按类别比例猜只能对三分之一，
     这个值代表"什么都没学到"的准确率。
-- **description**（导学步骤，≤8 步）：
-  读 `task.md` → 画散点看两类重叠 → 算多数类基线 → 选一个入门模型训练 →
-  算 accuracy / macro F1 → 画混淆矩阵 → 对照 `judge.md` 自测两个 case → 补全 `SKILL.md` 的能力边界与实测档案。
+- **description**（导学步骤，≤8 步；不提 `task.md`，最后一步是生成报告）：
+  1. 读实验内容与本节的达标要求，确认三个品种都要认出来；
+  2. 画两特征散点图：setosa 与另两类的分界在哪、versicolor 和 virginica 在哪重叠；
+  3. 算基线：不建模、一律报训练集里最多的品种，记下它的 accuracy；
+  4. 选一个入门模型（逻辑回归 / KNN / 决策树）训练，固定随机种子并 `stratify` 切分；
+  5. 在测试集上算 accuracy 与 macro F1，对照达标线；
+  6. 画 3×3 混淆矩阵，指出错判集中在哪两个品种；
+  7. 用题目包里的 case01（150 行，较干净）与 case02（120 行，含测量误差）各跑一遍，并对照判据自查——图有没有说清、模型与指标是否自洽、基线定义对不对；
+  8. 生成实验报告 `report.md`：数字由平台从各 case 的 `output.json` 自动填入（不用手抄），你只补结论与踩坑，确认后提交。
 - **references**：`sklearn` 的 `LogisticRegression` / `confusion_matrix` 文档；
   `problem/reference/scripts/train.py`（示范实现）。
 - **faq**：为什么我的 accuracy 0.95 却没通过？（macro F1 或基线/切分项没过）；

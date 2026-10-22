@@ -5,6 +5,30 @@
 
 ## 0. 一句话现状
 
+**2026-10-22（重置领取：学生自助 + 教师端；顺带修掉 description 与 SKILL.md 的脱节）—— ✅ 已上线**
+
+- **需求（用户）**：老师端能不能重置学生的领取状态？→ 确认 **A + B 都做**（教师端重置 + 学生自助「重新开始」）。
+  顺带发现：四个 easy 档的 `description`（任务要求）还写着"读 task.md…补全 SKILL.md 的能力边界与实测档案"——
+  与已上线的 `report.md` 体系**脱节**（SKILL.md 已不再需要填），一起修。
+- **接口**：新增 `POST /api/assignments/:id/reset`（`projects.controller.ts` 的 AssignmentsController）。
+  · 权限：**学生本人**，或该项目的**课程教师**（`assertCourseOwner`）；其他情况 403（实测「只有本课程的授课教师可以执行该操作」）；
+  · 语义：`claimed` / `submitted` → `pending`，`claimedAt = null`；**提交记录一律不删**（评分留痕，重交生成新版本）；
+    已是 `pending` 时幂等（`reset: false`）；响应只回 `{ reset, assignment: { id, status } }`（原来把整个 project 实体回传，几 KB）。
+- **前端**：
+  · 学生端实验详情：已领取/已提交时显示「**重新开始**」（Popconfirm 说明"重新领取会下发新模板、历史提交保留"）；
+    去掉原来那个禁用的「已领取」按钮（顶部已有状态标签，同一句话不再出现三遍）；
+  · 教师端项目详情「学生任务与提交」：每行操作列加「**重置领取**」（`pending` 行显示"未领取"）。
+- **description（任务要求）**：四个 easy 档改成同一口径的 8 步 —— 不提 `task.md`（页面已有实验内容）、
+  第 7 步说清"两个 case 各跑一遍 + 对照判据自查什么"、第 8 步改成"生成 `report.md`（数字自动填入，只补结论与踩坑）"；
+  线上 4 个项目同步 UPDATE（原值备份 `.verify-scratch/descriptions-before.json`）。
+- **验证**：接口 5 项 —— 幂等重置 / claim 后再重置 / **越权 403** / 教师重置 201 / 最终 `pending` 且历史提交 v2 仍在；
+  Playwright 两页 —— 学生端出现「重新开始」且「已领取」只剩 1 处、教师端 10 行都出现「重置领取」；
+  web 部署自检 **4/4 ok**（`/lab/assets/*` 200 + 正确 MIME）。截图 `.verify-scratch/{student-reset,teacher-reset}.png`。
+- **部署**：server `npm run build` + kill（**MainPID → 2812382**）；web `deploy/deploy-web-lab.sh`
+  （备份 `.verify-scratch/lab-web-backups/20261022-233425`）。
+- **回滚**：前端 `cp .verify-scratch/lab-web-backups/20261022-233425/index.html /var/www/lab/index.html`；
+  后端 revert 对应 commit + `npm run build` + kill。
+
 **2026-10-22（学员模式：一次一步 + 报告自动生成）—— ✅ 已上线**
 
 - **需求（用户）**：整个实验围绕最后的 `report.md` 展开——① 每步先解释要做什么，学生回答后
