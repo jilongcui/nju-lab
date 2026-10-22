@@ -7,7 +7,7 @@
 
 /** 工作台镜像（构建见 `server/workspace-image/`） */
 export const WORKSPACE_IMAGE =
-  process.env.WORKSPACE_IMAGE || 'nju-lab-workspace:0.2.0-rc.2-pkg13';
+  process.env.WORKSPACE_IMAGE || 'nju-lab-workspace:0.2.0-rc.2-pkg14';
 
 /** 每容器资源限额（实测 web 空闲约 233MB，1g 余量充足） */
 export const WORKSPACE_MEMORY = process.env.WORKSPACE_MEMORY || '1g';
@@ -113,8 +113,11 @@ export const WORKSPACE_SESSION_COOKIE = 'nju_ws';
 /**
  * 学生工作区的持久化根目录（**宿主**路径）。
  *
- * 挂两处进容器：`<根>/<userId>` → `/work`（dsh 的工作目录 —— 学生的文件就落在这里）、
- * `<根>/<userId>/dsh-sessions` → `$DSH_HOME/sessions`（dsh 的会话历史）。
+ * 挂四处进容器（见 `WorkspaceService.studentMounts`）：
+ * - `<根>/<userId>` → `/workspace`（工作目录；容器内 `HOME` 也指它 —— dsh 的「工作区」取 homedir）；
+ * - `<根>/<userId>/home/root` → `/root`（兜底：写到 `~` 之外的老习惯也不丢）；
+ * - `<根>/<userId>/dsh-sessions` → `$DSH_HOME/sessions`（dsh 的会话历史）；
+ * - `<根>/<userId>/dsh-storages` → `$DSH_HOME/storages`（dsh 的工作区/会话索引）。
  * 于是**容器被删/重建**（镜像升级、异常退出、重启后端）也不丢文件与历史。
  *
  * 留空 = 关闭持久化（退回"容器内数据随容器消失"）。

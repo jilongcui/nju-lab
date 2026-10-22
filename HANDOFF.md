@@ -5,6 +5,42 @@
 
 ## 0. 一句话现状
 
+**2026-10-23（工作台不再丢数据：工作目录统一 `/workspace`、`HOME` 指进持久卷）—— ✅ 已上线**
+
+- **需求（用户）**：学生反馈"过一段时间，之前在目录下构建的数据就没了"；先讲清"开启实验环境"的机制与丢失原因，
+  然后确认 **A + B 都做**（A：给 `/root` 也加持久挂载；B：镜像侧把 `HOME` 指到持久卷），并统一到 `/workspace`。
+- **根因（实测）**：`docker rm -f` 会带走整个容器可写层，而持久卷只有两处 —— `<根>/<userId>` → `/work`、
+  `<根>/<userId>/dsh-sessions` → `$DSH_HOME/sessions`。但 **dsh web 给会话选的「工作区」取 `os.homedir()`**
+  （容器内 `HOME=/root`），`entrypoint` 的 `spawn(..., { cwd: '/work' })` 只影响 dsh 进程自己。
+  证据（pkg13 活跃容器 `nju-ws-98f010f2`）：`storages/workspace.json` 里 `"path": "/root"`、
+  `sessions/--root--/session-*.jsonl` 里 `"cwd":"/root"`、学生产物路径 `/root/nju-lab/<problemId>/…`。
+  于是空闲回收（`WORKSPACE_IDLE_TIMEOUT_SECONDS` 默认 1800s）/镜像升级 reclaim 一发生，学生建的文件全丢，
+  只剩 sessions 卷里的聊天记录 —— §4.8 原来"文件都落在 `/work`"的假设被推翻（已在该文档更正）。
+  次级触发：`lastSeenAt` 只被平台侧 HTTP（`status`/`proxy-auth`/`enter`）刷新，页面挂着/只走 WebSocket 也会被回收。
+- **实现**：
+  · 镜像 `nju-lab-workspace:0.2.0-rc.2-pkg14`：`WORKDIR` 默认 `/workspace`、`ENV HOME=/workspace`
+    （entrypoint 也把 `HOME` 传给 dsh 子进程 → dsh 工作区与目录选择器起点都在持久卷）；`/work` 做成
+    指向 `/workspace` 的符号链接（老文档/老路径继续可用，宿主目录结构不变、老文件照旧可见）；
+    首次启动在 `$DSH_HOME/storages/workspace.json` **预置一个指向 `/workspace` 的工作区**
+    （store 不存在、或存在但没有任何工作区时补一条；学生已选过工作区就不动它）。
+  · 后端 `studentMounts()` 四挂载：`<根>/<userId>` → `/workspace`、`<根>/<userId>/home/root` → `/root`、
+    `dsh-sessions` → `$DSH_HOME/sessions`、`dsh-storages` → `$DSH_HOME/storages`；
+    目录建不出来仍只告警、不挂载（不能因此让学生起不了容器）。
+  · 前端「关于实验环境」加一句：文件放 `/workspace`（持久），`/tmp` 等位置随容器消失。
+- **验证**：探针容器（临时目录，已清理）——`HOME=homedir=/workspace`、`/work` 符号链接、4 处挂载、
+  `WORKSPACE_READY`；写 `/workspace/nju-lab/test/probe.txt` 与 `/root/legacy.txt` → `rm -f` 后重建容器
+  → 两个文件都在；seed 三种情形（无 store / 空 store / 已有工作区）分别实测：前两者补种 `path=/workspace`，
+  第三者不动。线上：admin 起容器 → `running`，挂载与 `workspace.json` 均为 `/workspace`，
+  `enterUrl` → 302 → `/lab/ws/<key>/` **200** 且 `__DSH_TRANSPORT__` 注入仍在；随后 stop 清理。
+- **部署（2026-10-23 07:35）**：镜像 `0.2.0-rc.2-pkg14`（FROM `nju-lab-verify:0.2.0-rc.2-pkg8`；
+  容器内 `entrypoint.mjs` md5 与仓库一致 `fc281c11…`）；workspace 默认 tag 已切（`workspace.config.ts`
+  + `.env.example`）；server `npm run build` + kill（**MainPID → 3766325**）；
+  web `deploy/deploy-web-lab.sh`（备份 `.verify-scratch/lab-web-backups/20261023-072934`）。
+- **注意**：换镜像后后端重启会 reclaim 旧容器（日志 `镜像已升级（容器 … ≠ 当前 …）`）——旧容器 `/root`
+  可写层里的东西**无法找回**（正是本问题的现象）；`/workspace`（原 `/work` 同一宿主目录）与 sessions 不受影响。
+- **回滚**：`WORKSPACE_IMAGE` 改回 `pkg13` + `npm run build` + kill；
+  前端 `cp .verify-scratch/lab-web-backups/20261023-072934/index.html /var/www/lab/index.html`。
+
 **2026-10-22（重置领取：学生自助 + 教师端；顺带修掉 description 与 SKILL.md 的脱节）—— ✅ 已上线**
 
 - **需求（用户）**：老师端能不能重置学生的领取状态？→ 确认 **A + B 都做**（教师端重置 + 学生自助「重新开始」）。

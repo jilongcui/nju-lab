@@ -61,6 +61,10 @@ export default function Workspace() {
         所以容器回收不会丢已提交的成果。
       </Paragraph>
       <Paragraph type="secondary">
+        环境里的文件请放在 <Text code>/workspace</Text>（dsh 的工作区就指向它）—— 这个目录是持久卷，
+        容器被回收/重建后还在；<Text code>/tmp</Text> 等其它位置会随容器一起消失。
+      </Paragraph>
+      <Paragraph type="secondary">
         ⚠️ 同一浏览器同时只能进入一个实验环境；地址请勿转发他人——它就是你的访问凭证。
       </Paragraph>
     </div>,

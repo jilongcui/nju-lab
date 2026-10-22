@@ -510,18 +510,37 @@ WS 是 dsh 会话事件流的**唯一**通道（`/plugins/events` 只是插件�
 效果：**重启后端不再清空学生的实验环境**。学生回「实验环境」页会看到"已就绪"（换了新的 `wsKey`），
 点一次「进入」即可 —— 文件与会话历史都在（配合 §4.8 的持久卷）。
 
-### 4.8 workspace 持久化 **[已实测 2026-09-29]**
+### 4.8 workspace 持久化 **[已实测 2026-09-29；2026-10-23 修订]**
 
-容器本身一次性，但学生的**数据**现在有归宿 —— 启动时挂两个卷
+容器本身一次性，但学生的**数据**现在有归宿 —— 启动时挂四个卷
 （根目录由 `WORKSPACE_DATA_DIR` 配置，默认 `/data/workspaces`）：
 
 | 宿主路径 | 容器内 | 内容 |
 |---|---|---|
-| `<根>/<userId>` | `/work` | dsh 的工作目录（entrypoint 用它当 cwd）——学生的文件都落在这里 |
+| `<根>/<userId>` | `/workspace` | 工作目录（entrypoint 的 cwd **和 `HOME`** 都指它）—— 学生的文件都落在这里 |
+| `<根>/<userId>/home/root` | `/root` | 兜底：学生/agent 若把东西写到 `/root`（2026-10-23 之前 dsh 的默认工作区）也不丢 |
 | `<根>/<userId>/dsh-sessions` | `$DSH_HOME/sessions` | dsh 的会话历史 |
+| `<根>/<userId>/dsh-storages` | `$DSH_HOME/storages` | dsh 的工作区/会话索引（记住上次选中的工作区，重建后不用重选） |
 
 于是**容器被删/重建**（镜像升级、异常退出、重启后端）都不会丢文件与历史；
 提交物仍走平台 API（claim/submit），**不依赖容器内数据**。
+
+#### ⚠️ 2026-10-23 修订：只挂 `/work` 是**不够**的
+
+原实现（2026-09-29）只挂 `<根>/<userId>` → `/work`，并假设"`/work` 是 dsh 的工作目录、
+学生的文件都落在这里"——**实测不成立**：
+
+- `entrypoint.mjs` 的 `spawn('dsh', …, { cwd: WORKDIR })` 只设了 **dsh 进程**的 cwd；
+- dsh web 给会话选「工作区」时取 `os.homedir()`（`dsh-host-directory-picker-browse` 的
+  目录选择器起点同源），而容器内 `HOME=/root` —— 于是会话 `cwd` 是 **`/root`**
+  （`sessions/--root--/session-*.jsonl` 里 `"cwd":"/root"`，`storages/workspace.json` 里
+  `"path": "/root"`），学生让 agent 建的文件（`/root/nju-lab/<problemId>/…`）全在**容器可写层**；
+- 容器一被空闲回收（30 分钟）/镜像升级 reclaim 就整层消失，只留下 `sessions` 里的聊天记录
+  → 学生看到"过一段时间，我建的东西没了"。
+
+对策（pkg14 起）：镜像侧 `HOME=/workspace`（Dockerfile `ENV HOME` + entrypoint 传给 dsh 子进程），
+后端挂载把 `/root` 与 `$DSH_HOME/storages` 也持久化；容器内 `/work` 做成指向 `/workspace` 的
+**符号链接**，老文档/老路径继续可用（宿主目录结构不变，老文件照旧可见）。
 
 ⚠️ 目录必须让**后端进程**可写：`/data` 属 `root`，而后端以 `ubuntu` 跑 —— 所以 `<根>` 需要一次性
 建好并 chown 给 ubuntu（2026-09-29 已用 docker 完成）。目录不可写时后端**只告警、不挂载**：

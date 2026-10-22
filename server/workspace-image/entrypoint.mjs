@@ -23,7 +23,8 @@
  * 或 `medai.nju.edu.cn`，带端口时写 `host:port`）。
  */
 import { spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, connect } from 'node:net';
 import { networkInterfaces } from 'node:os';
 
@@ -42,10 +43,21 @@ const BRIDGE_ON = !/^(0|false|no|off)$/i.test(process.env.WORKSPACE_WS_BRIDGE ??
 /** dsh launch token 的落盘位置（桥读它换自己的 cookie） */
 const TOKEN_FILE = process.env.WORKSPACE_TOKEN_FILE || '/tmp/dsh-launch-token';
 /**
- * dsh 的工作目录：学生的持久卷挂在这里（`<数据根>/<userId>` → `/work`），
- * 所以学生的文件不随容器消失。没挂卷时这里就是个普通目录，行为与以前一致。
+ * 学生的工作目录：持久卷挂在这里（`<数据根>/<userId>` → `/workspace`）。
+ *
+ * ⚠️ 光设 dsh 进程的 cwd（下面的 `spawn(..., { cwd: WORKDIR })`）**不够**：
+ * dsh web 给会话选的「工作区」来自 `os.homedir()`，而容器内 `HOME=/root` ——
+ * 于是学生在 dsh 里的产物全落容器可写层，空闲回收/镜像升级一删就没
+ * （2026-10-23 实测，见 `docs/DESIGN-2026-09-28-platform-workspace.md` §4.8）。所以 HOME 也指到这里。
  */
-const WORKDIR = process.env.WORKSPACE_WORKDIR || '/work';
+const WORKDIR = process.env.WORKSPACE_WORKDIR || '/workspace';
+/** HOME 指向哪里（dsh 的「工作区」与目录选择器起点都取它） */
+const HOME_DIR = process.env.WORKSPACE_HOME || WORKDIR;
+/**
+ * 旧路径（2026-09-29 ～ 2026-10-22 的 `/work`）：做成指向 `WORKDIR` 的符号链接。
+ * 宿主目录结构不变，所以老容器留下的老文件照旧可见，老文档/老习惯里的 `/work` 也不会失效。
+ */
+const LEGACY_WORKDIR = '/work';
 /**
  * 额外信任的 authority（逗号分隔），来自平台配置；一般留空即可。
  * 容器会**自动**把自己的 `IP:PORT` 加进信任列表——因为对外访问走容器 IP
@@ -113,7 +125,74 @@ try {
 } catch (e) {
   console.warn(`[workspace] 创建 ${WORKDIR} 失败：${e.message}`);
 }
-const child = spawn('dsh', args, { stdio: ['ignore', 'pipe', 'pipe'], cwd: WORKDIR });
+// 旧路径兼容：/work → WORKDIR（老文档、老会话记录里的路径继续可用）
+if (LEGACY_WORKDIR !== WORKDIR) {
+  try {
+    if (!existsSync(LEGACY_WORKDIR)) symlinkSync(WORKDIR, LEGACY_WORKDIR);
+  } catch (e) {
+    console.warn(`[workspace] 建 ${LEGACY_WORKDIR} → ${WORKDIR} 符号链接失败：${e.message}`);
+  }
+}
+// 首次使用：dsh 的 storages 里预置一个**指向 WORKDIR 的工作区**，学生进来直接可用，
+// 不必先在目录选择器里点一次（选择器起点也是 WORKDIR，见上面的 HOME）。
+// - store 不存在，或存在但一个工作区都没有（本机容器内 xdg-user-dir 不可用 → dsh 只会写一个
+//   空 store）时补一条；学生已经选过工作区就**不动它**；
+// - 记录形状取自真实运行样本（version 2），dsh 升级 storages 格式时由它自己的迁移逻辑接管；
+//   万一这份预置不被接受，dsh 会重建 store —— 学生重选一次目录即可，文件本身不丢。
+seedDefaultWorkspace();
+function seedDefaultWorkspace() {
+  const home = process.env.DSH_HOME;
+  if (!home) return;
+  const store = `${home}/storages/workspace.json`;
+  const id = randomUUID();
+  const now = new Date().toISOString();
+  const entry = {
+    path: WORKDIR,
+    title: 'workspace',
+    sessionIds: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+  let record;
+  if (existsSync(store)) {
+    // 已有 store：只在"一个工作区都没有"时补一条（解析不了就交给 dsh 自己处理）
+    try {
+      const existing = JSON.parse(readFileSync(store, 'utf8'));
+      const ids = existing?.global?.workspaceIds;
+      const tables = existing?.tables?.workspaces;
+      if (!Array.isArray(ids) || ids.length > 0) return;
+      if (tables && Object.keys(tables).length > 0) return;
+      record = {
+        ...existing,
+        global: { ...existing.global, initialized: true, workspaceIds: [id] },
+        tables: { ...existing.tables, workspaces: { ...(tables ?? {}), [id]: entry } },
+      };
+    } catch (e) {
+      console.warn(`[workspace] 读取 ${store} 失败，跳过预置工作区：${e.message}`);
+      return;
+    }
+  } else {
+    record = {
+      unit: { name: 'workspace', version: 2 },
+      global: { initialized: true, workspaceIds: [id], archivedSessionIds: [], pinnedSessionIds: [] },
+      tables: { workspaces: { [id]: entry } },
+    };
+  }
+  try {
+    mkdirSync(`${home}/storages`, { recursive: true });
+    writeFileSync(store, `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600 });
+    console.log(`[workspace] seeded default workspace: ${WORKDIR}`);
+  } catch (e) {
+    console.warn(`[workspace] 预置工作区失败（不影响使用）：${e.message}`);
+  }
+}
+
+// HOME 指到工作目录：dsh 的「工作区」/目录选择器起点都取 homedir（见文件头 WORKDIR 注释）
+const child = spawn('dsh', args, {
+  stdio: ['ignore', 'pipe', 'pipe'],
+  cwd: WORKDIR,
+  env: { ...process.env, HOME: HOME_DIR },
+});
 
 // 3) 捕获 launch token（dsh 打印形如 `http://127.0.0.1:<port>/?token=<xxx>`）
 let announced = false;

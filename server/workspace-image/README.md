@@ -46,6 +46,32 @@ WORKSPACE_READY port=9090
 ⚠️ `WORKSPACE_TRUSTED_HOST` 必须填**浏览器地址栏里的那个 authority**，否则一律 401——
 dsh 的 browser-trust fence 只信任显式声明的 authority。
 
+## 工作目录与持久化（2026-10-23）
+
+容器内工作目录固定为 **`/workspace`**，而且 **`HOME` 也指向它**：
+
+- dsh web 给会话选的「工作区」取 `os.homedir()` —— 只设进程 cwd（`spawn(...,{cwd})`）**不够**，
+  容器内 `HOME=/root` 会把学生产物写进容器可写层，容器一回收就没了（见设计文档 §4.8）；
+- `/work` 保留为指向 `/workspace` 的符号链接（2026-09-29 ～ 10-22 的旧路径，老文档继续可用）；
+- 首次启动会在 `$DSH_HOME/storages/workspace.json` 预置一个 `path=/workspace` 的工作区
+  （store 不存在或没有任何工作区时；学生已选过就不动）；
+- 后端给本镜像挂了四处持久卷：`<根>/<userId>` → `/workspace`、`<根>/<userId>/home/root` → `/root`、
+  `dsh-sessions` → `$DSH_HOME/sessions`、`dsh-storages` → `$DSH_HOME/storages`。
+
+自测持久化（容器重建后数据仍在）：
+
+```bash
+mkdir -p /tmp/ws-probe/{workspace,dsh-sessions,dsh-storages} /tmp/ws-probe/home/root
+docker run -d --name ws-probe -v /tmp/ws-probe/workspace:/workspace \
+  -v /tmp/ws-probe/home/root:/root \
+  -v /tmp/ws-probe/dsh-sessions:/opt/workspace/dsh-home/sessions \
+  -v /tmp/ws-probe/dsh-storages:/opt/workspace/dsh-home/storages \
+  nju-lab-workspace:<tag>
+docker exec ws-probe sh -lc 'echo hi > /workspace/probe.txt'
+docker rm -f ws-probe && docker run ... # 同样的挂载再起一次
+docker exec ws-probe cat /workspace/probe.txt   # → hi
+```
+
 ## 容器内约束（上线前必须补齐）
 
 | 项 | 现状 | 上线要求 |

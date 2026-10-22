@@ -422,16 +422,31 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * 学生的持久化挂载：`<WORKSPACE_DATA_DIR>/<userId>` → `/work`（dsh 的工作目录）
-   * 与其中的 `dsh-sessions` → `$DSH_HOME/sessions`（会话历史）。
+   * 学生的持久化挂载（宿主 → 容器内）：
+   *
+   * | 宿主 | 容器内 | 内容 |
+   * |---|---|---|
+   * | `<根>/<userId>` | `/workspace` | 工作目录（容器内 `HOME` 也指它 —— dsh 的「工作区」取 homedir） |
+   * | `<根>/<userId>/home/root` | `/root` | 兜底：学生/agent 若写到 `/root`（2026-10-23 之前的默认）也不丢 |
+   * | `<根>/<userId>/dsh-sessions` | `$DSH_HOME/sessions` | dsh 的会话历史 |
+   * | `<根>/<userId>/dsh-storages` | `$DSH_HOME/storages` | dsh 的工作区/会话索引（记住上次选的工作区） |
+   *
+   * ⚠️ 2026-10-23 修订：原来只挂 `/work`，但 dsh web 给会话选的「工作区」取 `os.homedir()`
+   * （容器内 = `/root`），学生在 dsh 里建的文件全落容器可写层 —— 空闲回收/镜像升级一删就没。
+   * 现在镜像把 `HOME` 指到 `/workspace`，`/root` 与 storages 也一并持久化。
+   *
    * 目录不可写（例如 `/data` 被只读挂载）时只告警并返回空 —— **不能因此让学生起不了容器**。
    */
   private studentMounts(userId: string): string[] {
     if (!WORKSPACE_DATA_DIR) return [];
     const dir = join(WORKSPACE_DATA_DIR, userId);
     const sessions = join(dir, 'dsh-sessions');
+    const storages = join(dir, 'dsh-storages');
+    const rootHome = join(dir, 'home', 'root');
     try {
       mkdirSync(sessions, { recursive: true });
+      mkdirSync(storages, { recursive: true });
+      mkdirSync(rootHome, { recursive: true });
     } catch (e) {
       this.logger.warn(
         `工作区目录不可写，本次不挂载持久卷（学生的文件将随容器消失）：${dir} —— ${
@@ -440,7 +455,12 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
       );
       return [];
     }
-    return [`${dir}:/work`, `${sessions}:/opt/workspace/dsh-home/sessions`];
+    return [
+      `${dir}:/workspace`,
+      `${rootHome}:/root`,
+      `${sessions}:/opt/workspace/dsh-home/sessions`,
+      `${storages}:/opt/workspace/dsh-home/storages`,
+    ];
   }
 
   private sweep(): void {
