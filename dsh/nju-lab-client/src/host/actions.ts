@@ -87,92 +87,96 @@ export interface ClaimOutcome {
 }
 
 /**
- * SKILL.md / dossier.md 过程项检查结果。
+ * 实验报告检查结果。
  *
- * 口径**必须**与平台复验一致（`server/verify-image/run-eval.mjs` 的 `scanSkillDocs`）：
+ * 口径**必须**与平台复验一致（`server/verify-image/run-eval.mjs` 的 `scanReport`）：
  * 否则"本地说没问题、复验却扣分"比不提示更糟。改一边就要同步改另一边。
  *
- * 2026-10-17 起两节分开：**能力边界**留在 `SKILL.md`（技能说明书的一部分），
- * **实测档案**写进同级的 `dossier.md`；老作业没有 `dossier.md` 时回落到 `SKILL.md` 旧位置。
+ * 2026-10-22 起（用户口径）：平台**只判断实验报告**（`report.md`，模板结构已给好、学生只填数字），
+ * **不再判断 `SKILL.md` 的内容**。老作业没有 `report.md` 时依次回落到 `dossier.md` /
+ * `SKILL.md` 旧位置，避免历史提交突然掉分。
  */
-export interface SkillDocCheck {
-  /** `## 能力边界` 非空且不含 TODO 残留 */
-  boundariesDocumented: boolean
-  /** 「踩坑记录」下的列表项条数（不含 TODO 行） */
+export interface ReportCheck {
+  /** 报告齐全：自测时间 + 两个 case 的表格行有数字 + 至少一条踩坑记录 */
+  reportComplete: boolean
+  /** 踩坑记录条数（按行计数，与平台 `dossierSnapshot.pitfallsRecorded` 同口径） */
   pitfallsRecorded: number
-  /** 这条踩坑记录是从哪读到的（排查用） */
-  dossierSource: 'dossier.md' | 'SKILL.md' | 'none'
-  /** 给人看的提醒；两项都合格时为空数组 */
+  /** 这份报告是从哪个文件读到的（排查用） */
+  reportSource: 'report.md' | 'dossier.md' | 'SKILL.md' | 'none'
+  /** 给人看的提醒；报告齐全时为空数组 */
   warnings: string[]
 }
 
 /**
- * 扫提交目录里的 `SKILL.md`（能力边界）与 `dossier.md`（实测档案），把平台**提交后才扣分**
- * 的两项提前到提交那一刻说明。
+ * 扫提交目录里的实验报告，把平台**提交后才扣分**的过程项提前到提交那一刻说明。
  *
- * 2026-10-17 起用途：`nju_lab_submit` 与面板的提交动作返回里带上 `warnings`，
- * **不阻断提交**（用户口径：警告不拦截）。学生交完 v1 才发现"两节还是模板 TODO"
- * 的情况，从这里第一次被点名。
+ * 用途：`nju_lab_submit` 与面板的提交动作返回里带上 `warnings`，**不阻断提交**
+ * （用户口径：警告不拦截）。学生只交一份空模板时，从这里第一次被点名。
  */
-export async function scanSkillDoc(skillRoot: string): Promise<SkillDocCheck> {
-  const file = join(skillRoot, 'SKILL.md')
-  let md: string
-  try {
-    md = await readFile(file, 'utf8')
-  } catch {
-    // resolveSkillRoot 已经保证 SKILL.md 存在，走到这里通常是权限问题
-    return {
-      boundariesDocumented: false,
-      pitfallsRecorded: 0,
-      dossierSource: 'none',
-      warnings: [`读不到 ${file}，无法检查能力边界与实测档案`],
+export async function scanReport(skillRoot: string): Promise<ReportCheck> {
+  const readOptional = async (name: string): Promise<string | null> => {
+    try {
+      return await readFile(join(skillRoot, name), 'utf8')
+    } catch {
+      return null
     }
   }
-  const sectionOf = (text: string, title: string): string => {
-    const m = new RegExp(`##[^\\n]*${title}[^\\n]*\\n([\\s\\S]*?)(?=\\n## |$)`).exec(text)
-    return m?.[1] ?? ''
-  }
-  /** 踩坑记录可能是独立二级标题，也可能是「实测档案」小节里的列表项（旧模板即后者）。 */
-  const pitfallsOf = (text: string): string => {
-    let found = sectionOf(text, '踩坑记录')
-    if (!found.trim()) {
-      const m = /踩坑记录[^\n]*\n((?:[ \t]+(?:[-*]|\d+\.)[^\n]*\n?)+)/.exec(text)
-      found = m?.[1] ?? ''
+  /** 踩坑记录可能是独立二级标题，也可能是小节里的列表项（报告模板即后者）。 */
+  const pitfallsOf = (md: string | null): string => {
+    const m = /##[^\n]*踩坑记录[^\n]*\n([\s\S]*?)(?=\n## |$)/.exec(md ?? '')
+    let text = m?.[1] ?? ''
+    if (!text.trim()) {
+      const inline = /踩坑记录[^\n]*\n((?:[ \t]+(?:[-*]|\d+\.)[^\n]*\n?)+)/.exec(md ?? '')
+      text = inline?.[1] ?? ''
     }
-    return found
+    return text
   }
   const count = (text: string): number =>
     text
       .split('\n')
       .filter((line) => /^\s*(?:[-*]|\d+\.)\s*\S/.test(line) && !line.includes('TODO')).length
-
-  const boundary = sectionOf(md, '能力边界')
-  const boundariesDocumented = boundary.trim() !== '' && !boundary.includes('TODO')
-
-  // 实测档案：优先 dossier.md，读不到回落 SKILL.md 的旧位置（与平台同口径）
-  let dossier = ''
-  try {
-    dossier = await readFile(join(skillRoot, 'dossier.md'), 'utf8')
-  } catch {
-    // 没有 dossier.md：老作业/学生没建，走回落
+  const hasSelfTest = (md: string | null): boolean => /自测时间[：:][ \t]*\S/.test(md ?? '')
+  /** 报告第 2 节表格行里，第 3 个单元格起是否有数字（前两个是 case 名与数据特点）。 */
+  const caseRowFilled = (md: string | null, n: number): boolean => {
+    const line = (md ?? '')
+      .split('\n')
+      .find((l) => new RegExp(`case\\s*0?${n}`, 'i').test(l))
+    if (!line) return false
+    const cells = line.split('|').slice(1)
+    return cells.slice(2).some((cell) => /\d/.test(cell))
   }
-  let pitfallsText = dossier ? pitfallsOf(dossier) : ''
-  const dossierSource: SkillDocCheck['dossierSource'] = pitfallsText.trim() ? 'dossier.md' : 'SKILL.md'
-  if (!pitfallsText.trim()) pitfallsText = pitfallsOf(md)
-  const pitfallsRecorded = count(pitfallsText)
+
+  let raw = await readOptional('report.md')
+  let reportSource: ReportCheck['reportSource'] = raw ? 'report.md' : 'none'
+  if (!raw) {
+    raw = await readOptional('dossier.md')
+    reportSource = raw ? 'dossier.md' : 'none'
+  }
+  if (!raw) {
+    raw = await readOptional('SKILL.md')
+    reportSource = raw ? 'SKILL.md' : 'none'
+  }
+
+  const pitfallsRecorded = count(pitfallsOf(raw))
+  const reportComplete =
+    reportSource === 'report.md'
+      ? hasSelfTest(raw) && caseRowFilled(raw, 1) && caseRowFilled(raw, 2) && pitfallsRecorded >= 1
+      : hasSelfTest(raw) && pitfallsRecorded >= 1
 
   const warnings: string[] = []
-  if (!boundariesDocumented) {
+  if (!reportComplete) {
+    const missing: string[] = []
+    if (!hasSelfTest(raw)) missing.push('自测时间')
+    if (reportSource === 'report.md' && !(caseRowFilled(raw, 1) && caseRowFilled(raw, 2))) {
+      missing.push('两个 case 的指标数字')
+    }
+    if (pitfallsRecorded === 0) missing.push('踩坑记录（≥1 条）')
     warnings.push(
-      'SKILL.md 的「能力边界」还是模板占位（含 TODO）—— 平台复验按未填写计，自动建议分少 10 分',
+      `实验报告 ${reportSource === 'none' ? '还没建（report.md）' : `缺：${missing.join('、')}`}` +
+        ' —— 平台过程分从 20 降到 10',
     )
   }
-  if (pitfallsRecorded === 0) {
-    warnings.push(
-      'dossier.md（实测档案）里没有踩坑记录（每条一行、按行计数）—— 过程维度（能力边界质量 / 实测有效性）会丢分',
-    )
-  }
-  return { boundariesDocumented, pitfallsRecorded, dossierSource, warnings }
+  return { reportComplete, pitfallsRecorded, reportSource, warnings }
 }
 
 export interface SubmitOutcome {
@@ -184,8 +188,8 @@ export interface SubmitOutcome {
   skillZip: { fileId: string; sha256: string }
   capsule: { fileId: string; sha256: string }
   submission: { id: string; status: string; version?: number }
-  /** SKILL.md 过程项检查（只警告不阻断 —— 提交本身已经成功） */
-  skillDoc: SkillDocCheck
+  /** 实验报告检查（只警告不阻断 —— 提交本身已经成功） */
+  report: ReportCheck
 }
 
 export interface NjuLabActions {
@@ -410,9 +414,9 @@ export function createActions(
       const skillRoot = await resolveSkillRoot(given)
       const files = await collectFiles(skillRoot)
 
-      // 过程项检查：与平台复验同口径，但**只警告不阻断**（见 scanSkillDoc 注释）。
+      // 实验报告检查：与平台复验同口径，但**只警告不阻断**（见 scanReport 注释）。
       // 放在打包前算，是因为它读的是同一个 skillRoot，与上传内容一致。
-      const skillDoc = await scanSkillDoc(skillRoot)
+      const report = await scanReport(skillRoot)
 
       // ZIP 内路径：Skill 根比 `given` 深一层时保留那层目录名 —— 即"单层顶层目录"
       // 风格（`csv-cleaner/SKILL.md`），与服务端复验的探测语义一致。
@@ -477,7 +481,7 @@ export function createActions(
           status: submission?.status ?? '(unknown)',
           version: submission?.version,
         },
-        skillDoc,
+        report,
       }
     },
   }

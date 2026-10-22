@@ -367,56 +367,64 @@ function hashTree(root) {
 }
 
 /**
- * 技能包的过程项扫描（2026-10-17 拆分，用户确认）：
+ * 实验报告扫描（2026-10-22 起，用户口径）：平台**只判断报告**，不再判断 `SKILL.md` 的内容。
  *
- *  - **能力边界**：仍读 `SKILL.md` —— 它本来就是技能说明书的一部分（"什么时候该用/不该用我"）。
- *  - **踩坑记录（实测档案）**：优先读 `<skillRoot>/dossier.md`，读不到再回落 `SKILL.md` 的旧位置
- *    （模板在 2026-10-17 之前把两节混在 SKILL.md 里）。**向后兼容是硬要求**：拆分前提交的
- *    作业必须照旧能算分，否则历史提交会突然掉分。
+ *  - `reportComplete`：报告存在、自测时间填了、两个 case 的表格行里都有数字、踩坑记录 ≥1 条；
+ *  - `pitfallsRecorded`：踩坑记录条数（按行计数，`dossierSnapshot` 的既有键名保留）。
  *
- * 两个字段仍是 `boundariesDocumented` / `pitfallsRecorded`（`dossierSnapshot` 的既有键），
- * 另加 `dossierSource` 只用于排查"这条记录是从哪读到的"。
+ * 兼容（历史作业不掉分）：`report.md` → `dossier.md` → `SKILL.md` 旧位置。
+ * 老格式没有表格结构，只要求"自测时间 + 至少一条踩坑"。
  */
-function scanSkillDocs(root) {
-  const sectionOf = (md, title) => {
-    const m = new RegExp(`##[^\\n]*${title}[^\\n]*\\n([\\s\\S]*?)(?=\\n## |$)`).exec(md);
-    return m?.[1] ?? '';
+function scanReport(root) {
+  const readOptional = (name) => {
+    try {
+      return readFileSync(join(root, name), 'utf8');
+    } catch {
+      return null;
+    }
   };
-  /** 踩坑记录可能是独立二级标题，也可能是「实测档案」等小节里的列表项（旧模板即后者）。 */
+  /** 踩坑记录可能是独立二级标题，也可能是小节里的列表项（模板即后者）。 */
   const pitfallsOf = (md) => {
-    let text = sectionOf(md, '踩坑记录');
+    const m = /##[^\n]*踩坑记录[^\n]*\n([\s\S]*?)(?=\n## |$)/.exec(md ?? '');
+    let text = m?.[1] ?? '';
     if (!text.trim()) {
-      const m = /踩坑记录[^\n]*\n((?:[ \t]+(?:[-*]|\d+\.)[^\n]*\n?)+)/.exec(md);
-      text = m?.[1] ?? '';
+      const inline = /踩坑记录[^\n]*\n((?:[ \t]+(?:[-*]|\d+\.)[^\n]*\n?)+)/.exec(md ?? '');
+      text = inline?.[1] ?? '';
     }
     return text;
   };
   const count = (text) =>
     text.split('\n').filter((l) => /^\s*(?:[-*]|\d+\.)\s*\S/.test(l) && !l.includes('TODO')).length;
+  const hasSelfTest = (md) => /自测时间[：:][ \t]*\S/.test(md ?? '');
+  /** 报告第 2 节的表格行里，第 3 个单元格起是否有数字（前两个是 case 名与数据特点）。 */
+  const caseRowFilled = (md, n) => {
+    const line = (md ?? '')
+      .split('\n')
+      .find((l) => new RegExp(`case\\s*0?${n}`, 'i').test(l));
+    if (!line) return false;
+    const cells = line.split('|').slice(1);
+    return cells.slice(2).some((cell) => /\d/.test(cell));
+  };
 
-  try {
-    const skillMd = readFileSync(join(root, 'SKILL.md'), 'utf8');
-    const boundary = sectionOf(skillMd, '能力边界');
-
-    let dossier = '';
-    try {
-      dossier = readFileSync(join(root, 'dossier.md'), 'utf8');
-    } catch {
-      // 没有 dossier.md：老提交，走回落
-    }
-
-    let pitfallsText = dossier ? pitfallsOf(dossier) : '';
-    const dossierSource = pitfallsText.trim() ? 'dossier.md' : 'SKILL.md';
-    if (!pitfallsText.trim()) pitfallsText = pitfallsOf(skillMd);
-
-    return {
-      boundariesDocumented: boundary.trim() !== '' && !boundary.includes('TODO'),
-      pitfallsRecorded: count(pitfallsText),
-      dossierSource,
-    };
-  } catch {
-    return { boundariesDocumented: false, pitfallsRecorded: 0, dossierSource: 'none' };
+  const report = readOptional('report.md');
+  let raw = report;
+  let reportSource = 'report.md';
+  if (!raw) {
+    raw = readOptional('dossier.md');
+    reportSource = raw ? 'dossier.md' : 'none';
   }
+  if (!raw) {
+    raw = readOptional('SKILL.md');
+    reportSource = raw ? 'SKILL.md' : 'none';
+  }
+  if (!raw) return { reportComplete: false, pitfallsRecorded: 0, reportSource: 'none' };
+
+  const pitfallsRecorded = count(pitfallsOf(raw));
+  const reportComplete =
+    reportSource === 'report.md'
+      ? hasSelfTest(raw) && caseRowFilled(raw, 1) && caseRowFilled(raw, 2) && pitfallsRecorded >= 1
+      : hasSelfTest(raw) && pitfallsRecorded >= 1;
+  return { reportComplete, pitfallsRecorded, reportSource };
 }
 
 // ---------- dsh 运行 ----------
@@ -679,7 +687,7 @@ function inspectPackage({ problemRoot, spec, skillRoot, caseNames }) {
       };
     }),
     skill: skillRoot
-      ? { root: skillRoot, files: Object.keys(hashTree(skillRoot)), info: scanSkillDocs(skillRoot) }
+      ? { root: skillRoot, files: Object.keys(hashTree(skillRoot)), info: scanReport(skillRoot) }
       : null,
   };
 }
@@ -737,7 +745,7 @@ async function main() {
     package: pkg,
     dependencyCheck: deps,
     skillFileHashes,
-    skillInfo: skillRoot ? scanSkillDocs(skillRoot) : null,
+    skillInfo: skillRoot ? scanReport(skillRoot) : null,
     cases: [],
   };
 

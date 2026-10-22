@@ -15,7 +15,7 @@ import { EvaluationRunner, EvaluationRunResult } from './evaluation-runner';
 import { Submission } from './submission.entity';
 
 /** 复验容器镜像（构建见 server/verify-image/Dockerfile） */
-const VERIFY_IMAGE = process.env.VERIFY_IMAGE || 'nju-lab-verify:0.2.0-rc.2-pkg7';
+const VERIFY_IMAGE = process.env.VERIFY_IMAGE || 'nju-lab-verify:0.2.0-rc.2-pkg8';
 /** 整体时长限额兜底（毫秒）；project.evalConfig.timeoutSeconds 优先 */
 const VERIFY_TIMEOUT_MS = Number(process.env.VERIFY_TIMEOUT_MS || 600_000);
 /**
@@ -66,7 +66,7 @@ interface DriverResult {
   package?: DriverPackage | null;
   dependencyCheck?: { ok: boolean; missing: string[]; declared: Record<string, string[]> } | null;
   skillFileHashes: Record<string, string> | null;
-  skillInfo?: { boundariesDocumented: boolean; pitfallsRecorded: number } | null;
+  skillInfo?: { reportComplete: boolean; pitfallsRecorded: number; reportSource: string } | null;
   /** 单轮复验（baseline 轮已取消）：每个 case 一条记录，无 rounds 嵌套 */
   cases: ({ case: string } & RoundResult)[];
   summary: DriverSummary;
@@ -235,14 +235,15 @@ export class DockerEvaluationRunner implements EvaluationRunner {
     const tokenCost = Math.round(summary.tokens.input + summary.tokens.output);
 
     const integrity = this.integrityCheck(submission, result, capsuleHashVerified);
-    const boundariesDocumented = result.skillInfo?.boundariesDocumented ?? false;
+    // 2026-10-22：平台只判断实验报告（report.md），不再判断 SKILL.md 的内容
+    const reportComplete = result.skillInfo?.reportComplete ?? false;
 
     // 与 Mock 相同的评分建议公式（craft 第九节权重），但输入全部是实测值。
     // baseline 轮已取消 → 原 lift 项（15 分）并入成功率（40 → 55）；
     // tokenCost 也从「两轮之和」变成「单轮」，阈值按比例减半（30000 → 15000）。
     const autoScoreSuggestion = Math.min(100, round2(
       successRate * 55 +
-      (boundariesDocumented ? 20 : 10) +
+      (reportComplete ? 20 : 10) +
       (integrity.selfReportVsRerun !== 'suspicious' ? 10 : 5) +
       (tokenCost < 15_000 ? 10 : 6),
     ));
@@ -273,7 +274,8 @@ export class DockerEvaluationRunner implements EvaluationRunner {
           success: summary.passCount,
           failure: summary.runs - summary.passCount,
         },
-        boundariesDocumented,
+        reportComplete,
+        reportSource: result.skillInfo?.reportSource ?? 'none',
         pitfallsRecorded: result.skillInfo?.pitfallsRecorded ?? 0,
         successRate: summary.successRate,
       },

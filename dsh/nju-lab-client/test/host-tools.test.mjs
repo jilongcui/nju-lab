@@ -324,100 +324,107 @@ describe('host half: nju_lab_submit', () => {
     })
   })
 
-  // 2026-10-17：SKILL.md 过程项自检（与平台复验 run-eval.mjs scanSkillMd 同口径）。
-  // 口径是「只警告不阻断」——学生交了 v1 才发现两节还是模板 TODO 的情况，从这里第一次被点名。
-  test('模板 TODO 未填：提交照常成功，但输出点名会被扣分的两节', async () => {
+  // 2026-10-22：平台只判断实验报告（report.md），不再判断 SKILL.md 的内容。
+  // 口径仍是「只警告不阻断」——学生交了空报告时，从这里第一次被点名。
+  const REPORT_TEMPLATE = [
+    '# 实验报告：demo',
+    '',
+    '## 1. 自测概况',
+    '',
+    '- 自测时间：',
+    '',
+    '## 2. 两个 case 的结果',
+    '',
+    '| case | 数据特点 | accuracy | macro F1 | 是否达标 |',
+    '|---|---|---|---|---|',
+    '| case01 | 150 行 |  |  |  |',
+    '| case02 | 120 行 |  |  |  |',
+    '',
+    '## 3. 基线对照',
+    '',
+    '- 基线 accuracy：',
+    '',
+    '## 4. 踩坑记录（每条一行，平台按行计数）',
+    '',
+    '1. ',
+    '',
+    '## 5. 结论',
+    '',
+  ].join('\n')
+
+  const SKILL_WITH_BOUNDARY = [
+    '# demo skill',
+    '',
+    '## 能力边界',
+    '',
+    '- 能处理：UTF-8 的 CSV',
+    '- 不处理：GBK 编码',
+    '',
+  ].join('\n')
+
+  test('报告还是空模板：提交照常成功，但输出点名缺什么', async () => {
     await withClient({}, async ({ harness, platform }) => {
       await harness.tool('nju_lab_claim').execute({ assignmentId: 'a-unlocked' })
-      const skillDir = await mkdtemp(join(tmpdir(), 'nju-doc-'))
-      await writeFile(
-        join(skillDir, 'SKILL.md'),
-        [
-          '# demo skill',
-          '',
-          '## 能力边界（TODO：学生补全）',
-          '',
-          '- TODO：**不处理**哪些情况？',
-          '',
-          '## 实测档案（TODO：学生填写，dossier）',
-          '',
-          '- 自测时间：',
-          '- 踩坑记录（pitfalls）：',
-          '  （每条写成一行）',
-          '',
-        ].join('\n'),
-      )
+      const skillDir = await mkdtemp(join(tmpdir(), 'nju-report-empty-'))
+      await writeFile(join(skillDir, 'SKILL.md'), SKILL_WITH_BOUNDARY)
+      await writeFile(join(skillDir, 'report.md'), REPORT_TEMPLATE)
 
-      const out = await harness.tool('nju_lab_submit').execute({
-        assignmentId: 'a-unlocked',
-        skillDir,
-      })
+      const out = await harness.tool('nju_lab_submit').execute({ assignmentId: 'a-unlocked', skillDir })
 
       assert.match(out, /submitted a-unlocked/, '警告不能变成拦截')
-      assert.match(out, /过程记录会被扣分/)
-      assert.match(out, /「能力边界」还是模板占位/)
-      assert.match(out, /没有踩坑记录/)
+      assert.match(out, /实验报告还没填完/)
+      assert.match(out, /自测时间/)
+      assert.match(out, /踩坑记录/)
       assert.equal(platform.submissions.length, 1, '提交确实完成了')
     })
   })
 
-  test('两节都写成自己的话时不出现警告', async () => {
+  test('报告填好时不出现警告（SKILL.md 内容不再被判断）', async () => {
     await withClient({}, async ({ harness }) => {
       await harness.tool('nju_lab_claim').execute({ assignmentId: 'a-unlocked' })
-      const skillDir = await mkdtemp(join(tmpdir(), 'nju-doc-ok-'))
-      // 新模板形态：能力边界留在 SKILL.md，实测档案写进 dossier.md
+      const skillDir = await mkdtemp(join(tmpdir(), 'nju-report-ok-'))
+      await writeFile(join(skillDir, 'SKILL.md'), SKILL_WITH_BOUNDARY)
       await writeFile(
-        join(skillDir, 'SKILL.md'),
+        join(skillDir, 'report.md'),
         [
-          '# demo skill',
+          '# 实验报告：demo',
           '',
-          '## 能力边界',
+          '## 1. 自测概况',
           '',
-          '- 能处理：UTF-8 的 CSV，表头唯一',
-          '- 不处理：GBK 编码、合并单元格、表头重名',
+          '- 自测时间：2026-10-22',
+          '',
+          '## 2. 两个 case 的结果',
+          '',
+          '| case | 数据特点 | accuracy | macro F1 | 是否达标 |',
+          '|---|---|---|---|---|',
+          '| case01 | 150 行 | 0.9474 | 0.9487 | 达标 |',
+          '| case02 | 120 行 | 0.9333 | 0.9333 | 达标 |',
+          '',
+          '## 4. 踩坑记录（每条一行，平台按行计数）',
+          '',
+          '1. 只报 accuracy 不够，macro F1 会掉',
+          '2. 只用花瓣长度时重叠区错得更多',
           '',
         ].join('\n'),
       )
+
+      const out = await harness.tool('nju_lab_submit').execute({ assignmentId: 'a-unlocked', skillDir })
+      assert.match(out, /submitted a-unlocked/)
+      assert.doesNotMatch(out, /实验报告还没填完/, '报告填好了就不该再提醒')
+    })
+  })
+
+  test('向后兼容：老作业只有 dossier.md 时照旧算齐全', async () => {
+    await withClient({}, async ({ harness }) => {
+      await harness.tool('nju_lab_claim').execute({ assignmentId: 'a-unlocked' })
+      const skillDir = await mkdtemp(join(tmpdir(), 'nju-report-legacy-'))
+      await writeFile(join(skillDir, 'SKILL.md'), SKILL_WITH_BOUNDARY)
       await writeFile(
         join(skillDir, 'dossier.md'),
         [
           '# 实测档案',
           '',
           '- 自测时间：2026-10-17',
-          '- 用例通过率：2/2',
-          '- 踩坑记录（pitfalls）：',
-          '  - 表头有空列：按列名取值抛 KeyError，改成按位置取值后通过',
-          '  - 数值列混入空字符串：直接 float() 抛错，先做空值归一',
-          '',
-        ].join('\n'),
-      )
-
-      const out = await harness.tool('nju_lab_submit').execute({
-        assignmentId: 'a-unlocked',
-        skillDir,
-      })
-
-      assert.match(out, /submitted a-unlocked/)
-      assert.doesNotMatch(out, /会被扣分/, '两节都写好了就不该再提醒')
-    })
-  })
-
-  // 拆分前的作业没有 dossier.md：踩坑记录还在 SKILL.md 的「实测档案」节里，必须照旧能识别
-  test('向后兼容：没有 dossier.md 时回落到 SKILL.md 的旧位置', async () => {
-    await withClient({}, async ({ harness }) => {
-      await harness.tool('nju_lab_claim').execute({ assignmentId: 'a-unlocked' })
-      const skillDir = await mkdtemp(join(tmpdir(), 'nju-doc-legacy-'))
-      await writeFile(
-        join(skillDir, 'SKILL.md'),
-        [
-          '# demo skill',
-          '',
-          '## 能力边界',
-          '',
-          '- 能处理：UTF-8 的 CSV',
-          '',
-          '## 实测档案',
-          '',
           '- 踩坑记录（pitfalls）：',
           '  - 表头有空列：按列名取值抛 KeyError',
           '',
@@ -426,7 +433,30 @@ describe('host half: nju_lab_submit', () => {
 
       const out = await harness.tool('nju_lab_submit').execute({ assignmentId: 'a-unlocked', skillDir })
       assert.match(out, /submitted a-unlocked/)
-      assert.doesNotMatch(out, /会被扣分/, '老位置写了就不该提醒')
+      assert.doesNotMatch(out, /实验报告还没填完/, '老档案写了就不该提醒')
+    })
+  })
+
+  test('向后兼容：更老的作业把实测档案写在 SKILL.md 里也算数', async () => {
+    await withClient({}, async ({ harness }) => {
+      await harness.tool('nju_lab_claim').execute({ assignmentId: 'a-unlocked' })
+      const skillDir = await mkdtemp(join(tmpdir(), 'nju-report-oldest-'))
+      await writeFile(
+        join(skillDir, 'SKILL.md'),
+        [
+          SKILL_WITH_BOUNDARY,
+          '## 实测档案',
+          '',
+          '- 自测时间：2026-10-17',
+          '- 踩坑记录（pitfalls）：',
+          '  - 表头有空列：按列名取值抛 KeyError',
+          '',
+        ].join('\n'),
+      )
+
+      const out = await harness.tool('nju_lab_submit').execute({ assignmentId: 'a-unlocked', skillDir })
+      assert.match(out, /submitted a-unlocked/)
+      assert.doesNotMatch(out, /实验报告还没填完/, '最老的写法也照旧算数')
     })
   })
 })

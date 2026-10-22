@@ -107,12 +107,12 @@ interface SubmitOutcomeDto {
   skillZip: { fileId: string; sha256: string }
   capsule: { fileId: string; sha256: string }
   submission: { id: string; status: string }
-  /** SKILL.md / dossier.md 过程项检查（host 半与平台复验同口径；只警告不阻断提交） */
-  skillDoc?: {
-    boundariesDocumented: boolean
+  /** 实验报告检查（host 半与平台复验同口径；只警告不阻断提交） */
+  report?: {
+    reportComplete: boolean
     pitfallsRecorded: number
-    /** 踩坑记录是从 dossier.md 还是 SKILL.md 旧位置读到的 */
-    dossierSource?: 'dossier.md' | 'SKILL.md' | 'none'
+    /** 报告是从哪个文件读到的（report.md / 旧 dossier.md / 旧 SKILL.md） */
+    reportSource?: 'report.md' | 'dossier.md' | 'SKILL.md' | 'none'
     warnings: string[]
   }
 }
@@ -366,7 +366,7 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ assignmentId, sessionId }),
           })
-          const docWarnings = outcome.skillDoc?.warnings ?? []
+          const docWarnings = outcome.report?.warnings ?? []
           setBanner({
             kind: 'ok',
             title: `提交成功：submission ${outcome.submission.id}（${statusText(outcome.submission.status)}）`,
@@ -377,7 +377,7 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
               `本地产物：${outcome.zipPath}`,
               // 提交成功但过程记录还空着 —— 平台复验会扣分，这里当场说清楚
               ...(docWarnings.length
-                ? ['⚠ SKILL.md 过程记录会被扣分（提交本身已成功，可补写后交新版本）：', ...docWarnings]
+                ? ['⚠ 实验报告还没填完（提交本身已成功，过程分会从 20 降到 10）：', ...docWarnings]
                 : []),
             ],
           })

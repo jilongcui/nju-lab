@@ -57,7 +57,7 @@ function renderClaim(outcome: ClaimOutcome): string {
 }
 
 function renderSubmit(outcome: SubmitOutcome, note?: string): string {
-  const warnings = outcome.skillDoc?.warnings ?? []
+  const warnings = outcome.report?.warnings ?? []
   return [
     `submitted ${outcome.assignmentId}`,
     `- Skill 根: ${outcome.skillRoot}`,
@@ -70,9 +70,9 @@ function renderSubmit(outcome: SubmitOutcome, note?: string): string {
     ...(warnings.length
       ? [
           '',
-          '⚠ 已提交，但 SKILL.md 的过程记录会被扣分：',
+          '⚠ 已提交，但实验报告还没填完（过程分会从 20 降到 10）：',
           ...warnings.map((w) => `- ${w}`),
-          '（补写后可以再交一版：历史版本保留、各自独立复验。要我把这两节的结构和例子给你吗？）',
+          '（补完 report.md 可以再交一版：历史版本保留、各自独立复验。要我按模板把还缺的数字梳理一遍吗？）',
         ]
       : []),
   ].join('\n')
@@ -131,7 +131,7 @@ export function registerTools(ctx: Context, actions: NjuLabActions): void {
     defineTool({
       name: TOOL_NAMES.submit,
       description:
-        'Submit a Skill directory as an assignment: hashes every file, packs a ZIP, builds the .dshc capsule, uploads both, then submits. Never blocks on an unfinished SKILL.md, but reports which process sections (能力边界 / 实测档案) are still template TODOs — the verifier deducts for those.',
+        'Submit a Skill directory as an assignment: hashes every file, packs a ZIP, builds the .dshc capsule, uploads both, then submits. Never blocks on an unfinished report.md, but reports which fields of the lab report are still empty — the verifier deducts for those.',
       parameters: {
         assignmentId: { type: 'string', required: true, description: 'assignment id' },
         skillDir: { type: 'string', required: true, description: 'local Skill directory to submit' },

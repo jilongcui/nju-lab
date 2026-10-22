@@ -65,7 +65,7 @@ export class MockEvaluationRunner implements EvaluationRunner {
         success: Math.round(successRate * caseCount),
         failure: caseCount - Math.round(successRate * caseCount),
       },
-      boundariesDocumented: rand() > 0.3,
+      reportComplete: rand() > 0.3,
       pitfallsRecorded: Math.floor(rand() * 5),
     };
 
@@ -82,7 +82,7 @@ export class MockEvaluationRunner implements EvaluationRunner {
     // 按第九节评分维度生成建议分（实测有效性为主导；lift 项已并入成功率）
     const autoScoreSuggestion = round2(
       successRate * 55 +
-        (dossierSnapshot.boundariesDocumented ? 20 : 10) +
+        (dossierSnapshot.reportComplete ? 20 : 10) +
         (consistent ? 10 : 5) +
         (tokenCost < 15000 ? 10 : 6),
     );
