@@ -5,6 +5,37 @@
 
 ## 0. 一句话现状
 
+**2026-10-22（学员模式：一次一步 + 报告自动生成）—— ✅ 已上线**
+
+- **需求（用户）**：整个实验围绕最后的 `report.md` 展开——① 每步先解释要做什么，学生回答后
+  **明确说"下一步"** 才推进；② 中间产出（图、数字）在 chat 窗口展示/列出，确认后再继续；
+  ③ 最后一步按模板**自动生成 `report.md`**，数字从过程产出里摘、不必学生手填；④ 产出的图也要进报告；
+  ⑤ 默认开启、可关闭。
+- **口径与取舍**：① **数字来源定在 `output.json`**（复验读的同一份数据），不从对话里摘——对话摘取
+  不可靠；只有「踩坑记录」必须来自与学生的真实问答；② 「必须学生确认才下一步」是**强引导不是硬约束**
+  （DSH 拦不住模型多说一句）：写进 `nju_lab_step` 的返回值 + 常驻引导段，靠每轮都能读到的指令约束。
+- **实现**（全部在插件内，未动 DSH 核心）：
+  · `src/host/guide.ts`：六步状态机（看清需求 → 看数据+画图 → 定基线 → 建模/训练 → 评估+画图 → 写报告），
+    按 `output.json` 形状识别实验类型（分类/回归/深度学习各一版），进度落
+    `<workspace>/nju-lab/<assignmentId>/progress.json`（DSH 重启不丢）；
+  · `src/host/report.ts`：`report.md` 渲染器——表格列按类型定制、缺的字段写 `—` 不编数字、
+    图片用相对路径嵌入、踩坑来自过程记录；`reportLooksComplete` / `missingReportParts` 与平台判据同口径；
+  · `src/host/guided-tools.ts`：`nju_lab_step`（status / record / advance）与
+    `nju_lab_finalize_report`（找各 case 的 `output.json` → 写 `<skill>/report.md` → 报缺什么）；
+  · `config.ts` 新增 `guidedMode`（volatile boolean，默认 `true`，设置页可关）；
+    `guidance.ts` 按开关追加「学员模式」常驻规则（先 status、只做一步、停下等确认、最后 finalize）；
+  · 面板：快照新增 `guides`，任务行显示「学员模式 · 第 N/6 步：<标题>」。
+- **验证**：`tsc --noEmit` 过；`npm test` **89 条（83 L1 pass + 6 L2 skip）**，新增
+  `test/guided.test.mjs` 10 条（类型识别 / 六步推进到顶 / 浅合并记录 / 落盘读回 / 分类与回归报告渲染 /
+  缺项判定 / `nju_lab_step` 三步走并落盘 / `finalize_report` 从两个 `output.json` 生成报告且满足平台齐全口径 /
+  没有 output 时给提示）；同步更新 `guidance`（段文本可为函数）与 `restrict`（插件工具 3 → 5 个）的既有断言。
+  pkg13 容器冒烟：`host half loaded` + `WORKSPACE_READY` + `token→303` + `/ 200`，快照里已带 `guides`。
+- **未验证**：真模型端到端对话（会烧 token）——「一步一确认」的遵从度与 present 展示需在真会话里看一次。
+- **部署（2026-10-22 23:18）**：`nju-lab-workspace:0.2.0-rc.2-pkg13`（FROM verify:pkg8，容器内插件产物
+  md5 与本地一致）；默认 tag 已切；server `npm run build` + kill（**MainPID → 2790271**）；
+  kit `20261022-2318-26736c2` 已投放（旧包备份 `.20261022-2259.bak`）。verify 镜像未变（复验逻辑未动）。
+- **回滚**：workspace 改回 pkg12；kit 用 `.20261022-2259.bak`。
+
 **2026-10-22（平台只判断实验报告 report.md；SKILL.md 不再判断、也不再留 TODO）—— ✅ 已上线**
 
 - **需求（用户）**：① `SKILL.md` 不要留 TODO——默认就是好的，**平台不需要判断 `SKILL.md` 的内容**；
