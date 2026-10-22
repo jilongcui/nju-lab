@@ -107,8 +107,14 @@ interface SubmitOutcomeDto {
   skillZip: { fileId: string; sha256: string }
   capsule: { fileId: string; sha256: string }
   submission: { id: string; status: string }
-  /** SKILL.md 过程项检查（host 半与平台复验同口径；只警告不阻断提交） */
-  skillDoc?: { boundariesDocumented: boolean; pitfallsRecorded: number; warnings: string[] }
+  /** SKILL.md / dossier.md 过程项检查（host 半与平台复验同口径；只警告不阻断提交） */
+  skillDoc?: {
+    boundariesDocumented: boolean
+    pitfallsRecorded: number
+    /** 踩坑记录是从 dossier.md 还是 SKILL.md 旧位置读到的 */
+    dossierSource?: 'dossier.md' | 'SKILL.md' | 'none'
+    warnings: string[]
+  }
 }
 
 /** 一次动作的结果。成功与失败分开渲染，且可关闭。 */

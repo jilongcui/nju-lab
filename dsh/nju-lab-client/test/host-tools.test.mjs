@@ -356,7 +356,7 @@ describe('host half: nju_lab_submit', () => {
       assert.match(out, /submitted a-unlocked/, '警告不能变成拦截')
       assert.match(out, /过程记录会被扣分/)
       assert.match(out, /「能力边界」还是模板占位/)
-      assert.match(out, /「实测档案」里没有踩坑记录/)
+      assert.match(out, /没有踩坑记录/)
       assert.equal(platform.submissions.length, 1, '提交确实完成了')
     })
   })
@@ -365,6 +365,7 @@ describe('host half: nju_lab_submit', () => {
     await withClient({}, async ({ harness }) => {
       await harness.tool('nju_lab_claim').execute({ assignmentId: 'a-unlocked' })
       const skillDir = await mkdtemp(join(tmpdir(), 'nju-doc-ok-'))
+      // 新模板形态：能力边界留在 SKILL.md，实测档案写进 dossier.md
       await writeFile(
         join(skillDir, 'SKILL.md'),
         [
@@ -375,7 +376,12 @@ describe('host half: nju_lab_submit', () => {
           '- 能处理：UTF-8 的 CSV，表头唯一',
           '- 不处理：GBK 编码、合并单元格、表头重名',
           '',
-          '## 实测档案',
+        ].join('\n'),
+      )
+      await writeFile(
+        join(skillDir, 'dossier.md'),
+        [
+          '# 实测档案',
           '',
           '- 自测时间：2026-10-17',
           '- 用例通过率：2/2',
@@ -393,6 +399,34 @@ describe('host half: nju_lab_submit', () => {
 
       assert.match(out, /submitted a-unlocked/)
       assert.doesNotMatch(out, /会被扣分/, '两节都写好了就不该再提醒')
+    })
+  })
+
+  // 拆分前的作业没有 dossier.md：踩坑记录还在 SKILL.md 的「实测档案」节里，必须照旧能识别
+  test('向后兼容：没有 dossier.md 时回落到 SKILL.md 的旧位置', async () => {
+    await withClient({}, async ({ harness }) => {
+      await harness.tool('nju_lab_claim').execute({ assignmentId: 'a-unlocked' })
+      const skillDir = await mkdtemp(join(tmpdir(), 'nju-doc-legacy-'))
+      await writeFile(
+        join(skillDir, 'SKILL.md'),
+        [
+          '# demo skill',
+          '',
+          '## 能力边界',
+          '',
+          '- 能处理：UTF-8 的 CSV',
+          '',
+          '## 实测档案',
+          '',
+          '- 踩坑记录（pitfalls）：',
+          '  - 表头有空列：按列名取值抛 KeyError',
+          '',
+        ].join('\n'),
+      )
+
+      const out = await harness.tool('nju_lab_submit').execute({ assignmentId: 'a-unlocked', skillDir })
+      assert.match(out, /submitted a-unlocked/)
+      assert.doesNotMatch(out, /会被扣分/, '老位置写了就不该提醒')
     })
   })
 })

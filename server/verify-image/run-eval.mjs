@@ -366,27 +366,56 @@ function hashTree(root) {
   return hashes;
 }
 
-/** SKILL.md 实测档案扫描：能力边界是否填写（无 TODO 残留）、踩坑记录条数。 */
-function scanSkillMd(root) {
-  try {
-    const md = readFileSync(join(root, 'SKILL.md'), 'utf8');
-    const section = (title) => {
-      const m = new RegExp(`##[^\\n]*${title}[^\\n]*\\n([\\s\\S]*?)(?=\\n## |$)`).exec(md);
-      return m?.[1] ?? '';
-    };
-    const boundary = section('能力边界');
-    // 踩坑记录可能是独立二级标题，也可能是「实测档案」等小节的列表项（平台模板即后者）
-    let pitfallsText = section('踩坑记录');
-    if (!pitfallsText.trim()) {
+/**
+ * 技能包的过程项扫描（2026-10-17 拆分，用户确认）：
+ *
+ *  - **能力边界**：仍读 `SKILL.md` —— 它本来就是技能说明书的一部分（"什么时候该用/不该用我"）。
+ *  - **踩坑记录（实测档案）**：优先读 `<skillRoot>/dossier.md`，读不到再回落 `SKILL.md` 的旧位置
+ *    （模板在 2026-10-17 之前把两节混在 SKILL.md 里）。**向后兼容是硬要求**：拆分前提交的
+ *    作业必须照旧能算分，否则历史提交会突然掉分。
+ *
+ * 两个字段仍是 `boundariesDocumented` / `pitfallsRecorded`（`dossierSnapshot` 的既有键），
+ * 另加 `dossierSource` 只用于排查"这条记录是从哪读到的"。
+ */
+function scanSkillDocs(root) {
+  const sectionOf = (md, title) => {
+    const m = new RegExp(`##[^\\n]*${title}[^\\n]*\\n([\\s\\S]*?)(?=\\n## |$)`).exec(md);
+    return m?.[1] ?? '';
+  };
+  /** 踩坑记录可能是独立二级标题，也可能是「实测档案」等小节里的列表项（旧模板即后者）。 */
+  const pitfallsOf = (md) => {
+    let text = sectionOf(md, '踩坑记录');
+    if (!text.trim()) {
       const m = /踩坑记录[^\n]*\n((?:[ \t]+(?:[-*]|\d+\.)[^\n]*\n?)+)/.exec(md);
-      pitfallsText = m?.[1] ?? '';
+      text = m?.[1] ?? '';
     }
+    return text;
+  };
+  const count = (text) =>
+    text.split('\n').filter((l) => /^\s*(?:[-*]|\d+\.)\s*\S/.test(l) && !l.includes('TODO')).length;
+
+  try {
+    const skillMd = readFileSync(join(root, 'SKILL.md'), 'utf8');
+    const boundary = sectionOf(skillMd, '能力边界');
+
+    let dossier = '';
+    try {
+      dossier = readFileSync(join(root, 'dossier.md'), 'utf8');
+    } catch {
+      // 没有 dossier.md：老提交，走回落
+    }
+
+    let pitfallsText = dossier ? pitfallsOf(dossier) : '';
+    const dossierSource = pitfallsText.trim() ? 'dossier.md' : 'SKILL.md';
+    if (!pitfallsText.trim()) pitfallsText = pitfallsOf(skillMd);
+
     return {
       boundariesDocumented: boundary.trim() !== '' && !boundary.includes('TODO'),
-      pitfallsRecorded: pitfallsText.split('\n').filter((l) => /^\s*(?:[-*]|\d+\.)\s*\S/.test(l) && !l.includes('TODO')).length,
+      pitfallsRecorded: count(pitfallsText),
+      dossierSource,
     };
   } catch {
-    return { boundariesDocumented: false, pitfallsRecorded: 0 };
+    return { boundariesDocumented: false, pitfallsRecorded: 0, dossierSource: 'none' };
   }
 }
 
@@ -650,7 +679,7 @@ function inspectPackage({ problemRoot, spec, skillRoot, caseNames }) {
       };
     }),
     skill: skillRoot
-      ? { root: skillRoot, files: Object.keys(hashTree(skillRoot)), info: scanSkillMd(skillRoot) }
+      ? { root: skillRoot, files: Object.keys(hashTree(skillRoot)), info: scanSkillDocs(skillRoot) }
       : null,
   };
 }
@@ -708,7 +737,7 @@ async function main() {
     package: pkg,
     dependencyCheck: deps,
     skillFileHashes,
-    skillInfo: skillRoot ? scanSkillMd(skillRoot) : null,
+    skillInfo: skillRoot ? scanSkillDocs(skillRoot) : null,
     cases: [],
   };
 

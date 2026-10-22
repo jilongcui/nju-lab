@@ -87,22 +87,28 @@ export interface ClaimOutcome {
 }
 
 /**
- * SKILL.md 过程项检查结果。
+ * SKILL.md / dossier.md 过程项检查结果。
  *
- * 口径**必须**与平台复验一致（`server/verify-image/run-eval.mjs` 的 `scanSkillMd`）：
+ * 口径**必须**与平台复验一致（`server/verify-image/run-eval.mjs` 的 `scanSkillDocs`）：
  * 否则"本地说没问题、复验却扣分"比不提示更糟。改一边就要同步改另一边。
+ *
+ * 2026-10-17 起两节分开：**能力边界**留在 `SKILL.md`（技能说明书的一部分），
+ * **实测档案**写进同级的 `dossier.md`；老作业没有 `dossier.md` 时回落到 `SKILL.md` 旧位置。
  */
 export interface SkillDocCheck {
   /** `## 能力边界` 非空且不含 TODO 残留 */
   boundariesDocumented: boolean
   /** 「踩坑记录」下的列表项条数（不含 TODO 行） */
   pitfallsRecorded: number
+  /** 这条踩坑记录是从哪读到的（排查用） */
+  dossierSource: 'dossier.md' | 'SKILL.md' | 'none'
   /** 给人看的提醒；两项都合格时为空数组 */
   warnings: string[]
 }
 
 /**
- * 扫提交目录里的 `SKILL.md`，把平台**提交后才扣分**的两项提前到提交那一刻说明。
+ * 扫提交目录里的 `SKILL.md`（能力边界）与 `dossier.md`（实测档案），把平台**提交后才扣分**
+ * 的两项提前到提交那一刻说明。
  *
  * 2026-10-17 起用途：`nju_lab_submit` 与面板的提交动作返回里带上 `warnings`，
  * **不阻断提交**（用户口径：警告不拦截）。学生交完 v1 才发现"两节还是模板 TODO"
@@ -118,26 +124,42 @@ export async function scanSkillDoc(skillRoot: string): Promise<SkillDocCheck> {
     return {
       boundariesDocumented: false,
       pitfallsRecorded: 0,
+      dossierSource: 'none',
       warnings: [`读不到 ${file}，无法检查能力边界与实测档案`],
     }
   }
-  /** 取某个二级标题到下一个二级标题之间的正文。 */
-  const section = (title: string): string => {
-    const m = new RegExp(`##[^\\n]*${title}[^\\n]*\\n([\\s\\S]*?)(?=\\n## |$)`).exec(md)
+  const sectionOf = (text: string, title: string): string => {
+    const m = new RegExp(`##[^\\n]*${title}[^\\n]*\\n([\\s\\S]*?)(?=\\n## |$)`).exec(text)
     return m?.[1] ?? ''
   }
-  const boundary = section('能力边界')
+  /** 踩坑记录可能是独立二级标题，也可能是「实测档案」小节里的列表项（旧模板即后者）。 */
+  const pitfallsOf = (text: string): string => {
+    let found = sectionOf(text, '踩坑记录')
+    if (!found.trim()) {
+      const m = /踩坑记录[^\n]*\n((?:[ \t]+(?:[-*]|\d+\.)[^\n]*\n?)+)/.exec(text)
+      found = m?.[1] ?? ''
+    }
+    return found
+  }
+  const count = (text: string): number =>
+    text
+      .split('\n')
+      .filter((line) => /^\s*(?:[-*]|\d+\.)\s*\S/.test(line) && !line.includes('TODO')).length
+
+  const boundary = sectionOf(md, '能力边界')
   const boundariesDocumented = boundary.trim() !== '' && !boundary.includes('TODO')
 
-  // 踩坑记录可能是独立二级标题，也可能是「实测档案」小节里的列表项（平台模板即后者）
-  let pitfallsText = section('踩坑记录')
-  if (!pitfallsText.trim()) {
-    const m = /踩坑记录[^\n]*\n((?:[ \t]+(?:[-*]|\d+\.)[^\n]*\n?)+)/.exec(md)
-    pitfallsText = m?.[1] ?? ''
+  // 实测档案：优先 dossier.md，读不到回落 SKILL.md 的旧位置（与平台同口径）
+  let dossier = ''
+  try {
+    dossier = await readFile(join(skillRoot, 'dossier.md'), 'utf8')
+  } catch {
+    // 没有 dossier.md：老作业/学生没建，走回落
   }
-  const pitfallsRecorded = pitfallsText
-    .split('\n')
-    .filter((line) => /^\s*(?:[-*]|\d+\.)\s*\S/.test(line) && !line.includes('TODO')).length
+  let pitfallsText = dossier ? pitfallsOf(dossier) : ''
+  const dossierSource: SkillDocCheck['dossierSource'] = pitfallsText.trim() ? 'dossier.md' : 'SKILL.md'
+  if (!pitfallsText.trim()) pitfallsText = pitfallsOf(md)
+  const pitfallsRecorded = count(pitfallsText)
 
   const warnings: string[] = []
   if (!boundariesDocumented) {
@@ -147,10 +169,10 @@ export async function scanSkillDoc(skillRoot: string): Promise<SkillDocCheck> {
   }
   if (pitfallsRecorded === 0) {
     warnings.push(
-      'SKILL.md 的「实测档案」里没有踩坑记录（每条一行、按行计数）—— 过程维度（能力边界质量 / 实测有效性）会丢分',
+      'dossier.md（实测档案）里没有踩坑记录（每条一行、按行计数）—— 过程维度（能力边界质量 / 实测有效性）会丢分',
     )
   }
-  return { boundariesDocumented, pitfallsRecorded, warnings }
+  return { boundariesDocumented, pitfallsRecorded, dossierSource, warnings }
 }
 
 export interface SubmitOutcome {

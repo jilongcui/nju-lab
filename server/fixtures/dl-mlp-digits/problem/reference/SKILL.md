@@ -42,13 +42,3 @@ python3 scripts/train.py --regen-expected           # 重算 cases/*/expected.js
 4. 切分：`test_size=0.25`、`random_state=42`、`stratify=y`。
 5. 指标：`accuracy`、`macro_f1`；训练历史逐轮记 `train_loss`。
 6. 图：标题与轴标签用英文（镜像无中文字体），中文解释写进 `takeaway` / `notes`。
-
-## 实测档案（示范填写）
-
-- 自测时间：2026-10-17（出题时实测）
-- 达标情况：case01 accuracy 0.9778 / macro F1 0.9778；case02 accuracy 0.9667 / macro F1 0.9665
-- 踩坑记录（pitfalls）：
-  1. 一开始用 0/1/2 三个数字，网络 30 轮就 100% —— 换成笔画相近的 3/8/9 才有区分度
-  2. 标签是 3/8/9，但 `CrossEntropyLoss` 要 0/1/2 的下标，忘了映射会直接报错
-  3. 规范化漏了（像素不除以 16）时损失下降很慢，30 轮不够
-  4. 图上写中文会变方框 —— 轴标签一律英文，中文只放在 `takeaway` 里
