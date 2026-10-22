@@ -5,6 +5,39 @@
 
 ## 0. 一句话现状
 
+**2026-10-22（实测档案拆出独立 dossier.md：能力边界留给技能说明书）—— ✅ 已上线**
+
+- **需求（用户）**：质疑"我做了一个实验，为什么要改 SKILL.md 填这些字段？实测档案为什么放在 skill 里？"
+  核对后确认是**设计**问题而非文案问题：`SKILL.md` 的读者是"使用这个技能的人/模型"（该回答
+  什么时候用、什么时候不该用），而**实测档案**（自测时间、两个 case 的达标情况、踩坑记录）的读者是
+  **教师/评阅**，是过程记录，不该混进技能说明书。历史原因：`run-eval.mjs` 只读 `<技能根>/SKILL.md`，
+  提交物里没有"报告"这个通道，于是把过程记录塞了进去。用户选 **B 方案：拆成独立文件**。
+- **口径**：**能力边界留在 `SKILL.md`**（说明书的一部分）；**实测档案写进同级的 `dossier.md`**；
+  旧作业（没有 `dossier.md`）**回落**到 `SKILL.md` 的旧位置 —— 拆分前提交的作业不掉分。
+- **改动**：
+  · `server/verify-image/run-eval.mjs`：`scanSkillMd` → **`scanSkillDocs`**（能力边界读 SKILL.md；
+    踩坑记录优先读 `dossier.md`，读不到回落 SKILL.md）；`dossierSnapshot` 的键不变，新增
+    `dossierSource` 供排查；
+  · 四个 easy 档的 `skill-template/SKILL.md` 删掉实测档案节、新增 `skill-template/dossier.md`（学生填写）；
+    `problem/reference/` 同样把示范档案搬进 `dossier.md`；四个包的 `problem.zip` / `skill-template.zip` 重打；
+  · 插件 `scanSkillDoc` 同口径（读 dossier.md、回落旧位置），warning 文案指向 dossier.md；
+    新增 1 条 L1「向后兼容：没有 dossier.md 时回落到 SKILL.md」。
+- **验证**：
+  · 平台侧（`nju-lab-verify:pkg7` 的 `--check`，四个包 × 模板/参考实现 **8 次全对**）：
+    模板 `boundaries=false / pitfalls=0 / source=SKILL.md`，参考实现 `boundaries=true / pitfalls=4 /
+    source=dossier.md`；
+  · 插件侧 `npm test` **78 条（72 L1 pass + 6 L2 skip）**、`tsc --noEmit` 过；
+  · 平台绑定：四个项目已上传新 zip 并 PATCH 绑定；学生 `claim` 下发的 `skillTemplate.sha256` 与上传值一致
+    （`022c18689fc3…`），带鉴权下载的新模板里**确实有 `dossier.md`**。
+- **部署（2026-10-22 22:49）**：`nju-lab-verify:0.2.0-rc.2-pkg7`（`FROM pkg6` + 覆盖 `run-eval.mjs`，
+  `docker create`+`cp`+`commit` 保留原 ENTRYPOINT）；`nju-lab-workspace:0.2.0-rc.2-pkg11`
+  （`FROM verify:pkg7`，容器内 `lib/host/index.js` md5 与本地一致）；默认 tag 已切（`VERIFY_IMAGE` →
+  pkg7、`WORKSPACE_IMAGE` → pkg11）；server `npm run build` + kill（**MainPID → 2727729**）；
+  kit `20261022-2249-7a0f642` 已投放（旧包备份 `.20261017-1545.bak`）。
+- **冒烟**：`/lab/` 200；pkg11 容器 `[nju-lab-client] host half loaded` + `WORKSPACE_READY` +
+  `token→303` + `/ → 200` + `assignments → 200`。
+- **回滚**：verify 改回 pkg6、workspace 改回 pkg10（镜像都保留）；kit 用 `.20261017-1545.bak`。
+
 **2026-10-17（另外三个 easy 档的「背景知识」同口径重写）—— ✅ 已上线**
 
 - **口径延续上一条**：每条 = 概念 + 一句人话解释；出现术语当场解释；容易档不写公式。
