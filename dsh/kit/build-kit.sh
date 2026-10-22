@@ -18,11 +18,13 @@ cp ../nju-lab-client/package.json ../nju-lab-client/cordis.patch.yml ../nju-lab-
 cp -r ../nju-lab-client/lib dist/stage/nju-lab-client/lib
 cp install.sh dist/stage/
 chmod +x dist/stage/install.sh
+# Windows 引导脚本（WSL2 路线；UTF-8 BOM，见该文件头注释）
+cp install.ps1 dist/stage/
 cp README-student.md dist/stage/README.md
 
-# 平台地址按部署目标替换（install.sh 的提示文案 + 学生手册）
+# 平台地址按部署目标替换（install.sh / install.ps1 的提示文案 + 学生手册）
 if [ "$PLATFORM_URL" != "https://lab.xiaohe.biz" ]; then
-  sed -i "s|https://lab.xiaohe.biz|${PLATFORM_URL}|g" dist/stage/install.sh dist/stage/README.md
+  sed -i "s|https://lab.xiaohe.biz|${PLATFORM_URL}|g" dist/stage/install.sh dist/stage/install.ps1 dist/stage/README.md
 fi
 
 # 版本凭据：插件自更新靠它判断"本地 ≠ 远端"（见 nju-lab-client/src/host/update.ts）

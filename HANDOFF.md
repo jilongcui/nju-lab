@@ -5,6 +5,46 @@
 
 ## 0. 一句话现状
 
+**2026-10-23（Windows 学生可用：下载页按平台引导 + `install.ps1` 引导 WSL2）—— ✅ 已上线**
+
+- **需求（用户）**：客户端下载页是 Linux 口径，但**大部分学生用 Windows** —— 能不能让 Windows 可用？
+- **结论与取舍**（已问用户，选 **A + B**，暂不做原生 PowerShell）：实验材料（python 脚本 + 判据）与平台复验容器
+  都是 **Linux 口径**，所以 Windows 走 **WSL2**（与复验同一条口径，零材料改动），同时把**浏览器「实验环境」**
+  作为"免安装"路线一起写进页面。严格的**原生 Windows**（`install.ps1` 直装 + 插件 `shell → pwsh` +
+  22 个包的 SKILL.md 跨平台化）留作下一步。
+- **现状盘点（已核实）**：dsh `0.2.0-rc.2` **官方支持 Windows** —— `dsh-base` 按 `process.platform` 在
+  `bash-sandbox`/`pwsh-sandbox`、`tool-bash`/`tool-pwsh`、`terminal-bash`/`persistent-bash` 之间切换，
+  镜像里带 `dsh-pwsh-local` / `dsh-sandbox-windows-acl`。我们缺的是三处：① kit 只有 `install.sh`（bash）；
+  ② 插件 `restrict.ts` 的 `CAPABILITY_TOOLS.shell = ['bash']` 在 Windows 上应映射 `pwsh`；
+  ③ **22/22** 个 `skill-template/SKILL.md` 的自测命令写的是 `python3 …` + `/tmp/…` + `$(basename …)`。
+  ②③ 属"原生 Windows"范畴，本次**没动**（②是唯一代码硬伤，将来做 C 时先改它）。
+- **实现**：
+  · `dsh/kit/install.ps1`（新增）：Windows 引导脚本 —— 检查 `wsl.exe`/发行版 → 把安装包复制进 WSL 家目录
+    （不在 `/mnt/c` 上装）→ 在 WSL 里跑现成 `install.sh`；缺 WSL 时打印 `wsl --install`（附 Win10 老版本的
+    dism 步骤），**不替你改系统**。带 **UTF-8 BOM**（Windows PowerShell 5.1 读中文必需），按 **PS 5.1 语法**写
+    （无 `??` / `?.` / `$IsWindows`），对 `wsl -l -q` 的 **UTF-16 输出做了 NUL 清理**，支持 `-Distro` 指定发行版。
+  · `dsh/kit/build-kit.sh`：把 `install.ps1` 打进 kit，平台地址替换也覆盖它。
+  · `dsh/kit/README-student.md`：Windows 两条路（① 浏览器「实验环境」零安装；② `install.ps1` + WSL2），
+    新增 §1.1「Windows（WSL2）」+ 4 条 Windows 常见问题（执行策略 / 虚拟化 / 模型 key / 能否用实验环境）。
+  · `web/src/pages/student/ClientDownload.tsx`：按 UA 分支 —— Windows 显示 WSL2 步骤 + 「实验环境」入口提示，
+    其它系统保留原 `./install.sh` 步骤；"关于学生端"面板两套都说明两条路。
+- **验证**：
+  · PowerShell 侧（本机无 Windows，用 `mcr.microsoft.com/powershell:lts-alpine` + 假 `wsl.exe` 跑）：
+    `Parser::ParseFile` 无错误；非 Windows → 拒绝；Windows 无 WSL → 打印开启步骤、退出码 1；
+    Windows + 两个发行版 → 选中第一个并提示、`wslpath` 转换、复制与 `bash install.sh` 命令拼装正确；
+    `-Distro NoSuchDistro` → 明确报错。
+  · 页面侧（Playwright，UA 分别 Windows / macOS）：Windows 出现
+    `powershell -ExecutionPolicy Bypass -File .\install.ps1` 且**没有** `unzip …` 步骤，macOS 反之；
+    两套都带「实验环境」入口。截图 `.verify-scratch/client-download-windows.png`（探针脚本同目录 `win-probe.cjs`）。
+  · 线上：kit 已投放（`kit-version.json` = `20261023-0750-eee675e`，`/lab/kit/nju-lab-student-kit.zip` 200 / 78KB，
+    含 `install.ps1`）；web 部署自检 4/4 ok（备份 `.verify-scratch/lab-web-backups/20261023-075026`）。
+  · 探针注册的临时学生账号已删除（`winprobe*`，DB 里 remaining: 0）。
+- **未验证（重要）**：**真 Windows 上跑一遍** —— 本机没有 Windows，脚本只在 pwsh-on-Linux + 假 `wsl.exe`
+  下走通。请找一台 Windows（学生会用的那类机器）跑一次 `powershell -ExecutionPolicy Bypass -File .\install.ps1`，
+  有问题把输出贴回来。
+- **回滚**：kit 用 `/var/www/lab/kit/nju-lab-student-kit.zip.20261022-2318.bak` 覆盖回去；
+  前端 `cp .verify-scratch/lab-web-backups/20261023-075026/index.html /var/www/lab/index.html`。
+
 **2026-10-23（工作台不再丢数据：工作目录统一 `/workspace`、`HOME` 指进持久卷）—— ✅ 已上线**
 
 - **需求（用户）**：学生反馈"过一段时间，之前在目录下构建的数据就没了"；先讲清"开启实验环境"的机制与丢失原因，
