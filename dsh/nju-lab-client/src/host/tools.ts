@@ -21,6 +21,10 @@ export const TOOL_NAMES = {
   list: 'nju_lab_list_assignments',
   claim: 'nju_lab_claim',
   submit: 'nju_lab_submit',
+  /** 学员模式：查看/记录/推进步骤（见 guided-tools.ts） */
+  step: 'nju_lab_step',
+  /** 学员模式：按模板生成 report.md */
+  report: 'nju_lab_finalize_report',
 } as const
 
 /** 渲染领取下载结果；未绑定的文件也显式说明，避免模型误以为漏了。 */

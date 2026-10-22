@@ -76,6 +76,8 @@ interface SnapshotDto {
   pinnedFrom?: string
   /** 插件自更新信息；null 表示检查失败（不渲染更新条）。 */
   update: { current: string | null; latest: string; available: boolean } | null
+  /** 学员模式进度（只有走过步骤的任务才有） */
+  guides?: Record<string, { step: number; total: number; title: string; kind: string }>
 }
 
 interface ArtifactDto {
@@ -499,6 +501,13 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
                 </div>
                 {a.project?.chapterTitle && (
                   <div style={{ ...dim, marginTop: 2 }}>{a.project.chapterTitle}</div>
+                )}
+                {/* 学员模式：面板上能直接看到"做到第几步"，不用回对话里问 */}
+                {snapshot?.guides?.[a.id] && (
+                  <div style={{ ...dim, marginTop: 2 }}>
+                    学员模式 · 第 {snapshot.guides[a.id].step}/{snapshot.guides[a.id].total} 步：
+                    {snapshot.guides[a.id].title}
+                  </div>
                 )}
                 {deadline && (
                   <div style={overdue ? { color: 'var(--dsh-color-danger, #e66)' } : dim}>

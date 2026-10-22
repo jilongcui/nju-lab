@@ -3,7 +3,8 @@
 NJU-Lab 的**定制 DSH 客户端插件**（host 半 + client 半）。
 
 - **host 半**（Node，`src/host/`）：平台 API 客户端（含上传/下载）、`agent/request` 评估条件锁定、三个平台工具、ClaimPanel 的 HTTP 路由、证据采集（`.dshc` 证据包：会话审计事件导出 + 脱敏 + 完整性哈希）、模型引导（system prompt 段 + `nju-lab-experiment` skill）。
-- **client 半**（浏览器，`src/client/`）：右侧栏的任务面板（只列已领取的实验 / 打开即补下发材料 / 领取 / 提交 / 显示钉定条件）。
+- **client 半**（浏览器，`src/client/`）：右侧栏的任务面板（只列已领取的实验 / 打开即补下发材料 / 领取 / 提交 / 显示钉定条件 / 学员模式进度）。
+- **学员模式**（2026-10-22，默认开、可在设置里关）：整个实验围绕最后的 `report.md` 展开——一次只做一步，每步结束把产出摆出来等学生确认，最后按模板自动生成报告（数字取 `output.json`、图用相对路径嵌入）。实现见 `src/host/guide.ts`（步骤状态机）、`src/host/report.ts`（报告渲染）、`src/host/guided-tools.ts`（两个工具）。
 
 ## 结构
 
@@ -111,7 +112,9 @@ dsh --profile nju-lab-student --no-open
 | --- | --- | --- |
 | `nju_lab_list_assignments` | 列出任务：解锁状态、章节、截止时间、最新提交 | `GET /me/assignments` |
 | `nju_lab_claim` | 领取：**真实下载**模板与题目包到 `<会话工作区>/nju-lab/<id>/`、逐个校验 sha256、纯 JS 解压模板，并**探测真正的 Skill 根**（模板带顶层目录时是 `skill/csv-cleaner`）+ 钉死评估条件；claimed/submitted 幂等重发 | `POST /assignments/:id/claim`、`GET /files/:id` |
-| `nju_lab_submit` | 提交前自检 → 逐文件 sha256 → 打包 ZIP → 生成 `.dshc` → 上传两者 → 以 fileId 模式提交；**SKILL.md 过程项自检**（`能力边界` / `实测档案`，与平台复验同口径）**只警告不阻断** | `POST /files`、`POST /assignments/:id/submit` |
+| `nju_lab_submit` | 提交前自检 → 逐文件 sha256 → 打包 ZIP → 生成 `.dshc` → 上传两者 → 以 fileId 模式提交；**实验报告自检**（`report.md` 是否齐全，与平台复验同口径）**只警告不阻断** | `POST /files`、`POST /assignments/:id/submit` |
+| `nju_lab_step` | **学员模式**：`status` 看当前该做什么、`record` 记录本步产出、`advance` 在学生明确说"下一步"后推进；进度落 `<workspace>/nju-lab/<id>/progress.json` | — |
+| `nju_lab_finalize_report` | **学员模式**：按模板生成 `report.md`——数字取各 case 的 `output.json`（不手抄）、图片用相对路径嵌入、踩坑来自过程记录 | — |
 
 ### 2. 右侧栏面板（client 半）
 

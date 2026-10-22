@@ -11,6 +11,7 @@ import { createActions } from './actions.ts'
 import { Config, resolveConfig, type EvalConfig, type ResolvedConfig } from './config.ts'
 import { loadPinnedEvalConfig } from './eval-state.ts'
 import { collectEvidence } from './evidence.ts'
+import { registerGuidedTools } from './guided-tools.ts'
 import { registerGuidance } from './guidance.ts'
 import { registerConditionLock } from './lock.ts'
 import { registerPanelRoutes } from './panel.ts'
@@ -126,10 +127,12 @@ export function apply(ctx: Context, config: Config): void {
 
   registerConditionLock(ctx, () => evalConfig)
   registerTools(ctx, actions)
+  // 学员模式：步骤状态机 + 实验报告自动生成（guidedMode 默认开、可在设置里关）
+  registerGuidedTools(ctx, actions, { guided: () => readConfig().guidedMode })
 
   // 模型引导（HANDOFF 第 5 步）：常驻的 system prompt 段 + 可按需加载的 skill。
   // 两者都走 ctx.inject 软依赖，缺 systemPrompt / skills 时静默跳过。
-  registerGuidance(ctx)
+  registerGuidance(ctx, { guided: () => readConfig().guidedMode })
 
   // 面板路由挂在 Connection 的 /api 通道上；headless（无 web server）没有这个服务。
   ctx.inject(['connection'], (scoped) => {
@@ -141,3 +144,18 @@ export function apply(ctx: Context, config: Config): void {
 
   console.log(`[nju-lab-client] host half loaded (serverUrl=${readConfig().serverUrl})`)
 }
+
+// 学员模式的纯逻辑与报告生成器：`lib/host` 是单文件 bundle（entry 只有 index.ts），
+// 单独 import `./guide.js` 会找不到 —— 在这里再导出一次，L1 测试从 lib/host/index.js 取。
+export {
+  advanceStep,
+  describeStep,
+  detectKind,
+  guidePath,
+  loadGuide,
+  newGuideState,
+  recordStep,
+  saveGuide,
+  stepsFor,
+} from './guide.ts'
+export { missingReportParts, renderReport, reportLooksComplete } from './report.ts'

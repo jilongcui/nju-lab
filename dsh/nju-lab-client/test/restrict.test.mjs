@@ -90,7 +90,14 @@ function captureWarnings(fn) {
   return lines.join('\n')
 }
 
-const PLUGIN_TOOLS = ['nju_lab_list_assignments', 'nju_lab_claim', 'nju_lab_submit']
+const PLUGIN_TOOLS = [
+  'nju_lab_list_assignments',
+  'nju_lab_claim',
+  'nju_lab_submit',
+  // 学员模式新增的两个：它们注册在插件根（祖先层），不列进 allow 就会被收窄掉
+  'nju_lab_step',
+  'nju_lab_finalize_report',
+]
 
 describe('evalConfig.tools → restrict', () => {
   test('平台没给 tools 时不碰工具面', async () => {

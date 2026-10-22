@@ -244,14 +244,37 @@ export const SKILL_CONTENT = `# NJU-Lab 实验流程
  * 两个 `ctx.inject` 各自独立：缺 `skills` 不影响 prompt 段，反之亦然。
  * 注册用 `ctx.effect(...)` 包住 —— 卸载插件时段与 skill 一起撤掉。
  */
-export function registerGuidance(ctx: Context): void {
+/**
+ * 学员模式的常驻规则（2026-10-22）：整个实验围绕 report.md 展开，一次只做一步，
+ * 每步结束停下来等学生确认。关掉学员模式时这段不注入，回到自由发挥。
+ */
+export const GUIDED_TEXT = `
+## 学员模式（当前开启）
+
+这个 profile 开着**学员模式**：一个实验按 \`nju_lab_step\` 的步骤走，**一次只做一步**。
+
+1. 每次开始或继续前，先调 \`nju_lab_step(action="status")\` 看当前该做什么；
+2. 只做那一步，做完把产出**列给学生看**（数字写清，图用 present 声明），然后问"可以进下一步吗"；
+3. **学生明确说继续之后**才调 \`nju_lab_step(action="advance")\`；他没说就停在这里，不要提前做下一步；
+4. 过程中把这一步的关键数字与踩坑用 \`nju_lab_step(action="record")\` 记下（最后生成报告要用）；
+5. 最后一步用 \`nju_lab_finalize_report\` 按模板生成 \`report.md\`：数字从 \`output.json\` 取，
+   你只补结论与踩坑；生成后 present 给学生确认，再 \`nju_lab_submit\`。
+
+不要让学员手抄数字，也不要跳步 —— 他的学习节奏就是一次一步。
+`
+
+export function registerGuidance(
+  ctx: Context,
+  options: { guided?: () => boolean } = {},
+): void {
   ctx.inject(['systemPrompt'], (scoped) => {
     scoped.effect(
       () =>
         scoped.systemPrompt.section({
           name: GUIDANCE_SECTION,
           order: GUIDANCE_ORDER,
-          text: GUIDANCE_TEXT,
+          // 学员模式开关是 volatile 配置：每次组装现读，学生改了立即生效
+          text: () => (options.guided?.() ? `${GUIDANCE_TEXT}\n${GUIDED_TEXT}` : GUIDANCE_TEXT),
         }),
       'nju-lab-client: guidance section',
     )

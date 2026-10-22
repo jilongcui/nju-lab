@@ -14,6 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-connection'
 
 import type { NjuLabActions } from './actions.ts'
 import type { Assignment } from './api.ts'
+import { loadGuide, stepsFor } from './guide.ts'
 import type { EvalConfig } from './config.ts'
 import { applyUpdate, checkUpdate, pluginDir, type UpdateInfo } from './update.ts'
 
@@ -41,6 +42,8 @@ export interface PanelSnapshot {
   pinnedFrom?: string
   /** 插件自更新信息；检查失败（平台不可达等）时为 null，面板不显示。 */
   update: UpdateInfo | null
+  /** 学员模式进度：只有走过步骤的任务才有（`step` 从 1 开始，给人看）。 */
+  guides: Record<string, { step: number; total: number; title: string; kind: string }>
 }
 
 function json(body: unknown, status = 200): Response {
@@ -106,8 +109,24 @@ export function registerPanelRoutes(
               (await actions.isMaterialized(a.id, sessionId)) ? a.id : null,
             ),
           )
+          // 学员模式进度：每个任务读一次 progress.json（小文件；没有就是没开始）
+          const root = await actions.resolveRoot(sessionId)
+          const guides: PanelSnapshot['guides'] = {}
+          for (const assignment of assignments) {
+            const state = await loadGuide(root, assignment.id)
+            if (!state) continue
+            const steps = stepsFor(state.kind)
+            const current = steps[state.step] ?? steps[0]
+            guides[assignment.id] = {
+              step: state.step + 1,
+              total: steps.length,
+              title: current.title,
+              kind: state.kind,
+            }
+          }
           return {
             assignments,
+            guides,
             downloaded: materialized.filter((id): id is string => id !== null),
             evalConfig: actions.currentEvalConfig() ?? null,
             workspaceDir: await actions.resolveRoot(sessionId),

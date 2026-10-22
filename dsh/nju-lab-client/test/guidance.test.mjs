@@ -93,8 +93,10 @@ describe('模型引导：system prompt 段', () => {
 
       const section = harness.sections[0]
       assert.match(section.name, /^nju-lab/, `段名应带插件前缀，实际 ${section.name}`)
-      assert.equal(typeof section.text, 'string')
-      assert.ok(section.text.length > 0)
+      // 学员模式开关是 volatile 配置：段文本是"每次组装现读"的函数，也可能是静态串
+      assert.ok(['string', 'function'].includes(typeof section.text))
+      const body = typeof section.text === 'function' ? section.text({}) : section.text
+      assert.ok(typeof body === 'string' && body.length > 0)
 
       // DSH 内置段：1700 = TOOL_PTY，2000 = TOOL_WEB_SEARCH；我们的段要落在两者
       // 之间且不同号（同号会退化成按名字排序，位置就不再可控）。
@@ -110,7 +112,8 @@ describe('模型引导：system prompt 段', () => {
 
   test('引导文字点出三个工具与 Skill 根约定', async () => {
     await withClient({}, ({ harness }) => {
-      const text = harness.sections[0].text
+      const raw = harness.sections[0].text
+      const text = typeof raw === 'function' ? raw({}) : raw
       for (const token of [
         'nju_lab_list_assignments',
         'nju_lab_claim',

@@ -39,6 +39,11 @@ export interface Config {
   evalConfig?: EvalConfig
   /** 领取物落盘与打包产物的根目录（默认进程工作目录）。 */
   workspaceDir?: string
+  /**
+   * 学员模式（默认开）：逐步引导，每步结束要学生明确说"下一步"才继续，
+   * 最后一步按模板自动生成 `report.md`。熟练学生可在设置里关掉切回自由模式。
+   */
+  guidedMode: Volatile<boolean>
 }
 
 export const Config = Schema.object({
@@ -59,6 +64,12 @@ export const Config = Schema.object({
   workspaceDir: Schema.string().description(
     '领取物落盘与打包产物的根目录（默认进程工作目录）',
   ),
+  guidedMode: Schema.boolean()
+    .default(true)
+    .description(
+      '学员模式：一次只做一步，每步结束等你确认再继续；最后自动按模板生成实验报告。关掉则自由发挥',
+    )
+    .volatile(),
 })
 
 /**
@@ -72,6 +83,7 @@ export interface ResolvedConfig {
   token?: string
   evalConfig?: EvalConfig
   workspaceDir?: string
+  guidedMode: boolean
 }
 
 /**
@@ -92,5 +104,6 @@ export function resolveConfig(config: Config): ResolvedConfig {
     token: unwrap(config.token),
     evalConfig: config.evalConfig,
     workspaceDir: config.workspaceDir,
+    guidedMode: unwrap(config.guidedMode),
   }
 }
