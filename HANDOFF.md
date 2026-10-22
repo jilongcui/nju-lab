@@ -5,6 +5,36 @@
 
 ## 0. 一句话现状
 
+**2026-10-22（平台只判断实验报告 report.md；SKILL.md 不再判断、也不再留 TODO）—— ✅ 已上线**
+
+- **需求（用户）**：① `SKILL.md` 不要留 TODO——默认就是好的，**平台不需要判断 `SKILL.md` 的内容**；
+  ② 需要改的是**实验报告**，但 "dossier" 这个词不熟，**改名 `report.md`**；③ 报告**结构我们先写好**，
+  学生只填数字。
+- **口径**：`reportComplete`（报告齐全）= 自测时间已填 + 两个 case 的表格行里有数字 + 踩坑记录 ≥1 条；
+  评分里原来的 `boundariesDocumented`（20/10）替换为 `reportComplete`（20/10），总分结构不变。
+  **兼容**：`report.md` → `dossier.md` → `SKILL.md` 旧位置，历史作业不掉分。
+- **改动**：
+  · `server/verify-image/run-eval.mjs`：`scanSkillDocs` → **`scanReport`**（不再读 SKILL.md 的能力边界）；
+  · `docker-evaluation-runner.ts` / `evaluation-runner.ts`（mock）：`skillInfo.boundariesDocumented` →
+    `reportComplete` + `reportSource`，`dossierSnapshot` 同步；
+  · 四个包的 `skill-template/SKILL.md`：能力边界去掉 TODO、预填本实验的默认表述，并注明"平台不检查这一节"；
+    新增结构化的 `report.md` 模板（1 自测概况 / 2 两个 case 结果表 / 3 基线对照 / 4 踩坑记录 / 5 结论），
+    表格列按各实验指标定制（iris 与 dl-mlp 用 accuracy+macro F1；house-price 与 dl-score 用 MAE+比值）；
+    `problem/reference/report.md` 为示范填写版；删掉 `dossier.md`；
+  · 插件 `scanReport`（同口径），`SubmitOutcome.skillDoc` → `report`，工具与面板提示改成"实验报告还没填完"；
+  · 修掉一个真 bug：`自测时间[：:]\s*\S` 的 `\s` 会跨行，空模板里紧跟的 `##` 会被当成已填
+    → 改成 `[ \t]*\S`（平台与插件两侧同时修）。
+- **验证**：平台侧 `--check` 四个包 × 模板/参考实现 **8/8**（模板 `reportComplete=false / pitfalls=0`，
+  参考实现 `true / 4 / source=report.md`）；插件 `npm test` **79 条（73 L1 pass + 6 L2 skip）**、
+  `tsc --noEmit` 过（4 条 L1：空模板点名 / 填好不提醒 / 两级向后兼容）。
+- **部署（2026-10-22 22:59）**：`nju-lab-verify:0.2.0-rc.2-pkg8`（FROM pkg7 + 覆盖 run-eval）、
+  `nju-lab-workspace:0.2.0-rc.2-pkg12`（FROM verify:pkg8，插件产物含 `reportComplete`）；默认 tag 切换；
+  server `npm run build` + kill（**MainPID → 2744648**）；kit `20261022-2259-45c5309` 已投放
+  （旧包备份 `.20261022-2249.bak`）；四个项目已重传 zip 并 PATCH 绑定（模板 sha256 见提交记录）。
+- **冒烟**：`/lab/` 200；pkg12 容器 `host half loaded` + `WORKSPACE_READY` + `token→303` + `/ 200` +
+  `assignments 200`；学生下载到的新模板里 `report.md` 结构完整、`SKILL.md` 无 TODO。
+- **回滚**：verify 改回 pkg7、workspace 改回 pkg11；kit 用 `.20261022-2249.bak`。
+
 **2026-10-22（实测档案拆出独立 dossier.md：能力边界留给技能说明书）—— ✅ 已上线**
 
 - **需求（用户）**：质疑"我做了一个实验，为什么要改 SKILL.md 填这些字段？实测档案为什么放在 skill 里？"
