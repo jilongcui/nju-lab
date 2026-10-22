@@ -5,6 +5,24 @@
 
 ## 0. 一句话现状
 
+**2026-10-17（另外三个 easy 档的「背景知识」同口径重写）—— ✅ 已上线**
+
+- **口径延续上一条**：每条 = 概念 + 一句人话解释；出现术语当场解释；容易档不写公式。
+- **改动**（fixtures README + 线上 `experiment_projects.background`，原值备份
+  `.verify-scratch/easy-backgrounds-before.json`）：
+  · `house-price`（5 条）：数据 / 为什么「平均单价 × 面积」会偏 / 训练集与测试集 /
+    线性回归在找什么（**最小二乘**、**截距**当场解释）/ MAE 与 R² 各回答什么；
+  · `dl-mlp-digits`（6 条）：数据（8×8 → 64 维）/ 一层网络在算什么（**ReLU**：负数变 0）/
+    分数怎么变成判断（**softmax**：加起来等于 1）/ 训练在做什么（**CrossEntropyLoss** + 反向传播 +
+    **Adam**）/ 训练很好测试仍会错 / 多数类基线；
+  · `dl-score-regression`（6 条）：数据（饱和曲线）/ 为什么线性模型会偏 + 平均分基线 /
+    **标准化**（为什么量纲影响收敛）/ 隐藏层与 **ReLU** / 训练在做什么（**MSELoss** + 梯度下降）/
+    MAE 与 R²。
+- **验证**：Playwright 打开三个项目详情页并展开「实验指导」→ **3/3 渲染正常**（各 5/6/6 条），
+  关键术语与其解释同时出现在正文里；截图 `.verify-scratch/bg-mlp.png`。
+- **未动**：这三个的 `content`（仍是"你的任务：…"）与 `objectives`（仍是问句式），
+  以及 `description` / `references` / `faq` —— 留待下一步按 iris 口径处理。
+
 **2026-10-17（鸢尾花 easy 实验的「背景知识」：名词清单 → 概念 + 一句解释）—— ✅ 已上线**
 
 - **需求（用户）**：现在的 `background` 是名词串——"两个花瓣特征 → 三个品种；train_test_split 与
