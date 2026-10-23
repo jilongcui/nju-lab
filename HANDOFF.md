@@ -103,6 +103,29 @@
 - **回滚**：`WORKSPACE_IMAGE` 改回 `pkg13` + `npm run build` + kill；
   前端 `cp .verify-scratch/lab-web-backups/20261023-072934/index.html /var/www/lab/index.html`。
 
+**2026-10-24（清理学生工作区里旧 SKILL.md 的「实测档案」与 TODO 残留）—— ✅ 已完成**
+
+- **来由（用户）**：平台上仍看到"结论和踩坑写进 SKILL.md 的实测档案"，要求清理。
+- **排查**：平台下发的 zip 与项目字段都干净（命中 0）；残留全在**学生工作区**里 ——
+  旧模板的 `SKILL.md`（27 份，其中 26 份含 `## 实测档案`、26 份含 `TODO` 占位）+ 部分 `report.md`
+  里还留着 TODO 版实测档案段。因为 `nju_lab_claim` 现在**不覆盖已有文件**（防丢数据），老学生永远
+  拿不到新模板，所以必须一次性清洗。
+- **做法（全部带备份到 `.verify-scratch/skill-md-batch-backup/<userId>/<assignmentId>/`）**：
+  · `## 实测档案` 整节 → 迁进各自 `report.md` 的「附录：原 SKILL.md 实测档案」；
+    其中「**边界值 / 已知失效情形**」属于能力边界 → 并入 `SKILL.md` 的 `### 已知失效情形`；
+  · 纯 TODO 的实测档案段（没有真实数字）直接删掉，不往报告里搬垃圾；
+  · 旧模板里的"补全下面的能力边界与实测档案"、"把通过率与踩坑记录写到下面的实测档案"、
+    "平台会扫描这一节"等表述 → 改为指向 `report.md` / "平台不检查这一节"；
+  · `- TODO：…` 占位前缀 → `- （按你的实现补充）：`（保留提示原文，去掉"必须填"的语气）。
+- **注意**：`/data/workspaces` 下的文件属主是 **root**（pkg17 之前容器以 root 跑），宿主 ubuntu 写不了 ——
+  批量清洗用 `docker run --rm -v /data/workspaces:/data … nju-lab-workspace:pkg21 /fix.py` 以 root 执行
+  （脚本放仓库 `.verify-scratch/` 再挂进去；沙箱内 `/tmp` 与宿主 `/tmp` 不是同一个）。
+- **验收（全量 grep）**：`SKILL.md` 含 `实测档案` **0** 份、含 `TODO` **0** 份；
+  `report.md` 含 `## 实测档案（TODO` **0** 份；备份 **26** 份可回溯。
+- **仍未处理**：仓库里其余十个实验包的**模板**（`ml-basics` / `sales-report` / `qa-prototype` /
+  `dl-cnn-images` / `dl-rnn-forecast` 等）还是旧口径（`## 实测档案（TODO…）` + "补全…与实测档案"）——
+  这些**新学生**领取时仍会看到旧要求，需要批量改模板 + 重打包 + 重新绑定项目（下一步）。
+
 **2026-10-24（「重新下载」不再覆盖学生文件；查清"为什么还要写 SKILL.md 的实测档案"）—— ✅ 已上线**
 
 - **现象（用户）**：平台上仍看到"结论和踩坑写进 `SKILL.md` 的实测档案 + report.md"，问"不是只写 report 就行吗"。
