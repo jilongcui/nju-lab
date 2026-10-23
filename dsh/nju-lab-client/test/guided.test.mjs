@@ -200,8 +200,9 @@ describe('学员模式：工具面', () => {
       const status = await step.execute({ action: 'status', assignmentId: 'a-unlocked' })
       assert.match(status, /【学员模式】第 1\/6 步/)
       assert.match(status, /等学生说继续|可以进下一步|明确说继续/)
-      // 学生情况也要在上下文里：工作区有什么、做到哪了
-      assert.match(status, /学生当前情况/)
+      // 学生情况也要在上下文里：在帮谁做、工作区有什么、做到哪了
+      assert.match(status, /正在帮：示例学生一（学号 student1）/)
+      assert.match(status, /学生情况|学生当前情况/)
       assert.match(status, /还没有 output\.json/)
 
       const recorded = await step.execute({
@@ -250,6 +251,9 @@ describe('学员模式：工具面', () => {
 
       const md = await readFile(join(skillDir, 'report.md'), 'utf8')
       assert.match(md, /\| run_case01 \| 0\.9474 \|/)
+      // 学生信息写进报告头部（用户 2026-10-23 要求）
+      assert.match(md, /- 学生姓名：示例学生一/)
+      assert.match(md, /- 学号：student1/)
       assert.match(md, /!\[run_case01 图 1\]\(figures\/data_overview\.png\)/)
       assert.equal(reportLooksComplete(md), true, '生成的报告应满足平台齐全口径')
     })

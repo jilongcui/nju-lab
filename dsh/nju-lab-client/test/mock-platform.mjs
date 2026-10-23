@@ -234,7 +234,7 @@ export async function startMockPlatform(options = {}) {
     if (auth !== `Bearer ${token}`) return fail(401, 'unauthorized')
 
     if (method === 'GET' && path === '/me') {
-      return ok({ id: 'student-1', username: 'student1', role: 'student' })
+      return ok({ id: 'student-1', username: 'student1', nickname: '示例学生一', role: 'student' })
     }
     if (method === 'GET' && path === '/me/courses') return ok([])
     if (method === 'GET' && path === '/me/assignments') return ok(assignments)

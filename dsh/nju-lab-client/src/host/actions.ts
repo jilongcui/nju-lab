@@ -218,6 +218,13 @@ export interface NjuLabActions {
    * 返回是否恢复成功；成功时经 onEvalConfig 回调生效。
    */
   restorePinnedFor(workspaceRoot: string): boolean
+  /**
+   * 当前学生身份：`{ name, studentId }`。
+   *
+   * 报告要写姓名与学号（用户 2026-10-23 要求），学员模式下也要让模型知道"在帮谁做"。
+   * 平台没有单独的"学生资料"接口，`GET /me` 里 `nickname` 是姓名、`username` 是学号。
+   */
+  whoAmI(): Promise<{ name?: string; studentId?: string }>
   listAssignments(): Promise<Assignment[]>
   /**
    * 本地材料是否已落盘（换机、清理工作区后为 false）。
@@ -314,6 +321,16 @@ export function createActions(
       pinnedFrom = pinned.assignmentId
       options.onEvalConfig?.(evalConfig)
       return true
+    },
+
+    async whoAmI() {
+      try {
+        const me = await api.me()
+        return { name: me.nickname, studentId: me.username }
+      } catch {
+        // 拿不到身份不该拖累报告生成：调用方会显示"未取到"
+        return {}
+      }
     },
 
     listAssignments: () => api.myAssignments(),

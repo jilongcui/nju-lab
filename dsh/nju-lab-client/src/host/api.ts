@@ -140,8 +140,9 @@ export class PlatformApi {
     return this.unpack<T>(res, path)
   }
 
+  /** 当前登录用户（`GET /me`）。`username` 对学生的账号就是学号，`nickname` 是姓名。 */
   me() {
-    return this.req<{ id: string; username: string; role: string }>('/me')
+    return this.req<{ id: string; username: string; role: string; nickname?: string }>('/me')
   }
 
   myCourses() {

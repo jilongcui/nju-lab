@@ -25,6 +25,8 @@ export interface ReportThresholds {
 
 export interface ReportInput {
   title: string
+  /** 学生身份（姓名 / 学号）—— 来自平台 `GET /me`，写进报告头部。 */
+  student?: { name?: string; studentId?: string }
   kind: ExperimentKind
   cases: ReportCase[]
   /** 踩坑记录（每条一行；来自过程记录或模型在 finalize 时补） */
@@ -189,6 +191,9 @@ export function renderReport(input: ReportInput): string {
     '',
     '## 1. 自测概况',
     '',
+    `- 学生姓名：${input.student?.name?.trim() || '（未取到）'}`,
+    `- 学号：${input.student?.studentId?.trim() || '（未取到）'}`,
+    `- 实验名称：${input.title}`,
     `- 自测时间：${generatedAt.slice(0, 10)}`,
     `- 自测方式：${input.mode ?? '（本地 DSH / 平台工作台）'}`,
     `- 模型：${first?.model || '（未记录）'}`,

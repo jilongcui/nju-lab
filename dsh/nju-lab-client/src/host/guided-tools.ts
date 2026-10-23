@@ -98,7 +98,11 @@ function collectPitfalls(state: GuideState | null): string[] {
   return [...new Set(out)]
 }
 
-async function renderStep(state: GuideState, root: string): Promise<string> {
+async function renderStep(
+  state: GuideState,
+  root: string,
+  who?: { name?: string; studentId?: string },
+): Promise<string> {
   const steps = stepsFor(state.kind)
   const step = steps[state.step] ?? steps[0]
   const recorded = state.records[step.id] ?? {}
@@ -114,6 +118,9 @@ async function renderStep(state: GuideState, root: string): Promise<string> {
     for (const key of keys) lines.push(`- ${key} = ${JSON.stringify(recorded[key])}`)
   } else {
     lines.push('', '（这一步还没有记录产出）')
+  }
+  if (who?.name || who?.studentId) {
+    lines.push('', `正在帮：${who.name ?? '（未取到姓名）'}（学号 ${who.studentId ?? '—'}）`)
   }
   lines.push('', '学生当前情况（工作区实测）：', ...(await describeWorkspace(root)).map((l) => `- ${l}`))
   lines.push(
@@ -162,6 +169,7 @@ export function registerGuidedTools(
         },
       ) {
         const root = await actions.resolveRoot(args.sessionId)
+        const who = await actions.whoAmI()
         let state = await loadGuide(root, args.assignmentId)
         if (!state) {
           // 第一次进来：按当前工作区里的 output.json 猜实验类型（没有就 generic）
@@ -178,7 +186,7 @@ export function registerGuidedTools(
               : { value: args.record }
           state = recordStep(state, stepId, patch)
           await saveGuide(root, state)
-          return [`已记录「${stepId}」的产出。`, '', await renderStep(state, root)].join('\n')
+          return [`已记录「${stepId}」的产出。`, '', await renderStep(state, root, who)].join('\n')
         }
 
         if (args.action === 'advance') {
@@ -189,14 +197,14 @@ export function registerGuidedTools(
           return [
             moved ? `已进入下一步（${describeStep(state)}）。` : '已经是最后一步：该生成实验报告了。',
             '',
-            await renderStep(state, root),
+            await renderStep(state, root, who),
           ].join('\n')
         }
 
         // status 也要落盘一次：首次访问就把状态建起来，面板与后续调用才有进度可读
         await saveGuide(root, state)
         return [
-          await renderStep(state, root),
+          await renderStep(state, root, who),
           ...(options.guided()
             ? []
             : ['', '（学员模式已在设置里关闭：你可以自由安排顺序，需要时再调本工具。）']),
@@ -259,8 +267,10 @@ export function registerGuidedTools(
         const skillDir = args.skillDir ?? join(root, 'nju-lab', args.assignmentId, 'skill')
         const skillRoot = await resolveSkillRoot(skillDir)
 
+        const who = await actions.whoAmI()
         const markdown = renderReport({
           title: args.title ?? '实验报告',
+          student: who,
           kind,
           cases,
           pitfalls: args.pitfalls?.length ? args.pitfalls : collectPitfalls(guide),
