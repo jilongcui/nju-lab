@@ -24,7 +24,8 @@
  */
 import { execFileSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { migrateWorkspaceStore as migrateStore, seedDefaultWorkspace as seedStore } from './workspace-store.mjs';
 import { createServer, connect } from 'node:net';
 import { networkInterfaces } from 'node:os';
 
@@ -62,13 +63,10 @@ const RUN_UID = Number(process.env.WORKSPACE_UID || 1000);
 const RUN_GID = Number(process.env.WORKSPACE_GID || 1000);
 const RUN_USER = process.env.WORKSPACE_USER || 'ubuntu';
 
-/**
- * 旧路径（2026-09-29 ～ 2026-10-22 的 `/work`）：做成指向 `WORKDIR` 的符号链接。
- * 宿主目录结构不变，所以老容器留下的老文件照旧可见，老文档/老习惯里的 `/work` 也不会失效。
- */
-const LEGACY_WORKDIR = '/work';
-/** 2026-10-23 之前的工作区根（`/workspace`）：也留个符号链接，老会话记录里的绝对路径还能用 */
-const LEGACY_WORKSPACE = '/workspace';
+/** 2026-10-23 之前用过的两个工作区路径：只用于**迁移旧 storages**，不再建符号链接。 */
+const LEGACY_WORKSPACE_PATHS = ['/workspace', '/work'];
+/** 学员在 dsh 左侧看到的分区名。 */
+const WORKSPACE_TITLE = '实验环境';
 /**
  * 额外信任的 authority（逗号分隔），来自平台配置；一般留空即可。
  * 容器会**自动**把自己的 `IP:PORT` 加进信任列表——因为对外访问走容器 IP
@@ -136,74 +134,52 @@ try {
 } catch (e) {
   console.warn(`[workspace] 创建 ${WORKDIR} 失败：${e.message}`);
 }
-// 旧路径兼容：/work → WORKDIR（老文档、老会话记录里的路径继续可用）
-if (LEGACY_WORKSPACE !== WORKDIR) {
-  try {
-    if (!existsSync(LEGACY_WORKSPACE)) symlinkSync(WORKDIR, LEGACY_WORKSPACE);
-  } catch (e) {
-    console.warn(`[workspace] 建 ${LEGACY_WORKSPACE} → WORKDIR 符号链接失败：${e.message}`);
-  }
-}
-if (LEGACY_WORKDIR !== WORKDIR) {
-  try {
-    if (!existsSync(LEGACY_WORKDIR)) symlinkSync(WORKDIR, LEGACY_WORKDIR);
-  } catch (e) {
-    console.warn(`[workspace] 建 ${LEGACY_WORKDIR} → ${WORKDIR} 符号链接失败：${e.message}`);
-  }
-}
+// 2026-10-23：不再创建 `/work`、`/workspace` 两个"旧路径"符号链接 —— 容器里只保留
+// `/home/ubuntu` 一个入口（见 migrateWorkspaceStore：旧 storages 里的路径会被改写成它）。
 // 首次使用：dsh 的 storages 里预置一个**指向 WORKDIR 的工作区**，学生进来直接可用，
 // 不必先在目录选择器里点一次（选择器起点也是 WORKDIR，见上面的 HOME）。
 // - store 不存在，或存在但一个工作区都没有（本机容器内 xdg-user-dir 不可用 → dsh 只会写一个
 //   空 store）时补一条；学生已经选过工作区就**不动它**；
 // - 记录形状取自真实运行样本（version 2），dsh 升级 storages 格式时由它自己的迁移逻辑接管；
 //   万一这份预置不被接受，dsh 会重建 store —— 学生重选一次目录即可，文件本身不丢。
-seedDefaultWorkspace();
+/** 迁移 + 预置：真正逻辑在 `workspace-store.mjs`（带 L1 测试），这里只负责路径与环境。 */
+function migrateWorkspaceStore() {
+  const home = process.env.DSH_HOME;
+  if (!home) return;
+  try {
+    const changed = migrateStore(`${home}/storages/workspace.json`, {
+      workdir: WORKDIR,
+      title: WORKSPACE_TITLE,
+      legacyPaths: LEGACY_WORKSPACE_PATHS,
+    });
+    if (changed > 0) {
+      console.log(`[workspace] migrated storages: ${changed} 处（旧路径/旧标题 → ${WORKDIR} / ${WORKSPACE_TITLE}）`);
+    }
+  } catch (e) {
+    console.warn(`[workspace] 迁移 storages 失败（不影响使用）：${e.message}`);
+  }
+}
+
 function seedDefaultWorkspace() {
   const home = process.env.DSH_HOME;
   if (!home) return;
   const store = `${home}/storages/workspace.json`;
-  const id = randomUUID();
-  const now = new Date().toISOString();
-  const entry = {
-    path: WORKDIR,
-    title: 'workspace',
-    sessionIds: [],
-    createdAt: now,
-    updatedAt: now,
-  };
-  let record;
-  if (existsSync(store)) {
-    // 已有 store：只在"一个工作区都没有"时补一条（解析不了就交给 dsh 自己处理）
-    try {
-      const existing = JSON.parse(readFileSync(store, 'utf8'));
-      const ids = existing?.global?.workspaceIds;
-      const tables = existing?.tables?.workspaces;
-      if (!Array.isArray(ids) || ids.length > 0) return;
-      if (tables && Object.keys(tables).length > 0) return;
-      record = {
-        ...existing,
-        global: { ...existing.global, initialized: true, workspaceIds: [id] },
-        tables: { ...existing.tables, workspaces: { ...(tables ?? {}), [id]: entry } },
-      };
-    } catch (e) {
-      console.warn(`[workspace] 读取 ${store} 失败，跳过预置工作区：${e.message}`);
-      return;
-    }
-  } else {
-    record = {
-      unit: { name: 'workspace', version: 2 },
-      global: { initialized: true, workspaceIds: [id], archivedSessionIds: [], pinnedSessionIds: [] },
-      tables: { workspaces: { [id]: entry } },
-    };
-  }
   try {
     mkdirSync(`${home}/storages`, { recursive: true });
-    writeFileSync(store, `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600 });
-    console.log(`[workspace] seeded default workspace: ${WORKDIR}`);
+    const wrote = seedStore(store, {
+      workdir: WORKDIR,
+      title: WORKSPACE_TITLE,
+      id: randomUUID(),
+      now: new Date().toISOString(),
+    });
+    if (wrote) console.log(`[workspace] seeded default workspace: ${WORKDIR}（${WORKSPACE_TITLE}）`);
   } catch (e) {
     console.warn(`[workspace] 预置工作区失败（不影响使用）：${e.message}`);
   }
 }
+
+migrateWorkspaceStore();
+seedDefaultWorkspace();
 
 // HOME 指到工作目录：dsh 的「工作区」/目录选择器起点都取 homedir（见文件头 WORKDIR 注释）
 /**
