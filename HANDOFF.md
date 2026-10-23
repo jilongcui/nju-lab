@@ -103,6 +103,26 @@
 - **回滚**：`WORKSPACE_IMAGE` 改回 `pkg13` + `npm run build` + kill；
   前端 `cp .verify-scratch/lab-web-backups/20261023-072934/index.html /var/www/lab/index.html`。
 
+**2026-10-24（「重新下载」不再覆盖学生文件；查清"为什么还要写 SKILL.md 的实测档案"）—— ✅ 已上线**
+
+- **现象（用户）**：平台上仍看到"结论和踩坑写进 `SKILL.md` 的实测档案 + report.md"，问"不是只写 report 就行吗"。
+- **排查结论（不是平台文案残留）**：
+  · 平台当前下发的 `problem.zip` / `skill-template.zip` 里 `实测档案` 命中 **0**；
+    四个项目的 `content/objectives/background/description/references/faq` 也 **0**；
+  · 真正来源是**学生工作区里的旧产物**：`nju-lab/c22af411…/skill/SKILL.md`（10-23 00:01，6663 字节）
+    里还留着那一节（上一轮实验自己写的），模型读到就沿用旧约定。
+- **顺手发现的真风险（已修）**：`nju_lab_claim` 的「重新下载」是**直接解压覆盖** `skill/` ——
+  学生点一下就会把改好的 `scripts/train.py`、写好的 `SKILL.md` 与 `report.md` 一起冲掉。
+  现在：模板先解压到 `skill/.template-staging`，再用 `fillMissing()` **只补 target 缺失的文件**，
+  已存在的一律不动；日志会打「模板补齐缺失文件 N 个」。
+- **验证**：`npm test` **94 条（88 L1 pass + 6 L2 skip）**，新增 1 条：改过的文件再下载保持不动、
+  删掉后能被补回（测试需要"有内容的模板 ZIP"，默认 mock 是空包）。
+- **部署（2026-10-24 07:45）**：`nju-lab-workspace:0.2.0-rc.2-pkg21`（插件 md5 与本地一致）；
+  server build + kill（**MainPID → 2418590**）；kit `20261024-0745-bd26ca5` 已投放
+  （旧包备份 `.20261023-1001.bak`）；容器冒烟通过。
+- **给老学生的处理建议**：工作区里的旧 `SKILL.md`/`report.md` 是**他们自己的产物**，平台不会自动改写；
+  要清理就手工把「实测档案」那节并进 `report.md` 再删掉，或让 `nju_lab_finalize_report` 重新生成报告。
+
 **2026-10-23（学员模式：执行由学员点审批「允许」）—— ✅ 已上线**
 
 - **来由（用户）**：同意把"审批弹窗"接进教学流程 —— 让"动手"落到学员指尖。
