@@ -442,11 +442,9 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
     const dir = join(WORKSPACE_DATA_DIR, userId);
     const sessions = join(dir, 'dsh-sessions');
     const storages = join(dir, 'dsh-storages');
-    const rootHome = join(dir, 'home', 'root');
     try {
       mkdirSync(sessions, { recursive: true });
       mkdirSync(storages, { recursive: true });
-      mkdirSync(rootHome, { recursive: true });
     } catch (e) {
       this.logger.warn(
         `工作区目录不可写，本次不挂载持久卷（学生的文件将随容器消失）：${dir} —— ${
@@ -455,9 +453,11 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
       );
       return [];
     }
+    // 2026-10-23：工作区 = HOME = /home/ubuntu（镜像里以 ubuntu 用户跑 dsh）。
+    // 之前这里还把 `<dir>/home/root` 挂到 `/root`，于是宿主同一目录在容器里出现两个入口
+    // （`/workspace/home/root` 与 `/root`）—— 学生看到的"目录乱"就是它。
     return [
-      `${dir}:/workspace`,
-      `${rootHome}:/root`,
+      `${dir}:/home/ubuntu`,
       `${sessions}:/opt/workspace/dsh-home/sessions`,
       `${storages}:/opt/workspace/dsh-home/storages`,
     ];

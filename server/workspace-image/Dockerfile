@@ -3,7 +3,7 @@
 # 设计见 docs/DESIGN-2026-09-28-platform-workspace.md；用法见本目录 README.md。
 #
 # 构建（build context **必须是仓库根**，因为要 COPY dsh/nju-lab-client）：
-#   docker build -f server/workspace-image/Dockerfile -t nju-lab-workspace:0.2.0-rc.2-pkg16 .
+#   docker build -f server/workspace-image/Dockerfile -t nju-lab-workspace:0.2.0-rc.2-pkg17 .
 #
 # ---- 为什么基座是 nju-lab-verify 而不是 node:22.23.2-slim ----
 # 本机 docker.io 直连不通（见 HANDOFF §2.1）；华为云源的 node:22-slim 是 **v22.18.0**，
@@ -18,6 +18,11 @@ FROM nju-lab-verify:0.2.0-rc.2-pkg8
 
 # 基座（verify-image）已装 python3 / pip 预装依赖集 / unzip / zstd / jq / ca-certificates，无需重装
 
+# 运行 dsh 的普通用户（2026-10-23 起）：HOME 与工作区都是 /home/ubuntu。
+# 为什么不再用 root：root 的 HOME 与工作区混在一起会出现 /workspace + /root 两套入口
+# （学生看到的 `/workspace/home/root` 就是那个），而且 dsh 的 sandbox 本来就该以普通用户跑。
+RUN useradd -m -u 1000 -s /bin/bash ubuntu
+
 WORKDIR /opt/workspace
 
 # 1) 学生插件 nju-lab-client（本地包，必须先构建出 lib/）
@@ -29,7 +34,11 @@ RUN cd ./nju-lab-client \
 
 # 2) DSH_HOME：profile 与插件解析（容器一次性，运行时不复制）
 ENV DSH_HOME=/opt/workspace/dsh-home \
-    DSH_TELEMETRY_DISABLED=1
+    DSH_TELEMETRY_DISABLED=1 \
+    WORKSPACE_WORKDIR=/home/ubuntu \
+    WORKSPACE_USER=ubuntu \
+    WORKSPACE_UID=1000 \
+    WORKSPACE_GID=1000
 COPY server/workspace-image/profile/ ${DSH_HOME}/profiles/
 # profile 的 `file:../../nju-lab-client` 从 profile 目录出发解析到 ${DSH_HOME}/nju-lab-client；
 # 而 bundle 名 `nju-lab-client` 还要在 profile 的 node_modules 里可见

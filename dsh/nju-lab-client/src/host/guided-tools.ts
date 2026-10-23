@@ -19,8 +19,10 @@ import { resolveSkillRoot, type NjuLabActions } from './actions.ts'
 import { TOOL_NAMES } from './tools.ts'
 import {
   advanceStep,
+  describeMode,
   describeStep,
   detectKind,
+  stepOwner,
   loadGuide,
   newGuideState,
   recordStep,
@@ -106,17 +108,20 @@ async function renderStep(
   const steps = stepsFor(state.kind)
   const step = steps[state.step] ?? steps[0]
   const recorded = state.records[step.id] ?? {}
-  const lines = [
-    `【学员模式】${describeStep(state)}`,
-    '',
-    step.owner === 'student'
-      ? '这一步由**学员**完成：你只讲解、给可以直接粘的命令/代码、检查他贴回来的结果。'
-        + '不要替他写脚本、不要替他跑命令、不要替他调参——他要自己走这一遍。'
-      : '这一步由**你**完成（机器活）：用 nju_lab_finalize_report 生成报告，然后把报告给他确认。',
-    '',
-    `这一步要做：${step.ask}`,
-    `完成标志：${step.need}`,
-  ]
+  const owner = stepOwner(state, step)
+  const lines = [`【学员模式】${describeStep(state)} · ${describeMode(state.mode)}`, '']
+  if (!state.mode) {
+    lines.push(
+      '**先让他选节奏**：用 ask_user 弹两个选项 —— 「自动模式：我带着做，你在每步做选择与确认」/「手动模式：你自己动手，我只讲解与检查」。',
+      '他选完调 nju_lab_step 的 set_mode（mode=auto 或 manual），再继续。',
+      '',
+    )
+  }
+  const ownerLine =
+    owner === 'student'
+      ? '这一步由**学员**完成：你只讲解、给可以直接粘的命令/代码、检查他贴回来的结果。不要替他写脚本、不要替他跑命令、不要替他调参。'
+      : '这一步由**你**完成：你可以代他执行（写脚本/跑命令），但每一步的关键选择要他用 ask_user 选，结果也要先给他看。'
+  lines.push(ownerLine, '', `这一步要做：${step.ask}`, `完成标志：${step.need}`)
   const keys = Object.keys(recorded)
   if (keys.length) {
     lines.push('', '已记录的产出：')
@@ -151,13 +156,18 @@ export function registerGuidedTools(
       parameters: {
         action: {
           type: 'string',
-          enum: ['status', 'record', 'advance'],
+          enum: ['status', 'record', 'advance', 'set_mode'],
           required: true,
           description: 'status 查看当前步骤 / record 记录产出 / advance 进入下一步',
         },
         assignmentId: { type: 'string', required: true, description: 'assignment id' },
         stepId: { type: 'string', description: '要记录的步骤 id；缺省为当前步' },
         record: { type: 'json', description: '这一步的产出（结构化对象，例如 { baseline_accuracy: 0.3158 }）' },
+        mode: {
+          type: 'string',
+          enum: ['auto', 'manual'],
+          description: 'set_mode 时用：auto = AI 带做、学员做选择；manual = 学员自己动手',
+        },
         sessionId: { type: 'string', description: '会话 id（让进度落在会话工作区）' },
       },
       output: {
@@ -166,10 +176,11 @@ export function registerGuidedTools(
       },
       async execute(
         args: {
-          action: 'status' | 'record' | 'advance'
+          action: 'status' | 'record' | 'advance' | 'set_mode'
           assignmentId: string
           stepId?: string
           record?: unknown
+          mode?: 'auto' | 'manual'
           sessionId?: string
         },
       ) {
@@ -181,6 +192,14 @@ export function registerGuidedTools(
           const outputs = await findOutputJson(root)
           const first = outputs.length ? await readJson(outputs[0].file) : null
           state = newGuideState(args.assignmentId, detectKind(first))
+        }
+
+        if (args.action === 'set_mode') {
+          const mode = args.mode === 'auto' || args.mode === 'manual' ? args.mode : null
+          if (!mode) return 'mode 只能是 "auto" 或 "manual"。'
+          state = { ...state, mode }
+          await saveGuide(root, state)
+          return [`已记录节奏：${describeMode(mode)}。`, '', await renderStep(state, root, who)].join('\n')
         }
 
         if (args.action === 'record') {

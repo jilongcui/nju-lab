@@ -22,7 +22,7 @@
  * 经 nginx 反代时，这里要填**浏览器地址栏里的那个 authority**（如 `lab.xiaohe.biz`
  * 或 `medai.nju.edu.cn`，带端口时写 `host:port`）。
  */
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer, connect } from 'node:net';
@@ -50,14 +50,25 @@ const TOKEN_FILE = process.env.WORKSPACE_TOKEN_FILE || '/tmp/dsh-launch-token';
  * 于是学生在 dsh 里的产物全落容器可写层，空闲回收/镜像升级一删就没
  * （2026-10-23 实测，见 `docs/DESIGN-2026-09-28-platform-workspace.md` §4.8）。所以 HOME 也指到这里。
  */
-const WORKDIR = process.env.WORKSPACE_WORKDIR || '/workspace';
+const WORKDIR = process.env.WORKSPACE_WORKDIR || '/home/ubuntu';
 /** HOME 指向哪里（dsh 的「工作区」与目录选择器起点都取它） */
 const HOME_DIR = process.env.WORKSPACE_HOME || WORKDIR;
+/**
+ * 运行 dsh 的普通用户（2026-10-23 起）：容器内不再以 root 跑 dsh —— root 的 HOME 与工作区
+ * 混在一起会让目录变成 `/workspace` + `/root` 两套入口（学生看到的 `home/root` 就是它）。
+ * 镜像里建了 uid 1000 的 `ubuntu`，HOME=/home/ubuntu 同时就是工作区。
+ */
+const RUN_UID = Number(process.env.WORKSPACE_UID || 1000);
+const RUN_GID = Number(process.env.WORKSPACE_GID || 1000);
+const RUN_USER = process.env.WORKSPACE_USER || 'ubuntu';
+
 /**
  * 旧路径（2026-09-29 ～ 2026-10-22 的 `/work`）：做成指向 `WORKDIR` 的符号链接。
  * 宿主目录结构不变，所以老容器留下的老文件照旧可见，老文档/老习惯里的 `/work` 也不会失效。
  */
 const LEGACY_WORKDIR = '/work';
+/** 2026-10-23 之前的工作区根（`/workspace`）：也留个符号链接，老会话记录里的绝对路径还能用 */
+const LEGACY_WORKSPACE = '/workspace';
 /**
  * 额外信任的 authority（逗号分隔），来自平台配置；一般留空即可。
  * 容器会**自动**把自己的 `IP:PORT` 加进信任列表——因为对外访问走容器 IP
@@ -126,6 +137,13 @@ try {
   console.warn(`[workspace] 创建 ${WORKDIR} 失败：${e.message}`);
 }
 // 旧路径兼容：/work → WORKDIR（老文档、老会话记录里的路径继续可用）
+if (LEGACY_WORKSPACE !== WORKDIR) {
+  try {
+    if (!existsSync(LEGACY_WORKSPACE)) symlinkSync(WORKDIR, LEGACY_WORKSPACE);
+  } catch (e) {
+    console.warn(`[workspace] 建 ${LEGACY_WORKSPACE} → WORKDIR 符号链接失败：${e.message}`);
+  }
+}
 if (LEGACY_WORKDIR !== WORKDIR) {
   try {
     if (!existsSync(LEGACY_WORKDIR)) symlinkSync(WORKDIR, LEGACY_WORKDIR);
@@ -188,10 +206,43 @@ function seedDefaultWorkspace() {
 }
 
 // HOME 指到工作目录：dsh 的「工作区」/目录选择器起点都取 homedir（见文件头 WORKDIR 注释）
-const child = spawn('dsh', args, {
+/**
+ * 以 root 启动时：先把挂载点与 dsh-home 的属主交给 ubuntu，再用 setpriv 降权跑 dsh。
+ * 为什么必须 root 先动手：`/home/ubuntu` 是宿主持久卷挂载点（属主 root），普通用户写不了；
+ * 而 dsh 自己的 sandbox 也要求"运行用户"对工作区可写。
+ */
+function prepareAndRun() {
+  const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+  if (!isRoot) {
+    return { command: 'dsh', args, env: { ...process.env, HOME: HOME_DIR } };
+  }
+  // 只动这两处：WORKDIR 是宿主持久卷挂载点，DSH_HOME 下还有 sessions/storages 两个挂载点
+  const chownTargets = [WORKDIR, process.env.DSH_HOME].filter(Boolean);
+  for (const target of chownTargets) {
+    try {
+      execFileSync('chown', ['-R', `${RUN_UID}:${RUN_GID}`, target], { stdio: 'ignore' });
+    } catch (e) {
+      console.warn(`[workspace] chown ${target} 失败（可能只读挂载）：${e.message}`);
+    }
+  }
+  return {
+    command: 'setpriv',
+    args: [
+      `--reuid=${RUN_UID}`,
+      `--regid=${RUN_GID}`,
+      '--init-groups',
+      'dsh',
+      ...args,
+    ],
+    env: { ...process.env, HOME: HOME_DIR, USER: RUN_USER, LOGNAME: RUN_USER },
+  };
+}
+
+const prepared = prepareAndRun();
+const child = spawn(prepared.command, prepared.args, {
   stdio: ['ignore', 'pipe', 'pipe'],
   cwd: WORKDIR,
-  env: { ...process.env, HOME: HOME_DIR },
+  env: prepared.env,
 });
 
 // 3) 捕获 launch token（dsh 打印形如 `http://127.0.0.1:<port>/?token=<xxx>`）

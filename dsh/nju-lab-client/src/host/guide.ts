@@ -217,9 +217,17 @@ export function stepsFor(kind: ExperimentKind): StepDef[] {
   }))
 }
 
+/** 学员在实验开始时选的节奏（用户 2026-10-23 口径）。 */
+export type StudyMode = 'auto' | 'manual'
+
 export interface GuideState {
   assignmentId: string
   kind: ExperimentKind
+  /**
+   * 节奏：`manual` = 学员自己动手（默认教导口径）；`auto` = AI 带做、学员做选择与确认；
+   * `null` = 还没选 —— 第一次 status 时先用 ask_user 让他选。
+   */
+  mode: StudyMode | null
   /** 当前第几步（0-based） */
   step: number
   /** 各步产出：键是步骤 id，值是模型记录的结构化对象 */
@@ -230,7 +238,15 @@ export interface GuideState {
 }
 
 export function newGuideState(assignmentId: string, kind: ExperimentKind = 'generic'): GuideState {
-  return { assignmentId, kind, step: 0, records: {}, confirmed: 0, updatedAt: new Date().toISOString() }
+  return {
+    assignmentId,
+    kind,
+    mode: null,
+    step: 0,
+    records: {},
+    confirmed: 0,
+    updatedAt: new Date().toISOString(),
+  }
 }
 
 /** 进度文件路径：与评估条件钉定文件同一个目录（`nju-lab/<assignmentId>/`）。 */
@@ -272,6 +288,18 @@ export function advanceStep(state: GuideState): GuideState {
   const steps = stepsFor(state.kind)
   const next = Math.min(state.step + 1, steps.length - 1)
   return { ...state, step: next, confirmed: Math.max(state.confirmed, next) }
+}
+
+/** 这一步实际由谁动手：`auto` 模式下 AI 可以代做（学员负责选择/确认）；`report` 永远归 AI。 */
+export function stepOwner(state: GuideState, step: StepDef): 'student' | 'coach' {
+  if (step.id === 'report') return 'coach'
+  return state.mode === 'auto' ? 'coach' : step.owner
+}
+
+export function describeMode(mode: StudyMode | null): string {
+  if (mode === 'auto') return '自动模式（我带做，你做选择与确认）'
+  if (mode === 'manual') return '手动模式（你自己动手，我只讲解与检查）'
+  return '还没选'
 }
 
 /** 给模型/学生看的一行摘要。 */

@@ -19,3 +19,17 @@
 - id: permission
   config:
     defaultPreset: workspace-write
+
+# ── 2026-10-23：终端面板与"聊天框里出选项" ────────────────────────────────────
+# web-app 层只带了 `ui-sidebar-terminal` + `terminal-controller`，**没有 PTY 后端** ——
+# 学生点"新建终端"会失败。这里补上 bash 后端。
+- id: terminal-bash
+  name: '@deepseek-ai/dsh-terminal-bash'
+
+# 让模型能在聊天框里弹出选项（前端 `ui-user-questions` 已在 web-app 层）：
+# 学员模式用它问"自动还是手动""可以进下一步吗"，学生点选项而不是手打指令。
+- id: tool-ask-user
+  name: '@deepseek-ai/dsh-tool-ask-user'
+  config:
+    mode: legacy
+    timeout: 600

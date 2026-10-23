@@ -232,6 +232,28 @@ describe('学员模式：工具面', () => {
     })
   })
 
+  test('实验开始时先让学员选节奏；set_mode 后按模式换口径', async () => {
+    await withClient({}, async ({ harness, workspaceDir }) => {
+      const step = harness.tool('nju_lab_step')
+      const first = await step.execute({ action: 'status', assignmentId: 'a-unlocked' })
+      assert.match(first, /先让他选节奏/, '第一次进来必须先问自动还是手动')
+      assert.match(first, /还没选/)
+
+      const manual = await step.execute({ action: 'set_mode', mode: 'manual', assignmentId: 'a-unlocked' })
+      assert.match(manual, /手动模式/)
+      assert.match(manual, /这一步由\*\*学员\*\*完成/)
+
+      const auto = await step.execute({ action: 'set_mode', mode: 'auto', assignmentId: 'a-unlocked' })
+      assert.match(auto, /自动模式/)
+      assert.match(auto, /这一步由\*\*你\*\*完成/)
+
+      const saved = JSON.parse(
+        await readFile(join(workspaceDir, 'nju-lab', 'a-unlocked', 'progress.json'), 'utf8'),
+      )
+      assert.equal(saved.mode, 'auto')
+    })
+  })
+
   test('nju_lab_finalize_report 从 output.json 生成 report.md', async () => {
     await withClient({}, async ({ harness, workspaceDir }) => {
       for (const [dir, acc] of [
