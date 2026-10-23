@@ -28,6 +28,8 @@ import {
   reportLooksComplete,
   saveGuide,
   stepsFor,
+  stepList,
+  renderStepList,
 } from '../lib/host/index.js'
 import { startMockPlatform } from './mock-platform.mjs'
 
@@ -135,6 +137,29 @@ describe('学员模式：步骤状态机（纯逻辑）', () => {
     assert.equal(loaded.step, 1)
     assert.deepEqual(loaded.records.understand, { ok: true })
     assert.match(guidePath(root, 'a-1'), /nju-lab\/a-1\/progress\.json$/)
+  })
+})
+
+describe('学员模式：六步清单', () => {
+  test('✓ 已完成 / ▶ 当前 / ○ 未开始，并标出谁动手', () => {
+    let state = newGuideState('a-1', 'classification')
+    state = { ...state, mode: 'manual' }
+    let list = stepList(state)
+    assert.equal(list.length, 6)
+    assert.equal(list[0].current, true)
+    assert.equal(list[0].done, false)
+    assert.equal(list[5].owner, 'coach')
+    assert.match(renderStepList(state), /▶ 1\. 看清需求 {2}← 当前步（学员做）/)
+
+    state = advanceStep(advanceStep(state))
+    list = stepList(state)
+    assert.deepEqual(list.map((s) => s.done), [true, true, false, false, false, false])
+    assert.equal(list[2].current, true)
+
+    // auto 模式下前几步改成 AI 做
+    const auto = { ...state, mode: 'auto' }
+    assert.equal(stepList(auto)[2].owner, 'coach')
+    assert.equal(stepList(auto)[5].owner, 'coach')
   })
 })
 

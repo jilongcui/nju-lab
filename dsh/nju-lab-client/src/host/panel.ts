@@ -14,7 +14,7 @@ import type {} from '@deepseek-ai/dsh-client-connection'
 
 import type { NjuLabActions } from './actions.ts'
 import type { Assignment } from './api.ts'
-import { loadGuide, stepsFor } from './guide.ts'
+import { loadGuide, stepList, stepsFor } from './guide.ts'
 import type { EvalConfig } from './config.ts'
 import { applyUpdate, checkUpdate, pluginDir, type UpdateInfo } from './update.ts'
 
@@ -43,7 +43,17 @@ export interface PanelSnapshot {
   /** 插件自更新信息；检查失败（平台不可达等）时为 null，面板不显示。 */
   update: UpdateInfo | null
   /** 学员模式进度：只有走过步骤的任务才有（`step` 从 1 开始，给人看）。 */
-  guides: Record<string, { step: number; total: number; title: string; kind: string }>
+  guides: Record<
+    string,
+    {
+      step: number
+      total: number
+      title: string
+      kind: string
+      /** 六步清单：✓ 已完成 / ▶ 当前 / ○ 未开始（面板常驻显示，不依赖模型） */
+      steps: Array<{ title: string; done: boolean; current: boolean; owner: 'student' | 'coach' }>
+    }
+  >
 }
 
 function json(body: unknown, status = 200): Response {
@@ -122,6 +132,7 @@ export function registerPanelRoutes(
               total: steps.length,
               title: current.title,
               kind: state.kind,
+              steps: stepList(state),
             }
           }
           return {

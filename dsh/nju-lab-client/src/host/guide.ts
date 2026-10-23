@@ -296,6 +296,37 @@ export function stepOwner(state: GuideState, step: StepDef): 'student' | 'coach'
   return state.mode === 'auto' ? 'coach' : step.owner
 }
 
+export interface StepView {
+  title: string
+  /** 已推进过的步骤 */
+  done: boolean
+  /** 当前这一步 */
+  current: boolean
+  owner: 'student' | 'coach'
+}
+
+/** 六步清单（面板与工具返回都用它，保证"看到的是同一份进度"）。 */
+export function stepList(state: GuideState): StepView[] {
+  const steps = stepsFor(state.kind)
+  return steps.map((step, index) => ({
+    title: step.title,
+    done: index < state.step,
+    current: index === state.step,
+    owner: stepOwner(state, step),
+  }))
+}
+
+/** 一行一条的文本清单：`✓` 已完成、`▶` 当前、`○` 未开始。 */
+export function renderStepList(state: GuideState): string {
+  return stepList(state)
+    .map((s, i) => {
+      const mark = s.done ? '✓' : s.current ? '▶' : '○'
+      const who = s.owner === 'student' ? '（学员做）' : '（AI 做）'
+      return `${mark} ${i + 1}. ${s.title}${s.current ? `  ← 当前步${who}` : ''}`
+    })
+    .join('\n')
+}
+
 export function describeMode(mode: StudyMode | null): string {
   if (mode === 'auto') return '自动模式（我带做，你做选择与确认）'
   if (mode === 'manual') return '手动模式（你自己动手，我只讲解与检查）'

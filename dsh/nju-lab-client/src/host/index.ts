@@ -157,5 +157,7 @@ export {
   recordStep,
   saveGuide,
   stepsFor,
+  stepList,
+  renderStepList,
 } from './guide.ts'
 export { missingReportParts, renderReport, reportLooksComplete } from './report.ts'

@@ -77,7 +77,16 @@ interface SnapshotDto {
   /** 插件自更新信息；null 表示检查失败（不渲染更新条）。 */
   update: { current: string | null; latest: string; available: boolean } | null
   /** 学员模式进度（只有走过步骤的任务才有） */
-  guides?: Record<string, { step: number; total: number; title: string; kind: string }>
+  guides?: Record<
+    string,
+    {
+      step: number
+      total: number
+      title: string
+      kind: string
+      steps?: Array<{ title: string; done: boolean; current: boolean; owner: 'student' | 'coach' }>
+    }
+  >
 }
 
 interface ArtifactDto {
@@ -502,11 +511,27 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
                 {a.project?.chapterTitle && (
                   <div style={{ ...dim, marginTop: 2 }}>{a.project.chapterTitle}</div>
                 )}
-                {/* 学员模式：面板上能直接看到"做到第几步"，不用回对话里问 */}
+                {/* 学员模式：六步清单常驻面板（✓ 已完成 / ▶ 当前 / ○ 未开始），不用回对话里问 */}
                 {snapshot?.guides?.[a.id] && (
-                  <div style={{ ...dim, marginTop: 2 }}>
-                    学员模式 · 第 {snapshot.guides[a.id].step}/{snapshot.guides[a.id].total} 步：
-                    {snapshot.guides[a.id].title}
+                  <div style={{ ...small, marginTop: 4, ...dim }}>
+                    <div>
+                      学员模式 · 第 {snapshot.guides[a.id].step}/{snapshot.guides[a.id].total} 步：
+                      {snapshot.guides[a.id].title}
+                    </div>
+                    {(snapshot.guides[a.id].steps ?? []).map((step, index) => (
+                      <div
+                        key={step.title}
+                        style={{
+                          marginLeft: 8,
+                          marginTop: 1,
+                          color: step.current ? 'var(--dsh-color-text-primary, inherit)' : undefined,
+                          fontWeight: step.current ? 600 : undefined,
+                        }}
+                      >
+                        {step.done ? '✓' : step.current ? '▶' : '○'} {index + 1}. {step.title}
+                        {step.current ? (step.owner === 'student' ? '（你做）' : '（AI 做）') : ''}
+                      </div>
+                    ))}
                   </div>
                 )}
                 {deadline && (

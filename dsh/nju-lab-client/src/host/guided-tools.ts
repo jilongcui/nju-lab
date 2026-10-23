@@ -21,6 +21,7 @@ import {
   advanceStep,
   describeMode,
   describeStep,
+  renderStepList,
   detectKind,
   stepOwner,
   loadGuide,
@@ -109,7 +110,13 @@ async function renderStep(
   const step = steps[state.step] ?? steps[0]
   const recorded = state.records[step.id] ?? {}
   const owner = stepOwner(state, step)
-  const lines = [`【学员模式】${describeStep(state)} · ${describeMode(state.mode)}`, '']
+  const lines = [
+    `【学员模式】${describeStep(state)} · ${describeMode(state.mode)}`,
+    '',
+    '六步进度：',
+    renderStepList(state),
+    '',
+  ]
   if (!state.mode) {
     lines.push(
       '**先让他选节奏**：用 ask_user 弹两个选项 —— 「自动模式：我带着做，你在每步做选择与确认」/「手动模式：你自己动手，我只讲解与检查」。',
