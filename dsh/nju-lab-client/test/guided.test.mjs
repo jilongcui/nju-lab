@@ -203,6 +203,15 @@ describe('学员模式：工具面', () => {
       // 学生情况也要在上下文里：在帮谁做、工作区有什么、做到哪了
       assert.match(status, /正在帮：示例学生一（学号 student1）/)
       assert.match(status, /学生情况|学生当前情况/)
+      // 教导模式：动手的是学员，AI 只讲解/检查（否则模型会一路替他做完）
+      assert.match(status, /这一步由\*\*学员\*\*完成/)
+      assert.match(status, /不要替他写脚本/)
+      // 最后一步才归 AI
+      const steps = stepsFor('classification')
+      assert.deepEqual(
+        steps.map((s2) => s2.owner),
+        ['student', 'student', 'student', 'student', 'student', 'coach'],
+      )
       assert.match(status, /还没有 output\.json/)
 
       const recorded = await step.execute({

@@ -109,6 +109,11 @@ async function renderStep(
   const lines = [
     `【学员模式】${describeStep(state)}`,
     '',
+    step.owner === 'student'
+      ? '这一步由**学员**完成：你只讲解、给可以直接粘的命令/代码、检查他贴回来的结果。'
+        + '不要替他写脚本、不要替他跑命令、不要替他调参——他要自己走这一遍。'
+      : '这一步由**你**完成（机器活）：用 nju_lab_finalize_report 生成报告，然后把报告给他确认。',
+    '',
     `这一步要做：${step.ask}`,
     `完成标志：${step.need}`,
   ]

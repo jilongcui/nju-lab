@@ -29,9 +29,15 @@ export interface StepDef {
   ask: string
   /** 这一步至少要有哪些产出，才算做完了（用于提示，不硬拦） */
   need: string
+  /**
+   * 这一步由谁动手（2026-10-23 用户口径：教导模式下**学员做，AI 只讲解与检查**）。
+   * 只有最后一步"生成报告"由 AI 用工具完成 —— 那本来就是机器活。
+   */
+  owner: 'student' | 'coach'
 }
 
-const STEPS: Record<ExperimentKind, StepDef[]> = {
+// 定义里不写 owner：由 stepsFor() 统一补（默认学员做、report 归教练）
+const STEPS: Record<ExperimentKind, Array<Omit<StepDef, 'owner'>>> = {
   classification: [
     {
       id: 'understand',
@@ -204,7 +210,11 @@ export function detectKind(output: Record<string, unknown> | null | undefined): 
 }
 
 export function stepsFor(kind: ExperimentKind): StepDef[] {
-  return STEPS[kind] ?? STEPS.generic
+  // 默认"学员做"，最后一步（生成报告）归教练 —— 不必在 24 个步骤定义里重复写
+  return (STEPS[kind] ?? STEPS.generic).map((step) => ({
+    ...step,
+    owner: step.id === 'report' ? 'coach' : 'student',
+  }))
 }
 
 export interface GuideState {
