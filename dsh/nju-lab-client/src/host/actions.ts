@@ -6,7 +6,7 @@
  *
  * 打包与解压都走 `./zip.ts` 的纯 JS 实现 —— 不依赖学生机器上有 `zip`/`unzip`。
  */
-import { access, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { basename, join, relative, resolve, sep } from 'node:path'
 import { constants } from 'node:fs'
 
@@ -245,6 +245,36 @@ export interface NjuLabActions {
   ): Promise<SubmitOutcome>
 }
 
+/**
+ * 把 `from` 目录里 `to` **缺少**的文件补过去（已存在的绝不覆盖）。
+ *
+ * 为什么需要它：`nju_lab_claim` 的"重新下载"是给学生换机/清工作区用的，
+ * 但如果直接解压覆盖，会把学生已经改好的 `scripts/train.py`、写好的 `SKILL.md` 与
+ * `report.md` 一起冲掉 —— 那是不可恢复的损失（2026-10-23 实测踩到）。
+ *
+ * @returns 补上的相对路径列表（空 = 本来就齐全）
+ */
+async function fillMissing(from: string, to: string): Promise<string[]> {
+  const filled: string[] = []
+  const walk = async (dir: string, prefix: string): Promise<void> => {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name
+      const src = join(dir, entry.name)
+      const dst = join(to, rel)
+      if (entry.isDirectory()) {
+        await mkdir(dst, { recursive: true })
+        await walk(src, rel)
+        continue
+      }
+      if (await pathExists(dst)) continue
+      await writeFile(dst, await readFile(src))
+      filled.push(rel)
+    }
+  }
+  await walk(from, '')
+  return filled
+}
+
 /** 递归收集文件（相对路径 + 绝对路径），跳过排除目录。 */
 async function collectFiles(root: string): Promise<Array<{ rel: string; abs: string }>> {
   const out: Array<{ rel: string; abs: string }> = []
@@ -397,7 +427,19 @@ export function createActions(
         const target = join(dir, 'skill')
         try {
           await mkdir(target, { recursive: true })
-          await extractZip(await readFile(join(dir, result.skillTemplate.originalName)), target)
+          // **不覆盖学生已有的文件**（2026-10-23 修）：模板解压到临时目录后只补缺失的，
+          // 否则"重新下载"会把学生改过的 scripts/train.py、SKILL.md、report.md 冲掉。
+          const zipPath = join(dir, result.skillTemplate.originalName)
+          const staging = join(dir, '.template-staging')
+          await rm(staging, { recursive: true, force: true })
+          await mkdir(staging, { recursive: true })
+          await extractZip(await readFile(zipPath), staging)
+          const filled = await fillMissing(staging, target)
+          await rm(staging, { recursive: true, force: true })
+          if (filled.length > 0) {
+            // 只报"补了哪些"，让调用方能说清"没有覆盖你的东西"
+            console.log(`[nju-lab-client] 模板补齐缺失文件 ${filled.length} 个：${filled.slice(0, 5).join(', ')}`)
+          }
           skillDir = target
           skillRoot = await resolveSkillRoot(target)
         } catch (error) {

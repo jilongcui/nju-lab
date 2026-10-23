@@ -11,7 +11,7 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -241,6 +241,27 @@ describe('host half: nju_lab_claim', () => {
         assert.equal(after.reasoningEffort, 'medium')
       },
     )
+  })
+})
+
+describe('host half: nju_lab_claim 不覆盖学生文件', () => {
+  test('重新下载只补缺失文件，已改过的不动', async () => {
+    // 需要一个**有内容**的模板 ZIP（默认 mock 是空包，补缺失无从谈起）
+    await withClient({ platform: { skillTemplate: await makeTemplateZip() } }, async ({ harness, workspaceDir }) => {
+      await harness.tool('nju_lab_claim').execute({ assignmentId: 'a-unlocked' })
+      const skillDir = join(workspaceDir, 'nju-lab', 'a-unlocked', 'skill')
+      const file = join(skillDir, 'SKILL.md')
+
+      // 学生改过模板
+      await writeFile(file, '# 我改过的 SKILL\n')
+      await harness.tool('nju_lab_claim').execute({ assignmentId: 'a-unlocked' })
+      assert.equal(await readFile(file, 'utf8'), '# 我改过的 SKILL\n', '再下载不能覆盖学生改过的文件')
+
+      // 删掉后应被补回（模板里有）
+      await rm(file)
+      await harness.tool('nju_lab_claim').execute({ assignmentId: 'a-unlocked' })
+      assert.match(await readFile(file, 'utf8'), /模板 Skill/, '缺失的文件要补回来')
+    })
   })
 })
 
