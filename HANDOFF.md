@@ -103,6 +103,29 @@
 - **回滚**：`WORKSPACE_IMAGE` 改回 `pkg13` + `npm run build` + kill；
   前端 `cp .verify-scratch/lab-web-backups/20261023-072934/index.html /var/www/lab/index.html`。
 
+**2026-10-23（报告写学生姓名与学号）—— ✅ 已上线**
+
+- **需求（用户）**：把学生的信息（姓名 / 学号）放进上下文，**生成报告时带上**。
+- **取数口径**：平台没有单独的"学生资料"接口，`GET /api/me` 就够 —— `nickname` = 姓名、
+  `username` = **学号**（真实学生账号就是学号，如 `261230011`；`student1` 是测试号）。实测返回
+  「示例学生一 / student1」。
+- **实现**：
+  · `api.me()` 的类型补 `nickname`；`actions.whoAmI()` 把 `{ name, studentId }` 暴露给上层
+    （取不到时返回 `{}`，不拖累报告生成）；
+  · `report.ts`：报告第 1 节变成 **学生姓名 / 学号 / 实验名称 / 自测时间 / 自测方式 / 模型**；
+  · 学员模式：`nju_lab_step(status)` 里多一行「正在帮：姓名（学号 xxx）」——让模型在对话里也知道在帮谁；
+  · 四个实验包的 `report.md` 模板与参考实现在「自测概况」里加「学生姓名 / 学号」两行（手填时也有位置）；
+    zip 重打并重新绑定到四个项目。
+- **验证**：`npm test` **91 条（85 L1 pass + 6 L2 skip）**，新增断言——`status` 含
+  「正在帮：示例学生一（学号 student1）」、生成的 `report.md` 含「- 学生姓名：示例学生一」
+  与「- 学号：student1」；线上 `/me` 实测返回姓名/学号；学生下载到的新模板里 `report.md` 已有这两行。
+- **部署（2026-10-23 08:24）**：`nju-lab-workspace:0.2.0-rc.2-pkg15`（容器内插件 md5 与本地一致）；
+  server build + kill（**MainPID → 3877018**）；kit `20261023-0824-d5c0167` 已投放
+  （旧包备份 `.20261023-0818.bak`）；四个项目重传 zip 并 PATCH 绑定
+  （模板 sha256：iris `e69cc1c32d0d` / house `270e0ab561ab` / mlp `ce1e55fcb238` / score `de20b65406c6`）；
+  pkg15 容器冒烟 `host half loaded` + `WORKSPACE_READY` + `token→303` + `/ 200`。
+- **注意**：本地 DSH 客户端仍需「立即更新」+ 重启 dsh（kit 版本又变了）；网页工作台刷新即生效。
+
 **2026-10-23（学员模式没生效的根因：引导口径互斥 + 状态注入）—— ✅ 已上线**
 
 - **现象（用户）**：进实验后 AI **一口气把六步做完**，最后才问"直接提交，还是从头再走一遍"——
