@@ -91,6 +91,11 @@ function tableHeader(kind: ExperimentKind, t: ReportThresholds): string[] {
       return ['case', 'MAE', '基线 MAE', 'MAE / 基线', `是否达标（${maeLine}）`]
     case 'dl-regression':
       return ['case', 'MAE', '基线 MAE', 'MAE / 基线', '最后一轮损失', `是否达标（${maeLine}）`]
+    case 'detection':
+      return ['case', 'recall', 'precision', 'accuracy', `是否达标（${accLine}）`]
+    case 'retrieval':
+      // 检索类指标名不固定（recall_at_3_* 等）→ 列在渲染时按 case 的实际键动态取
+      return ['case', '检索指标']
     default:
       return ['case', '指标']
   }
@@ -116,6 +121,18 @@ function tableRow(c: ReportCase, kind: ExperimentKind, t: ReportThresholds): str
       return [c.name, fmt(s.mae), fmt(s.baselineMae), fmt(ratio, 2), verdict(ratioOk)]
     case 'dl-regression':
       return [c.name, fmt(s.mae), fmt(s.baselineMae), fmt(ratio, 2), fmt(s.lastLoss), verdict(ratioOk)]
+    case 'detection': {
+      const recall = num((s.output.metrics as Record<string, unknown> | undefined)?.recall)
+      const precision = num((s.output.metrics as Record<string, unknown> | undefined)?.precision)
+      return [c.name, fmt(recall), fmt(precision), fmt(s.accuracy), verdict(undefined)]
+    }
+    case 'retrieval': {
+      const metrics = (s.output.metrics ?? {}) as Record<string, unknown>
+      const shown = Object.entries(metrics)
+        .filter(([k, v]) => k.startsWith('recall_at') && typeof v === 'number')
+        .map(([k, v]) => `${k}=${fmt(num(v))}`)
+      return [c.name, shown.length ? shown.join('，') : '未找到 output.json']
+    }
     default: {
       const metrics = (s.output.metrics ?? {}) as Record<string, unknown>
       const shown = Object.entries(metrics)

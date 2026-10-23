@@ -19,6 +19,10 @@ export type ExperimentKind =
   | 'regression'
   | 'dl-classification'
   | 'dl-regression'
+  /** 二分类偏召回/精确率（失约预测、缺陷检出） */
+  | 'detection'
+  /** 检索类（recall_at_k_*） */
+  | 'retrieval'
   | 'generic'
 
 export interface StepDef {
@@ -37,7 +41,7 @@ export interface StepDef {
 }
 
 // 定义里不写 owner：由 stepsFor() 统一补（默认学员做、report 归教练）
-const STEPS: Record<ExperimentKind, Array<Omit<StepDef, 'owner'>>> = {
+const STEPS: Record<Exclude<ExperimentKind, 'detection' | 'retrieval'>, Array<Omit<StepDef, 'owner'>>> = {
   classification: [
     {
       id: 'understand',
@@ -204,14 +208,23 @@ const STEPS: Record<ExperimentKind, Array<Omit<StepDef, 'owner'>>> = {
 export function detectKind(output: Record<string, unknown> | null | undefined): ExperimentKind {
   const metrics = (output?.metrics ?? {}) as Record<string, unknown>
   const hasTraining = output?.training !== undefined && output?.training !== null
+  // 顺序有讲究：二分类的 recall/precision 比 accuracy 更能说明"这类实验在考什么"
+  if (typeof metrics.recall === 'number' || typeof metrics.precision === 'number') return 'detection'
+  if (Object.keys(metrics).some((key) => key.startsWith('recall_at'))) return 'retrieval'
   if (typeof metrics.accuracy === 'number') return hasTraining ? 'dl-classification' : 'classification'
-  if (typeof metrics.mae === 'number') return hasTraining ? 'dl-regression' : 'regression'
+  if (typeof metrics.mae === 'number' || typeof metrics.rmse === 'number') {
+    return hasTraining ? 'dl-regression' : 'regression'
+  }
   return 'generic'
 }
 
+/** generic 那套六步：detection / retrieval 也用它（文案本来就是通用的"摸清材料→定基线→搭实现→自测"）。 */
+const GENERIC_STEPS = STEPS.generic
+
 export function stepsFor(kind: ExperimentKind): StepDef[] {
   // 默认"学员做"，最后一步（生成报告）归教练 —— 不必在 24 个步骤定义里重复写
-  return (STEPS[kind] ?? STEPS.generic).map((step) => ({
+  const table = STEPS[kind as keyof typeof STEPS] ?? GENERIC_STEPS
+  return table.map((step) => ({
     ...step,
     owner: step.id === 'report' ? 'coach' : 'student',
   }))

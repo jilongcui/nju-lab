@@ -102,6 +102,11 @@ describe('学员模式：步骤状态机（纯逻辑）', () => {
     assert.equal(detectKind({ ...OUTPUT_CLASSIFICATION, training: { history: [] } }), 'dl-classification')
     assert.equal(detectKind({ metrics: { mae: 6.09 }, baseline: { mae: 9.27 } }), 'regression')
     assert.equal(detectKind({ metrics: { mae: 6.09 }, training: { history: [] } }), 'dl-regression')
+    // 二分类看 recall/precision；检索类看 recall_at_*；rmse 也算回归
+    assert.equal(detectKind({ metrics: { recall: 0.7, precision: 0.5, accuracy: 0.9 } }), 'detection')
+    assert.equal(detectKind({ metrics: { recall_at_3_vector: 0.8, recall_at_3_keyword: 0.5 } }), 'retrieval')
+    assert.equal(detectKind({ metrics: { mae: 1.2, rmse: 1.5 } }), 'regression')
+    assert.equal(detectKind({ metrics: { recall: 0.7 }, training: { history: [] } }), 'detection')
     assert.equal(detectKind({}), 'generic')
     assert.equal(detectKind(null), 'generic')
   })

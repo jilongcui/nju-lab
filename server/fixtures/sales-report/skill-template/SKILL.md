@@ -5,13 +5,13 @@ description: 从销售明细 CSV 汇总出统计报告 JSON（总额、分地区
 
 # 销售数据汇总 Skill
 
-## 能力边界（TODO：学生补全）
+## 能力边界
 
 > 说明：能力边界是评分维度之一（权重 25%）。请如实填写本 Skill **能做什么、不能做什么**，
 > 并用题目包自测后，把实测结论也记录在这里。
 
 - 能处理：UTF-8 编码、逗号分隔、表头为 `date,region,product,units,unit_price` 的销售明细
-- TODO：本 Skill 不处理哪些情况？（例如：缺失列？非数值的 units？空文件？）
+- （按你的实现补充）：本 Skill 不处理哪些情况？（例如：缺失列？非数值的 units？空文件？）
 
 ## 使用方法
 
@@ -30,11 +30,6 @@ python3 scripts/report.py <input.csv> <output.json>
 
 用平台下发的题目包（`cases/`）运行本 Skill，
 对每个 case 把 `output.json` 与 `expected.json` 逐字段比对，
-把成功率与踩坑记录写到下面的实测档案。
+把成功率与踩坑记录写进 `report.md`。
 
-## 实测档案（TODO：学生填写，dossier）
-
-- 自测时间：
-- 用例通过率：/3
-- 踩坑记录（pitfalls）：
-  1.
+> 实测记录（运行方式、结果、错误分布）写进同级的 `report.md`；这里只保留能力边界与已知失效情形。

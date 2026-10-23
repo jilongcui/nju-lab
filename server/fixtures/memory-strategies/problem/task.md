@@ -220,6 +220,6 @@ recall@k(单个提问) = |该策略能提供的条目 ∩ relevant| / |relevant|
 1. 写一个能跑的方案（推荐做成 Skill 里的一段脚本），能对任意一份同结构的三份文件产出
    `output.json` 与一张图；
 2. 在 `cases/case01` 与 `cases/case02`（不同规模：12 轮 / 16 轮）上都能跑通 —— 判据对两个 case 各判一次；
-3. 把结论与踩过的坑写进 `SKILL.md` 的「实测档案」。
+3. 把结论与踩过的坑记下来 —— 报告会由工具整理进 `report.md`，**不需要改 `SKILL.md`**。
 
 判据全文见 `judge.md`；怎么自测、包内还有什么，见 `README.md`。

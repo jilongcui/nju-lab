@@ -154,6 +154,6 @@
 1. 写一个能跑的方案（本实验就是一个 Skill：`SKILL.md` + `scripts/`），能对任意一份同结构的
    报告单 + 区间表产出 `output.json` 与一张图；
 2. 在 `cases/case01` 与 `cases/case02`（两批不同数据）上都能跑通 —— 判据对两个 case 各判一次；
-3. 把结论与踩过的坑写进 `SKILL.md` 的「实测档案」。
+3. 把结论与踩过的坑记下来 —— 报告会由工具整理进 `report.md`，**不需要改 `SKILL.md`**。
 
 判据全文见 `judge.md`；怎么自测、包内还有什么，见 `README.md`。
