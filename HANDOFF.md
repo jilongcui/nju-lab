@@ -103,6 +103,32 @@
 - **回滚**：`WORKSPACE_IMAGE` 改回 `pkg13` + `npm run build` + kill；
   前端 `cp .verify-scratch/lab-web-backups/20261023-072934/index.html /var/www/lab/index.html`。
 
+**2026-10-24（全部 22 个实验统一到 report.md 口径；自动/手动模式对全部实验生效）—— ✅ 已上线**
+
+- **需求（用户）**："对所有的实验都按照这种新的口径来做"，并认可自动/手动两种节奏。
+- **模板批量改造（18 个包，加上已是新口径的 4 个 easy 档共 **22 个**）**：
+  · `SKILL.md`：删掉「## 实测档案」节（其中「边界值/已知失效情形」并入「## 能力边界」下的
+    `### 已知失效情形`）、`## 能力边界（TODO：学生补全）` 去 TODO、`平台会扫描这一节` → `平台不检查这一节`、
+    `- TODO：…` → `- （按你的实现补充）：…`、材料配合句改为指向 `report.md`；
+  · **每个包新增 `skill-template/report.md`**：列按各实验的 `metrics` 定制
+    （classification=`accuracy/macro_f1`、regression=`mae/r2`、detection=`recall/precision/accuracy`、
+    retrieval=`recall_at_*`；无指标类如 `sql-crud`/`kg-alerts`/`qa-prototype` 用「交付项 / 结果」）；
+  · `problem/task.md`（15 个包有）："把结论写进 SKILL.md 的实测档案" → "报告会整理进 `report.md`，不需要改 SKILL.md"；
+  · `problem/reference/SKILL.md`（15 个）里的示范实测档案 → `reference/report.md`；
+  · 6 个包的 `description: （TODO：…）` 换成具体的一句话描述（写清适用/不适用场景）。
+- **插件**：`detectKind` 增加 **`detection`**（`recall`/`precision`）与 **`retrieval`**（`recall_at_*`）两类，
+  `report.ts` 补对应表格列 → 非 ML 类实验的报告不再是空表。
+- **验证**：模板全量 grep —— 含 `## 实测档案` **0**、`description TODO` **0**；22 个包
+  `skill-template.zip` 都含 `report.md`；抽查 `sql-crud` 平台下发的模板（`report.md` 890 字节、结构正确）；
+  `npm test` **94 条（88 L1 pass + 6 L2 skip）**；pkg22 容器冒烟通过。
+- **平台绑定**：15 个项目用教师接口重新绑定；`csv-cleaner` 的两个项目属另一位教师（`0611010` 的
+  "Skill 工程导论"/"curl 验收课程"），接口 403 → 用 **SQL 直接改 `problemFileId`/`skillTemplateFileId`**
+  （只动这两个字段，已核对 fileId 存在）。共 **17/17** 项目指向新包。
+- **部署（2026-10-24 07:57）**：`nju-lab-workspace:0.2.0-rc.2-pkg22`（插件 md5 与本地一致）；
+  server build + kill（**MainPID → 2435774**）；kit `20261024-0757-9aa565b` 已投放
+  （旧包备份 `.20261024-0745.bak`）。
+- **仍未验证**：终端面板入口、`ask_user` 与审批卡片的实弹（都要真会话跑一次）。
+
 **2026-10-24（清理学生工作区里旧 SKILL.md 的「实测档案」与 TODO 残留）—— ✅ 已完成**
 
 - **来由（用户）**：平台上仍看到"结论和踩坑写进 SKILL.md 的实测档案"，要求清理。
