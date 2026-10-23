@@ -5,6 +5,28 @@
 
 ## 0. 一句话现状
 
+**2026-10-23（决策：**暂不支持官方桌面版**）—— 📝 只记录，不动代码**
+
+- **背景**：老师问"现在安装的 dsh 是什么可执行文件？好像有 desktop 桌面版了"。
+- **现状（已核实）**：我们装的是 npm 包 `@deepseek-ai/dsh@0.2.0-rc.2` 的**全局 bin** ——
+  `node_modules/.bin/dsh -> @deepseek-ai/dsh/lib/bin.js`，`#!/usr/bin/env node`（11.7 KB 引导器）。
+  即**纯 Node CLI + 浏览器**，不是原生二进制、也不是桌面 App；平台「实验环境」跑的是同一条 CLI（在 Linux 容器里）。
+- **官方桌面版确实存在**（实测更新源 `download.deepseek.com/dsh-desk/feeds/*`）：当前 **`0.2.1-rc.2`**（2026-10-17），
+  `win-x64` exe 289 MB、`mac-arm64` zip 348 MB，**`linux-x64` feed 返回 404（无 Linux 版）**；
+  形态 = Electron 外壳 + **同一套 dsh 运行时**（自带 Node/pnpm/Python），独立 profile `~/.dsh/profiles/desktop`、
+  端口 19387、插件与 CLI 的 node_modules **不共用**。桌面壳不在 npm 上（`dsh-desktop` 那个包是第三方占位）。
+- **决定（用户 2026-10-23）：暂不支持桌面版**，三条理由：
+  ① 它固定跑 `desktop` profile —— 我们的 `nju-lab-student` profile（沙箱/审批/权限 patch）与 `nju-lab-client`
+     插件都得移植，且两边依赖不共用；
+  ② 它自带 `0.2.1-rc.2` 且**自动更新**，脱离我们锁的 `0.2.0-rc.2`（插件 API 在 rc 之间会变，每次升级都要修破坏面）；
+  ③ 它内置的 Python 只有 Office 技能那套（numpy / pandas / openpyxl / Pillow / python-docx·pptx / lxml / XlsxWriter），
+     而 22 个实验包的 `manifest.requires` 里 **16 个要 matplotlib、11 个要 sklearn、5 个要 torch** ——
+     学生在桌面版里仍需自装环境。
+  已在用的两条路（CLI + 浏览器「实验环境」）保持不变；下载页**不加**"桌面版不被支持"的提示（用户未选该项，
+  避免文案噪音；本条记录本身就是答复）。
+- **将来若要支持**（给接手的人）：最小路径 = 把 `nju-lab-client` 插件 + 我们的 patch 组合成一份 **desktop 版 profile**，
+  再补一份"桌面版自带的 python 怎么装实验依赖"的指引；需要一台 Windows 实测（本机没有）。
+
 **2026-10-23（Windows 学生可用：下载页按平台引导 + `install.ps1` 引导 WSL2）—— ✅ 已上线**
 
 - **需求（用户）**：客户端下载页是 Linux 口径，但**大部分学生用 Windows** —— 能不能让 Windows 可用？
