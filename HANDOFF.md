@@ -103,6 +103,28 @@
 - **回滚**：`WORKSPACE_IMAGE` 改回 `pkg13` + `npm run build` + kill；
   前端 `cp .verify-scratch/lab-web-backups/20261023-072934/index.html /var/www/lab/index.html`。
 
+**2026-10-23（学员模式：六步清单常驻右侧面板）—— ✅ 已上线**
+
+- **来由（用户）**：问"DSH 里除了 `ask_user` 还有哪些对话框界面"，然后同意把「计划卡片」接进学员模式。
+- **侦察结论（重要，以后选型直接看这段）**：DSH 自带的交互面分三类，**除 `tool-ask-user` 与
+  `terminal-bash`（我们补的）外都是默认启用**：
+  · 对话框/弹层：`ask_user` 选项卡片、**审批弹窗**（`ui-approval` + `policy: ask`，写文件/跑命令时弹）、
+    `/permission` 权限弹层、目录选择器、模型选择、agent 预设、消息赞/踩；
+  · 卡片/面板：**交付物卡片**（`ui-deliverables` + `tool-present`）、plan 卡片、GoalBar、后台任务、
+    右侧栏四件套（文件树 / 文档预览 / 终端 / 内嵌浏览器）、插件管理；
+  · 输入增强：`/` 命令菜单、`@` 文件与会话引用、附件与图片上传。
+- **为什么没用 `plan` 卡片**：`dsh-plan-mode` 的投影只有 `{active, pending}`，plan 卡片是"plan 模式下
+  模型输出"的产物，而 **plan 模式会限制写操作** —— 学生要跑命令/写文件会撞墙。所以改成：
+  **把六步清单常驻在我们的右侧面板**（数据来自 `progress.json`，不依赖模型、不影响工具面）。
+- **实现**：`guide.ts` 新增 `stepList()` / `renderStepList()`（✓ 已完成 / ▶ 当前 / ○ 未开始 + 谁动手）；
+  `nju_lab_step` 的返回里附整份清单（模型与学生看同一份）；面板快照 `guides[id].steps`，
+  `ClaimPanel` 在任务行下列出六步、当前步高亮并标「你做 / AI 做」。
+- **验证**：`npm test` **93 条（87 L1 pass + 6 L2 skip）**（新增六步清单断言：done 序列、current 标记、
+  manual/auto 下 owner 变化、文本清单格式）；pkg19 容器冒烟 `host half loaded` + `WORKSPACE_READY` +
+  `token→303`，快照里 `workspaceDir=/home/ubuntu`、`guides` 字段在。
+- **部署（2026-10-23 09:56）**：`nju-lab-workspace:0.2.0-rc.2-pkg19`（容器内插件 md5 与本地一致）；
+  server build + kill（**MainPID → 4070295**）；kit `20261023-0956-e25802f` 已投放（旧包备份 `.20261023-0901.bak`）。
+
 **2026-10-23（分区改名「实验环境」+ 去掉 `/workspace` `/work` 两个旧路径）—— ✅ 已上线**
 
 - **需求（用户）**：① 左侧那个 `workspace` 只是**分区名**（放对话的分组），想改名；② 容器里不需要
