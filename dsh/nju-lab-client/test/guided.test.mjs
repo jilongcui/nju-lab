@@ -267,6 +267,7 @@ describe('学员模式：工具面', () => {
       const manual = await step.execute({ action: 'set_mode', mode: 'manual', assignmentId: 'a-unlocked' })
       assert.match(manual, /手动模式/)
       assert.match(manual, /这一步由\*\*学员\*\*完成/)
+      assert.match(manual, /点审批卡片的「允许」/)
 
       const auto = await step.execute({ action: 'set_mode', mode: 'auto', assignmentId: 'a-unlocked' })
       assert.match(auto, /自动模式/)

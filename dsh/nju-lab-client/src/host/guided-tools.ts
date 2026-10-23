@@ -127,6 +127,7 @@ async function renderStep(
   const ownerLine =
     owner === 'student'
       ? '这一步由**学员**完成：你只讲解、给可以直接粘的命令/代码、检查他贴回来的结果。不要替他写脚本、不要替他跑命令、不要替他调参。'
+        + '真正执行时由**他点审批卡片的「允许」**——那是他亲手做这一步的凭证。'
       : '这一步由**你**完成：你可以代他执行（写脚本/跑命令），但每一步的关键选择要他用 ask_user 选，结果也要先给他看。'
   lines.push(ownerLine, '', `这一步要做：${step.ask}`, `完成标志：${step.need}`)
   const keys = Object.keys(recorded)

@@ -119,6 +119,7 @@ describe('模型引导：system prompt 段', () => {
       assert.match(text, /不要主动给出"直接提交"/)
       assert.match(text, /不要替他做实验/)
       assert.match(text, /话要短/)
+      assert.match(text, /执行由他点允许/)
       // 用户明确说过：不需要改 SKILL.md —— 引导里不能再出现"补 SKILL.md"
       assert.doesNotMatch(text, /补 \`?SKILL\.md/, '学员模式引导不应再要求学生改 SKILL.md')
       // 旧的"带他把流程走一遍"口径不能同时出现 —— 两段并存时模型会照旧一口气跑完
