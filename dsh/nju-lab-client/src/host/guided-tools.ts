@@ -57,6 +57,25 @@ async function findOutputJson(root: string, depth = 0): Promise<Array<{ dir: str
   return found
 }
 
+/** 工作区里已有的产物摘要 —— 让模型知道"这个学生做到哪了"，不必猜也不必重做。 */
+async function describeWorkspace(root: string): Promise<string[]> {
+  const lines: string[] = []
+  const outputs = await findOutputJson(root)
+  if (outputs.length) {
+    const names = outputs.map((o) => basename(o.dir)).slice(0, 4)
+    lines.push(`已有结果文件：${names.join('、')}（output.json）`)
+  } else {
+    lines.push('还没有 output.json（这一步的产出还没落盘）')
+  }
+  try {
+    const report = await readFile(join(root, 'report.md'), 'utf8')
+    lines.push(`工作区根目录有 report.md（${report.length} 字符）`)
+  } catch {
+    /* 没有就是没有 */
+  }
+  return lines
+}
+
 async function readJson(path: string): Promise<Record<string, unknown> | null> {
   try {
     return JSON.parse(await readFile(path, 'utf8')) as Record<string, unknown>
@@ -79,7 +98,7 @@ function collectPitfalls(state: GuideState | null): string[] {
   return [...new Set(out)]
 }
 
-function renderStep(state: GuideState): string {
+async function renderStep(state: GuideState, root: string): Promise<string> {
   const steps = stepsFor(state.kind)
   const step = steps[state.step] ?? steps[0]
   const recorded = state.records[step.id] ?? {}
@@ -96,6 +115,7 @@ function renderStep(state: GuideState): string {
   } else {
     lines.push('', '（这一步还没有记录产出）')
   }
+  lines.push('', '学生当前情况（工作区实测）：', ...(await describeWorkspace(root)).map((l) => `- ${l}`))
   lines.push(
     '',
     '**现在就做这一步，做完停下来**：把产出列给学生看（数字写清、图用 present 声明），',
@@ -158,7 +178,7 @@ export function registerGuidedTools(
               : { value: args.record }
           state = recordStep(state, stepId, patch)
           await saveGuide(root, state)
-          return [`已记录「${stepId}」的产出。`, '', renderStep(state)].join('\n')
+          return [`已记录「${stepId}」的产出。`, '', await renderStep(state, root)].join('\n')
         }
 
         if (args.action === 'advance') {
@@ -169,14 +189,14 @@ export function registerGuidedTools(
           return [
             moved ? `已进入下一步（${describeStep(state)}）。` : '已经是最后一步：该生成实验报告了。',
             '',
-            renderStep(state),
+            await renderStep(state, root),
           ].join('\n')
         }
 
         // status 也要落盘一次：首次访问就把状态建起来，面板与后续调用才有进度可读
         await saveGuide(root, state)
         return [
-          renderStep(state),
+          await renderStep(state, root),
           ...(options.guided()
             ? []
             : ['', '（学员模式已在设置里关闭：你可以自由安排顺序，需要时再调本工具。）']),

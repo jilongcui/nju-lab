@@ -104,6 +104,8 @@ export function resolveConfig(config: Config): ResolvedConfig {
     token: unwrap(config.token),
     evalConfig: config.evalConfig,
     workspaceDir: config.workspaceDir,
-    guidedMode: unwrap(config.guidedMode),
+    // 兜底 true：老 settings.yaml 里没有这个键时必须按"默认开"处理，
+    // 否则学员模式会静默失效（2026-10-22 实测踩过）。
+    guidedMode: unwrap(config.guidedMode) ?? true,
   }
 }

@@ -200,6 +200,9 @@ describe('学员模式：工具面', () => {
       const status = await step.execute({ action: 'status', assignmentId: 'a-unlocked' })
       assert.match(status, /【学员模式】第 1\/6 步/)
       assert.match(status, /等学生说继续|可以进下一步|明确说继续/)
+      // 学生情况也要在上下文里：工作区有什么、做到哪了
+      assert.match(status, /学生当前情况/)
+      assert.match(status, /还没有 output\.json/)
 
       const recorded = await step.execute({
         action: 'record',

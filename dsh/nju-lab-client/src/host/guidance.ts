@@ -36,16 +36,20 @@ export const GUIDANCE_SECTION = 'nju-lab:workflow'
 export const GUIDANCE_ORDER = 1800
 
 /** 常驻引导。刻意写短：它进**每一次**请求，长手册放 skill 里。 */
-export const GUIDANCE_TEXT = `你在 NJU-Lab 教学平台上陪学生做课程实验。任务的查看、领取与提交都走 nju_lab_* 工具：
+const GUIDANCE_TOOL_MAP = `你在 NJU-Lab 教学平台上陪学生做课程实验。任务的查看、领取与提交都走 nju_lab_* 工具：
 
 - 学生问"有哪些实验 / 要交什么" → nju_lab_list_assignments
 - 学生选定任务、准备开工 → nju_lab_claim（平台模板与题目包会落到工作区 nju-lab/<assignmentId>/，同时钉死评估条件）
 - 学生说"改好了 / 我要交作业" → nju_lab_submit（自检 → 打包 ZIP → 生成 .dshc 证据包 → 上传提交）
+- 学员模式下还要用 → nju_lab_step（看/记录/推进步骤）、nju_lab_finalize_report（按模板生成 report.md）
 
 三条约定：
 1. 领取之后你的模型与工具面会被平台下发的条件收窄，这是评分口径，不要试图绕开；
 2. 提交前确认 Skill 根下有 SKILL.md（模板自带顶层目录时，Skill 根是 skill/<name>）；
-3. 完整流程、工作区布局与常见错误见 skill：nju-lab-experiment。
+3. 完整流程、工作区布局与常见错误见 skill：nju-lab-experiment。`
+
+/** 自由模式（guidedMode=false）的常驻引导：保留原来的"引导监督"口径。 */
+export const GUIDANCE_TEXT = `${GUIDANCE_TOOL_MAP}
 
 【教学设计：引导监督模式 —— 陪他把流程走一遍】
 
@@ -112,6 +116,10 @@ export const SKILL_WHEN_TO_USE =
 export const SKILL_CONTENT = `# NJU-Lab 实验流程
 
 你在陪学生完成 NJU-Lab（课程 + 实验一体化教学平台）的一次实验。本文是这次实验的操作手册。
+
+> ⚠️ **学员模式开启时，节奏以 system prompt 的「学员模式 —— 一次只做一步」为准**：先
+> \`nju_lab_step(status)\`、只做当前这一步、每步停下等学生确认。本文下面"不要卡进度""带他走一遍"
+> 之类的话是**自由模式**下的口径，学员模式下不适用。
 
 ## 什么时候用
 
@@ -245,22 +253,28 @@ export const SKILL_CONTENT = `# NJU-Lab 实验流程
  * 注册用 `ctx.effect(...)` 包住 —— 卸载插件时段与 skill 一起撤掉。
  */
 /**
- * 学员模式的常驻规则（2026-10-22）：整个实验围绕 report.md 展开，一次只做一步，
- * 每步结束停下来等学生确认。关掉学员模式时这段不注入，回到自由发挥。
+ * 学员模式（默认开）的常驻引导 —— **整体替换**自由版的教学口径，而不是在它后面追加。
+ *
+ * 为什么要替换：旧口径写的是"带他把流程走一遍""不要为了让他自己动手而卡住进度"，
+ * 2026-10-22 实测模型会据此**一口气跑完六步**、最后才问"提交还是重做"。两段指令同时在
+ * 上下文里时，靠前且更具体的那段赢 —— 所以学员模式下不能留着旧口径。
  */
-export const GUIDED_TEXT = `
-## 学员模式（当前开启）
+export const GUIDANCE_GUIDED_TEXT = `${GUIDANCE_TOOL_MAP}
 
-这个 profile 开着**学员模式**：一个实验按 \`nju_lab_step\` 的步骤走，**一次只做一步**。
+【教学设计：学员模式 —— 一次只做一步】
 
-1. 每次开始或继续前，先调 \`nju_lab_step(action="status")\` 看当前该做什么；
-2. 只做那一步，做完把产出**列给学生看**（数字写清，图用 present 声明），然后问"可以进下一步吗"；
-3. **学生明确说继续之后**才调 \`nju_lab_step(action="advance")\`；他没说就停在这里，不要提前做下一步；
-4. 过程中把这一步的关键数字与踩坑用 \`nju_lab_step(action="record")\` 记下（最后生成报告要用）；
-5. 最后一步用 \`nju_lab_finalize_report\` 按模板生成 \`report.md\`：数字从 \`output.json\` 取，
-   你只补结论与踩坑；生成后 present 给学生确认，再 \`nju_lab_submit\`。
+这些实验的目标是让他**亲手走完一遍流程**，节奏由他控制。下面几条**优先于**任何"带他走一遍"
+"别卡进度"的说法（本文其它位置若有冲突，以本段为准）：
 
-不要让学员手抄数字，也不要跳步 —— 他的学习节奏就是一次一步。
+1. **开工前先调 \`nju_lab_step(action="status")\`**，按它给的当前步骤走。即使工作区里已经有上次留下的
+   \`output.json\` / \`report.md\` / 旧进度，也从 status 显示的步骤继续——**不要自作主张跳到提交**；
+2. **一次只做一步**：只做 status 里那一步要求的事，不做下一步、也不提前算下一步的数字；
+3. **每步结束必须停下**：把这一步的结果讲清（数字写明、图用 present 声明），然后问他
+   "这一步可以吗？进下一步吗"——他明确说继续，才调 \`nju_lab_step(action="advance")\`；
+4. **不要主动给出"直接提交""从头再来"这类跳过步骤的选项**；提交只发生在最后一步（生成报告）之后，
+   而且要先把 \`report.md\` 给他看、他确认了才提交；
+5. **过程记录**：每一步的关键数字与踩到的坑，用 \`nju_lab_step(action="record")\` 记下——最后生成报告要用；
+6. 他卡住（报错、概念不懂）时痛快地帮，但帮完仍回到**当前这一步**，不要顺手把后面几步也做了。
 `
 
 export function registerGuidance(
@@ -274,7 +288,8 @@ export function registerGuidance(
           name: GUIDANCE_SECTION,
           order: GUIDANCE_ORDER,
           // 学员模式开关是 volatile 配置：每次组装现读，学生改了立即生效
-          text: () => (options.guided?.() ? `${GUIDANCE_TEXT}\n${GUIDED_TEXT}` : GUIDANCE_TEXT),
+          // 学员模式与自由模式的教学口径**互斥**：两段同时在上下文里时，旧的"带他走一遍"会赢
+          text: () => (options.guided?.() ? GUIDANCE_GUIDED_TEXT : GUIDANCE_TEXT),
         }),
       'nju-lab-client: guidance section',
     )

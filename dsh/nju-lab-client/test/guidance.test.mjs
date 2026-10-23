@@ -110,6 +110,27 @@ describe('模型引导：system prompt 段', () => {
     })
   })
 
+  test('学员模式（默认开）用"一次只做一步"口径，且不再注入旧口径', async () => {
+    await withClient({}, ({ harness }) => {
+      const raw = harness.sections[0].text
+      const text = typeof raw === 'function' ? raw({}) : raw
+      assert.match(text, /学员模式 —— 一次只做一步/)
+      assert.match(text, /nju_lab_step/)
+      assert.match(text, /不要主动给出"直接提交"/)
+      // 旧的"带他把流程走一遍"口径不能同时出现 —— 两段并存时模型会照旧一口气跑完
+      assert.doesNotMatch(text, /带他按上面那条流程走/)
+    })
+  })
+
+  test('关掉学员模式时回到自由口径', async () => {
+    await withClient({ config: { guidedMode: false } }, ({ harness }) => {
+      const raw = harness.sections[0].text
+      const text = typeof raw === 'function' ? raw({}) : raw
+      assert.doesNotMatch(text, /学员模式 —— 一次只做一步/)
+      assert.match(text, /带他按上面那条流程走/)
+    })
+  })
+
   test('引导文字点出三个工具与 Skill 根约定', async () => {
     await withClient({}, ({ harness }) => {
       const raw = harness.sections[0].text
