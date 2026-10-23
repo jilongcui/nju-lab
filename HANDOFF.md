@@ -103,6 +103,34 @@
 - **回滚**：`WORKSPACE_IMAGE` 改回 `pkg13` + `npm run build` + kill；
   前端 `cp .verify-scratch/lab-web-backups/20261023-072934/index.html /var/www/lab/index.html`。
 
+**2026-10-23（分区改名「实验环境」+ 去掉 `/workspace` `/work` 两个旧路径）—— ✅ 已上线**
+
+- **需求（用户）**：① 左侧那个 `workspace` 只是**分区名**（放对话的分组），想改名；② 容器里不需要
+  `/workspace`、`/work` 这些旧路径了 ——"每个实验都会在当前目录下构建 `nju-lab/`，看着没问题"。
+- **概念澄清（写进文档，避免以后再混）**：dsh 的 workspace 条目 = `storages/workspace.json` 里一条
+  `{ path, title, sessionIds }`；`title` 只是显示名，**`path` 才是会话的 cwd**。所以改名不影响目录，
+  改目录也不影响名字。
+- **改动**：
+  · 迁移逻辑抽成 `server/workspace-image/workspace-store.mjs`（`migrateWorkspaceStore` /
+    `seedDefaultWorkspace`，纯函数）+ **8 条 L1**（`node --test server/workspace-image/workspace-store.test.mjs`）：
+    旧路径 `/workspace` `/work` → 工作目录、旧标题 `workspace` → 「实验环境」、幂等、学生自建分区不动、
+    无 store / 结构不认识安全返回、首次预置、已有分区不覆盖、空 store 补一条；
+  · entrypoint 不再创建 `/workspace`、`/work` 符号链接（容器里只留 `/home/ubuntu` 一个入口）；
+    迁移与预置改为调用模块，日志 `[workspace] migrated storages: N 处`；
+  · 预置分区名改用常量 `WORKSPACE_TITLE = '实验环境'`；
+  · `Dockerfile` 把新模块 COPY 进镜像。
+- **验证**：模块测试 **8/8**；pkg18 实测（student1 真实容器重建）：
+  `[workspace] migrated storages: 2 处（旧路径/旧标题 → /home/ubuntu / 实验环境）`，
+  宿主 `/data/workspaces/<userId>/dsh-storages/workspace.json` 现为
+  `path=/home/ubuntu, title=实验环境`；容器内 `ls /work /workspace` → **都不存在**；`/home/ubuntu` 属 `ubuntu`。
+- **踩坑记录（值得记）**：一开始把迁移写成 entrypoint 内联函数，容器里始终不生效（日志无 migrated），
+  排查半天才发现"逻辑本身没问题、是内联版本没跑到"；抽成模块 + 单测后一次就对。**教训：会写学生数据的
+  逻辑不要内联在 entrypoint 里**。
+- **部署（2026-10-23 01:35）**：`nju-lab-workspace:0.2.0-rc.2-pkg18`；server build + kill
+  （**MainPID → 3999954**）。kit 未变（entrypoint 只在镜像里）。
+- **待用户验证**：左侧分区是否显示「实验环境」；终端面板能否新建（pkg17 已补 `terminal-bash` 后端，
+  但入口在会话内，我这边没点进去）；`ask_user` 的选项卡片要模型真跑一次才会出现。
+
 **2026-10-23（自动/手动两种节奏 + 聊天框选项 + 终端可用 + 目录收敛到 /home/ubuntu）—— ✅ 已上线**
 
 - **需求（用户）**：① 节奏分两种——**自动**（AI 带着做、学员做选择）与**手动**（学员自己做），
