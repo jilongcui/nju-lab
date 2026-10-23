@@ -103,6 +103,38 @@
 - **回滚**：`WORKSPACE_IMAGE` 改回 `pkg13` + `npm run build` + kill；
   前端 `cp .verify-scratch/lab-web-backups/20261023-072934/index.html /var/www/lab/index.html`。
 
+**2026-10-23（自动/手动两种节奏 + 聊天框选项 + 终端可用 + 目录收敛到 /home/ubuntu）—— ✅ 已上线**
+
+- **需求（用户）**：① 节奏分两种——**自动**（AI 带着做、学员做选择）与**手动**（学员自己做），
+  实验开始就让学员选；② 选择要在**聊天框里弹选项**（点选，不是让他手打"下一步"）；③ 想创建 shell
+  手动操作，**创建不成功**；④ `workspace` 目录乱（`/workspace` 下还有 `home/root`），希望主目录是
+  `/home/<用户名>`（能建普通用户就叫 `ubuntu`，`/home/ubuntu` 下做开发）。
+- **根因与修复**：
+  · **节奏**：`GuideState` 加 `mode: 'auto' | 'manual' | null`（null = 还没选）；`nju_lab_step` 新增
+    `action="set_mode"`；`stepOwner()` 决定这一步谁动手——manual 前五步学员、auto 由 AI 代做（关键选择
+    仍要学员用 `ask_user` 选），`report` 永远归 AI。第一次 `status` 会先要求"用 ask_user 弹两个选项让他选"。
+  · **聊天框选项**：镜像里本来就有 `dsh-user-questions`（服务）+ `ui-user-questions`（前端），但**没有
+    `tool-ask-user`**（模型侧 consumer）—— 已加进两个 profile 的 `cordis.patch.yml`
+    （`@deepseek-ai/dsh-tool-ask-user`，`mode: legacy`），模型现在能弹选项卡片。
+  · **终端建不出来**：`dsh-web-app` 只带了 `ui-sidebar-terminal` + `terminal-controller`，**没有 PTY 后端**
+    → 已加 `@deepseek-ai/dsh-terminal-bash` 到两个 profile。
+  · **目录乱**：`studentMounts()` 原本把 `<data>/<userId>` 挂到 `/workspace`，**又**把它的 `home/root`
+    挂到 `/root` —— 同一份宿主目录在容器里出现两个入口，学生就看到了 `/workspace/home/root`。
+    现在：持久卷挂 **`/home/ubuntu`**、删掉 `/root` 挂载；`/work` 与 `/workspace` 都留符号链接兼容旧路径。
+  · **普通用户**：基座（node 镜像）已有 uid 1000 的 `node` 用户，不能重复建 —— 用
+    `groupmod -n ubuntu node && usermod -l ubuntu -d /home/ubuntu -m -s /bin/bash node` 把它改名搬家；
+    entrypoint 以 root 启动、先把 `WORKDIR` 与 `DSH_HOME` 的属主交给 ubuntu，再
+    `setpriv --reuid=1000 --regid=1000 --init-groups dsh …` 降权启动。
+- **验证**：`npm test` **92 条（86 L1 pass + 6 L2 skip）**（新增 set_mode / "先让学员选节奏"断言）；
+  pkg17 容器实测 —— `seeded default workspace: /home/ubuntu`；`/home/ubuntu` 属 `ubuntu:ubuntu`；
+  `/work` 与 `/workspace` 都是指向它的符号链接；`/proc/*/status` 显示 **entrypoint 以 root、dsh 以 uid 1000** 运行；
+  `host half loaded` + `WORKSPACE_READY` + `token→303` + `/ 200`。
+- **未验证（要你点一下）**：终端面板的**入口**在会话里（我这边停在 dsh 首次使用向导的"Choose workspace /
+  Choose the agent preset"，没点进去），所以"终端能开"只验证到后端已注册；`ask_user` 的真实弹窗也要模型
+  真跑一次才会出现。若你点开终端仍失败，把界面截图给我，我按你的路径继续查。
+- **部署（2026-10-23 09:01）**：`nju-lab-workspace:0.2.0-rc.2-pkg17`；server build + kill（**MainPID → 3952662**）；
+  kit `20261023-0901-f9d4ad7` 已投放（旧包备份 `.20261023-0847.bak`，学生本地 profile 一起更新了）。
+
 **2026-10-23（教导模式：学员动手、AI 不代做；彻底删掉"改 SKILL.md"的指令）—— ✅ 已上线**
 
 - **现象（用户）**：① 教导模式下 AI 把活**替学员做完**了，输出还很长；应该是"提示学员去做"；
