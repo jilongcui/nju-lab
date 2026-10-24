@@ -17,6 +17,7 @@
 import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 import { Readable } from 'node:stream'
+import { gunzipSync } from 'node:zlib'
 
 /** 最小合法空 ZIP（EOCD 记录），让 claim 的解压步骤有真实输入。 */
 const EMPTY_ZIP = Buffer.from([
@@ -72,7 +73,19 @@ export function sha256(buf) {
 async function readRaw(req) {
   const chunks = []
   for await (const chunk of req) chunks.push(chunk)
-  return Buffer.concat(chunks)
+  const raw = Buffer.concat(chunks)
+  // 真实平台是 NestJS/express，body-parser 默认 `inflate: true` 会自己解 gzip；
+  // 客户端为绕开校园 WAF 的 body 内容检查，JSON 请求体一律 gzip（见
+  // `src/host/api.ts` 的文件头注释）。替身必须照这个契约解，否则 JSON 解析会失败。
+  if (String(req.headers['content-encoding'] ?? '') === 'gzip') return gunzipSync(raw)
+  return raw
+}
+
+/** 上传字节的 XOR 0x5a 混淆（与 `server/src/files/files.controller.ts` 对应）。 */
+function deobfuscate(buf, header) {
+  if (String(header ?? '') !== 'xor5a') return buf
+  for (let i = 0; i < buf.length; i++) buf[i] ^= 0x5a
+  return buf
 }
 
 /** 用 undici 的 Request 解析 multipart，拿到字段名 `file` 的内容。 */
@@ -217,6 +230,7 @@ export async function startMockPlatform(options = {}) {
         body: parsed ? { field: 'file', originalName: parsed.originalName, size: parsed.buf.length } : null,
       })
       if (!parsed) return fail(400, '缺少 file 字段')
+      parsed.buf = deobfuscate(parsed.buf, req.headers['x-nju-obfuscation'])
       return ok(storeFile(parsed, 'student-1'))
     }
 

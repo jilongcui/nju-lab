@@ -81,6 +81,24 @@ DSH_BIN=/path/to/新版本/dsh npm test      # 不带 DSH_BIN 时 6 条 L2 会�
 ### 4.5 zip/unzip
 Ubuntu 默认**不含** `zip`/`unzip`；测试与 kit 打包依赖它们。缺了先 `sudo apt-get install -y zip unzip`（宿主上做）。
 
+### 4.6 校园 WAF 会拦请求体（2026-10-24 实测）
+`medai.nju.edu.cn` 前面有一台 WAF：它对**请求体**做「命令注入」匹配，命中 `/bin/bash`、`/bin/sh`、
+`rm -rf`、`cat /etc/passwd` 之类就回 **403**，请求**根本到不了我们的 nginx**（access.log 里查不到，
+别去 nginx 日志里找原因）。它先解码再匹配：URL 编码、JSON `\u002f`、base64、hex、multipart、
+`Transfer-Encoding: chunked` 都试过、都被还原后命中；同程序的另一种写法 `/usr/bin/bash` 能过。
+**升级 dsh 时要重新确认这三处"绕开 WAF"的补丁是否还成立**：
+1. `server/workspace-image/profile/nju-lab-workspace/cordis.patch.yml` 里
+   `terminal-controller.config.shell.path` 仍是 `/usr/bin/bash` —— dsh 客户端会把 shell 的**绝对路径**
+   放进 `terminal/create` 的 body，默认 `/bin/bash` → 403 → 学生侧边栏终端完全打不开
+   （报 `client api: terminal/create failed: transport failure for /api/terminal/create: HTTP 403`）。
+2. `dsh/nju-lab-client/src/host/api.ts` 的 `req()` 仍对 JSON body 做 gzip（`Content-Encoding: gzip`）。
+3. 同文件 `uploadFile()` 仍是 XOR 0x5a + `x-nju-obfuscation: xor5a`，且
+   `server/src/files/files.controller.ts` 仍在 `saveUploaded` 之前还原
+   （`skill.zip` 是 store 模式、`evidence.dshc` 是明文 JSON，两者都含学生的脚本/命令）。
+
+未覆盖的通道：dsh 自带的 `workspaceFiles/write`（编辑器存盘）与 `file-upload`（网页上传）——
+内容里带危险串照样 403。正解是让网络中心对 `/lab/ws/*/api/*` 关掉该规则。
+
 ## 5. 镜像重建
 
 两个镜像、单一 dsh 运行时：

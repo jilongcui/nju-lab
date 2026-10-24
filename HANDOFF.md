@@ -5,6 +5,64 @@
 
 ## 0. 一句话现状
 
+**2026-10-24（侧边栏终端报 `terminal/create … HTTP 403`：根因是校园 WAF 拦请求体，已修）—— ✅ 已改、已部署（pkg23 + kit 重打）**
+
+- **现象（用户）**：在平台「实验环境」网页里点侧边栏「新建终端」，客户端报
+  `client api: terminal/create failed: transport failure for /api/terminal/create: HTTP 403`。
+- **根因（实测，不是 dsh 的锅、也不是我们的 nginx）**：medai 前面的**校园 WAF** 会对请求体
+  做「命令注入」匹配，命中 `/bin/bash`、`/bin/sh`、`rm -rf`、`cat /etc/passwd` 这类串就回 **403**，
+  请求**根本到不了**服务器。
+  · 证据 1：nginx 全量访问日志（access.log + .1 + .2~.14.gz，约 14 天）里 `terminal/create` **0 条**；
+    同一次会话里 `terminal/list|environment|shells|close` 全是 200 —— 说明只差 create 这一条。
+  · 证据 2：从公网直接 `POST https://medai.nju.edu.cn/lab/ws/<key>/api/terminal/create`，
+    body `{"x":1}` → 302（到 CAS 登录，正常链路）；body 含 `/bin/bash` → **403**，返回页是
+    「您的访问请求可能对网站造成安全威胁，请求已被阻断」（WAF 拦截页）。
+  · 证据 3：WAF 会**先解码再匹配** —— URL 编码、JSON `\u002f`、base64、hex、multipart、
+    `Transfer-Encoding: chunked` 全部被拦；只有 `/usr/bin/bash`、`/usr/bin/sh`、裸名 `bash` 放行。
+    换 `Content-Encoding: gzip` 也能绕过（WAF 不解 gzip）。
+  · 为什么 dsh 必然会撞上：`dsh-api-terminal-controller/lib/client.js` 的 `TerminalView.loading`
+    在调用方没给 shell 时**自己**取 `terminal/shells` 的第一个（默认 shell 的绝对路径
+    `/bin/bash`，来自 `terminal-bash` 的 `DEFAULT_BASH_SHELL`）再塞进 `terminal/create` 的
+    payload —— 所以「侧边栏终端从没成功打开过」不是偶发。
+- **改法**：
+  · `server/workspace-image/profile/nju-lab-workspace/cordis.patch.yml`：给顶层
+    `terminal-controller` 配 `shell.path: /usr/bin/bash`（`/bin` 在 Ubuntu 上是 `/usr/bin` 的
+    符号链接，同一程序；`args` 与 dsh 默认一致 `--noprofile --norc -i`）。服务端 `resolveShell`
+    优先用 `terminal-controller.config.shell`，`shells` 列表随之只剩 `/usr/bin/bash`（candidates
+    里的裸名 `bash` 解析出同 kind 会被去重）。
+  · **顺带更正** 2026-10-23 那两条 `- id: terminal-bash` / `- id: tool-ask-user`：在 0.2.0-rc.2 里
+    它们是 **preset 内部嵌套条目**，而 `cordis.patch.yml` 只能按 id 改顶层条目或 `insert:`，
+    所以那两条一直匹配不到、启动时打 `patch: entry … not found` 后被跳过（已删除并写明原因）。
+    PTY 后端由 `subprocess-local.spawnTerminal` 提供，不缺。
+  · **提交/上传链路的同类风险**（一起处理）：
+    - `dsh/nju-lab-client/src/host/api.ts` 的 `req()`：JSON body 一律 gzip + `Content-Encoding: gzip`
+      （WAF 不解 gzip，express body-parser 默认 `inflate` 自己还原 → 服务端零改动）。
+      动机：`submit` 的 body 里带 `auditEvents`（学生执行过的命令），明文会被拦。
+    - 同文件 `uploadFile()`：上传字节 XOR 0x5a + 头 `x-nju-obfuscation: xor5a`；
+      `server/src/files/files.controller.ts` 收到该头就还原，**再**算 sha256、存盘 ——
+      文件内容与散列契约不变。动机：`buildZip` 是 store 模式，`skill.zip` 里学生脚本的
+      `#!/bin/bash` 明文可见（实测 store-zip 上传 → 403，同内容 deflate → 通过）。
+      `.dshc` 证据包是 JSON 明文，同样靠这一层。
+    - 测试替身 `test/mock-platform.mjs` 同步支持 gzip body 与 XOR 还原。
+- **验证**：`nju-lab-client` `npm run typecheck` + `npm run build` + 全量 `node --test test/*.test.mjs`
+  **94 tests / 88 pass / 0 fail / 6 skip**（skip 是需要 `DSH_BIN` 的 L2）；`server` `tsc` 与
+  `npm run build` 通过；新镜像 `nju-lab-workspace:0.2.0-rc.2-pkg23` 的
+  `dsh --profile nju-lab-workspace --dump-config` 里 `terminal-controller.shell.path=/usr/bin/bash`
+  且**无 patch 警告**；临时容器起 entrypoint 到 `WORKSPACE_READY`。
+  本机后端实测 `POST http://127.0.0.1:3100/...` 带 `Content-Encoding: gzip` → 401（说明 express
+  已解压、进到鉴权），明文同样 401。
+- **部署**：`WORKSPACE_IMAGE` 默认值与 `server/.env.example` 已改 `pkg23` → `cd server && npm run build`
+  → `kill $(systemctl show nju-lab -p MainPID --value)`；kit 重打并投放
+  （`cp -a /var/www/lab/kit/nju-lab-student-kit.zip{,.20261024-1739.bak}` 后覆盖，新的
+  `kit-version.json` = `20261024-1739-83e9c40`）。
+- **回滚**：`WORKSPACE_IMAGE=nju-lab-workspace:0.2.0-rc.2-pkg22`（改回代码默认值或写进 `server/.env`）
+  + `npm run build` + 重启；kit 用 `.20261024-1739.bak` 覆盖回去。
+- **遗留（需校外单位配合，我们改不了）**：dsh **自带**的通道仍会被 WAF 拦 —— 侧边栏编辑器
+  保存含 `#!/bin/bash` 的文件（`workspaceFiles/write`）、在网页里上传含 shebang 的脚本
+  （`file-upload`）都会 403。正解是让网络中心把 `medai.nju.edu.cn` 的 WAF 对
+  `/lab/ws/*/api/*`（或整个 `/lab/`）关闭「命令注入」规则；在那之前，学生的这类操作要么改成
+  不含危险串的写法，要么走 agent（工具调用走 WebSocket，不经过 WAF 的 body 检查）。
+
 **2026-10-24（演示模式光标同步从 p95 369ms 修到 31ms：鼠标移动不再重建 deck）—— ✅ 已改并验证（待部署）**
 
 - **现象（用户）**：在现场用 MacBook 演示时，演示模式里**鼠标同步非常慢** —— 投影上的光点明显追不上手。

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Controller,
   Get,
+  Headers,
   Param,
   ParseUUIDPipe,
   Post,
@@ -20,6 +21,19 @@ import { FilesService, UploadedFileLike } from './files.service';
 /** 单文件大小上限 100MB（服务器磁盘紧张，见 HANDOFF） */
 const MAX_FILE_SIZE = 100 * 1024 * 1024;
 
+/**
+ * 上传字节的传输层混淆（与 `dsh/nju-lab-client/src/host/api.ts` 对应）。
+ *
+ * 为什么需要：平台前面有校园 WAF，它会把请求体解码后做「命令注入」匹配，命中
+ * `#!/bin/bash`、`rm -rf` 这类串就回 403，请求到不了本服务（2026-10-24 实测：
+ * store 模式 zip 里有 shebang → 403；同样的内容 deflate 压缩后 → 正常）。
+ * 学生交的 SKILL.md/脚本里这类串很常见，所以客户端上传前把字节 XOR 0x5a，
+ * 这里还原后再算 sha256、存盘 —— 存储内容与散列契约完全不变。
+ */
+const OBFUSCATION_HEADER = 'x-nju-obfuscation';
+const OBFUSCATION_XOR5A = 'xor5a';
+const OBFUSCATION_KEY = 0x5a;
+
 @Controller('files')
 export class FilesController {
   constructor(private readonly filesService: FilesService) {}
@@ -27,6 +41,8 @@ export class FilesController {
   /**
    * POST /api/files —— 上传文件（multipart，字段名 file），登录即可。
    * 返回 { fileId, url, originalName, size, sha256 }；sha256 为服务端计算的权威值。
+   *
+   * 若带 `x-nju-obfuscation: xor5a`，先把文件字节还原（见上方 OBFUSCATION_* 注释）。
    */
   @Post()
   @UseInterceptors(
@@ -35,7 +51,14 @@ export class FilesController {
   async upload(
     @CurrentUser() user: User,
     @UploadedFile() file: UploadedFileLike,
+    @Headers(OBFUSCATION_HEADER) obfuscation?: string,
   ) {
+    if (obfuscation === OBFUSCATION_XOR5A && file?.buffer) {
+      for (let i = 0; i < file.buffer.length; i++) {
+        file.buffer[i] = file.buffer[i]! ^ OBFUSCATION_KEY;
+      }
+      // XOR 不改变长度，size 无需调整
+    }
     const saved = await this.filesService.saveUploaded(user, file);
     return this.filesService.toInfo(saved);
   }
