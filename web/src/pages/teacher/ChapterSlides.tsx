@@ -201,6 +201,8 @@ export default function ChapterSlides() {
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
   /** 批注清屏信号（翻页/手动清除 +1）：讲者窗口据此收起本地光点 */
   const [annotationReset, setAnnotationReset] = useState(0);
+  /** 观众窗口：讲者正在画、还没松开的那条线（实时跟随，不需要等松手） */
+  const [liveStroke, setLiveStroke] = useState<AnnotationStroke | null>(null);
   const [tool, setTool] = useState<AnnotationTool>('pen');
   // 显式标注类型：PEN_COLORS/PEN_WIDTHS 是 as const，不标注会被推成字面量类型
   const [penColor, setPenColor] = useState<string>(PEN_COLORS[0].value);
@@ -1265,6 +1267,22 @@ export default function ChapterSlides() {
     channelRef.current?.send({ kind: 'stroke', stroke });
   }, []);
 
+  /**
+   * 拖动过程中的草稿：**只发新增的点**，投影边画边长。
+   * 之前只在松手时发整条线，投影上要等手抬起来才出现线条（2026-10-24 用户反馈）。
+   * 这里刻意不碰 state —— 本窗口的草稿由 `AnnotationLayer` 自己画，走 state 会白重渲染整页。
+   */
+  const sendStrokeDraft = useCallback(
+    (payload: { points: { x: number; y: number }[]; color: string; width: number }) => {
+      channelRef.current?.send({ kind: 'draft', ...payload });
+    },
+    [],
+  );
+
+  const sendStrokeEnd = useCallback(() => {
+    channelRef.current?.send({ kind: 'draft-end' });
+  }, []);
+
   /** 翻页：更新本地状态 + 广播给观众窗口 + 清掉本页批注 */
   const handleIndexChange = useCallback(
     (index: number) => {
@@ -1317,6 +1335,31 @@ export default function ChapterSlides() {
   useEffect(() => {
     if (!isAudience) return;
     /**
+     * 正在画的那条线（讲者实时传来）：点只追加，渲染合并到帧。
+     * 与光点同理 —— 一帧最多算一次，别让渲染队列跟着消息条数排队。
+     */
+    let livePoints: { x: number; y: number }[] | null = null;
+    let liveStyle = { color: '#ff3b30', width: 5 };
+    let liveFrame = 0;
+    const flushLive = () => {
+      liveFrame = 0;
+      if (!livePoints) return;
+      setLiveStroke({ points: livePoints, color: liveStyle.color, width: liveStyle.width });
+    };
+    const appendLive = (points: { x: number; y: number }[], color: string, width: number) => {
+      livePoints = livePoints ? [...livePoints, ...points] : [...points];
+      liveStyle = { color, width };
+      if (!liveFrame) liveFrame = requestAnimationFrame(flushLive);
+    };
+    const clearLive = () => {
+      livePoints = null;
+      if (liveFrame) {
+        cancelAnimationFrame(liveFrame);
+        liveFrame = 0;
+      }
+      setLiveStroke(null);
+    };
+    /**
      * 指针消息合并到帧：讲者在 120Hz 触控板上移动时消息比投影屏刷新还密，
      * 逐条 setState 会让渲染队列越排越长（表现就是"投影上的光标越走越落后"）。
      * 一帧只画一次、且只画**最新**位置 —— 中间位置没人看得见，直接丢。
@@ -1346,17 +1389,25 @@ export default function ChapterSlides() {
         setStrokes([]);
         cancelPointer();
         setPointer(null);
+        clearLive();
       } else if (msg.kind === 'pointer') {
         schedulePointer({ x: msg.x, y: msg.y });
       } else if (msg.kind === 'pointer-off') {
         cancelPointer();
         setPointer(null);
+      } else if (msg.kind === 'draft') {
+        appendLive(msg.points, msg.color, msg.width);
+      } else if (msg.kind === 'draft-end') {
+        clearLive();
       } else if (msg.kind === 'stroke') {
+        // 完整笔画到了，草稿随即退休（先清再追加，只留一条）
+        clearLive();
         setStrokes((prev) => [...prev, msg.stroke]);
       } else if (msg.kind === 'clear') {
         setStrokes([]);
         cancelPointer();
         setPointer(null);
+        clearLive();
       }
     });
     // deck 构建要几百毫秒，就绪前发出的 goto 会被丢弃 —— 所以 hello 重发几次兜住
@@ -1366,6 +1417,7 @@ export default function ChapterSlides() {
     return () => {
       timers.forEach((timer) => window.clearTimeout(timer));
       cancelPointer();
+      if (liveFrame) cancelAnimationFrame(liveFrame);
       off();
       channel.close();
     };
@@ -1442,7 +1494,13 @@ export default function ChapterSlides() {
       <div style={{ position: 'fixed', inset: 0 }}>
         {renderStage({ audience: true })}
         {/* 放映态的 SlideStage 是 fixed + z-index 1200，白板层必须更高才看得见 */}
-        <AnnotationLayer readOnly zIndex={1300} strokes={strokes} pointer={pointer} />
+        <AnnotationLayer
+          readOnly
+          zIndex={1300}
+          strokes={strokes}
+          pointer={pointer}
+          draftStroke={liveStroke}
+        />
       </div>
     );
   }
@@ -1470,6 +1528,8 @@ export default function ChapterSlides() {
             width={penWidth}
             onPointer={sendPointer}
             onStroke={sendStroke}
+            onDraft={sendStrokeDraft}
+            onDraftEnd={sendStrokeEnd}
           />
         </div>
 

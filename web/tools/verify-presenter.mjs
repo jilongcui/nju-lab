@@ -282,6 +282,41 @@ check(
 await presenter.keyboard.press('ArrowLeft');
 await presenter.waitForTimeout(500);
 
+// ⑦ 实时草稿（2026-10-24 用户反馈：投影要等松开鼠标才出现线条）
+//    讲者拖动时白板每帧只发**新增的点**，投影端边画边长；松手时整条线再作为正式笔画落地。
+const draftLen = () =>
+  audience.evaluate(() => {
+    const el = document.querySelector('[data-annotation="draft"]');
+    return el ? (el.getAttribute('d') || '').length : 0;
+  });
+await presenter.bringToFront();
+await presenter.mouse.move(cx - 220, cy - 110);
+await presenter.mouse.down();
+await presenter.mouse.move(cx - 140, cy - 50, { steps: 5 });
+await presenter.waitForTimeout(150);
+const draftEarly = await draftLen();
+await presenter.mouse.move(cx - 60, cy + 10, { steps: 5 });
+await presenter.waitForTimeout(150);
+const draftLate = await draftLen();
+const strokesWhileDrawing = await countStrokes(audience);
+check('⑦ 还没松手，投影上就已在画（草稿实时同步）', draftEarly > 0, `d 长度=${draftEarly}`);
+check('⑦ 继续拖动：投影上的草稿跟着变长', draftLate > draftEarly, `${draftEarly} → ${draftLate}`);
+check('⑦ 拖动过程中不算正式笔画（松手才落地）', strokesWhileDrawing === 0, `观众 strokes=${strokesWhileDrawing}`);
+await presenter.mouse.up();
+await presenter.waitForTimeout(400);
+const draftAfter = await draftLen();
+const strokesAfter = await countStrokes(audience);
+check(
+  '⑦ 松手后草稿收起、转成正式笔画',
+  strokesAfter === 1 && draftAfter === 0,
+  `strokes=${strokesAfter} draft=${draftAfter}`,
+);
+// 收尾：清掉这条线，后面的切换窗口测试不带着批注
+// antd 会在两个汉字的按钮里插空格：实际文本是「清 除」，不能直接匹配「清除」
+await presenter.locator('button', { hasText: /清\s*除/ }).first().click();
+await presenter.waitForTimeout(300);
+check('⑦ 清除后两边都回到空白', (await countStrokes(presenter)) === 0 && (await countStrokes(audience)) === 0);
+
 // ④ 观众窗口那个按钮是**开关**：开着时点一下应关掉，再点又开
 await presenter.bringToFront();
 await presenter.locator('button:has-text("观众窗口")').first().click();

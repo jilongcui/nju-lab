@@ -35,6 +35,16 @@ export type PresentMessage =
   | { kind: 'pointer'; x: number; y: number; from: string }
   /** 鼠标离开幻灯片：投影上把光点收起来 */
   | { kind: 'pointer-off'; from: string }
+  /**
+   * **正在画**的那条线，只带**新增的点**（一趟拖动里多次发送，增量追加）。
+   *
+   * 为什么要它：`stroke` 只在松开时发一次，投影上于是"手在动、线要等松手才出现"——
+   * 现场讲解时这半秒空窗很别扭（2026-10-24 用户反馈）。增量发送让投影边画边长，
+   * 每帧最多一条消息、几个点，代价远小于重画整条线。
+   */
+  | { kind: 'draft'; points: { x: number; y: number }[]; color: string; width: number; from: string }
+  /** 这趟拖动结束（松手；也可能是点太少没成为一条线）→ 投影把草稿收起来 */
+  | { kind: 'draft-end'; from: string }
   /** 讲者画完一条线（按下→拖动→松开算一条） */
   | { kind: 'stroke'; stroke: AnnotationStroke; from: string }
   /** 清空批注（翻页或手动） */

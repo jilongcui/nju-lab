@@ -30,6 +30,13 @@
   移动鼠标不重建 deck、20 次移动光点更新 ≥14 次；同一脚本在旧代码上是 20/22）；
   实测移动 40 次：重建 22 次/425ms → **0 次/0ms**；30 次移动端到端延迟 p50 196ms/p95 369ms → **p50 31ms/p95 30ms**，
   更新次数 15 → 30。另：`assert-semantic` 115/115、`verify-slides` 全通过、`verify-notes-privacy` 6/6、`tsc + vite build` 通过。
+- **同日追加（用户追问"主窗口画线是立即的，投影要等松手才画出线，这正常吗"）**：不正常 ——
+  `stroke` 只在松手时发一次，拖动过程中投影只收到光点、没有线。改成**边画边长**：
+  拖动时每帧发一条 `draft`（**只带新增的点**，讲者端 rAF 合并）；投影端追加进 `liveStroke`
+  并按帧渲染；松手时整条线作为 `stroke` 落地、草稿随即退休；`draft-end` 兜住"单击没成一条线"的残留。
+  讲者端这部分**不碰 state**（草稿本来就在 `AnnotationLayer` 内部画），所以 ⑥ 的"不重建 deck"仍成立。
+  验证：`verify-presenter` **27/27**（新增 ⑦ 五条：未松手投影已在画、草稿跟着变长、拖动中不算正式笔画、
+  松手转正、清除回空白；同一脚本在旧代码上是 **25/27**）。
 - **部署**：`bash deploy/deploy-web-lab.sh`（只改前端，后端未动）。
 - **回滚**：`cp .verify-scratch/lab-web-backups/<备份>/index.html /var/www/lab/index.html`。
 

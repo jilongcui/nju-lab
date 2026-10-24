@@ -60,6 +60,15 @@ export interface AnnotationLayerProps {
    * 翻页后鼠标没动，光点也不该停在新页的旧位置上。
    */
   resetSignal?: unknown;
+  /**
+   * 正在画的线：**只带新增的点**（每帧最多一次）。讲者窗口用它把草稿实时同步到投影 ——
+   * 否则投影要等到松手才看得见线（2026-10-24 用户反馈）。
+   */
+  onDraft?: (payload: { points: { x: number; y: number }[]; color: string; width: number }) => void;
+  /** 这趟拖动结束（松手，或点数太少没成为一条线）→ 投影收起草稿 */
+  onDraftEnd?: () => void;
+  /** 观众窗口：讲者那边正在画、还没结束的那条线（只读渲染） */
+  draftStroke?: AnnotationStroke | null;
   /** 画完一条线 */
   onStroke?: (stroke: AnnotationStroke) => void;
 }
@@ -74,6 +83,9 @@ export default function AnnotationLayer({
   width = 5,
   onPointer,
   onStroke,
+  onDraft,
+  onDraftEnd,
+  draftStroke = null,
   resetSignal,
 }: AnnotationLayerProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -123,8 +135,57 @@ export default function AnnotationLayer({
     [],
   );
 
+  /** 已广播出去的点数（一趟拖动内只发增量，不重发整条线） */
+  const sentDraftPointsRef = useRef(0);
+  const draftRafRef = useRef(0);
+  const pendingDraftRef = useRef<{
+    points: { x: number; y: number }[];
+    color: string;
+    width: number;
+  } | null>(null);
+  const onDraftRef = useRef(onDraft);
+  onDraftRef.current = onDraft;
+  const onDraftEndRef = useRef(onDraftEnd);
+  onDraftEndRef.current = onDraftEnd;
+
+  /** 把这一帧攒下的新点发出去（同一帧内多次移动合并成一条消息） */
+  const broadcastDraft = useCallback(() => {
+    const points = draftRef.current;
+    if (!points) return;
+    const fresh = points.slice(sentDraftPointsRef.current);
+    if (!fresh.length) return;
+    sentDraftPointsRef.current = points.length;
+    const prev = pendingDraftRef.current;
+    pendingDraftRef.current = {
+      points: prev ? [...prev.points, ...fresh] : fresh,
+      color,
+      width,
+    };
+    if (draftRafRef.current) return;
+    draftRafRef.current = requestAnimationFrame(() => {
+      draftRafRef.current = 0;
+      const payload = pendingDraftRef.current;
+      pendingDraftRef.current = null;
+      if (payload) onDraftRef.current?.(payload);
+    });
+  }, [color, width]);
+
+  const cancelDraftFrame = useCallback(() => {
+    if (draftRafRef.current) {
+      cancelAnimationFrame(draftRafRef.current);
+      draftRafRef.current = 0;
+    }
+    pendingDraftRef.current = null;
+  }, []);
+
   // 卸载时别留着挂起的帧
-  useEffect(() => cancelPointerFrame, [cancelPointerFrame]);
+  useEffect(
+    () => () => {
+      cancelPointerFrame();
+      cancelDraftFrame();
+    },
+    [cancelPointerFrame, cancelDraftFrame],
+  );
 
   // 清屏信号（讲者窗口传当前页）：翻页就收起本地光点
   useEffect(() => {
@@ -164,9 +225,11 @@ export default function AnnotationLayer({
         const next = draftRef.current ? [...draftRef.current, point] : [point];
         draftRef.current = next;
         setDraft(next);
+        // 投影边画边长：只发新增的点（每帧最多一条）
+        broadcastDraft();
       }
     },
-    [toCanvas, broadcastPointer, tool],
+    [toCanvas, broadcastPointer, broadcastDraft, tool],
   );
 
   const handleDown = useCallback(
@@ -176,10 +239,13 @@ export default function AnnotationLayer({
       if (tool !== 'pen') return;
       drawingRef.current = true;
       draftRef.current = [point];
+      sentDraftPointsRef.current = 0;
       setDraft([point]);
+      // 落笔点立刻过去：按下后不动，投影上也能看到落点
+      broadcastDraft();
       event.preventDefault();
     },
-    [toCanvas, tool],
+    [toCanvas, broadcastDraft, tool],
   );
 
   const finishStroke = useCallback(() => {
@@ -188,12 +254,24 @@ export default function AnnotationLayer({
     const points = draftRef.current;
     draftRef.current = null;
     setDraft(null);
+    // 还没发出去的增量直接丢掉：下面要么发整条线，要么这条线不成立
+    cancelDraftFrame();
+    sentDraftPointsRef.current = 0;
     // 点太少（单击）不当作一条线 —— 那只是想指一下
     if (points && points.length > 2) onStroke?.({ points, color, width });
-  }, [color, width, onStroke]);
+    // 无论成不成线都告诉投影"草稿结束"，否则会残留半条（尤其单击那种情况）
+    onDraftEndRef.current?.();
+  }, [color, width, onStroke, cancelDraftFrame]);
 
   /** 要画出来的光点：讲者窗口用本地位置，观众窗口用广播来的位置 */
   const shownPointer = readOnly ? pointer : ownPointer ?? pointer;
+
+  /** 要画出来的"正在画的线"：讲者窗口是本地草稿，观众窗口是讲者实时传来的草稿 */
+  const shownDraft = readOnly
+    ? draftStroke
+    : draft
+      ? { points: draft, color, width }
+      : null;
 
   const toPath = (points: { x: number; y: number }[]) =>
     points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
@@ -238,13 +316,13 @@ export default function AnnotationLayer({
             strokeLinejoin="round"
           />
         ))}
-        {draft && draft.length > 1 ? (
+        {shownDraft && shownDraft.points.length > 1 ? (
           <path
             data-annotation="draft"
-            d={toPath(draft)}
+            d={toPath(shownDraft.points)}
             fill="none"
-            stroke={color}
-            strokeWidth={width}
+            stroke={shownDraft.color}
+            strokeWidth={shownDraft.width}
             strokeLinecap="round"
             strokeLinejoin="round"
           />
