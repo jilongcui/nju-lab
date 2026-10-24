@@ -262,6 +262,32 @@ curl -s -X POST http://127.0.0.1:3100/api/projects/<id>/publish -H "Authorizatio
 最后 `nju_lab_finalize_report` 从各 case 的 `output.json` 取数字自动生成 `report.md`
 （带姓名学号、图片相对路径、踩坑），学生只补结论与坑。
 
+
+---
+
+## 2.6 用脚手架起一个新实验（最快路径）
+
+```bash
+node server/fixtures/scripts/scaffold-experiment.mjs \
+  --name my-exp --title "实验：xxx" \
+  --kind classification|regression|detection|delivery \
+  [--metrics accuracy,macro_f1] [--thresholds accuracy=0.9,macro_f1=0.85] \
+  [--cases case01,case02] [--difficulty easy|medium|hard]
+```
+
+生成的就是 §2 那套完整目录，**且能直接过 `--check`**（2026-10-24 实测 classification / regression /
+delivery 三种都通过），包含：
+
+- `problem/{manifest.json,task.md,judge.md,cases/*,reference/*}` —— 断言按 `--kind`+`--thresholds` 生成；
+- `skill-template/{SKILL.md, report.md, scripts/train.py}` —— 能力边界预填、报告六节、
+  代码骨架带 TODO；
+- `README.md` —— 项目字段文案草稿 + 打包/自检/发布命令 + 实测记录区。
+
+之后按 README 里的「下一步」替换数据、写参考实现、跑 `--check` 与复验、上传绑定即可。
+
+> 改造已有旧口径的包（去实测档案、加 report.md、改 task.md）也有一份步骤清单，
+> 见项目 skill `.kimi-code/skills/create-experiment/SKILL.md`（agent 可直接照做）。
+
 ---
 
 ## 3. 判据怎么设计（最容易做错的地方）

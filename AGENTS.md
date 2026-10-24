@@ -20,7 +20,8 @@
 - 本地构件（插件 / profile / kit）：`dsh/`
 - 实验包（可直接复制改名）：`server/fixtures/<fx>/` —— **最新样板** `sql-crud`（口径钉死 + 逐字段比对）、
   `vector-search`（检索 + 对照 + 指标）、`kg-alerts`（建图 + 多跳 + 本体校验）；更早的样板见 CREATION-GUIDE §6
-- 项目 skill（可复用的 agent 操作，如更新课程章节正文）：`.kimi-code/skills/`
+- 项目 skill（可复用的 agent 操作）：`.kimi-code/skills/` —— `update-chapter`（更新章节正文）、
+  **`create-experiment`（按当前口径新建/改造实验包，含脚手架命令与验收清单）**
 
 ## 纪律
 
