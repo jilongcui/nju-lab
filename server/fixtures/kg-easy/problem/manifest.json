@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "name": "kg-easy",
+  "title": "入门实验：两条两跳查询做用药预警（知识图谱）",
+  "outputFile": "output.json",
+  "inputs": [
+    "triples.csv"
+  ],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['graph','evaluation','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "图规模报对（节点去重、边数等于三元组条数）",
+      "expr": "out.graph.n_nodes === expected.graph.n_nodes && out.graph.n_edges === expected.graph.n_edges"
+    },
+    {
+      "name": "禁忌证预警正确（两跳：患者→病 + 药→禁忌→同一病）",
+      "expr": "JSON.stringify(out.evaluation.forbidden) === JSON.stringify(expected.evaluation.forbidden)"
+    },
+    {
+      "name": "相互作用预警正确（两跳：在服→药A + A→相互作用→B + 新开医嘱B）",
+      "expr": "JSON.stringify(out.evaluation.interactions) === JSON.stringify(expected.evaluation.interactions)"
+    },
+    {
+      "name": "每条预警都带推理路径（可解释性）",
+      "expr": "Array.isArray(out.evaluation.forbidden) && Array.isArray(out.evaluation.interactions) && [...out.evaluation.forbidden, ...out.evaluation.interactions].every((a) => Array.isArray(a.path) && a.path.length >= 2 && a.path.every((x) => typeof x === 'string' && x.trim() !== ''))"
+    },
+    {
+      "name": "图与说明齐全（至少 1 张，含一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 1 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "说清推理链（notes ≥40 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 40"
+    }
+  ],
+  "requires": {
+    "python": [
+      "networkx",
+      "matplotlib"
+    ]
+  }
+}
