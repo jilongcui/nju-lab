@@ -31,6 +31,7 @@
   - **SELECT 的四个动作**：`WHERE` 筛行、`GROUP BY` 分组、聚合函数（`COUNT`/`AVG`）算每组一个数、`ORDER BY` 定顺序。
   - **HAVING 与 WHERE 的区别**：`WHERE` 在分组前筛行，`HAVING` 在分组后筛组（例如"随访 ≥2 次的人"）。
   - **类型转换**：CSV 读进来都是字符串，`systolic` 要转成整数才能比较和求平均。
+  - **去重与多列排序**：`DISTINCT` 让同一个患者只出现一次；`ORDER BY n DESC, department ASC` 表示「先按次数降序、次数相同再按科室名升序」——少写第二列时，同分科室的顺序就不稳定。
 - **description**：
   1. 读实验内容与本节的达标要求，确认四条查询的口径与排序；
   2. 用 `sqlite3` 建表并把 `visits.csv` 逐行导入（记下 `loaded.rows`）；
