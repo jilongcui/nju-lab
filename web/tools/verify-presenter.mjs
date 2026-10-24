@@ -12,6 +12,8 @@
  *   ① 讲者窗口：出现「讲者视图」按钮，点开后本窗口显示讲稿与计时
  *   ② 观众窗口：URL 带 `audience=1`、**页面里一个字讲稿都没有**、也没有放映控件
  *   ③ 翻页同步：讲者窗口翻页后，观众窗口跟到同一页
+ *   ⑤ 批注白板：画线、光点、翻页清空（两边一致）
+ *   ⑥ 性能回归：移动鼠标**不重建 deck**、观众窗口光点不丢帧（演示模式卡顿的根因，见 ⑥ 段注释）
  *
  * 用法（本地联调：后端 3100 + 前端 dev 5199）：
  *   cd web && npx vite --port 5199 --strictPort &
@@ -217,6 +219,58 @@ check('⑤ 观众窗口收到同一条线', (await countStrokes(audience)) === 1
 await presenter.mouse.move(cx + 40, cy - 30);
 await presenter.waitForTimeout(300);
 check('⑤ 观众窗口出现讲者的光标光点', await hasPointer(audience));
+
+// ⑥ 性能回归（2026-10-17 现场：MacBook 演示模式下投影上的光标严重滞后）
+//    根因不是 BroadcastChannel，而是"每移动一次鼠标就重拼一整份 deck 文档"：
+//    父组件里 pointer 是顶层 state，鼠标一动就整页重渲染，`SlideStage` 又拿到"新引用但等值"的
+//    template / slideTheme / meta → 构建 effect 重跑（实测 1 秒 22 次、约 400ms 主线程），
+//    同步消息于是排队，端到端延迟 p50 196ms / p95 369ms，30 次移动只更新 15 次。
+//    修法见 SlideStage 的 builtInputsRef（按值比输入 + 只在构建成功后记账）。
+//    这里用 SlideStage 打的 mark 数断言"不重建"，并顺带断言光点跟得上（丢帧说明又积压了）。
+const deckBuilds = (page) =>
+  page.evaluate(
+    (name) => performance.getEntriesByType('mark').filter((e) => e.name === name).length,
+    'nju-lab:deck-build',
+  );
+await audience.evaluate(() => {
+  window.__pointerUpdates = 0;
+  let last = '';
+  new MutationObserver(() => {
+    const circles = document.querySelectorAll('[data-annotation="pointer"] circle');
+    const el = circles[circles.length - 1];
+    if (!el) return;
+    const key = `${el.getAttribute('cx')},${el.getAttribute('cy')}`;
+    if (key === last) return;
+    last = key;
+    window.__pointerUpdates += 1;
+  }).observe(document.body, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ['cx', 'cy'],
+  });
+});
+await presenter.bringToFront();
+const buildsBefore = await deckBuilds(presenter);
+const MOVES = 20;
+for (let i = 0; i < MOVES; i += 1) {
+  await presenter.mouse.move(cx + Math.sin(i / 3) * 260, cy + Math.cos(i / 3) * 110);
+  await presenter.waitForTimeout(16);
+}
+await presenter.waitForTimeout(200);
+const buildsAfter = await deckBuilds(presenter);
+const pointerUpdates = await audience.evaluate(() => window.__pointerUpdates);
+check(
+  '⑥ 移动鼠标不重建 deck（演示模式卡顿的根因）',
+  // `buildsBefore > 0`：先确认这份构建真的发生过 —— 否则"0 → 0"会假装通过
+  buildsBefore > 0 && buildsAfter === buildsBefore,
+  `构建次数 ${buildsBefore} → ${buildsAfter}`,
+);
+check(
+  '⑥ 观众窗口光点跟得上（不丢帧、不积压）',
+  pointerUpdates >= MOVES * 0.7,
+  `${MOVES} 次移动 → 光点更新 ${pointerUpdates} 次`,
+);
 
 await presenter.keyboard.press('ArrowRight');
 await presenter.waitForTimeout(600);

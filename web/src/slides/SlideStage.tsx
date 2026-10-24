@@ -90,6 +90,33 @@ export interface SlideStageHandle {
   focus: () => void;
 }
 
+/**
+ * 每次 deck 构建开始时的 `performance.mark` 名。
+ * 既是排查构建耗时的锚点，也是 `web/tools/verify-presenter.mjs` 的性能断言依据
+ * （"移动鼠标不该反复重建 deck" —— 2026-10-17 现场演示模式光标严重滞后的根因）。
+ */
+export const DECK_BUILD_MARK = 'nju-lab:deck-build';
+
+/**
+ * 一次 deck 构建的输入。`slides` 等大对象按引用比，`{ baseTheme, css }` / `{ id, design }` /
+ * `{ chapter }` 这类小对象按**值**比 —— 父组件行内新建它们是无害的。
+ */
+function sameBuildInput(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const keysA = Object.keys(a as Record<string, unknown>);
+  const keysB = Object.keys(b as Record<string, unknown>);
+  if (keysA.length !== keysB.length) return false;
+  return keysA.every(
+    (key) => (a as Record<string, unknown>)[key] === (b as Record<string, unknown>)[key],
+  );
+}
+
+function sameBuildInputs(a: readonly unknown[], b: readonly unknown[]): boolean {
+  return a.length === b.length && a.every((value, index) => sameBuildInput(value, b[index]));
+}
+
 const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideStage(
   {
     slides,
@@ -151,8 +178,30 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
   const effectiveRenderer: 'semantic' | 'reveal' =
     renderer ?? (import.meta.env.VITE_SLIDES_RENDERER === 'reveal' ? 'reveal' : 'semantic');
 
+  /**
+   * **已成功构建过**的那份输入。
+   *
+   * ⚠️ 为什么需要按**值**比一次：`template` / `slideTheme` / `meta` 这类小对象最容易被父组件
+   * 写成行内字面量（`template={{ baseTheme, css }}`），于是父组件**任何** state 变化（计时器 500ms
+   * 一跳、鼠标每动一次）都会让本 effect 重跑，重跑就重拼一整份自包含 deck 文档（含 baseCss +
+   * layoutCss + 全部页面 HTML）。2026-10-24 现场实测（MacBook 演示模式）：移动鼠标 1 秒触发
+   * **22 次**重建、吃掉约 400ms 主线程 → 投影上的光标严重滞后。按值比一次即消除。
+   *
+   * ⚠️ 只在**构建成功**后记账，不能在 effect 开头就记：React StrictMode 会把 effect
+   * 挂载→卸载→再挂载，第一次的构建被 cleanup 标成 cancelled，若此时已经记账，
+   * 第二次挂载就会直接跳过 → iframe 永远不出现（实测踩到：讲者窗口一片空白、键盘也没反应）。
+   */
+  const builtInputsRef = useRef<readonly unknown[] | null>(null);
+
   // 内容/模板/配置变化 → 重建文档（重建 iframe 的 srcdoc，状态最干净）
   useEffect(() => {
+    const inputs = [
+      slides, template, config, footerText, logoDataUrl, imageDataUrls,
+      effectiveRenderer, slideTheme, meta, editable, allowNotes,
+    ];
+    if (builtInputsRef.current && sameBuildInputs(builtInputsRef.current, inputs)) return;
+    // 构建开始打一个 mark：验证脚本据此断言"鼠标移动不会反复重建 deck"（见 builtInputsRef）
+    performance.mark(DECK_BUILD_MARK);
     let cancelled = false;
     // 两条渲染路径产出的是同一种"自包含文档"，对页面其余部分完全等价。
     // 新版渲染器（版式 + vendor 主题 CSS）走**动态 import** —— 只有真的要看幻灯片才加载，
@@ -195,7 +244,10 @@ const SlideStage = forwardRef<SlideStageHandle, SlideStageProps>(function SlideS
           })();
     docPromise
       .then((doc) => {
-        if (cancelled || lastDocRef.current === doc) return;
+        if (cancelled) return;
+        // 构建成功才记账（见 builtInputsRef 的注释：StrictMode 双挂载时首次构建会被取消）
+        builtInputsRef.current = inputs;
+        if (lastDocRef.current === doc) return;
         lastDocRef.current = doc;
         reloadAttemptsRef.current = 0;
         buildSeqRef.current += 1;

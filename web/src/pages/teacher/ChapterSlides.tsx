@@ -199,6 +199,8 @@ export default function ChapterSlides() {
   /** 批注（白板）：已画的线、指针位置、画笔设置 —— 讲者窗口操作，观众窗口只渲染 */
   const [strokes, setStrokes] = useState<AnnotationStroke[]>([]);
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
+  /** 批注清屏信号（翻页/手动清除 +1）：讲者窗口据此收起本地光点 */
+  const [annotationReset, setAnnotationReset] = useState(0);
   const [tool, setTool] = useState<AnnotationTool>('pen');
   // 显式标注类型：PEN_COLORS/PEN_WIDTHS 是 as const，不标注会被推成字面量类型
   const [penColor, setPenColor] = useState<string>(PEN_COLORS[0].value);
@@ -1176,6 +1178,25 @@ export default function ChapterSlides() {
   const currentIndexRef = useRef(0);
   const totalPages = previewSlides.length;
 
+  /**
+   * 传给 `SlideStage` 的三个"配置对象"必须保持引用稳定。
+   *
+   * 它们是行内字面量最自然的写法，但 `SlideStage` 把 `template` / `slideTheme` / `meta` 当构建输入：
+   * 引用一变就重拼整份 deck 文档。本组件里每次鼠标移动（`setPointer`）、计时器每 500ms
+   * （`setElapsedMs`）都会触发一次 render —— 若在这里行内新建对象，演示模式下每秒会重建几十次
+   * deck（2026-10-24 MacBook 实测：移动鼠标 1 秒 22 次、~400ms 主线程），投影上的光标于是严重滞后。
+   * `SlideStage` 内部也做了按值比较兜底，这里保持引用稳定是更省事的第一道。
+   */
+  const stageTemplate = useMemo(
+    () => ({ baseTheme: currentTemplate?.baseTheme ?? 'simple', css: currentTemplate?.css ?? '' }),
+    [currentTemplate?.baseTheme, currentTemplate?.css],
+  );
+  const stageSlideTheme = useMemo(
+    () => ({ id: currentTemplate?.id, design: currentTemplate?.design }),
+    [currentTemplate?.id, currentTemplate?.design],
+  );
+  const stageMeta = useMemo(() => ({ chapter: chapter?.title ?? '' }), [chapter?.title]);
+
   const titleOf = (i: number) =>
     (previewSlides[i] as { title?: string } | undefined)?.title ?? '';
   /** 计时显示（mm:ss） */
@@ -1223,12 +1244,18 @@ export default function ChapterSlides() {
   const clearAnnotations = useCallback((broadcast = true) => {
     setStrokes([]);
     setPointer(null);
+    setAnnotationReset((n) => n + 1);
     if (broadcast) channelRef.current?.send({ kind: 'clear' });
   }, []);
 
-  /** 把讲者窗口这边的指针/笔画广播给观众窗口 */
+  /**
+   * 把讲者窗口这边的指针/笔画广播给观众窗口。
+   *
+   * ⚠️ 指针**不写进本组件的 state**（只广播）：讲者窗口里的光点由 `AnnotationLayer` 自己维护。
+   * 走本组件 state 的话，一次鼠标移动就是整页重渲染，`SlideStage` 会被反复惊动 ——
+   * 演示模式下最贵的操作（重拼整份 deck）因此被每帧触发一次（2026-10-24 实测）。
+   */
   const sendPointer = useCallback((point: { x: number; y: number } | null) => {
-    setPointer(point);
     if (point) channelRef.current?.send({ kind: 'pointer', x: point.x, y: point.y });
     else channelRef.current?.send({ kind: 'pointer-off' });
   }, []);
@@ -1289,21 +1316,46 @@ export default function ChapterSlides() {
   // 观众窗口：纯跟随 —— 收到讲者的页码就跳过去，自己不做任何判定
   useEffect(() => {
     if (!isAudience) return;
+    /**
+     * 指针消息合并到帧：讲者在 120Hz 触控板上移动时消息比投影屏刷新还密，
+     * 逐条 setState 会让渲染队列越排越长（表现就是"投影上的光标越走越落后"）。
+     * 一帧只画一次、且只画**最新**位置 —— 中间位置没人看得见，直接丢。
+     */
+    let pendingPointer: { x: number; y: number } | null = null;
+    let pointerFrame = 0;
+    const cancelPointer = () => {
+      pendingPointer = null;
+      if (pointerFrame) {
+        cancelAnimationFrame(pointerFrame);
+        pointerFrame = 0;
+      }
+    };
+    const schedulePointer = (point: { x: number; y: number }) => {
+      pendingPointer = point;
+      if (pointerFrame) return;
+      pointerFrame = requestAnimationFrame(() => {
+        pointerFrame = 0;
+        setPointer(pendingPointer);
+      });
+    };
     const channel = createPresentChannel(chapterId);
     const off = channel.onMessage((msg) => {
       if (msg.kind === 'index') {
         stageRef.current?.goto(msg.index);
         // 翻页 = 每页批注独立（讲者那边也会发 clear，这里兜住消息顺序）
         setStrokes([]);
+        cancelPointer();
         setPointer(null);
       } else if (msg.kind === 'pointer') {
-        setPointer({ x: msg.x, y: msg.y });
+        schedulePointer({ x: msg.x, y: msg.y });
       } else if (msg.kind === 'pointer-off') {
+        cancelPointer();
         setPointer(null);
       } else if (msg.kind === 'stroke') {
         setStrokes((prev) => [...prev, msg.stroke]);
       } else if (msg.kind === 'clear') {
         setStrokes([]);
+        cancelPointer();
         setPointer(null);
       }
     });
@@ -1313,6 +1365,7 @@ export default function ChapterSlides() {
     );
     return () => {
       timers.forEach((timer) => window.clearTimeout(timer));
+      cancelPointer();
       off();
       channel.close();
     };
@@ -1352,12 +1405,9 @@ export default function ChapterSlides() {
         deckHtmlRef.current = doc;
       }}
       slides={previewSlides}
-      template={{
-        baseTheme: currentTemplate?.baseTheme ?? 'simple',
-        css: currentTemplate?.css ?? '',
-      }}
-      slideTheme={{ id: currentTemplate?.id, design: currentTemplate?.design }}
-      meta={{ chapter: chapter.title }}
+      template={stageTemplate}
+      slideTheme={stageSlideTheme}
+      meta={stageMeta}
       config={deck?.config}
       footerText={currentTemplate?.design?.footerText ?? null}
       logoDataUrl={
@@ -1414,6 +1464,7 @@ export default function ChapterSlides() {
           <AnnotationLayer
             strokes={strokes}
             pointer={pointer}
+            resetSignal={annotationReset}
             tool={tool}
             color={penColor}
             width={penWidth}

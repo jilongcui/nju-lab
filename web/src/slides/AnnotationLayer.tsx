@@ -14,7 +14,7 @@
  * 讲者视图里翻页靠键盘与顶栏按钮，鼠标专门用来讲解（2026-10-17 用户确认「默认接管」）。
  * `readOnly`（观众窗口）时不接管鼠标，只渲染收到的东西。
  */
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { AnnotationStroke } from './presentChannel';
 
 /** deck 画布尺寸（与 semantic/stage.ts 的 CANVAS 一致） */
@@ -53,8 +53,13 @@ export interface AnnotationLayerProps {
   tool?: AnnotationTool;
   color?: string;
   width?: number;
-  /** 指针移动（节流后） */
+  /** 指针移动（每帧最多一次，见 `handleMove`）；`null` = 离开了幻灯片 */
   onPointer?: (point: { x: number; y: number } | null) => void;
+  /**
+   * 外部给的"清屏信号"（讲者窗口传一个递增计数，翻页/手动清除时 +1）。值一变就收起本地光点 ——
+   * 翻页后鼠标没动，光点也不该停在新页的旧位置上。
+   */
+  resetSignal?: unknown;
   /** 画完一条线 */
   onStroke?: (stroke: AnnotationStroke) => void;
 }
@@ -69,6 +74,7 @@ export default function AnnotationLayer({
   width = 5,
   onPointer,
   onStroke,
+  resetSignal,
 }: AnnotationLayerProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState<{ x: number; y: number }[] | null>(null);
@@ -79,7 +85,53 @@ export default function AnnotationLayer({
    */
   const draftRef = useRef<{ x: number; y: number }[] | null>(null);
   const drawingRef = useRef(false);
-  const lastPointerSentRef = useRef(0);
+  /**
+   * 讲者窗口的光点位置**留在本组件内部**，不走父组件 state。
+   *
+   * 走父 state 的代价：一次鼠标移动 = 父组件（整页）重渲染，而父组件里挂着 `SlideStage` ——
+   * 只要它的构建输入引用变了就会重拼整份 deck 文档（2026-10-24 现场实测：移动鼠标 1 秒触发
+   * 22 次重建、~400ms 主线程，投影光标严重滞后）。光点只是本层的一个圆点，没必要惊动整页。
+   */
+  const [ownPointer, setOwnPointer] = useState<{ x: number; y: number } | null>(null);
+  /** 待发送的指针位置 + 已排的帧（同一帧内多次移动只广播最后一次） */
+  const pendingPointerRef = useRef<{ x: number; y: number } | null>(null);
+  const pointerRafRef = useRef(0);
+  /** 回调走 ref：父组件传内联箭头函数不会让 handleMove 每次重建 */
+  const onPointerRef = useRef(onPointer);
+  onPointerRef.current = onPointer;
+
+  const cancelPointerFrame = useCallback(() => {
+    if (pointerRafRef.current) {
+      cancelAnimationFrame(pointerRafRef.current);
+      pointerRafRef.current = 0;
+    }
+    pendingPointerRef.current = null;
+  }, []);
+
+  /** 每帧最多广播一次（浏览器的 mousemove 频率跟着显示器走，MacBook 触控板可达 120Hz） */
+  const broadcastPointer = useCallback(
+    (point: { x: number; y: number }) => {
+      pendingPointerRef.current = point;
+      if (pointerRafRef.current) return;
+      pointerRafRef.current = requestAnimationFrame(() => {
+        pointerRafRef.current = 0;
+        const latest = pendingPointerRef.current;
+        pendingPointerRef.current = null;
+        if (latest) onPointerRef.current?.(latest);
+      });
+    },
+    [],
+  );
+
+  // 卸载时别留着挂起的帧
+  useEffect(() => cancelPointerFrame, [cancelPointerFrame]);
+
+  // 清屏信号（讲者窗口传当前页）：翻页就收起本地光点
+  useEffect(() => {
+    if (readOnly) return;
+    setOwnPointer(null);
+    cancelPointerFrame();
+  }, [resetSignal, readOnly, cancelPointerFrame]);
 
   /**
    * 屏幕坐标 → deck 画布坐标。与 deck 的缩放规则一致：
@@ -104,19 +156,17 @@ export default function AnnotationLayer({
     (event: React.MouseEvent) => {
       const point = toCanvas(event.clientX, event.clientY);
       if (!point) return;
-      // 指针广播节流到 ~25fps：跨窗口消息不必逐像素发
-      const now = Date.now();
-      if (now - lastPointerSentRef.current > 40) {
-        lastPointerSentRef.current = now;
-        onPointer?.(point);
-      }
+      // 本地光点立即跟上（本项目自己的 state，代价只有一个 SVG 圆点）
+      setOwnPointer(point);
+      // 广播合并到下一帧：跨窗口消息不必逐像素发，也不能比屏幕刷新还密
+      broadcastPointer(point);
       if (drawingRef.current && tool === 'pen') {
         const next = draftRef.current ? [...draftRef.current, point] : [point];
         draftRef.current = next;
         setDraft(next);
       }
     },
-    [toCanvas, onPointer, tool],
+    [toCanvas, broadcastPointer, tool],
   );
 
   const handleDown = useCallback(
@@ -142,6 +192,9 @@ export default function AnnotationLayer({
     if (points && points.length > 2) onStroke?.({ points, color, width });
   }, [color, width, onStroke]);
 
+  /** 要画出来的光点：讲者窗口用本地位置，观众窗口用广播来的位置 */
+  const shownPointer = readOnly ? pointer : ownPointer ?? pointer;
+
   const toPath = (points: { x: number; y: number }[]) =>
     points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
 
@@ -154,7 +207,9 @@ export default function AnnotationLayer({
       onMouseLeave={() => {
         if (readOnly) return;
         finishStroke();
-        onPointer?.(null);
+        setOwnPointer(null);
+        cancelPointerFrame();
+        onPointerRef.current?.(null);
       }}
       style={{
         position: 'absolute',
@@ -194,10 +249,10 @@ export default function AnnotationLayer({
             strokeLinejoin="round"
           />
         ) : null}
-        {pointer ? (
+        {shownPointer ? (
           <g data-annotation="pointer">
-            <circle cx={pointer.x} cy={pointer.y} r={26} fill="rgba(255,59,48,.22)" />
-            <circle cx={pointer.x} cy={pointer.y} r={9} fill="#ff3b30" stroke="#fff" strokeWidth={3} />
+            <circle cx={shownPointer.x} cy={shownPointer.y} r={26} fill="rgba(255,59,48,.22)" />
+            <circle cx={shownPointer.x} cy={shownPointer.y} r={9} fill="#ff3b30" stroke="#fff" strokeWidth={3} />
           </g>
         ) : null}
       </svg>

@@ -5,6 +5,34 @@
 
 ## 0. 一句话现状
 
+**2026-10-24（演示模式光标同步从 p95 369ms 修到 31ms：鼠标移动不再重建 deck）—— ✅ 已改并验证（待部署）**
+
+- **现象（用户）**：在现场用 MacBook 演示时，演示模式里**鼠标同步非常慢** —— 投影上的光点明显追不上手。
+- **根因（实测，不是 BroadcastChannel 的锅）**：
+  · 讲者窗口把指针写进 `ChapterSlides` 顶层 state → 每次移动整页重渲染；
+  · 页面里挂着的 `SlideStage` 把 `template` / `slideTheme` / `meta` 当构建输入，而这三者都是**行内字面量**
+    → 引用每次都变 → 构建 effect 每帧重拼一整份自包含 deck 文档（baseCss + layoutsCss + 全部页面 HTML）；
+  · 实测（`verify-presenter` 场景，第 1 章 15 页）：**移动鼠标 1 秒触发 22 次重建、约 425ms 主线程**；
+    观众窗口同样 20 次 / 84ms（它也是同一个页面组件）。计时器每 500ms 一跳也在触发重建（静置 2s 4 次）。
+  · 接收端逐条 `setState` → 渲染队列越排越长 → **端到端 p50 196ms / p95 369ms，30 次移动只更新 15 次**
+    （丢一半、另一半越拖越久）。MacBook 触控板事件率更高（120Hz），比 Linux 鼠标更容易踩满。
+- **改法**：
+  · `SlideStage`：构建输入按**值**浅比较（`sameBuildInputs`），相同就跳过；**只在构建成功后记账**
+    （`builtInputsRef`）。顺带在构建开始打 `performance.mark('nju-lab:deck-build')` 作可观测锚点。
+  · `ChapterSlides`：`stageTemplate` / `stageSlideTheme` / `stageMeta` 用 `useMemo` 稳定引用。
+  · `AnnotationLayer`：讲者窗口的光点位置**留在组件内部**（不再走父 state），广播用 `requestAnimationFrame`
+    合并到每帧最多一条；翻页/清除时用 `resetSignal` 收起本地光点。
+  · 观众窗口：指针消息合并到帧、只画最新位置（积压直接丢），`pointer-off`/`clear`/翻页会取消挂起的帧。
+- **踩坑**：第一版把 `builtInputsRef` 在 effect **开头**记账 → React StrictMode 的"挂载→卸载→再挂载"
+  让首次构建被 cleanup 标成 cancelled，第二次挂载见"已记账"直接跳过 → **iframe 永不出现**
+  （讲者窗口空白、键盘无反应），`verify-presenter` 6 项失败把它抓出来；改成"构建成功才记账"即恢复。
+- **验证（本地 dev 5199 + 后端 3100）**：`verify-presenter.mjs` **22/22**（新增 ⑥ 两条性能断言：
+  移动鼠标不重建 deck、20 次移动光点更新 ≥14 次；同一脚本在旧代码上是 20/22）；
+  实测移动 40 次：重建 22 次/425ms → **0 次/0ms**；30 次移动端到端延迟 p50 196ms/p95 369ms → **p50 31ms/p95 30ms**，
+  更新次数 15 → 30。另：`assert-semantic` 115/115、`verify-slides` 全通过、`verify-notes-privacy` 6/6、`tsc + vite build` 通过。
+- **部署**：`bash deploy/deploy-web-lab.sh`（只改前端，后端未动）。
+- **回滚**：`cp .verify-scratch/lab-web-backups/<备份>/index.html /var/www/lab/index.html`。
+
 **2026-10-23（决策：**暂不支持官方桌面版**）—— 📝 只记录，不动代码**
 
 - **背景**：老师问"现在安装的 dsh 是什么可执行文件？好像有 desktop 桌面版了"。
