@@ -13,7 +13,7 @@
 
 - 运行态事实、服务与部署现状：`HANDOFF.md`
 - **下一批实验的落地计划（还有哪几章没实验、按什么批次做）**：[`docs/PLAN-2026-10-experiment-roadmap.md`](docs/PLAN-2026-10-experiment-roadmap.md)
-- **出题教师 —— 要加新实验先看这份**：[`docs/EXPERIMENT-CREATION-GUIDE.md`](docs/EXPERIMENT-CREATION-GUIDE.md)：创建实验的完整思路（为什么做这一系列实验、从需求推导题目的顺序、十一步照做含命令、判据分层与防退化、实测踩过的坑、发布前检查清单）
+- **出题教师 —— 要加新实验先看这份**：[`docs/EXPERIMENT-CREATION-GUIDE.md`](docs/EXPERIMENT-CREATION-GUIDE.md)：创建实验的完整思路（为什么做这一系列实验、从需求推导题目的顺序、十一步照做含命令、判据分层与防退化、**报告口径 §2.5：只填 report.md、SKILL.md 不留文档 TODO**、实测踩过的坑、发布前检查清单）
 - 设计框架 `docs/EXPERIMENT-DESIGN-FRAMEWORK.md`、实验包规范 `docs/EXPERIMENT-PACKAGE-SPEC.md`
 - 客户端设计：`nju-lab-client-design.md`；其他设计：`docs/DESIGN-*.md`
 - 验收记录：`docs/ACCEPTANCE-*.md`（**历史快照，勿改**）

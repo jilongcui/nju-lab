@@ -14,7 +14,7 @@
 | 材料 | 谁看 | 作用 |
 |---|---|---|
 | **题目包 ZIP**（仓库里叫 `problem/` → `problem.zip`） | 学生（claim 时下载）+ 复验容器（只读挂载） | **标准**：题面（`task.md`）、评分细则（`judge.md`）、IO 契约（`manifest.json`）、用例（`cases/`：输入 + 期望输出） |
-| **Skill 模板 ZIP**（`skill-template/` → `skill-template.zip`） | 学生（claim 时下载） | **起点**：`SKILL.md` 骨架 + `scripts/` + `references/`，关键处留 TODO |
+| **Skill 模板 ZIP**（`skill-template/` → `skill-template.zip`） | 学生（claim 时下载） | **起点**：`SKILL.md`（能力边界预填）+ `report.md` 报告模板 + `scripts/` + `references/`；**代码**里的 TODO 保留，**文档**里不留 TODO |
 | **参考实现**（`problem/reference/`） | **学生**（随题目包下发） | **学习示范**：一份写完的 Skill，学生先读后仿；同时用于教师「题目可解性」自检 |
 
 上传两个 ZIP 各拿一个 `fileId`，在「项目详情 → 编辑项目信息」里分别绑到
@@ -53,9 +53,10 @@ skill-template/          ← 可以包一层顶层目录，但只允许一层
 
 1. **必须能唯一定位到一层 `SKILL.md`**（根目录，或唯一子目录里）。否则学生端领取解压、
    学生提交自检、平台复验三处都会报 `no unique SKILL.md layer`。
-2. 模板里的 `TODO` 是**故意留的**：平台会扫 `SKILL.md` 的 `## 能力边界…` 小节
-   （非空且不含 `TODO` 才算填写）与踩坑记录条数，这两项进复验产物 `skillInfo`，
-   是 rubric 里「能力边界填写质量」等维度的依据。所以模板要保留这两节的标题结构。
+2. 模板里的 `TODO` **只留在代码里**（`scripts/*.py` 的实现处）；**文档里不留**：
+   平台**不检查 `SKILL.md` 的内容**，只判断 `report.md` 是否齐全（`reportComplete`：
+   自测时间 + 两个 case 的表格行有数字 + 踩坑记录 ≥1 条），结果进复验产物的 `dossierSnapshot`。
+   所以模板必须带一份 `report.md`，且列与该实验的 `metrics` 对齐（见 CREATION-GUIDE §2.5）。
 3. 打包：zip 根即 `SKILL.md`（`cd skill-template && zip -qr ../skill-template.zip .`）。
 
 ## 3. 题目包 ZIP（题面 + 判据 + 用例）
@@ -233,7 +234,8 @@ curl -s http://127.0.0.1:3100/api/files -X POST -H "Authorization: Bearer $TOKEN
 
 ## 8. 自查清单
 
-- [ ] 模板能唯一定位到一层 `SKILL.md`；`SKILL.md` 有「能力边界」与「实测档案/踩坑记录」小节结构
+- [ ] 模板能唯一定位到一层 `SKILL.md`；`SKILL.md` 有「能力边界」小节（预填、无 TODO）
+- [ ] 模板含 `report.md`（六节结构，列与 `metrics` 一致，第 4 节是踩坑记录）
 - [ ] `cases/*/` 的输入与 `expected.*` 齐全；`expected` 用参考实现算出并**独立复核**过
 - [ ] `task.md` 自包含（不看 Skill 也能照做），口径与 `judge.md`、`expected` 完全一致
 - [ ] `manifest.json` 的 `outputFile` 与 `task.md`/`expected` 一致；`requires` 列的库在 §4 预装集内

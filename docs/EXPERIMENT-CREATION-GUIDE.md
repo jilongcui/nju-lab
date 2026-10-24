@@ -23,8 +23,8 @@
    **增删改查** → 验证查询（JOIN / 相似度 / 多跳）→ 结论」—— 后者尤其要强调
    **运行环境必须由脚本可复现地搭出来**（容器里没有现成的数据库服务，也没有外网）；
    智能体/技能类（要交付 Skill / 工具调用 / 记忆策略）走「看需求 → 摸清材料与判定口径 → **搭最小闭环**
-   （`SKILL.md` 的 description + `scripts/` 里的确定性计算）→ 逐个模块跑一遍 → 用例自测并补齐
-   「能力边界 / 实测档案」→ 结论」—— 这一类尤其要强调三件事：**description 是触发路由**
+   （`SKILL.md` 的 description + `scripts/` 里的确定性计算）→ 逐个模块跑一遍 → 用例自测并记下踩坑
+   → 结论（报告由工具生成）」—— 这一类尤其要强调三件事：**description 是触发路由**
    （写清"什么场景不适用"）、**确定性任务下沉给脚本**（边界值最容易判错）、
    **安全边界要落成交付物字段**（平台没有 hooks 运行时，拦截就用输出字段 + 结论里的提示来体现）。
 3. **题目必须应用驱动**：有真实业务需求 + 达标线，而不是"练某个 API"。
@@ -85,7 +85,8 @@ server/fixtures/<fx>/
       SKILL.md
       scripts/train.py
   skill-template/           # 起点骨架（下发给学生）
-    SKILL.md                #   能力边界 / 实测档案（学生要补）
+    SKILL.md                #   能力边界（预填；平台不检查）— 文档里不留 TODO
+    report.md               #   实验报告模板（学生只填数字；见 §2.5）
     scripts/train.py        #   只留 TODO
 ```
 
@@ -175,7 +176,8 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD/server/fixtures/<fx>:/w" \
 ### 步骤 9 · 写 `skill-template/`（起点骨架）
 
 `scripts/train.py` 只留两处 TODO（读数据 + 串联流程），其余靠学生自己写；
-`SKILL.md` 留"能力边界""实测档案"等由学生填写的段落，并在开头给他**六步流程**与材料导航。
+`SKILL.md` 的「能力边界」**预填成可用的默认表述、不要留文档 TODO**（平台不检查这一节）；
+学生的过程记录全部落在 `report.md`（模板见 §2.5），并在开头给他**六步流程**与材料导航。
 
 ### 步骤 10 · 打包 + 自检 + 复验
 
@@ -228,6 +230,37 @@ curl -s -X POST http://127.0.0.1:3100/api/projects/<id>/publish -H "Authorizatio
 同一知识点做多档时，**每档一个项目**（各自独立的题目包与 rubric），别把三档塞进一份题目包。
 
 `description` 建议逐条重复六步并注明 **② ⑤ 要画图**；`objectives` / `background` 用学生看得懂的大白话。
+
+
+---
+
+## 2.5 报告口径（2026-10-24 起，**所有实验统一**）
+
+学生的过程记录**只写 `report.md`**，`SKILL.md` 不再要学生填（平台也不检查它的内容）。
+平台按 `report.md` 判"过程项齐全"：**自测时间 + 两个 case 的表格行里有数字 + 踩坑记录 ≥1 条**。
+
+**模板（`skill-template/report.md`）统一六节**，列按该实验的 `metrics` 定制：
+
+| 实验类型（按 output.json 的 metrics） | 报告表格列 |
+| --- | --- |
+| 分类（`accuracy` / `macro_f1`） | case / accuracy / macro F1 / 是否达标 |
+| 回归（`mae` / `r2` / `rmse`） | case / MAE / 基线 MAE / MAE÷基线 / 是否达标 |
+| 二分类检出（`recall` / `precision`） | case / recall / precision / accuracy / 是否达标 |
+| 检索（`recall_at_*`） | case / 各口径 recall / 是否达标 |
+| 交付型（无统一指标：SQL / 图谱 / 问答） | case / 交付项 / 结果 / 是否达标 |
+
+六节固定为：**1 自测概况**（学生姓名/学号/实验名称/自测时间/方式）→ **2 各 case 结果**（上表）→
+**3 基线对照** → **4 踩坑记录（每条一行，平台按行计数）** → **5 结论** → **6 产出图**（文件名 + 一句结论）。
+
+出题时要做的三件事：
+
+1. 模板里**只留空格与占位**，不要留 `TODO：`（那是"待填文档"的旧口径）；
+2. `task.md` 的交付句写"**报告会由工具整理进 `report.md`，不需要改 `SKILL.md`**"；
+3. 参考实现（`problem/reference/`）里若原本有"实测档案"示范 → 放到 `reference/report.md`。
+
+**学生侧怎么用**（插件已实现，出题时不用管）：学员模式一次一步、每步停下等确认；
+最后 `nju_lab_finalize_report` 从各 case 的 `output.json` 取数字自动生成 `report.md`
+（带姓名学号、图片相对路径、踩坑），学生只补结论与坑。
 
 ---
 
@@ -289,7 +322,8 @@ judge 的 `max_tokens` 已调到 2048 并有短 JSON 重试 —— 别把判据�
 - [ ] **防退化**：两个偷懒解都过不了（算过或测过）
 - [ ] 题干六步齐全、每步都指到报告字段；交付格式与断言一致
 - [ ] 图标签为英文；`takeaway` 的数字与 `metrics` 自洽
-- [ ] 骨架只留 TODO；`SKILL.md` 有填写指引与材料导航
+- [ ] 骨架的**代码** TODO 保留（配原理一句 + 最小示例）；`SKILL.md` **不留文档 TODO**（能力边界预填）
+- [ ] `skill-template/report.md` 存在，列与 `task.md` 的 `metrics` 一致（见 §2.5）
 - [ ] `README.md` 补上本次实测记录（含日期与实测数值）
 - [ ] 平台：两个包已上传并绑定、`description` / `objectives` / `background` 是新版、已 publish
 - [ ] 平台：**`content`（实验内容）已填**（= task.md 的业务背景 + 你的任务；学生详情页首屏就看它）
