@@ -1,0 +1,42 @@
+{
+  "n_rows": 24,
+  "query_results": {
+    "q1_high_bp": [
+      "P01",
+      "P02",
+      "P03",
+      "P06",
+      "P07",
+      "P08",
+      "P10",
+      "P14",
+      "P15",
+      "P18"
+    ],
+    "q2_by_department": [
+      {
+        "department": "全科",
+        "n": 9
+      },
+      {
+        "department": "心内科",
+        "n": 7
+      },
+      {
+        "department": "内分泌科",
+        "n": 4
+      },
+      {
+        "department": "肾内科",
+        "n": 4
+      }
+    ],
+    "q3_avg_systolic": 139.2,
+    "q4_followup_twice": [
+      "P01",
+      "P02",
+      "P05",
+      "P10"
+    ]
+  }
+}

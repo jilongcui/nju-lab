@@ -1,0 +1,4 @@
+query_id,text,kind
+q1,胸痛伴出汗,same_words
+q2,喘不上气，晚上躺不平,paraphrase
+q3,皮疹瘙痒两周,irrelevant

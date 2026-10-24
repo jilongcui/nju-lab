@@ -1,0 +1,4 @@
+query_id,text,kind
+q1,胸闷、心慌,same_words
+q2,没力气，活动就喘,paraphrase
+q3,牙龈出血三天,irrelevant

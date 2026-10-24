@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "name": "vector-easy",
+  "title": "入门实验：按主诉找相似病例（向量检索 · 余弦 + Top-3）",
+  "outputFile": "output.json",
+  "inputs": [
+    "docs.csv",
+    "queries.csv",
+    "concepts.json"
+  ],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['index','retrieval','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "向量维度与语料条数按词表报对",
+      "expr": "out.index.dim === expected.index.dim && out.index.n_docs === expected.index.n_docs"
+    },
+    {
+      "name": "三条查询的 Top-K 文档与口径一致（同分按 doc_id 升序）",
+      "expr": "JSON.stringify(out.retrieval.map((r) => [r.query_id, r.top_k.map((x) => x.doc_id)])) === JSON.stringify(expected.retrieval.map((r) => [r.query_id, r.top_k.map((x) => x.doc_id)]))"
+    },
+    {
+      "name": "相似度分数与口径一致（容差 1e-3）",
+      "expr": "out.retrieval.length === expected.retrieval.length && out.retrieval.every((r, i) => r.top_k.length === expected.retrieval[i].top_k.length && r.top_k.every((x, j) => Math.abs(x.score - expected.retrieval[i].top_k[j].score) < 0.001))"
+    },
+    {
+      "name": "结果按相似度降序",
+      "expr": "out.retrieval.every((r) => Array.isArray(r.top_k) && r.top_k.every((x, i, a) => typeof x.score === 'number' && (i === 0 || a[i - 1].score >= x.score)))"
+    },
+    {
+      "name": "完全不相关的查询返回空（这是本实验要看到的现象）",
+      "expr": "(() => { const q = out.retrieval.find((r) => r.kind === 'irrelevant'); return !!q && Array.isArray(q.top_k) && q.top_k.length === 0 })()"
+    },
+    {
+      "name": "图与说明齐全（至少 1 张，含一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 1 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "说清机制（notes ≥40 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 40"
+    }
+  ],
+  "requires": {
+    "python": [
+      "matplotlib"
+    ]
+  }
+}

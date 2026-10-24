@@ -138,6 +138,32 @@
 - **回滚**：`WORKSPACE_IMAGE` 改回 `pkg13` + `npm run build` + kill；
   前端 `cp .verify-scratch/lab-web-backups/20261023-072934/index.html /var/www/lab/index.html`。
 
+**2026-10-24（新增两个 easy 实验：关系数据库 / 向量数据库，挂在对应章节）—— ✅ 已上线**
+
+- **需求（用户）**：按「关系数据库」「向量数据库」两章的**课程技术与动手环节**，各设计一个**容易档**实验，
+  简单易操作、贴合我们的实验环境。
+- **依据**：关系数据库章动手实践 = 跑通示例 SQL → 改写条件 → `COUNT`/`AVG`/`GROUP BY` 分组统计；
+  向量数据库章动手实践 = 亲手算一次余弦相似度 → 语义检索演示 → 同词/同义/不相关三种查询对照。
+- **`db-easy`（血压随访记录查一查 · SQL · 单表 · 容易）**：一张 `visits` 表（case01 20 行 / case02 24 行），
+  四条查询（过滤去重 / `GROUP BY` + 两种排序 / `AVG` 保留 1 位 / `HAVING COUNT(*)>=2`），
+  只用 Python 自带 `sqlite3`，不装任何东西；产出 `output.json` + 一张科室次数柱状图。
+  比中等档 `sql-crud` 少了 JOIN / 外键 / 清洗。
+- **`vector-easy`（按主诉找相似病例 · 向量检索 · 容易）**：10 篇主诉 + 8 维概念词表（含同义词表）+ 3 条查询
+  （同词 / 同义改写 / 完全不相关）；口径写死（同义词按长度降序归一 → 概念计数 → 余弦 → Top-3，
+  只保留 >0、同分按 `doc_id` 升序、分数 4 位）；**不相关查询必须返回空**是本实验要看到的现象。
+  比中等档 `vector-search` 少了 BM25 对照 / CRUD / 科室过滤。
+- **判据**：确定性断言逐字段比对（`db-easy` 9 条 / `vector-easy` 8 条），语义判据看 notes 有没有"自己写的"机制说明与图是否看图说话。
+- **验证**：
+  · 两个包 `--check` 通过（`dependencyCheck.ok`、`reportSource=report.md`）；
+  · **参考实现复验 2/2**（复验镜像 `pkg8`，`successRate=1`，硬性断言 9/9 与 8/8）；
+  · 学生 `student1` 视角：两个项目 `pending` + `unlocked=true`，分别挂在「关系数据库」「向量数据库」章。
+- **平台**：项目 `c11441f1-1bf0-4c6b-a425-23d310daf637`（db-easy）、
+  `083e70bd-bb7a-4a21-8204-129d89ee8ce2`（vector-easy），均 `easy` + `published`，
+  `rubric = 复验通过率 50 / 报告与踩坑记录 30 / 判据语义项 20`；两个包已上传并绑定
+  （示范报告 `reference/report.md` 已改成模板结构后重传）。
+- **出题方法**：这两个包就是 `create-experiment` skill + `scaffold-experiment.mjs` 的第一次实战，
+  产物结构、`--check`、复验一条链路走通。
+
 **2026-10-24（全部 22 个实验统一到 report.md 口径；自动/手动模式对全部实验生效）—— ✅ 已上线**
 
 - **需求（用户）**："对所有的实验都按照这种新的口径来做"，并认可自动/手动两种节奏。

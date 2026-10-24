@@ -1,0 +1,45 @@
+{
+  "index": {
+    "dim": 8,
+    "n_docs": 10
+  },
+  "retrieval": [
+    {
+      "query_id": "q1",
+      "kind": "same_words",
+      "top_k": [
+        {
+          "doc_id": "D01",
+          "score": 0.7071
+        },
+        {
+          "doc_id": "D03",
+          "score": 0.7071
+        },
+        {
+          "doc_id": "D09",
+          "score": 0.5
+        }
+      ]
+    },
+    {
+      "query_id": "q2",
+      "kind": "paraphrase",
+      "top_k": [
+        {
+          "doc_id": "D08",
+          "score": 1.0
+        },
+        {
+          "doc_id": "D10",
+          "score": 0.5774
+        }
+      ]
+    },
+    {
+      "query_id": "q3",
+      "kind": "irrelevant",
+      "top_k": []
+    }
+  ]
+}

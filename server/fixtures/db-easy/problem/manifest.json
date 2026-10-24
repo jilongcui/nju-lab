@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "name": "db-easy",
+  "title": "入门实验：血压随访记录查一查（SQL · 单表）",
+  "outputFile": "output.json",
+  "inputs": [
+    "visits.csv"
+  ],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['schema','loaded','query_results','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "真的把数据导进去了（行数与参考一致）",
+      "expr": "out.loaded.rows === expected.n_rows"
+    },
+    {
+      "name": "q1 血压超标患者名单正确（过滤 + 去重 + 排序）",
+      "expr": "JSON.stringify(out.query_results.q1_high_bp) === JSON.stringify(expected.query_results.q1_high_bp)"
+    },
+    {
+      "name": "q2 各科室随访次数正确（GROUP BY + 两种排序）",
+      "expr": "JSON.stringify(out.query_results.q2_by_department) === JSON.stringify(expected.query_results.q2_by_department)"
+    },
+    {
+      "name": "q3 平均收缩压正确（AVG，保留 1 位小数）",
+      "expr": "typeof out.query_results.q3_avg_systolic === 'number' && Math.abs(out.query_results.q3_avg_systolic - expected.query_results.q3_avg_systolic) < 0.05"
+    },
+    {
+      "name": "q4 随访 ≥2 次的患者正确（GROUP BY + HAVING）",
+      "expr": "JSON.stringify(out.query_results.q4_followup_twice) === JSON.stringify(expected.query_results.q4_followup_twice)"
+    },
+    {
+      "name": "表结构写清（主键 + 列类型）",
+      "expr": "out.schema && typeof out.schema.table === 'string' && Array.isArray(out.schema.columns) && out.schema.columns.length >= 6 && Array.isArray(out.schema.primary_key) && out.schema.primary_key.length >= 1"
+    },
+    {
+      "name": "图与说明齐全（至少 1 张，含一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 1 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "说清口径（notes ≥40 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 40"
+    }
+  ],
+  "requires": {
+    "python": [
+      "sqlite3",
+      "matplotlib"
+    ]
+  }
+}
