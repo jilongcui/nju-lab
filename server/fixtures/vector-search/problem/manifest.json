@@ -2,8 +2,14 @@
   "schemaVersion": 1,
   "name": "vector-search",
   "title": "向量数据库实验：相似病例语义检索（向量化 + Top-K + 增删改查）",
+  "flow": "database",
   "outputFile": "output.json",
-  "inputs": ["corpus.csv", "queries.csv", "concepts.json", "updates.json"],
+  "inputs": [
+    "corpus.csv",
+    "queries.csv",
+    "concepts.json",
+    "updates.json"
+  ],
   "judgeMode": "llm",
   "maxCases": 0,
   "assertions": [
@@ -56,5 +62,10 @@
       "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 40"
     }
   ],
-  "requires": { "python": ["math", "matplotlib"] }
+  "requires": {
+    "python": [
+      "math",
+      "matplotlib"
+    ]
+  }
 }

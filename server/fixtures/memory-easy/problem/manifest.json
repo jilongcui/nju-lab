@@ -2,8 +2,12 @@
   "schemaVersion": 1,
   "name": "memory-easy",
   "title": "入门实验：给随访助手加一张记忆表（记忆 · 容易）",
+  "flow": "engineering",
   "outputFile": "output.json",
-  "inputs": ["memory_seed.json", "ops.jsonl"],
+  "inputs": [
+    "memory_seed.json",
+    "ops.jsonl"
+  ],
   "judgeMode": "llm",
   "maxCases": 0,
   "assertions": [
@@ -40,5 +44,9 @@
       "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 40"
     }
   ],
-  "requires": { "python": ["matplotlib"] }
+  "requires": {
+    "python": [
+      "matplotlib"
+    ]
+  }
 }

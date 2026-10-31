@@ -28,6 +28,11 @@ export type ExperimentKind =
    * 这一类**没有"定基线 → 训练 → 指标"**，交付物是逐字段可比的结构（output.json）。
    */
   | 'engineering'
+  /**
+   * 数据库 / 知识库类：建库建表 / 增删改查 / 向量检索 / 图谱多跳。
+   * 流程是「摸清数据 → 搭结构与环境 → 增删改查 → 验证查询」，同样**没有基线、训练、指标**。
+   */
+  | 'database'
   | 'generic'
 
 export interface StepDef {
@@ -242,6 +247,47 @@ const STEPS: Record<Exclude<ExperimentKind, 'detection' | 'retrieval'>, Array<Om
       need: 'report.md + 学生确认',
     },
   ],
+  database: [
+    {
+      id: 'understand',
+      title: '看清需求（要回答哪几个问题）',
+      ask: '读 task.md：把要回答的查询/统计逐条列出来，写清每个问题的过滤、聚合与排序口径。',
+      need: '查询清单 + 口径复述',
+    },
+    {
+      id: 'look',
+      title: '摸清数据与结构',
+      ask: '看一眼输入（几行、哪些列、脏在哪几类；或先看懂概念词表/同义词表、实体类型与关系类型），'
+        + '报出规模与结构。',
+      need: '数据规模 + 结构/词表要点',
+    },
+    {
+      id: 'setup',
+      title: '搭结构与环境（用代码）',
+      ask: '用脚本把结构搭出来：建库建表（含主键/外键）/ 向量化入库 / 三元组建图 —— '
+        + '强调能重跑一遍就重建，不要手工摆数据。',
+      need: '可重跑的建库/建库脚本 + 成功提示',
+    },
+    {
+      id: 'crud',
+      title: '增删改查',
+      ask: '按口径做写入、更新、删除、查询；约束拒绝坏数据时如实记录被拒绝的条数与原因（那是实验要看到的现象）。',
+      need: 'CRUD 结果 + 被拒绝的条数',
+    },
+    {
+      id: 'verify',
+      title: '验证查询（带出处）',
+      ask: '用 JOIN / 相似度 / 多跳把结果查出来并核对，把路径、相似度分数或出处一起带出来；'
+        + '与 expected.json 对不上时说出差异在第一处。',
+      need: '查询结果 + 路径/出处',
+    },
+    {
+      id: 'report',
+      title: '生成实验报告',
+      ask: '调用 nju_lab_finalize_report 自动生成 report.md，present 给学生确认后提交。',
+      need: 'report.md + 学生确认',
+    },
+  ],
   generic: [
     { id: 'understand', title: '看清需求', ask: '读实验内容与任务要求，复述要做什么、达标口径是什么。', need: '复述需求' },
     { id: 'look', title: '摸清材料', ask: '看一眼输入数据/材料，报出规模与结构，并画一张图。', need: '图 + 一句结论' },
@@ -260,6 +306,9 @@ export function detectKind(output: Record<string, unknown> | null | undefined): 
   // 放在最前：这几种键一旦出现，就说明它不是"训练+指标"那类实验。
   const ENGINEERING_KEYS = ['items', 'responses', 'snapshots', 'perceive', 'decisions', 'critical_alerts']
   if (ENGINEERING_KEYS.some((key) => output?.[key] !== undefined && output?.[key] !== null)) return 'engineering'
+  // 数据库 / 知识库类：交付的是建表与查询结果（schema / query_results / 检索或图谱结果）
+  const DATABASE_KEYS = ['schema', 'query_results', 'retrieval', 'graph', 'triples']
+  if (DATABASE_KEYS.some((key) => output?.[key] !== undefined && output?.[key] !== null)) return 'database'
   // 顺序有讲究：二分类的 recall/precision 比 accuracy 更能说明"这类实验在考什么"
   if (typeof metrics.recall === 'number' || typeof metrics.precision === 'number') return 'detection'
 
@@ -273,6 +322,38 @@ export function detectKind(output: Record<string, unknown> | null | undefined): 
 
 /** generic 那套六步：detection / retrieval 也用它（文案本来就是通用的"摸清材料→定基线→搭实现→自测"）。 */
 const GENERIC_STEPS = STEPS.generic
+
+/**
+ * 从题目包里的**声明**判断实验类型 —— 比猜 `output.json` 可靠：学生刚开工时 `output.json` 还不存在，
+ * 而 `problem/manifest.json` 与 `problem/task.md` 在 claim 时就已落到工作区。
+ *
+ * 认两种写法（出题侧二选一即可，建议都写）：
+ *  - `manifest.json` 的 `"flow": "engineering"`；
+ *  - `task.md` 里的「流程归属」段落含「工程实现型」。
+ *
+ * 识别不出来就返回 `null` —— 交给 {@link detectKind} 按产出猜，不要瞎判。
+ */
+export function kindFromDeclaration(text: string | null | undefined): ExperimentKind | null {
+  if (!text) return null
+  const flow = /"flow"\s*:\s*"([a-z-]+)"/.exec(text)?.[1]
+  if (flow === 'engineering') return 'engineering'
+  if (flow === 'database') return 'database'
+  if (/流程归属/.test(text) && /工程实现型/.test(text)) return 'engineering'
+  if (/流程归属/.test(text) && /(数据库|知识库)/.test(text)) return 'database'
+  return null
+}
+
+/**
+ * 已落盘的 kind 与工作区声明不一致时**重排步骤**（声明优先）。
+ *
+ * 为什么需要：老会话的 `progress.json` 是按"猜 output.json"写下的（例如被猜成 classification），
+ * 于是面板一直显示"定基线 / 评估 accuracy"，与实际任务打架。声明是出题人写死的，比猜可靠。
+ * `records` 与 `mode` 保留（按 stepId 存，不丢数据），`step` 归零让他从第 1 步重新确认。
+ */
+export function rebaseKind(state: GuideState, declared: ExperimentKind | null): GuideState {
+  if (!declared || declared === state.kind) return state
+  return { ...newGuideState(state.assignmentId, declared), mode: state.mode, records: state.records }
+}
 
 /**
  * 进来时工作区还没有 `output.json`（→ 只能判成 generic）；等第一份产出出现后**再认一次**类型。

@@ -23,6 +23,8 @@ import {
   describeStep,
   renderStepList,
   detectKind,
+  kindFromDeclaration,
+  rebaseKind,
   stepOwner,
   loadGuide,
   newGuideState,
@@ -37,6 +39,20 @@ import { missingReportParts, renderReport, reportLooksComplete, type ReportCase 
 const GUIDE_TOOL_NAMES = TOOL_NAMES
 
 const MAX_SCAN_DEPTH = 3
+
+/** 读题目包里的流程声明（`problem/manifest.json` 的 flow / `problem/task.md` 的「流程归属」）。 */
+async function readDeclaredKind(root: string): Promise<ReturnType<typeof kindFromDeclaration>> {
+  for (const rel of ['problem/manifest.json', 'problem/task.md']) {
+    try {
+      const text = await readFile(join(root, rel), 'utf8')
+      const kind = kindFromDeclaration(text)
+      if (kind) return kind
+    } catch {
+      // 没有这个文件就继续看下一个
+    }
+  }
+  return null
+}
 
 /** 在工作区里找 `output.json`（学生可能写在 `run_case01/`、`case01/` 或根目录）。 */
 async function findOutputJson(root: string, depth = 0): Promise<Array<{ dir: string; file: string }>> {
@@ -171,7 +187,7 @@ export function registerGuidedTools(
         },
         assignmentId: { type: 'string', required: true, description: 'assignment id' },
         stepId: { type: 'string', description: '要记录的步骤 id；缺省为当前步' },
-        record: { type: 'json', description: '这一步的产出（结构化对象，例如 { baseline_accuracy: 0.3158 }）' },
+        record: { type: 'json', description: '这一步的产出（结构化对象，例如 { 交付: "output.json", cases: 2, 边界: "恰好等于阈值" }）' },
         mode: {
           type: 'string',
           enum: ['auto', 'manual'],
@@ -196,11 +212,17 @@ export function registerGuidedTools(
         const root = await actions.resolveRoot(args.sessionId)
         const who = await actions.whoAmI()
         let state = await loadGuide(root, args.assignmentId)
+        const declared = await readDeclaredKind(root)
         if (!state) {
-          // 第一次进来：按当前工作区里的 output.json 猜实验类型（没有就 generic）
+          // 第一次进来：优先看题目包里的流程声明；没有声明再按 output.json 猜（都没有就 generic）
           const outputs = await findOutputJson(root)
           const first = outputs.length ? await readJson(outputs[0].file) : null
-          state = newGuideState(args.assignmentId, detectKind(first))
+          state = newGuideState(args.assignmentId, declared ?? detectKind(first))
+          await saveGuide(root, state)
+        } else if (declared && declared !== state.kind) {
+          // 声明优先：老会话被猜成别的类型时重排六步（records / mode 保留）
+          state = rebaseKind(state, declared)
+          await saveGuide(root, state)
         } else if (state.kind === 'generic') {
           // 进来时还没有 output.json → 只能判 generic；等第一份产出出现后再认一次（只在没动过时升级）
           const outputs = await findOutputJson(root)
@@ -261,7 +283,7 @@ export function registerGuidedTools(
         title: { type: 'string', description: '实验标题（写在报告第一行）' },
         thresholds: {
           type: 'json',
-          description: '达标线，例如 { accuracy: 0.9, macroF1: 0.85 } 或 { maeRatio: 0.8 }',
+          description: '达标线：ML / 深度学习类写 { accuracy: 0.9, macroF1: 0.85 } 或 { maeRatio: 0.8 }；工程实现类（逐字段比对）不传',
         },
         pitfalls: {
           type: 'array',
@@ -269,7 +291,7 @@ export function registerGuidedTools(
           description: '踩坑记录（从与学生的一问一答里收集，每条一行；不传则用步骤记录里的）',
         },
         conclusion: { type: 'string', description: '结论（≥20 字）；不传则用 output.json 的 notes' },
-        baselineNote: { type: 'string', description: '基线做法的一句话说明' },
+        baselineNote: { type: 'string', description: '对照做法的一句话说明（ML 类是"不建模的基线"，工程实现类是"偷懒解"）' },
         sessionId: { type: 'string', description: '会话 id（让报告落在会话工作区）' },
       },
       output: {

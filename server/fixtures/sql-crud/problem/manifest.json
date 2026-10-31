@@ -2,8 +2,14 @@
   "schemaVersion": 1,
   "name": "sql-crud",
   "title": "关系数据库实验：检验数据登记与查询（建库 + 增删改查 + SQL 统计）",
+  "flow": "database",
   "outputFile": "output.json",
-  "inputs": ["patients.csv", "visits.csv", "labs.csv", "corrections.json"],
+  "inputs": [
+    "patients.csv",
+    "visits.csv",
+    "labs.csv",
+    "corrections.json"
+  ],
   "judgeMode": "llm",
   "maxCases": 0,
   "assertions": [
@@ -56,5 +62,10 @@
       "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 40"
     }
   ],
-  "requires": { "python": ["sqlite3", "matplotlib"] }
+  "requires": {
+    "python": [
+      "sqlite3",
+      "matplotlib"
+    ]
+  }
 }

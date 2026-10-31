@@ -157,6 +157,8 @@ export {
   recordStep,
   saveGuide,
   stepsFor,
+  kindFromDeclaration,
+  rebaseKind,
   stepList,
   renderStepList,
   upgradeKind,

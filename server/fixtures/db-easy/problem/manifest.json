@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "name": "db-easy",
   "title": "入门实验：血压随访记录查一查（SQL · 单表）",
+  "flow": "database",
   "outputFile": "output.json",
   "inputs": [
     "visits.csv"

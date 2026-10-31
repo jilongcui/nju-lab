@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "name": "kg-easy",
   "title": "入门实验：两条两跳查询做用药预警（知识图谱）",
+  "flow": "database",
   "outputFile": "output.json",
   "inputs": [
     "triples.csv"

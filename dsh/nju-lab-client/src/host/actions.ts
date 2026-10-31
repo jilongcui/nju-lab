@@ -168,7 +168,7 @@ export async function scanReport(skillRoot: string): Promise<ReportCheck> {
     const missing: string[] = []
     if (!hasSelfTest(raw)) missing.push('自测时间')
     if (reportSource === 'report.md' && !(caseRowFilled(raw, 1) && caseRowFilled(raw, 2))) {
-      missing.push('两个 case 的指标数字')
+      missing.push('两个 case 的结果数字')
     }
     if (pitfallsRecorded === 0) missing.push('踩坑记录（≥1 条）')
     warnings.push(

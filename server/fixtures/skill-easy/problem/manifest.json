@@ -2,8 +2,12 @@
   "schemaVersion": 1,
   "name": "skill-easy",
   "title": "入门实验：把检验判定写成脚本（口径与边界 · 容易）",
+  "flow": "engineering",
   "outputFile": "output.json",
-  "inputs": ["report.csv", "reference_ranges.csv"],
+  "inputs": [
+    "report.csv",
+    "reference_ranges.csv"
+  ],
   "judgeMode": "llm",
   "maxCases": 0,
   "assertions": [
@@ -44,5 +48,9 @@
       "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 40"
     }
   ],
-  "requires": { "python": ["matplotlib"] }
+  "requires": {
+    "python": [
+      "matplotlib"
+    ]
+  }
 }

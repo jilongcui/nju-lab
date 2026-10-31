@@ -29,6 +29,8 @@ import {
   saveGuide,
   stepsFor,
   upgradeKind,
+  kindFromDeclaration,
+  rebaseKind,
   stepList,
   renderStepList,
 } from '../lib/host/index.js'
@@ -179,6 +181,39 @@ describe('学员模式：步骤状态机（纯逻辑）', () => {
     assert.equal(upgradeKind(newGuideState('a-3', 'classification'), { items: [] }).kind, 'classification')
     assert.equal(upgradeKind(base, {}).kind, 'generic')
     assert.equal(upgradeKind({ ...base, mode: 'manual' }, { items: [] }).mode, 'manual')
+  })
+
+  test('题目包里的声明优先：manifest 的 flow / task.md 的「流程归属」', () => {
+    assert.equal(kindFromDeclaration('{"flow": "engineering"}'), 'engineering')
+    assert.equal(kindFromDeclaration('> **流程归属（给引导用的提示）**：本实验是**工程实现型**'), 'engineering')
+    assert.equal(kindFromDeclaration('{"flow": "ml"}'), null)
+    assert.equal(kindFromDeclaration('# 关系数据库\n\n## 业务背景'), null)
+    assert.equal(kindFromDeclaration(null), null)
+  })
+
+  test('数据库 / 知识库类：声明与产出都能认出来，且没有"定基线"', () => {
+    assert.equal(kindFromDeclaration('{"flow": "database"}'), 'database')
+    assert.equal(kindFromDeclaration('> **流程归属**：本实验是**数据库 / 知识库类**'), 'database')
+    assert.equal(detectKind({ schema: {}, query_results: {} }), 'database')
+    assert.equal(detectKind({ retrieval: [] }), 'database')
+    const steps = stepsFor('database')
+    assert.deepEqual(steps.map((s) => s.id), ['understand', 'look', 'setup', 'crud', 'verify', 'report'])
+    const text = steps.map((s) => `${s.title} ${s.ask}`).join(' ')
+    assert.doesNotMatch(text, /定基线/)
+    assert.match(text, /建库建表|向量化入库|三元组建图/)
+  })
+
+  test('落盘 kind 与声明不符时重排（保留 records / mode，step 归零）', () => {
+    const stale = { ...newGuideState('a-4', 'classification'), step: 3, confirmed: 2, mode: 'auto', records: { understand: { ok: true } } }
+    const fixed = rebaseKind(stale, 'engineering')
+    assert.equal(fixed.kind, 'engineering')
+    assert.equal(fixed.step, 0)
+    assert.equal(fixed.confirmed, 0)
+    assert.equal(fixed.mode, 'auto')
+    assert.deepEqual(fixed.records, { understand: { ok: true } })
+    // 没有声明 / 声明相同 → 原样不动
+    assert.equal(rebaseKind(stale, null), stale)
+    assert.equal(rebaseKind(stale, 'classification'), stale)
   })
 
   test('六步，最后一步是生成报告；推进到顶不再前进', () => {

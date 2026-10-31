@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "name": "vector-easy",
   "title": "入门实验：按主诉找相似病例（向量检索 · 余弦 + Top-3）",
+  "flow": "database",
   "outputFile": "output.json",
   "inputs": [
     "docs.csv",

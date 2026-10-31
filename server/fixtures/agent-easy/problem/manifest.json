@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "name": "agent-easy",
   "title": "入门实验：写一个四环随访助手（智能体 · 容易）",
+  "flow": "engineering",
   "outputFile": "output.json",
   "inputs": [
     "patients.csv",

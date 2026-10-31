@@ -2,8 +2,13 @@
   "schemaVersion": 1,
   "name": "mcp-easy",
   "title": "入门实验：手写一次 MCP 往返（工具协议 · 容易）",
+  "flow": "engineering",
   "outputFile": "output.json",
-  "inputs": ["tools.json", "data.json", "requests.jsonl"],
+  "inputs": [
+    "tools.json",
+    "data.json",
+    "requests.jsonl"
+  ],
   "judgeMode": "llm",
   "maxCases": 0,
   "assertions": [
@@ -44,5 +49,9 @@
       "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 40"
     }
   ],
-  "requires": { "python": ["matplotlib"] }
+  "requires": {
+    "python": [
+      "matplotlib"
+    ]
+  }
 }

@@ -5,6 +5,40 @@
 
 ## 0. 一句话现状
 
+**2026-10-31（引导适配第二轮：流程**按题目包声明**判定，工程实现型 + 数据库类都上线，镜像 pkg26）—— ✅ 已上线**
+
+- **用户反馈**（原话）："我测试了，到处还是关于机器学习相关的说法，我们是智能体啊，不是机器学习"。
+- **根因（实测，不是改漏了文案）**：学员模式的六步是**靠猜 `output.json` 的 `metrics`** 得来的
+  （`detectKind`），而学生开工那一刻 `output.json` 还不存在 —— 实测那个工作区 `progress.json` 里
+  写的是 `"kind": "classification"`（模型自己都在 records 里写了"工程实现型（非ML，无accuracy/F1）"），
+  于是面板一直显示「定基线 / 评估 accuracy」、报告列是 `case | 指标`，与任务打架。
+  同理，第 6~9 章的数据库/知识库类实验也一直被套上机器学习六步。
+- **改法（三条）**：
+  1. **声明优先**：新增 `kindFromDeclaration()` —— 读工作区 `problem/manifest.json` 的 `"flow"`
+     （`engineering` / `database`）与 `problem/task.md` 的「流程归属」段落；声明优先于"猜产出"，
+     都没有才回退 `detectKind`；
+  2. **老会话自动重排**：新增 `rebaseKind()` —— 落盘 `kind` 与声明不符时按声明重排六步
+     （`records` / `mode` 保留、`step` 归零），解决"已经测过的会话还显示机器学习步骤"；
+  3. **数据库类也补上**：新增 `database` kind 六步（看清需求 → 摸清数据与结构 → **用代码**搭结构与环境 →
+     增删改查 → 验证查询（带路径/出处）→ 生成报告）；`detectKind` 认 `schema / query_results / retrieval /
+     graph / triples`；报告列「case | 交付项 | 查询 / 关键结果 | 是否达标（按任务要求）」，
+     第 3 节对工程/数据库两类都叫「对照做法（偷懒解）」。
+  顺带把工具 schema 里的机器学习例子改中性（`record` 示例、`thresholds`、`baselineNote`）。
+- **包侧**：**11 个包**的 `manifest.json` 加 `flow`（4 个 `engineering`：agent/memory/mcp/skill-easy；
+  7 个 `database`：db-easy / sql-crud / vector-easy / vector-search / kg-easy / kg-alerts / qa-prototype）；
+  四个 easy 包的 `report.md` 模板去掉"基线"字样（改「对照做法（偷懒解）」）。
+- **验证**：`npm test` **100 tests / 94 pass / 0 fail / 6 skip**（新增：声明识别、`rebaseKind` 重排、
+  数据库六步与报告列）；镜像 **pkg26** 内实跑：
+  `db-easy manifest flow → database`、`steps = understand,look,setup,crud,verify,report`、
+  `detect(metrics.accuracy) → classification`（老实验无回归）、报告行 `| case01 | 查询 2 条，建表结构 | q1 2 条，q2 1 条，导入 20 行 | 按任务要求 |`。
+- **部署**：`nju-lab-workspace:0.2.0-rc.2-pkg26`（config 与 `.env.example` 已改）+ kit `20261031-1408-f12e2e4`
+  （备份 `.20261031-1420.bak`）+ `server npm run build` + 重启（新 PID 2329401，登录 201）；
+  **11 个包的 `problem.zip` 重新上传并 PATCH**（4 个工程包另含 `skill-template.zip`）。
+- **用户侧**：重新打开工作台即可（容器会按 pkg26 重建；工作区**是持久卷**，老的 `progress.json` 会被
+  `rebaseKind` 自动重排成正确类型，不需要重新领任务）。
+- **回滚**：`WORKSPACE_IMAGE=nju-lab-workspace:0.2.0-rc.2-pkg24`（上一版）+ build + 重启；kit 用
+  `.20261031-1405.bak` / `.20261031-1420.bak`；代码 `git revert`。
+
 **2026-10-31（实验引导适配：学员模式新增「工程实现型」分支，镜像 pkg24 + kit 重打）—— ✅ 已上线**
 
 - **问题（用户提出）**："实验引导环节，每个实验可能不一样……构建实验包的时候有没有做调整"。

@@ -2,8 +2,13 @@
   "schemaVersion": 1,
   "name": "kg-alerts",
   "title": "知识图谱实验：用药安全预警（三元组建图 + 多跳查询 + 本体校验）",
+  "flow": "database",
   "outputFile": "output.json",
-  "inputs": ["triples.csv", "ontology.json", "updates.json"],
+  "inputs": [
+    "triples.csv",
+    "ontology.json",
+    "updates.json"
+  ],
   "judgeMode": "llm",
   "maxCases": 0,
   "assertions": [
@@ -52,5 +57,10 @@
       "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 40"
     }
   ],
-  "requires": { "python": ["networkx", "matplotlib"] }
+  "requires": {
+    "python": [
+      "networkx",
+      "matplotlib"
+    ]
+  }
 }

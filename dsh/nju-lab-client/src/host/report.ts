@@ -99,6 +99,9 @@ function tableHeader(kind: ExperimentKind, t: ReportThresholds): string[] {
     case 'engineering':
       // 工程实现型：没有指标，交付的是"逐字段可比的结构" → 列写清交付了什么、边界怎么过的
       return ['case', '交付项', '边界 / 关键结果', '是否达标（按任务要求）']
+    case 'database':
+      // 数据库 / 知识库类：交付的是建表与查询结果
+      return ['case', '交付项', '查询 / 关键结果', '是否达标（按任务要求）']
     default:
       return ['case', '指标']
   }
@@ -119,6 +122,9 @@ function engineeringDeliverable(out: Record<string, unknown>): string {
   if (decisions) parts.push(`decisions ${decisions.length} 条`)
   const perceive = arr('perceive')
   if (perceive) parts.push(`perceive ${perceive.length} 条`)
+  const queryResults = out.query_results as Record<string, unknown> | undefined
+  if (queryResults && typeof queryResults === 'object') parts.push(`查询 ${Object.keys(queryResults).length} 条`)
+  if (out.schema && typeof out.schema === 'object') parts.push('建表结构')
   return parts.length ? parts.join('，') : '未找到 output.json'
 }
 
@@ -149,6 +155,24 @@ function engineeringOutcome(out: Record<string, unknown>): string {
   const toolCount = num((out.discovered as Record<string, unknown> | undefined)?.count)
   if (toolCount !== undefined) parts.push(`工具 ${toolCount} 个`)
   return parts.length ? parts.join('，') : '—'
+}
+
+/** 数据库 / 知识库类：查询与结构的关键结果（命中条数、召回、路径长度…）。 */
+function databaseOutcome(out: Record<string, unknown>): string {
+  const parts: string[] = []
+  const q = out.query_results as Record<string, unknown> | undefined
+  if (q && typeof q === 'object') {
+    for (const [k, v] of Object.entries(q)) {
+      if (Array.isArray(v)) parts.push(`${k} ${v.length} 条`)
+      else if (typeof v === 'number') parts.push(`${k}=${fmt(v)}`)
+    }
+  }
+  const loaded = out.loaded as Record<string, unknown> | undefined
+  const rows = num(loaded?.rows)
+  if (rows !== undefined) parts.push(`导入 ${rows} 行`)
+  const retrieval = out.retrieval as Record<string, unknown> | undefined
+  if (retrieval && typeof retrieval === 'object') parts.push(`检索 ${Object.keys(retrieval).length} 组`)
+  return parts.length ? parts.slice(0, 4).join('，') : '—'
 }
 
 /** 单行数据：缺的字段写 `—`，不编数字。 */
@@ -185,6 +209,8 @@ function tableRow(c: ReportCase, kind: ExperimentKind, t: ReportThresholds): str
     }
     case 'engineering':
       return [c.name, engineeringDeliverable(s.output), engineeringOutcome(s.output), '按任务要求']
+    case 'database':
+      return [c.name, engineeringDeliverable(s.output), databaseOutcome(s.output), '按任务要求']
     default: {
       const metrics = (s.output.metrics ?? {}) as Record<string, unknown>
       const shown = Object.entries(metrics)
@@ -245,7 +271,7 @@ export function renderReport(input: ReportInput): string {
   })
 
   // 工程实现型没有"基线"这个概念 → 换成"对照做法（偷懒解）"，措辞也一起换
-  const engineering = input.kind === 'engineering'
+  const engineering = input.kind === 'engineering' || input.kind === 'database'
   const baselineTitle = engineering ? '## 3. 对照做法（偷懒解）' : '## 3. 基线对照'
   const baselineLabel = engineering ? '偷懒做法' : '基线做法'
 

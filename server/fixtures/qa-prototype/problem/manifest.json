@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "name": "qa-prototype",
   "title": "综合实践：分子医学知识问答原型（四形态各用一次 + 出处可溯源）",
+  "flow": "database",
   "outputFile": "output.json",
   "inputs": [
     "genes.csv",
@@ -64,5 +65,9 @@
       "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 60"
     }
   ],
-  "requires": { "python": ["matplotlib"] }
+  "requires": {
+    "python": [
+      "matplotlib"
+    ]
+  }
 }
