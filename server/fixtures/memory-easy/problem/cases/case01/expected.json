@@ -1,0 +1,293 @@
+{
+  "snapshots": [
+    {
+      "step": 1,
+      "op": "store",
+      "rows": [
+        {
+          "id": "M01",
+          "status": "active"
+        },
+        {
+          "id": "M02",
+          "status": "active"
+        },
+        {
+          "id": "M03",
+          "status": "active"
+        },
+        {
+          "id": "M04",
+          "status": "active"
+        },
+        {
+          "id": "M05",
+          "status": "active"
+        },
+        {
+          "id": "M06",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "step": 2,
+      "op": "retrieve",
+      "rows": [
+        {
+          "id": "M01",
+          "status": "active"
+        },
+        {
+          "id": "M02",
+          "status": "active"
+        },
+        {
+          "id": "M03",
+          "status": "active"
+        },
+        {
+          "id": "M04",
+          "status": "active"
+        },
+        {
+          "id": "M05",
+          "status": "active"
+        },
+        {
+          "id": "M06",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "step": 3,
+      "op": "update",
+      "rows": [
+        {
+          "id": "M01",
+          "status": "active"
+        },
+        {
+          "id": "M02",
+          "status": "active"
+        },
+        {
+          "id": "M03",
+          "status": "superseded"
+        },
+        {
+          "id": "M04",
+          "status": "active"
+        },
+        {
+          "id": "M05",
+          "status": "active"
+        },
+        {
+          "id": "M06",
+          "status": "active"
+        },
+        {
+          "id": "M03v2",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "step": 4,
+      "op": "retrieve",
+      "rows": [
+        {
+          "id": "M01",
+          "status": "active"
+        },
+        {
+          "id": "M02",
+          "status": "active"
+        },
+        {
+          "id": "M03",
+          "status": "superseded"
+        },
+        {
+          "id": "M04",
+          "status": "active"
+        },
+        {
+          "id": "M05",
+          "status": "active"
+        },
+        {
+          "id": "M06",
+          "status": "active"
+        },
+        {
+          "id": "M03v2",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "step": 5,
+      "op": "forget",
+      "rows": [
+        {
+          "id": "M01",
+          "status": "active"
+        },
+        {
+          "id": "M02",
+          "status": "forgotten"
+        },
+        {
+          "id": "M03",
+          "status": "superseded"
+        },
+        {
+          "id": "M04",
+          "status": "active"
+        },
+        {
+          "id": "M05",
+          "status": "active"
+        },
+        {
+          "id": "M06",
+          "status": "active"
+        },
+        {
+          "id": "M03v2",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "step": 6,
+      "op": "retrieve",
+      "rows": [
+        {
+          "id": "M01",
+          "status": "active"
+        },
+        {
+          "id": "M02",
+          "status": "forgotten"
+        },
+        {
+          "id": "M03",
+          "status": "superseded"
+        },
+        {
+          "id": "M04",
+          "status": "active"
+        },
+        {
+          "id": "M05",
+          "status": "active"
+        },
+        {
+          "id": "M06",
+          "status": "active"
+        },
+        {
+          "id": "M03v2",
+          "status": "active"
+        }
+      ]
+    }
+  ],
+  "retrievals": [
+    {
+      "op_id": "o2",
+      "patient": "P001",
+      "kinds": [
+        "过敏",
+        "用药"
+      ],
+      "ids": [
+        "M02",
+        "M03"
+      ]
+    },
+    {
+      "op_id": "o4",
+      "patient": "P001",
+      "kinds": [
+        "用药"
+      ],
+      "ids": [
+        "M03v2"
+      ]
+    },
+    {
+      "op_id": "o6",
+      "patient": "P001",
+      "kinds": [
+        "过敏",
+        "用药"
+      ],
+      "ids": [
+        "M03v2"
+      ]
+    }
+  ],
+  "final": {
+    "counts": {
+      "active": 5,
+      "superseded": 1,
+      "forgotten": 1
+    },
+    "rows": [
+      {
+        "id": "M01",
+        "patient": "P001",
+        "fact": "HbA1c 8.2%，超标",
+        "kind": "检验",
+        "status": "active"
+      },
+      {
+        "id": "M02",
+        "patient": "P001",
+        "fact": "磺胺类药物过敏",
+        "kind": "过敏",
+        "status": "forgotten"
+      },
+      {
+        "id": "M03",
+        "patient": "P001",
+        "fact": "在用二甲双胍 0.5g bid",
+        "kind": "用药",
+        "status": "superseded"
+      },
+      {
+        "id": "M04",
+        "patient": "P001",
+        "fact": "主诉胃胀 2 周",
+        "kind": "症状",
+        "status": "active"
+      },
+      {
+        "id": "M05",
+        "patient": "P002",
+        "fact": "在用达格列净 10mg qd",
+        "kind": "用药",
+        "status": "active"
+      },
+      {
+        "id": "M06",
+        "patient": "P001",
+        "fact": "低血糖发作一次（3.1 mmol/L）",
+        "kind": "症状",
+        "status": "active"
+      },
+      {
+        "id": "M03v2",
+        "patient": "P001",
+        "fact": "二甲双胍已停用，改达格列净 10mg qd",
+        "kind": "用药",
+        "status": "active"
+      }
+    ]
+  }
+}

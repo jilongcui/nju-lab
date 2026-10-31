@@ -1,0 +1,167 @@
+{
+  "responses": [
+    {
+      "seq": 1,
+      "request_id": null,
+      "responded": false,
+      "response": null
+    },
+    {
+      "seq": 2,
+      "request_id": 1,
+      "responded": true,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+          "tools": [
+            {
+              "name": "get_drug_info",
+              "description": "查询一种药品的适应证与禁忌证；只接受中文通用名，查不到时返回未收录。",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "drug_name": {
+                    "type": "string",
+                    "description": "药品通用名，如 二甲双胍"
+                  }
+                },
+                "required": [
+                  "drug_name"
+                ]
+              }
+            },
+            {
+              "name": "check_interaction",
+              "description": "查询两种药之间已知的相互作用；没有收录时返回未收录。",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "drug_a": {
+                    "type": "string",
+                    "description": "药品甲"
+                  },
+                  "drug_b": {
+                    "type": "string",
+                    "description": "药品乙"
+                  }
+                },
+                "required": [
+                  "drug_a",
+                  "drug_b"
+                ]
+              }
+            },
+            {
+              "name": "query_labs",
+              "description": "查询某位患者某项目的最近若干次检验结果。",
+              "inputSchema": {
+                "type": "object",
+                "properties": {
+                  "patient_id": {
+                    "type": "string",
+                    "description": "患者号，如 P001"
+                  },
+                  "item": {
+                    "type": "string",
+                    "description": "检验项目，如 HbA1c"
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "description": "最多返回几条，默认 3"
+                  }
+                },
+                "required": [
+                  "patient_id",
+                  "item"
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "seq": 3,
+      "request_id": 2,
+      "responded": true,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "2026-06-15 8.2；2026-09-20 7.4"
+            }
+          ],
+          "isError": false
+        }
+      }
+    },
+    {
+      "seq": 4,
+      "request_id": 3,
+      "responded": true,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "未收录该检验记录"
+            }
+          ],
+          "isError": true
+        }
+      }
+    },
+    {
+      "seq": 5,
+      "request_id": 4,
+      "responded": true,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 4,
+        "result": {
+          "content": [
+            {
+              "type": "text",
+              "text": "适应证：房颤抗凝；禁忌证：妊娠、活动性出血。"
+            }
+          ],
+          "isError": false
+        }
+      }
+    },
+    {
+      "seq": 6,
+      "request_id": 5,
+      "responded": true,
+      "response": {
+        "jsonrpc": "2.0",
+        "id": 5,
+        "error": {
+          "code": -32601,
+          "message": "不支持的方法 prompts/list"
+        }
+      }
+    }
+  ],
+  "discovered": {
+    "tools": [
+      "get_drug_info",
+      "check_interaction",
+      "query_labs"
+    ],
+    "count": 3
+  },
+  "stats": {
+    "requests": 6,
+    "responded": 5,
+    "notified": 1,
+    "errors": 1,
+    "is_error_true": 1
+  }
+}

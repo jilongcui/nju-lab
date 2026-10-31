@@ -1,0 +1,6 @@
+{"jsonrpc": "2.0", "method": "notifications/initialized"}
+{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
+{"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "query_labs", "arguments": {"patient_id": "P001", "item": "HbA1c", "limit": 2}}}
+{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "query_labs", "arguments": {"patient_id": "P900", "item": "HbA1c"}}}
+{"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "get_drug_info", "arguments": {"drug_name": "华法林"}}}
+{"jsonrpc": "2.0", "id": 5, "method": "prompts/list"}

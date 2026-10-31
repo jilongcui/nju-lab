@@ -1,0 +1,103 @@
+{
+  "perceive": [
+    {
+      "req_id": "r1",
+      "pid": "P001",
+      "intent": "复查"
+    },
+    {
+      "req_id": "r2",
+      "pid": "P002",
+      "intent": "一般咨询"
+    },
+    {
+      "req_id": "r3",
+      "pid": "P001",
+      "intent": "一般咨询"
+    },
+    {
+      "req_id": "r4",
+      "pid": "P004",
+      "intent": "一般咨询"
+    },
+    {
+      "req_id": "r5",
+      "pid": "P777",
+      "intent": "一般咨询"
+    }
+  ],
+  "decisions": [
+    {
+      "req_id": "r1",
+      "pid": "P001",
+      "action": "recall",
+      "days_since_visit": 134
+    },
+    {
+      "req_id": "r2",
+      "pid": "P002",
+      "action": "urgent",
+      "days_since_visit": 3
+    },
+    {
+      "req_id": "r3",
+      "pid": "P001",
+      "action": "recall",
+      "days_since_visit": 134
+    },
+    {
+      "req_id": "r4",
+      "pid": "P004",
+      "action": "none",
+      "days_since_visit": 32
+    },
+    {
+      "req_id": "r5",
+      "pid": "P777",
+      "action": "unknown_patient",
+      "days_since_visit": null
+    }
+  ],
+  "messages": [
+    {
+      "req_id": "r1",
+      "text": "[recall] 张阿姨：上次联系 2026-08-01，HbA1c 8.6。"
+    },
+    {
+      "req_id": "r2",
+      "text": "[urgent] 李叔叔：上次联系 未联系，HbA1c 9.1。"
+    },
+    {
+      "req_id": "r3",
+      "text": "[recall] 张阿姨：上次联系 2026-10-01，HbA1c 8.6。"
+    },
+    {
+      "req_id": "r4",
+      "text": "[none] 赵阿姨：上次联系 未联系，HbA1c 6.2。"
+    },
+    {
+      "req_id": "r5",
+      "text": "[unknown_patient] 未找到患者 P777"
+    }
+  ],
+  "memory_after": {
+    "P001": {
+      "last_contact": "2026-10-01",
+      "last_action": "recall"
+    },
+    "P002": {
+      "last_contact": "2026-10-01",
+      "last_action": "urgent"
+    },
+    "P004": {
+      "last_contact": "2026-10-01",
+      "last_action": "none"
+    }
+  },
+  "counts": {
+    "recall": 2,
+    "urgent": 1,
+    "none": 1,
+    "unknown_patient": 1
+  }
+}

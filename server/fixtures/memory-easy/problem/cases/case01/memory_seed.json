@@ -1,0 +1,37 @@
+[
+  {
+    "id": "M01",
+    "patient": "P001",
+    "fact": "HbA1c 8.2%，超标",
+    "kind": "检验",
+    "status": "active"
+  },
+  {
+    "id": "M02",
+    "patient": "P001",
+    "fact": "磺胺类药物过敏",
+    "kind": "过敏",
+    "status": "active"
+  },
+  {
+    "id": "M03",
+    "patient": "P001",
+    "fact": "在用二甲双胍 0.5g bid",
+    "kind": "用药",
+    "status": "active"
+  },
+  {
+    "id": "M04",
+    "patient": "P001",
+    "fact": "主诉胃胀 2 周",
+    "kind": "症状",
+    "status": "active"
+  },
+  {
+    "id": "M05",
+    "patient": "P002",
+    "fact": "在用达格列净 10mg qd",
+    "kind": "用药",
+    "status": "active"
+  }
+]

@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "name": "agent-easy",
+  "title": "入门实验：写一个四环随访助手（智能体 · 容易）",
+  "outputFile": "output.json",
+  "inputs": [
+    "patients.csv",
+    "requests.txt",
+    "memory_seed.json"
+  ],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['perceive','decisions','messages','memory_after','counts','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "每条请求都走完了一轮（条数与参考一致）",
+      "expr": "Array.isArray(out.perceive) && out.perceive.length === expected.perceive.length"
+    },
+    {
+      "name": "感知正确（患者号 + 意图，逐条比对）",
+      "expr": "JSON.stringify(out.perceive) === JSON.stringify(expected.perceive)"
+    },
+    {
+      "name": "决策正确（六条规则按优先级，含 days_since_visit）",
+      "expr": "JSON.stringify(out.decisions) === JSON.stringify(expected.decisions)"
+    },
+    {
+      "name": "行动正确（消息模板逐字比对）",
+      "expr": "JSON.stringify(out.messages) === JSON.stringify(expected.messages)"
+    },
+    {
+      "name": "记忆表正确（跨请求生效）",
+      "expr": "JSON.stringify(out.memory_after) === JSON.stringify(expected.memory_after)"
+    },
+    {
+      "name": "动作计数正确",
+      "expr": "JSON.stringify(out.counts) === JSON.stringify(expected.counts)"
+    },
+    {
+      "name": "边界：无效请求 / 未知患者不写记忆",
+      "expr": "JSON.stringify(Object.keys(out.memory_after).sort()) === JSON.stringify(Object.keys(expected.memory_after).sort())"
+    },
+    {
+      "name": "图与说明齐全（至少 1 张，含一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 1 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "说清口径（notes ≥40 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 40"
+    }
+  ],
+  "requires": {
+    "python": [
+      "matplotlib"
+    ]
+  }
+}

@@ -1,0 +1,217 @@
+{
+  "snapshots": [
+    {
+      "step": 1,
+      "op": "update",
+      "rows": [
+        {
+          "id": "M01",
+          "status": "active"
+        },
+        {
+          "id": "M02",
+          "status": "superseded"
+        },
+        {
+          "id": "M03",
+          "status": "active"
+        },
+        {
+          "id": "M04",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "step": 2,
+      "op": "forget",
+      "rows": [
+        {
+          "id": "M01",
+          "status": "active"
+        },
+        {
+          "id": "M02",
+          "status": "superseded"
+        },
+        {
+          "id": "M03",
+          "status": "active"
+        },
+        {
+          "id": "M04",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "step": 3,
+      "op": "retrieve",
+      "rows": [
+        {
+          "id": "M01",
+          "status": "active"
+        },
+        {
+          "id": "M02",
+          "status": "superseded"
+        },
+        {
+          "id": "M03",
+          "status": "active"
+        },
+        {
+          "id": "M04",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "step": 4,
+      "op": "retrieve",
+      "rows": [
+        {
+          "id": "M01",
+          "status": "active"
+        },
+        {
+          "id": "M02",
+          "status": "superseded"
+        },
+        {
+          "id": "M03",
+          "status": "active"
+        },
+        {
+          "id": "M04",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "step": 5,
+      "op": "store",
+      "rows": [
+        {
+          "id": "M01",
+          "status": "active"
+        },
+        {
+          "id": "M02",
+          "status": "superseded"
+        },
+        {
+          "id": "M03",
+          "status": "active"
+        },
+        {
+          "id": "M04",
+          "status": "active"
+        },
+        {
+          "id": "M05",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "step": 6,
+      "op": "update",
+      "rows": [
+        {
+          "id": "M01",
+          "status": "superseded"
+        },
+        {
+          "id": "M02",
+          "status": "superseded"
+        },
+        {
+          "id": "M03",
+          "status": "active"
+        },
+        {
+          "id": "M04",
+          "status": "active"
+        },
+        {
+          "id": "M05",
+          "status": "active"
+        },
+        {
+          "id": "M01v2",
+          "status": "active"
+        }
+      ]
+    }
+  ],
+  "retrievals": [
+    {
+      "op_id": "o3",
+      "patient": "P003",
+      "kinds": [
+        "过敏"
+      ],
+      "ids": []
+    },
+    {
+      "op_id": "o4",
+      "patient": "P999",
+      "kinds": [
+        "过敏"
+      ],
+      "ids": []
+    }
+  ],
+  "final": {
+    "counts": {
+      "active": 4,
+      "superseded": 2,
+      "forgotten": 0
+    },
+    "rows": [
+      {
+        "id": "M01",
+        "patient": "P003",
+        "fact": "HbA1c 7.8%",
+        "kind": "检验",
+        "status": "superseded"
+      },
+      {
+        "id": "M02",
+        "patient": "P003",
+        "fact": "青霉素过敏（旧记录）",
+        "kind": "过敏",
+        "status": "superseded"
+      },
+      {
+        "id": "M03",
+        "patient": "P003",
+        "fact": "在用格列美脲 2mg qd",
+        "kind": "用药",
+        "status": "active"
+      },
+      {
+        "id": "M04",
+        "patient": "P003",
+        "fact": "主诉夜尿增多",
+        "kind": "症状",
+        "status": "active"
+      },
+      {
+        "id": "M05",
+        "patient": "P003",
+        "fact": "近期体重下降 3kg",
+        "kind": "症状",
+        "status": "active"
+      },
+      {
+        "id": "M01v2",
+        "patient": "P003",
+        "fact": "HbA1c 7.2%（复查）",
+        "kind": "检验",
+        "status": "active"
+      }
+    ]
+  }
+}

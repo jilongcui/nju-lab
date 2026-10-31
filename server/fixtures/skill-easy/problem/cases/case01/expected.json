@@ -1,0 +1,101 @@
+{
+  "items": [
+    {
+      "item": "K",
+      "value": 6.2,
+      "flag": "critical_high",
+      "critical": true
+    },
+    {
+      "item": "K",
+      "value": 5.3,
+      "flag": "normal",
+      "critical": false
+    },
+    {
+      "item": "GLU",
+      "value": 2.8,
+      "flag": "critical_low",
+      "critical": true
+    },
+    {
+      "item": "GLU",
+      "value": 6.5,
+      "flag": "high",
+      "critical": false
+    },
+    {
+      "item": "HBA1C",
+      "value": 5.4,
+      "flag": "normal",
+      "critical": false
+    },
+    {
+      "item": "ALT",
+      "value": 620.0,
+      "flag": "critical_high",
+      "critical": true
+    },
+    {
+      "item": "CREA",
+      "value": 40.0,
+      "flag": "low",
+      "critical": false
+    },
+    {
+      "item": "HGB",
+      "value": 68.0,
+      "flag": "critical_low",
+      "critical": true
+    },
+    {
+      "item": "WBC",
+      "value": 9.5,
+      "flag": "normal",
+      "critical": false
+    },
+    {
+      "item": "FT4",
+      "value": 12.0,
+      "flag": "unknown",
+      "critical": false
+    }
+  ],
+  "critical_alerts": [
+    {
+      "item": "K",
+      "value": 6.2,
+      "threshold": 6.2,
+      "side": "high"
+    },
+    {
+      "item": "GLU",
+      "value": 2.8,
+      "threshold": 2.8,
+      "side": "low"
+    },
+    {
+      "item": "ALT",
+      "value": 620.0,
+      "threshold": 500.0,
+      "side": "high"
+    },
+    {
+      "item": "HGB",
+      "value": 68.0,
+      "threshold": 70.0,
+      "side": "low"
+    }
+  ],
+  "summary": {
+    "counts": {
+      "normal": 3,
+      "high": 1,
+      "low": 1,
+      "critical_high": 2,
+      "critical_low": 2,
+      "unknown": 1
+    },
+    "n_unknown": 1
+  }
+}

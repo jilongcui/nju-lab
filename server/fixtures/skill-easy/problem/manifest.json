@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "name": "skill-easy",
+  "title": "入门实验：把检验判定写成脚本（口径与边界 · 容易）",
+  "outputFile": "output.json",
+  "inputs": ["report.csv", "reference_ranges.csv"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['items','critical_alerts','summary','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "每行报告单都判了（项数与参考一致）",
+      "expr": "Array.isArray(out.items) && out.items.length === expected.items.length"
+    },
+    {
+      "name": "逐项判定正确（item / value / flag / critical）",
+      "expr": "JSON.stringify(out.items.map((i) => ({ item: i.item, value: i.value, flag: i.flag, critical: i.critical }))) === JSON.stringify(expected.items)"
+    },
+    {
+      "name": "危急值清单正确（每条带依据阈值）",
+      "expr": "JSON.stringify(out.critical_alerts) === JSON.stringify(expected.critical_alerts)"
+    },
+    {
+      "name": "六类 flag 计数正确",
+      "expr": "JSON.stringify(out.summary) === JSON.stringify(expected.summary)"
+    },
+    {
+      "name": "边界：恰好等于危急阈值必须报警（闭区间）",
+      "expr": "(() => { const eq = (out.critical_alerts ?? []).filter((a) => a && Number(a.value) === Number(a.threshold)).length; const exp = expected.critical_alerts.filter((a) => Number(a.value) === Number(a.threshold)).length; return eq === exp && exp > 0; })()"
+    },
+    {
+      "name": "边界：表外项目 / 空值判 unknown，不猜",
+      "expr": "(() => { const unk = (out.items ?? []).filter((i) => i && i.flag === 'unknown'); return unk.length === expected.summary.n_unknown && unk.every((i) => i.critical !== true); })()"
+    },
+    {
+      "name": "图与说明齐全（至少 1 张，含一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 1 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "说清口径（notes ≥40 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 40"
+    }
+  ],
+  "requires": { "python": ["matplotlib"] }
+}

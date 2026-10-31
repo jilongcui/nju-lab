@@ -1,0 +1,6 @@
+{"op": "update", "id": "M02", "fact": "青霉素过敏（已复核确认）"}
+{"op": "forget", "id": "M02"}
+{"op": "retrieve", "patient": "P003", "kinds": ["过敏"]}
+{"op": "retrieve", "patient": "P999", "kinds": ["过敏"]}
+{"op": "store", "item": {"id": "M05", "patient": "P003", "fact": "近期体重下降 3kg", "kind": "症状", "status": "active"}}
+{"op": "update", "id": "M01", "fact": "HbA1c 7.2%（复查）"}

@@ -1,0 +1,124 @@
+{
+  "perceive": [
+    {
+      "req_id": "r1",
+      "pid": "P001",
+      "intent": "复查"
+    },
+    {
+      "req_id": "r2",
+      "pid": "P003",
+      "intent": "一般咨询"
+    },
+    {
+      "req_id": "r3",
+      "pid": "P002",
+      "intent": "复查"
+    },
+    {
+      "req_id": "r4",
+      "pid": "P005",
+      "intent": "一般咨询"
+    },
+    {
+      "req_id": "r5",
+      "pid": "P999",
+      "intent": "一般咨询"
+    },
+    {
+      "req_id": "r6",
+      "pid": null,
+      "intent": "一般咨询"
+    }
+  ],
+  "decisions": [
+    {
+      "req_id": "r1",
+      "pid": "P001",
+      "action": "recall",
+      "days_since_visit": 108
+    },
+    {
+      "req_id": "r2",
+      "pid": "P003",
+      "action": "urgent",
+      "days_since_visit": 91
+    },
+    {
+      "req_id": "r3",
+      "pid": "P002",
+      "action": "none",
+      "days_since_visit": 11
+    },
+    {
+      "req_id": "r4",
+      "pid": "P005",
+      "action": "annual",
+      "days_since_visit": 325
+    },
+    {
+      "req_id": "r5",
+      "pid": "P999",
+      "action": "unknown_patient",
+      "days_since_visit": null
+    },
+    {
+      "req_id": "r6",
+      "pid": null,
+      "action": "invalid_request",
+      "days_since_visit": null
+    }
+  ],
+  "messages": [
+    {
+      "req_id": "r1",
+      "text": "[recall] 张阿姨：上次联系 未联系，HbA1c 8.2。"
+    },
+    {
+      "req_id": "r2",
+      "text": "[urgent] 王大爷：上次联系 未联系，HbA1c 9.4。"
+    },
+    {
+      "req_id": "r3",
+      "text": "[none] 李叔叔：上次联系 未联系，HbA1c 6.4。"
+    },
+    {
+      "req_id": "r4",
+      "text": "[annual] 孙叔叔：上次联系 未联系，HbA1c 6.8。"
+    },
+    {
+      "req_id": "r5",
+      "text": "[unknown_patient] 未找到患者 P999"
+    },
+    {
+      "req_id": "r6",
+      "text": "[invalid_request] 请求里没有患者号：今天天气不错"
+    }
+  ],
+  "memory_after": {
+    "P001": {
+      "last_contact": "2026-10-01",
+      "last_action": "recall"
+    },
+    "P003": {
+      "last_contact": "2026-10-01",
+      "last_action": "urgent"
+    },
+    "P002": {
+      "last_contact": "2026-10-01",
+      "last_action": "none"
+    },
+    "P005": {
+      "last_contact": "2026-10-01",
+      "last_action": "annual"
+    }
+  },
+  "counts": {
+    "recall": 1,
+    "urgent": 1,
+    "none": 1,
+    "annual": 1,
+    "unknown_patient": 1,
+    "invalid_request": 1
+  }
+}

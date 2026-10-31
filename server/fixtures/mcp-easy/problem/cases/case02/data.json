@@ -1,0 +1,41 @@
+{
+  "drugs": {
+    "二甲双胍": {
+      "indication": "2 型糖尿病一线用药",
+      "contraindication": "eGFR<30 禁用；碘造影检查前后 48 小时停用"
+    },
+    "华法林": {
+      "indication": "房颤抗凝",
+      "contraindication": "妊娠、活动性出血"
+    },
+    "阿司匹林": {
+      "indication": "抗血小板",
+      "contraindication": "活动性消化道溃疡"
+    }
+  },
+  "interactions": {
+    "华法林|阿司匹林": "出血风险明显增加，需监测 INR"
+  },
+  "labs": {
+    "P001|HbA1c": [
+      {
+        "date": "2026-03-10",
+        "value": 8.6
+      },
+      {
+        "date": "2026-06-15",
+        "value": 8.2
+      },
+      {
+        "date": "2026-09-20",
+        "value": 7.4
+      }
+    ],
+    "P002|HbA1c": [
+      {
+        "date": "2026-09-20",
+        "value": 6.4
+      }
+    ]
+  }
+}

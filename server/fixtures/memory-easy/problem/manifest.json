@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "name": "memory-easy",
+  "title": "入门实验：给随访助手加一张记忆表（记忆 · 容易）",
+  "outputFile": "output.json",
+  "inputs": ["memory_seed.json", "ops.jsonl"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['snapshots','retrievals','final','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "每个操作都记了一步（步数与参考一致）",
+      "expr": "Array.isArray(out.snapshots) && out.snapshots.length === expected.snapshots.length"
+    },
+    {
+      "name": "逐步快照正确（每步的 id 与状态）",
+      "expr": "JSON.stringify(out.snapshots) === JSON.stringify(expected.snapshots)"
+    },
+    {
+      "name": "检索结果正确（只取 active、id 升序）",
+      "expr": "JSON.stringify(out.retrievals) === JSON.stringify(expected.retrievals)"
+    },
+    {
+      "name": "最终记忆表正确（含 superseded 留着、forgotten 不再命中）",
+      "expr": "JSON.stringify(out.final) === JSON.stringify(expected.final)"
+    },
+    {
+      "name": "边界：更新已作废条目不产生 v2 条目",
+      "expr": "(() => { const ids = (out.final?.rows ?? []).map((r) => r.id); return expected.final.rows.every((r) => ids.includes(r.id)) && ids.length === expected.final.rows.length; })()"
+    },
+    {
+      "name": "图与说明齐全（至少 1 张，含一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 1 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "说清口径（notes ≥40 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 40"
+    }
+  ],
+  "requires": { "python": ["matplotlib"] }
+}

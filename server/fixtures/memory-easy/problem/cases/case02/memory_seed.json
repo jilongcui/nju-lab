@@ -1,0 +1,30 @@
+[
+  {
+    "id": "M01",
+    "patient": "P003",
+    "fact": "HbA1c 7.8%",
+    "kind": "检验",
+    "status": "active"
+  },
+  {
+    "id": "M02",
+    "patient": "P003",
+    "fact": "青霉素过敏（旧记录）",
+    "kind": "过敏",
+    "status": "superseded"
+  },
+  {
+    "id": "M03",
+    "patient": "P003",
+    "fact": "在用格列美脲 2mg qd",
+    "kind": "用药",
+    "status": "active"
+  },
+  {
+    "id": "M04",
+    "patient": "P003",
+    "fact": "主诉夜尿增多",
+    "kind": "症状",
+    "status": "active"
+  }
+]

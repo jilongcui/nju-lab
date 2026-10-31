@@ -1,0 +1,64 @@
+[
+  {
+    "name": "get_drug_info",
+    "description": "查询一种药品的适应证与禁忌证；只接受中文通用名，查不到时返回未收录。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "drug_name": {
+          "type": "string",
+          "description": "药品通用名，如 二甲双胍"
+        }
+      },
+      "required": [
+        "drug_name"
+      ]
+    }
+  },
+  {
+    "name": "check_interaction",
+    "description": "查询两种药之间已知的相互作用；没有收录时返回未收录。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "drug_a": {
+          "type": "string",
+          "description": "药品甲"
+        },
+        "drug_b": {
+          "type": "string",
+          "description": "药品乙"
+        }
+      },
+      "required": [
+        "drug_a",
+        "drug_b"
+      ]
+    }
+  },
+  {
+    "name": "query_labs",
+    "description": "查询某位患者某项目的最近若干次检验结果。",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "patient_id": {
+          "type": "string",
+          "description": "患者号，如 P001"
+        },
+        "item": {
+          "type": "string",
+          "description": "检验项目，如 HbA1c"
+        },
+        "limit": {
+          "type": "integer",
+          "description": "最多返回几条，默认 3"
+        }
+      },
+      "required": [
+        "patient_id",
+        "item"
+      ]
+    }
+  }
+]

@@ -1,0 +1,119 @@
+{
+  "items": [
+    {
+      "item": "PLT",
+      "value": 30.0,
+      "flag": "critical_low",
+      "critical": true
+    },
+    {
+      "item": "CA",
+      "value": 3.5,
+      "flag": "critical_high",
+      "critical": true
+    },
+    {
+      "item": "LDL",
+      "value": 3.4,
+      "flag": "normal",
+      "critical": false
+    },
+    {
+      "item": "TSH",
+      "value": 0.35,
+      "flag": "normal",
+      "critical": false
+    },
+    {
+      "item": "CRP",
+      "value": 8.0,
+      "flag": "normal",
+      "critical": false
+    },
+    {
+      "item": "TBIL",
+      "value": 21.0,
+      "flag": "normal",
+      "critical": false
+    },
+    {
+      "item": "AMY",
+      "value": 300.0,
+      "flag": "critical_high",
+      "critical": true
+    },
+    {
+      "item": "WBC",
+      "value": 1.5,
+      "flag": "critical_low",
+      "critical": true
+    },
+    {
+      "item": "HBA1C",
+      "value": null,
+      "flag": "unknown",
+      "critical": false
+    },
+    {
+      "item": "K",
+      "value": 6.1,
+      "flag": "high",
+      "critical": false
+    },
+    {
+      "item": "GLU",
+      "value": 22.2,
+      "flag": "critical_high",
+      "critical": true
+    },
+    {
+      "item": "XX",
+      "value": 1.0,
+      "flag": "unknown",
+      "critical": false
+    }
+  ],
+  "critical_alerts": [
+    {
+      "item": "PLT",
+      "value": 30.0,
+      "threshold": 30.0,
+      "side": "low"
+    },
+    {
+      "item": "CA",
+      "value": 3.5,
+      "threshold": 3.5,
+      "side": "high"
+    },
+    {
+      "item": "AMY",
+      "value": 300.0,
+      "threshold": 300.0,
+      "side": "high"
+    },
+    {
+      "item": "WBC",
+      "value": 1.5,
+      "threshold": 1.5,
+      "side": "low"
+    },
+    {
+      "item": "GLU",
+      "value": 22.2,
+      "threshold": 22.2,
+      "side": "high"
+    }
+  ],
+  "summary": {
+    "counts": {
+      "normal": 4,
+      "high": 1,
+      "low": 0,
+      "critical_high": 3,
+      "critical_low": 2,
+      "unknown": 2
+    },
+    "n_unknown": 2
+  }
+}

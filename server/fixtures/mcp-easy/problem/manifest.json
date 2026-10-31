@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "name": "mcp-easy",
+  "title": "入门实验：手写一次 MCP 往返（工具协议 · 容易）",
+  "outputFile": "output.json",
+  "inputs": ["tools.json", "data.json", "requests.jsonl"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整",
+      "expr": "['responses','discovered','stats','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "每条请求都留了记录（含通知）",
+      "expr": "Array.isArray(out.responses) && out.responses.length === expected.responses.length"
+    },
+    {
+      "name": "逐条响应正确（result / error / 不响应）",
+      "expr": "JSON.stringify(out.responses) === JSON.stringify(expected.responses)"
+    },
+    {
+      "name": "工具发现正确（tools/list 原样返回清单）",
+      "expr": "JSON.stringify(out.discovered) === JSON.stringify(expected.discovered)"
+    },
+    {
+      "name": "统计正确（响应 / 通知 / 协议错误 / isError）",
+      "expr": "JSON.stringify(out.stats) === JSON.stringify(expected.stats)"
+    },
+    {
+      "name": "边界：通知不产生响应",
+      "expr": "out.responses.filter((r) => r && r.responded === false).length === expected.stats.notified && out.responses.filter((r) => r && r.responded === false).every((r) => r.response === null)"
+    },
+    {
+      "name": "边界：-32602（参数类）与 -32601（未知方法）不混用",
+      "expr": "(() => { const pick = (code) => out.responses.filter((r) => r.response && r.response.error && r.response.error.code === code).length; const exp = (code) => expected.responses.filter((r) => r.response && r.response.error && r.response.error.code === code).length; return pick(-32602) === exp(-32602) && pick(-32601) === exp(-32601); })()"
+    },
+    {
+      "name": "图与说明齐全（至少 1 张，含一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 1 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "说清口径（notes ≥40 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 40"
+    }
+  ],
+  "requires": { "python": ["matplotlib"] }
+}

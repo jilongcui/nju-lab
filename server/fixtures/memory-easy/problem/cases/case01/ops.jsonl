@@ -1,0 +1,6 @@
+{"op": "store", "item": {"id": "M06", "patient": "P001", "fact": "低血糖发作一次（3.1 mmol/L）", "kind": "症状", "status": "active"}}
+{"op": "retrieve", "patient": "P001", "kinds": ["过敏", "用药"]}
+{"op": "update", "id": "M03", "fact": "二甲双胍已停用，改达格列净 10mg qd"}
+{"op": "retrieve", "patient": "P001", "kinds": ["用药"]}
+{"op": "forget", "id": "M02"}
+{"op": "retrieve", "patient": "P001", "kinds": ["过敏", "用药"]}
