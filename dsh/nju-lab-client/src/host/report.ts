@@ -96,9 +96,59 @@ function tableHeader(kind: ExperimentKind, t: ReportThresholds): string[] {
     case 'retrieval':
       // 检索类指标名不固定（recall_at_3_* 等）→ 列在渲染时按 case 的实际键动态取
       return ['case', '检索指标']
+    case 'engineering':
+      // 工程实现型：没有指标，交付的是"逐字段可比的结构" → 列写清交付了什么、边界怎么过的
+      return ['case', '交付项', '边界 / 关键结果', '是否达标（按任务要求）']
     default:
       return ['case', '指标']
   }
+}
+
+/** 工程实现型：这份 `output.json` 交了哪些东西（只看键的形状，不编数字）。 */
+function engineeringDeliverable(out: Record<string, unknown>): string {
+  const parts: string[] = []
+  const arr = (key: string): unknown[] | null =>
+    Array.isArray(out[key]) ? (out[key] as unknown[]) : null
+  const items = arr('items')
+  if (items) parts.push(`items ${items.length} 项`)
+  const responses = arr('responses')
+  if (responses) parts.push(`responses ${responses.length} 条`)
+  const snapshots = arr('snapshots')
+  if (snapshots) parts.push(`snapshots ${snapshots.length} 步`)
+  const decisions = arr('decisions')
+  if (decisions) parts.push(`decisions ${decisions.length} 条`)
+  const perceive = arr('perceive')
+  if (perceive) parts.push(`perceive ${perceive.length} 条`)
+  return parts.length ? parts.join('，') : '未找到 output.json'
+}
+
+/** 工程实现型：边界 / 关键结果的摘要（危急值条数、unknown 项数、协议错误数、三种记忆状态…）。 */
+function engineeringOutcome(out: Record<string, unknown>): string {
+  const parts: string[] = []
+  if (Array.isArray(out.critical_alerts)) parts.push(`危急 ${out.critical_alerts.length} 条`)
+  const nUnknown = num((out.summary as Record<string, unknown> | undefined)?.n_unknown)
+  if (nUnknown !== undefined) parts.push(`unknown ${nUnknown} 项`)
+  const counts = (out.counts ?? {}) as Record<string, unknown>
+  if (Object.keys(counts).length) parts.push(`动作 ${Object.keys(counts).length} 类`)
+  const stats = (out.stats ?? {}) as Record<string, unknown>
+  if (Object.keys(stats).length) {
+    const responded = num(stats.responded)
+    const notified = num(stats.notified)
+    const errors = num(stats.errors)
+    if (responded !== undefined) parts.push(`响应 ${responded} / 通知 ${notified ?? 0} / 协议错误 ${errors ?? 0}`)
+  }
+  if (out.memory_after && typeof out.memory_after === 'object') {
+    parts.push(`记忆 ${Object.keys(out.memory_after as Record<string, unknown>).length} 条`)
+  }
+  const finalCounts = ((out.final as Record<string, unknown> | undefined)?.counts ?? {}) as Record<string, unknown>
+  if (Object.keys(finalCounts).length) {
+    parts.push(
+      `active ${num(finalCounts.active) ?? 0} / superseded ${num(finalCounts.superseded) ?? 0} / forgotten ${num(finalCounts.forgotten) ?? 0}`,
+    )
+  }
+  const toolCount = num((out.discovered as Record<string, unknown> | undefined)?.count)
+  if (toolCount !== undefined) parts.push(`工具 ${toolCount} 个`)
+  return parts.length ? parts.join('，') : '—'
 }
 
 /** 单行数据：缺的字段写 `—`，不编数字。 */
@@ -133,6 +183,8 @@ function tableRow(c: ReportCase, kind: ExperimentKind, t: ReportThresholds): str
         .map(([k, v]) => `${k}=${fmt(num(v))}`)
       return [c.name, shown.length ? shown.join('，') : '未找到 output.json']
     }
+    case 'engineering':
+      return [c.name, engineeringDeliverable(s.output), engineeringOutcome(s.output), '按任务要求']
     default: {
       const metrics = (s.output.metrics ?? {}) as Record<string, unknown>
       const shown = Object.entries(metrics)
@@ -192,6 +244,11 @@ export function renderReport(input: ReportInput): string {
     }
   })
 
+  // 工程实现型没有"基线"这个概念 → 换成"对照做法（偷懒解）"，措辞也一起换
+  const engineering = input.kind === 'engineering'
+  const baselineTitle = engineering ? '## 3. 对照做法（偷懒解）' : '## 3. 基线对照'
+  const baselineLabel = engineering ? '偷懒做法' : '基线做法'
+
   const pitfalls = input.pitfalls.length
     ? input.pitfalls.map((p, i) => `${i + 1}. ${p}`)
     : ['1. （过程中没有记录踩坑 —— 补一条真实的再来交）']
@@ -219,9 +276,9 @@ export function renderReport(input: ReportInput): string {
     '',
     ...table,
     '',
-    '## 3. 基线对照',
+    baselineTitle,
     '',
-    `- 基线做法：${baselineLine}`,
+    `- ${baselineLabel}：${baselineLine}`,
     ...gainLines,
     '',
     '## 4. 踩坑记录（每条一行，平台按行计数）',

@@ -29,6 +29,7 @@ import {
   recordStep,
   saveGuide,
   stepsFor,
+  upgradeKind,
   type GuideState,
 } from './guide.ts'
 import { missingReportParts, renderReport, reportLooksComplete, type ReportCase } from './report.ts'
@@ -200,6 +201,10 @@ export function registerGuidedTools(
           const outputs = await findOutputJson(root)
           const first = outputs.length ? await readJson(outputs[0].file) : null
           state = newGuideState(args.assignmentId, detectKind(first))
+        } else if (state.kind === 'generic') {
+          // 进来时还没有 output.json → 只能判 generic；等第一份产出出现后再认一次（只在没动过时升级）
+          const outputs = await findOutputJson(root)
+          if (outputs.length) state = upgradeKind(state, await readJson(outputs[0].file))
         }
 
         if (args.action === 'set_mode') {

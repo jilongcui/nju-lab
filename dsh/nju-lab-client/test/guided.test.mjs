@@ -28,6 +28,7 @@ import {
   reportLooksComplete,
   saveGuide,
   stepsFor,
+  upgradeKind,
   stepList,
   renderStepList,
 } from '../lib/host/index.js'
@@ -107,8 +108,77 @@ describe('学员模式：步骤状态机（纯逻辑）', () => {
     assert.equal(detectKind({ metrics: { recall_at_3_vector: 0.8, recall_at_3_keyword: 0.5 } }), 'retrieval')
     assert.equal(detectKind({ metrics: { mae: 1.2, rmse: 1.5 } }), 'regression')
     assert.equal(detectKind({ metrics: { recall: 0.7 }, training: { history: [] } }), 'detection')
+    // 工程实现型（2026-10-31）：没有 metrics，交付的是"逐字段可比的结构"
+    assert.equal(detectKind({ items: [], critical_alerts: [], summary: {} }), 'engineering')
+    assert.equal(detectKind({ responses: [], discovered: {}, stats: {} }), 'engineering')
+    assert.equal(detectKind({ snapshots: [], retrievals: [], final: {} }), 'engineering')
+    assert.equal(detectKind({ perceive: [], decisions: [], messages: [], memory_after: {}, counts: {} }), 'engineering')
     assert.equal(detectKind({}), 'generic')
     assert.equal(detectKind(null), 'generic')
+  })
+
+  test('工程实现型的六步：不出现"定基线 / 报指标"', () => {
+    const steps = stepsFor('engineering')
+    assert.equal(steps.length, 6)
+    assert.deepEqual(steps.map((s) => s.id), ['understand', 'look', 'build', 'verify', 'edge', 'report'])
+    const text = steps.map((s) => `${s.title} ${s.ask}`).join(' ')
+    assert.doesNotMatch(text, /定基线/)
+    assert.doesNotMatch(text, /accuracy|macro F1/)
+    assert.equal(steps[2].title.includes('口径'), true)
+    assert.equal(steps[5].owner, 'coach')
+    assert.equal(steps[0].owner, 'student')
+  })
+
+  test('工程实现型的报告：列换成交付项/边界结果，第 3 节不是基线对照', () => {
+    const md = renderReport({
+      title: '把检验判定写成脚本',
+      kind: 'engineering',
+      cases: [
+        {
+          name: 'case01',
+          output: {
+            items: new Array(10).fill({ item: 'K', flag: 'normal' }),
+            critical_alerts: [{ item: 'K', value: 6.2, threshold: 6.2, side: 'high' }],
+            summary: { counts: { normal: 9 }, n_unknown: 1 },
+            figures: [{ path: 'figures/flags.png', takeaway: '10 项里 1 项危急' }],
+            notes: '判定下沉给脚本，边界方向照题干。',
+          },
+        },
+        {
+          name: 'case02',
+          output: {
+            items: new Array(12).fill({ item: 'K', flag: 'normal' }),
+            critical_alerts: [],
+            summary: { counts: { normal: 10 }, n_unknown: 2 },
+            figures: [],
+            notes: '两个 case 的判定都与 expected 一致。',
+          },
+        },
+      ],
+      pitfalls: ['恰好等于危急阈值也要报警'],
+      generatedAt: '2026-10-31T12:00:00.000Z',
+    })
+    assert.match(md, /\| case \| 交付项 \| 边界 \/ 关键结果 \| 是否达标（按任务要求） \|/)
+    assert.match(md, /\| case01 \| items 10 项 \| 危急 1 条，unknown 1 项 \| 按任务要求 \|/)
+    assert.match(md, /## 3\. 对照做法（偷懒解）/)
+    assert.doesNotMatch(md, /## 3\. 基线对照/)
+    assert.match(md, /偷懒做法：/)
+    assert.equal(reportLooksComplete(md), true)
+  })
+
+  test('先判成 generic，等产出出现再升级为 engineering（只在没动过时）', () => {
+    const base = newGuideState('a-2', 'generic')
+    const up = upgradeKind(base, { items: [], critical_alerts: [] })
+    assert.equal(up.kind, 'engineering')
+    assert.equal(up.step, 0)
+    assert.equal(up.confirmed, 0)
+    // 已经动过（走到后面 / 记录过产出）就不升级，避免把进度打回第 1 步
+    assert.equal(upgradeKind({ ...base, step: 2, confirmed: 1 }, { items: [] }).kind, 'generic')
+    assert.equal(upgradeKind({ ...base, records: { understand: { ok: true } } }, { items: [] }).kind, 'generic')
+    // 别的类型不动；识别不出也保持 generic；节奏选择保留
+    assert.equal(upgradeKind(newGuideState('a-3', 'classification'), { items: [] }).kind, 'classification')
+    assert.equal(upgradeKind(base, {}).kind, 'generic')
+    assert.equal(upgradeKind({ ...base, mode: 'manual' }, { items: [] }).mode, 'manual')
   })
 
   test('六步，最后一步是生成报告；推进到顶不再前进', () => {

@@ -159,5 +159,6 @@ export {
   stepsFor,
   stepList,
   renderStepList,
+  upgradeKind,
 } from './guide.ts'
 export { missingReportParts, renderReport, reportLooksComplete } from './report.ts'

@@ -23,6 +23,11 @@ export type ExperimentKind =
   | 'detection'
   /** 检索类（recall_at_k_*） */
   | 'retrieval'
+  /**
+   * 工程实现型：按题目口径写一段确定性代码（四环实现 / 记忆状态机 / 协议报文 / 判定脚本）。
+   * 这一类**没有"定基线 → 训练 → 指标"**，交付物是逐字段可比的结构（output.json）。
+   */
+  | 'engineering'
   | 'generic'
 
 export interface StepDef {
@@ -194,6 +199,49 @@ const STEPS: Record<Exclude<ExperimentKind, 'detection' | 'retrieval'>, Array<Om
       need: 'report.md + 学生确认',
     },
   ],
+  engineering: [
+    {
+      id: 'understand',
+      title: '看清需求（口径 + 边界）',
+      ask: '读实验内容与 task.md：把交付字段逐个列出来（output.json 要有哪几个键），'
+        + '再把口径里"顺序 / 边界 / 不许猜"这几类硬规定复述一遍。',
+      need: '交付字段清单 + 口径复述',
+    },
+    {
+      id: 'look',
+      title: '摸清材料与参考值',
+      ask: '看一眼输入文件（几行 / 几条 / 哪些字段），再看 expected.json 有哪几个键 —— '
+        + '它们就是"要交的东西"的答案形状；指出哪几行是边界用例（恰好等于阈值 / 表外项目 / 通知）。',
+      need: '输入规模 + expected 键列表 + 边界用例清单',
+    },
+    {
+      id: 'build',
+      title: '按口径写实现',
+      ask: '一个函数一个函数地按 task.md 的口径写（先查表再比大小、先查工具名再查参数这类顺序不能变）；'
+        + '不许"顺手优化"，口径怎么写就怎么实现，写完报出每步的产出键。',
+      need: '能跑通的实现 + 各步产出',
+    },
+    {
+      id: 'verify',
+      title: '两个 case 逐字段核对',
+      ask: '跑 case01 与 case02，把 output.json 与 expected.json 逐字段比；'
+        + '不一致时说出"差在第一处是哪一项、期望什么、实际什么"。',
+      need: '两个 case 的比对结果（一致 / 第一处差异）',
+    },
+    {
+      id: 'edge',
+      title: '边界用例自测',
+      ask: '专门跑边界那几条：恰好等于阈值、表外项目 / 空值、无效请求 / 通知、'
+        + '被更新的旧条目 —— 逐条说清"按口径应该是什么结果、实际是什么"。',
+      need: '边界用例逐条结果',
+    },
+    {
+      id: 'report',
+      title: '生成实验报告',
+      ask: '调用 nju_lab_finalize_report 自动生成 report.md，present 给学生确认后提交。',
+      need: 'report.md + 学生确认',
+    },
+  ],
   generic: [
     { id: 'understand', title: '看清需求', ask: '读实验内容与任务要求，复述要做什么、达标口径是什么。', need: '复述需求' },
     { id: 'look', title: '摸清材料', ask: '看一眼输入数据/材料，报出规模与结构，并画一张图。', need: '图 + 一句结论' },
@@ -208,8 +256,13 @@ const STEPS: Record<Exclude<ExperimentKind, 'detection' | 'retrieval'>, Array<Om
 export function detectKind(output: Record<string, unknown> | null | undefined): ExperimentKind {
   const metrics = (output?.metrics ?? {}) as Record<string, unknown>
   const hasTraining = output?.training !== undefined && output?.training !== null
+  // 工程实现型：没有 metrics，交付的是"逐字段可比的结构"（四环结果 / 记忆快照 / 协议报文 / 判定项）。
+  // 放在最前：这几种键一旦出现，就说明它不是"训练+指标"那类实验。
+  const ENGINEERING_KEYS = ['items', 'responses', 'snapshots', 'perceive', 'decisions', 'critical_alerts']
+  if (ENGINEERING_KEYS.some((key) => output?.[key] !== undefined && output?.[key] !== null)) return 'engineering'
   // 顺序有讲究：二分类的 recall/precision 比 accuracy 更能说明"这类实验在考什么"
   if (typeof metrics.recall === 'number' || typeof metrics.precision === 'number') return 'detection'
+
   if (Object.keys(metrics).some((key) => key.startsWith('recall_at'))) return 'retrieval'
   if (typeof metrics.accuracy === 'number') return hasTraining ? 'dl-classification' : 'classification'
   if (typeof metrics.mae === 'number' || typeof metrics.rmse === 'number') {
@@ -220,6 +273,26 @@ export function detectKind(output: Record<string, unknown> | null | undefined): 
 
 /** generic 那套六步：detection / retrieval 也用它（文案本来就是通用的"摸清材料→定基线→搭实现→自测"）。 */
 const GENERIC_STEPS = STEPS.generic
+
+/**
+ * 进来时工作区还没有 `output.json`（→ 只能判成 generic）；等第一份产出出现后**再认一次**类型。
+ *
+ * 为什么需要：学员模式的步骤在第一次 `status` 时定下来，而"工程实现型"（四环 / 状态机 / 报文 / 判定）
+ * 的识别依据是 `output.json` 的键 —— 学生开工那一刻它还不存在。不加这一步，这四个实验会一直套着
+ * generic 那套"定基线 → 报指标"的步骤。
+ *
+ * 只在**还没动过**（第 0 步、没确认、没记录）时才升级，避免把已经走到第 3 步的进度打回第 1 步。
+ */
+export function upgradeKind(
+  state: GuideState,
+  output: Record<string, unknown> | null | undefined,
+): GuideState {
+  if (state.kind !== 'generic') return state
+  if (state.step !== 0 || state.confirmed !== 0 || Object.keys(state.records).length > 0) return state
+  const detected = detectKind(output)
+  if (detected === 'generic') return state
+  return { ...newGuideState(state.assignmentId, detected), mode: state.mode }
+}
 
 export function stepsFor(kind: ExperimentKind): StepDef[] {
   // 默认"学员做"，最后一步（生成报告）归教练 —— 不必在 24 个步骤定义里重复写

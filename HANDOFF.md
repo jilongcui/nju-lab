@@ -5,6 +5,40 @@
 
 ## 0. 一句话现状
 
+**2026-10-31（实验引导适配：学员模式新增「工程实现型」分支，镜像 pkg24 + kit 重打）—— ✅ 已上线**
+
+- **问题（用户提出）**："实验引导环节，每个实验可能不一样……构建实验包的时候有没有做调整"。
+  查下来：**包侧做了、客户端侧没做**。学员模式的六步文案是**代码按 `output.json` 的 `metrics` 猜类型**给的
+  （`detectKind`），四个 easy 实验的产出是 `items` / `responses` / `snapshots` / `perceive` 这些结构、没有 `metrics`
+  → 一律落到 `generic`，而那套步骤是「定基线 → 搭最小实现 → 报出指标」，`nju_lab_finalize_report` 的表格列又是
+  `case | 指标` → 这四个实验的报告会是一张空表（`case01 | —`）。
+- **改法（客户端）**：
+  · `guide.ts`：`ExperimentKind` 新增 **`engineering`**；新增 `STEPS.engineering` 六步 ——
+    看清需求（列交付字段与口径顺序）→ 摸清材料与参考值（输入规模 + `expected.json` 的键 + 边界用例）→
+    按口径写实现 → 两个 case 逐字段核对（说出"第一处差在哪"）→ 边界用例自测 → 生成报告；
+  · `detectKind`：先看 `items / responses / snapshots / perceive / decisions / critical_alerts` 这几类键 → `engineering`；
+  · 新增 `upgradeKind`：学员第一次进来时工作区还没有 `output.json`（只能判 `generic`），**等第一份产出出现后再认一次**，
+    且只在"没动过"（第 0 步、未确认、无记录）时升级 —— 否则会把已经走到第 3 步的进度打回第 1 步；
+  · `report.ts`：`engineering` 的表头 `case | 交付项 | 边界 / 关键结果 | 是否达标（按任务要求）`，
+    行内按 `output.json` 的键形状写实（`items 10 项`、`危急 1 条，unknown 1 项`、`响应 8 / 通知 1 / 协议错误 3`…）；
+    第 3 节标题改 **「对照做法（偷懒解）」**（这类实验没有"基线"）；
+  · `guidance.ts`：自由模式的**三类 → 四类**（补"工程实现型"的流程与三条坑），skill 手册同步。
+- **改法（包侧）**：四个 `task.md` 顶部加「流程归属（给引导用的提示）」，写明"没有定基线/训练/指标"。
+- **验证**：`nju-lab-client` `npm run typecheck` + `npm run build` + `npm test`
+  **97 tests / 91 pass / 0 fail / 6 skip**（新增 3 条：`detectKind` 认 engineering、六步里不出现"定基线/accuracy"、
+  报告的列与第 3 节标题、`upgradeKind` 的升级条件）；
+  镜像内 `grep engineering lib/host/index.js` → 11 处、含「工程实现型」「对照做法（偷懒解）」。
+- **产物与部署**：
+  · 镜像 **`nju-lab-workspace:0.2.0-rc.2-pkg24`**（`FROM nju-lab-verify:0.2.0-rc.2-pkg8`，重建客户端）；
+  · `server/src/workspace/workspace.config.ts` 默认值与 `.env.example` 改 `pkg24` → `cd server && npm run build`
+    → `kill $(systemctl show nju-lab -p MainPID --value)`（PID 2053251 → 2092478，登录 201）；
+  · kit 重打 **`20261031-1214-322e892`** 并投放（备份 `nju-lab-student-kit.zip.20261031-1214.bak`）；
+  · 四个项目的问题包**重新上传并 PATCH**（`problemFileId` 新 sha：`1fb06b7e8599` / `4fb7a5047cca` / `4b1cbd06e770` / `7fa0d4f44295`）。
+- **回滚**：`WORKSPACE_IMAGE=nju-lab-workspace:0.2.0-rc.2-pkg23` + `npm run build` + 重启（旧镜像保留）；
+  kit 用 `.20261031-1214.bak` 覆盖；代码 `git revert`。
+- **注意**：镜像变了 → 既有工作台容器会被 `adoptOrReclaim()` 重建（wsKey 更换，学生需重新进入）。
+  重启前只有 1 个 4 周前的遗留容器，无活跃会话。
+
 **2026-10-31（第 10~13 章各补一个 easy 实验包并上线；动手环节从"跑示例"改成"交结果"）—— ✅ 已上线（四个项目 published）**
 
 - **用户要求**（原话）："现在动手环节，好像并没有具体的事情，也没有具体实验"；随后拍板
