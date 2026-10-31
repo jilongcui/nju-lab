@@ -75,9 +75,9 @@ curl -s -X POST "$B/chapters/$C/slides/regenerate-page" -H "Authorization: Beare
 | `status` | `ready` |
 | 页数 | 8~20 页（本课程长正文一般是 17~20 页） |
 | 每页内容块 | 除封面外 `blocks.length ≥ 1`（`toc` / `section` 页天然只有 1 块） |
-| 每页正文字符数 | `JSON.stringify(blocks).length ≥ 60`；小于 60 且 `notes` 为空 ⇒ 基本是「计划骨架兜底」 |
+| 每页正文字符数 | `JSON.stringify(blocks).length ≥ 60`；`section` 分节页天然只有一句导语（≥ 40 即可）；低于该值且 `notes` 为空 ⇒ 基本是「计划骨架兜底」 |
 | 讲稿 | 每页 `notes.length > 0`（含封面） |
-| `warnings` | 不含「内容缺失，已用计划骨架兜底」「缺少讲稿」「第 N 页：第 1 页没有可用内容块，已跳过」 |
+| `warnings` | 不含「内容缺失，已用计划骨架兜底」「缺少讲稿」「第 N 页：第 1 页没有可用内容块，已跳过」；「讲稿正文里出现『学员/学生』」也算不合格（`[ …… ]` 内的备课提示除外，见下） |
 
 **已知坑**：
 
@@ -85,7 +85,9 @@ curl -s -X POST "$B/chapters/$C/slides/regenerate-page" -H "Authorization: Beare
 - 响应是 `{code:0, data:{deck}}`，把它当 `data.slides` 用会拿到 `undefined`；
 - `index` 是 **0 基**；`regenerate-page` 是**同步**调用，与整份生成共用频次护栏
   **20 次/小时/课程**（`SLIDES_GENERATE_PER_HOUR`），批量修页时注意别撞 429；
-- 封面 `blocks=0` 是正常的，不要当成缺内容去"补"。
+- 封面 `blocks=0` 是正常的，不要当成缺内容去"补"；
+- 讲稿里的 `[ 让学员先自己想一下 ]` 这类**备课提示**是平台支持的格式（`docs/SLIDES.md` §5.3），
+  不算"面向讲者"；只有 `[ ]` **之外**的正文出现「学员/学生」才需要改。
 
 ## 完成后向用户报告
 
