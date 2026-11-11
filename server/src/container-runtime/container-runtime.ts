@@ -318,7 +318,10 @@ export class ContainerRuntime {
       `{{with (index .NetworkSettings.Networks "${EGRESS_NETWORK}")}}{{.IPAddress}}{{end}}`,
       name,
     ]);
-    return r.ok && r.out ? r.out : null;
+    // ⚠️ 必须校验形状：容器已退出/网络没挂上时 `docker inspect` 会失败，
+    // 而 `docker()` 把 stderr 合进了 out —— 曾经把 "invalid IP" 当成地址拼进 URL
+    // （2026-11-11 实测：应用容器解包失败退出，反代目标变成 http://invalid IP:9200）。
+    return r.ok && /^\d{1,3}(\.\d{1,3}){3}$/.test(r.out) ? r.out : null;
   }
 
   /**

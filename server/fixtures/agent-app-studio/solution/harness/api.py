@@ -81,6 +81,12 @@ def parse_docx(path: Path) -> list[str]:
     return lines
 
 
+def text_checksum(lines: list[str]) -> str:
+    """解析文本的校验和（口径见 task.md §一）：每行去首尾空白、按 `\\n` 连接，取 sha256 前 12 位。"""
+    joined = "\n".join(line.strip() for line in lines)
+    return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:12]
+
+
 def parse_attachment(info: dict) -> dict:
     path = Path(info["path"])
     kind = info["kind"]

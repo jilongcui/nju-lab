@@ -110,6 +110,25 @@
   分享端点放行 CORS（`Access-Control-Allow-Origin: *`，只放匿名口子 + `OPTIONS` 预检 204），
   注入的 `window.__APP_API_BASE__` 也改成 `share/<key>`。实测：site 200/CORS `*`/注入 base、
   chat 201/CORS `*`/抽行 `HGB 88`、预检 204。学生自测仍走登录态同源（自己对自己页面负责）。
+- **真机排查（2026-11-11 晚，用户反馈"分享不了，是不是只能跑在虚拟机里"）—— 两个真 bug**：
+  ① **`publish_app.py` 漏打包 `app_host.py`** → 容器里 `python3: can't open file '/work/app/app_host.py'`
+     → 容器 `Exited(2)` → 分享页 **503**（用户看到的就是"分享不了"）。已修：`INCLUDE` 加 `app_host.py`，
+     并加 `REQUIRED` 本地自检（缺文件当场报错，不再等到容器里 500）。
+  ② **`containerIp()` 把错误文本当 IP**：容器退出后 `docker inspect` 失败，`docker()` 把 stderr 合进 out，
+     于是 `http://invalid IP:9200` 被当反代目标（日志里那行 `started … (invalid IP)` 就是它）。
+     已修：只接受形如 IPv4 的返回值，否则 `null`（工作台也复用这个函数，一并受益）。
+  ③ 连带修：`solution/harness/api.py` 删本地 `vision_extract` 时**漏了 `text_checksum`**，
+     脚本 `NameError` → 复验 agent 转而自己实现 → case01 检索 top3 偏一位（16/17）。
+     已补回（注意 `"
+"` 是真换行，不是字面 `\n`；改错会让所有文本附件 checksum 漂）。
+     复验恢复 **2/2 / 硬性 17/17**（case01 0.9 / case02 1.0）；`solution/SKILL.md` 加了
+     「复验只需要这一条命令，不要改 harness/」；包内 README 加了「改完 solution 先本地跑一遍」。
+- **产品引导（同日）**：学生页新建应用后**弹窗直接给命令** `python3 publish_app.py --app <id> --publish`
+  + 可复制的 appId；未上传产物的应用标「待上传产物」；操作列加「上传命令」；分享按钮 disabled 时
+  给出 title 说明。文案明确"网页上传只适合本地有 zip 的情况"。
+- **实测（经 nginx，Host=medai.nju.edu.cn 的真实入口）**：建应用 → `publish_app.py`（22.1 KB）→
+  发布 → 匿名打开 `/lab/api/apps/share/<key>/site` **200**（CORS `*`、注入 share base）→
+  匿名对话 **201**（`HGB 88 low`）。分享链路确认可用；诊断数据与容器已清理。
 - **未做（四期）**：成本看板、评分汇总进 `submissions`/`Grading`、iframe 真正独立源（需 nginx + 证书）；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；

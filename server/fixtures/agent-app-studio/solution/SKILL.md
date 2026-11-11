@@ -41,14 +41,21 @@ description: 教师侧解答样例（不下发）：可分享智能体应用的�
 - case02 的 T2 故意给 6 步（`max_steps=5`）→ 记 `max_steps`；
 - 视觉稳定性：同一张图连跑 3 次，图片 `checksum` 与 `trace_checksum` **完全一致**。
 
-## 运行
+## 运行（**复验只需要这一条命令**）
 
 ```sh
-# 本地（仓库里跑两个 case）
-python3 harness/run.py ../problem/cases/case01 ./output.json
-
-# 复验环境：case 的输入文件**就在当前工作目录**（没有 cases/ 子目录），本 Skill 被复制到 skill/
+# 当前工作目录里就是 case 的输入文件（dialogue.jsonl / records.csv / kb/ …）
 python3 skill/harness/run.py . output.json
-
-APP_DIR=. python3 app_host.py          # 浏览器里看：http://127.0.0.1:9200
 ```
+
+- **不要改 `harness/` 下的任何文件**（`run.py` 是胶水、`api.py` 是参考实现）：判据是逐字段比对，
+  自己重写实现几乎一定会在某处偏一位（2026-11-11 实测：一次 `NameError` 让复验 agent 转而自己实现，
+  case01 检索 top3 偏一位 → 16/17）。
+- 跑完**必须确认当前目录出现 `output.json`**（判据只认它）；同时会生成 `figures/app_report_overview.png`。
+- 本地想看两个 case：
+
+```sh
+python3 harness/run.py ../problem/cases/case01 /tmp/c1.json
+python3 harness/run.py ../problem/cases/case02 /tmp/c2.json
+```
+

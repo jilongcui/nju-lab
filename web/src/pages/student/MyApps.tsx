@@ -111,11 +111,31 @@ export default function MyApps() {
     const values = await form.validateFields();
     setCreating(true);
     try {
-      await createApp(values);
-      message.success('已创建，接着上传一版产物');
+      const app = await createApp(values);
       setCreateOpen(false);
       form.resetFields();
       await load();
+      // 关键引导：产物在**远端工作台容器**里，网页选不到文件 —— 直接给出要跑的命令
+      const cmd = `python3 publish_app.py --app ${app.id} --publish`;
+      Modal.success({
+        title: '应用已创建，下一步在工作台里交产物',
+        width: 640,
+        content: (
+          <div>
+            <Paragraph type="secondary">
+              你的代码和工作区都在**平台实验环境（远端容器）**里，网页这边选不到那些文件。
+              到「实验环境」里在你的 Skill 根目录执行下面这条命令即可（它会打包
+              <Text code>app.json/app_host.py/harness/web/kb</Text> 并上传、发布）：
+            </Paragraph>
+            <Paragraph>
+              <Text code copyable>{cmd}</Text>
+            </Paragraph>
+            <Paragraph type="secondary" style={{ fontSize: 12 }}>
+              应用 id：<Text code copyable>{app.id}</Text>
+            </Paragraph>
+          </div>
+        ),
+      });
     } finally {
       setCreating(false);
     }
@@ -174,6 +194,17 @@ export default function MyApps() {
       await load();
     } finally {
       setBusy(null);
+    }
+  };
+
+  /** 产物在工作区容器里：把"去工作台跑这条命令"的完整命令复制给学生 */
+  const copyUploadCommand = async (app: AgentApp) => {
+    const cmd = `python3 publish_app.py --app ${app.id} --publish`;
+    try {
+      await navigator.clipboard.writeText(cmd);
+      message.success('已复制：到平台「实验环境」里粘贴执行（会打包并发布）');
+    } catch {
+      Modal.info({ title: '在实验环境里执行这条命令', content: <Text code>{cmd}</Text> });
     }
   };
 
@@ -246,9 +277,12 @@ export default function MyApps() {
     {
       title: '状态',
       dataIndex: 'status',
-      width: 100,
-      render: (value: string) => (
-        <Tag color={STATUS_META[value]?.color}>{STATUS_META[value]?.text ?? value}</Tag>
+      width: 130,
+      render: (value: string, row) => (
+        <Space direction="vertical" size={2}>
+          <Tag color={STATUS_META[value]?.color}>{STATUS_META[value]?.text ?? value}</Tag>
+          {!row.latestVersionId ? <Tag color="orange">待上传产物</Tag> : null}
+        </Space>
       ),
     },
     {
@@ -297,10 +331,18 @@ export default function MyApps() {
           <Button size="small" onClick={() => void openPreview(row)}>
             预览
           </Button>
+          <Button size="small" onClick={() => void copyUploadCommand(row)}>
+            上传命令
+          </Button>
           <Button size="small" onClick={() => void openVersions(row)}>
             版本
           </Button>
-          <Button size="small" disabled={!row.shareKey} onClick={() => void copyShare(row)}>
+          <Button
+            size="small"
+            disabled={!row.shareKey}
+            title={row.shareKey ? '复制无需登录的分享链接' : '先上传产物并发布，才会有分享链接'}
+            onClick={() => void copyShare(row)}
+          >
             分享链接
           </Button>
           <Popconfirm
@@ -344,8 +386,9 @@ export default function MyApps() {
         }
       >
         <Paragraph type="secondary">
-          把第 19 章的 harness 接到前端上，做成一个能给别人用的小应用：上传产物 → 发布 →
-          复制分享链接（匿名可打开）→ 老师评分。
+          把第 19 章的 harness 接到前端上，做成一个能给别人用的小应用：新建 → 在工作台里
+          <Text code>python3 publish_app.py --app &lt;id&gt; --publish</Text> → 复制分享链接（匿名可打开）→ 老师评分。
+          「上传产物」按钮只适合本地有 zip 的情况（学员的工作区在远端容器里，用命令更快）。
         </Paragraph>
         {loading ? (
           <Skeleton active />

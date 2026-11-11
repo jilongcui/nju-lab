@@ -14,8 +14,8 @@
 
 `<应用 id>` 在平台「我的应用」页新建应用后就能看到（也可以从页面 URL 里抄）。
 
-只打包这四样东西（别的文件不会带上去）：
-    app.json  harness/  web/  kb/
+只打包这五样东西（别的文件不会带上去）：
+    app.json  app_host.py  harness/  web/  kb/
 这样做是因为工作区里还有题目材料、输出、日志 —— 全打进去会让产物又大又不可复现。
 """
 from __future__ import annotations
@@ -32,16 +32,21 @@ import uuid
 import zipfile
 from pathlib import Path
 
-INCLUDE = ("app.json", "harness", "web", "kb")
+INCLUDE = ("app.json", "app_host.py", "harness", "web", "kb")
+# 产物必须齐这几样（缺了容器里根本起不来 —— 2026-11-11 实测：漏 app_host.py 时
+# 容器日志是 `python3: can't open file '/work/app/app_host.py'`，网页侧只看到 503）
+REQUIRED = ("app.json", "app_host.py", "harness/api.py", "web/index.html")
 SKIP_DIRS = {"__pycache__", ".git", "figures", "outputs", "node_modules"}
 
 
 def build_zip(root: Path) -> bytes:
     """把 `INCLUDE` 里的东西打成一个 zip（相对 root 的路径，跳过缓存与输出）。"""
-    if not (root / "app.json").exists():
-        raise SystemExit(f"当前目录没有 app.json：{root}（--dir 指到你的应用根）")
-    if not (root / "harness" / "api.py").exists():
-        raise SystemExit("缺少 harness/api.py —— 应用入口必须是它")
+    missing = [name for name in REQUIRED if not (root / name).exists()]
+    if missing:
+        raise SystemExit(
+            "产物缺文件：" + ", ".join(missing)
+            + "\n（在 Skill 根下运行；app_host.py 是平台提供的宿主，别删也别改）"
+        )
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:

@@ -99,6 +99,10 @@ python3 publish_app.py --app <应用 id> --publish  # 再发布，打印分享�
 
 ## 自检与复验
 
+> ⚠️ **改完 `solution/` 先本地跑一遍**（`python3 solution/harness/run.py problem/cases/case01 /tmp/x.json`），
+> 再跑复验。2026-11-11 踩过一次：删函数时漏了 `text_checksum`，脚本 `NameError`，
+> 复验 agent 转而自己实现 → case01 检索 top3 偏一位（16/17）；补回后 2/2 / 17/17。
+
 ```sh
 cd server/fixtures/agent-app-studio
 # ⚠️ 图片走视觉：造题 / regen-expected 要带模型额度（`--env-file server/.env`），复验容器自身有额度
