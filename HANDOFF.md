@@ -5,7 +5,7 @@
 
 ## 0. 一句话现状
 
-**2026-11-11（收官两章：第 19 章升级为 Harness 智能体 + 新增第 20 章「可分享的智能体应用」；平台新增应用托管一期）—— 🚧 代码与实验包已完成，**尚未重启/发布****
+**2026-11-11（收官两章：第 19 章升级为 Harness 智能体 + 新增第 20 章「可分享的智能体应用」；平台新增应用托管一期）—— ✅ 已上线（含重启、正文、建章、deck、项目发布）**
 
 - **用户要求**（原话）："最后一章综合利用前面几章的知识……构建自己的 harness 智能体（loop、记忆层级、mcp/tools、知识库），
   前端页面可以对话和上传图片/文件 pdf/word，可以改背景……学生生成的独立智能体的前端必须能够分享出来，并被老师所管理"。
@@ -34,9 +34,22 @@
     `metric_rows=[PLT 18 low, WBC 12.5 high]` + 升级 2 条 → 教师 `GET /courses/:id/apps` 可见 →
     `GET /apps/:id/messages` 有 user/assistant 两条。冒烟数据已清理（三张表 + 容器 + scratch）。
 - **验证**：`server npm run build` 通过；`web npm run build` 通过（`tsc --noEmit` + vite）；迁移 `migration:show` 显示 `[X]`。
-- **未做（下一步）**：① **重启后端**让 apps 模块与 `/api/apps` 路由生效（当前生产进程仍是旧 dist）；
-  ② 第 19 章正文改造 + deck 重生成（`update-chapter` skill）；③ 新建第 20 章（`order=20`）+ 正文 + deck；
-  ④ 两个项目上传/绑定/发布 + 原 `learning-assistant` 下架；⑤ `.env` 加 `AGENT_APP_*`（有默认值，只有改默认才需要）。
+- **上线动作（用户确认后已完成）**：
+  ① **重启后端**：MainPID `2329401 → 43524`，登录 201、`GET /api/apps/mine` 401（路由已挂）；
+  ② **第 19 章正文改造 + 改名**：《智能体综合实践：分子医学学习助手》→《智能体综合实践：给随访助手写一个 harness》
+     （9268 字节；六件 + 三阶段 + 安全红线 + 动手实践），deck 重生成 **20 页**（`warnings`：大纲 21 页已截断）；
+  ③ **新建第 20 章** `order=20`《综合实践：从 Harness 到可分享的智能体应用》
+     （chapter id `53e99c16-2231-4d47-9a3e-02baa0f86f71`，3676 字符），deck 生成 **18 页**；
+     两份 deck 的 `basedOnChapterHash` 与当前正文一致（19 章 `1834920f` / 20 章 `9a8b152b`）；
+  ④ **项目发布**：
+     · `harness-agent` → 项目 `a9c69502-dd7e-4e91-84c7-97c4d11000bd`（第 19 章、medium、published），
+       problem sha `48b0a1f8128a` / skill sha `b9bbac873077`；
+     · `agent-app-studio` → 项目 `729fb572-a181-4d48-9be2-d11df16ec6bd`（第 20 章、hard、published），
+       problem sha `dccb9c66743e` / skill sha `7d83ece2f67e`；
+     · 旧 `learning-assistant` 项目 `a42bb532-364e-4872-8b2f-6e47dd433048` **下架为 draft**
+       （没有 unpublish 端点，直接 `UPDATE experiment_projects SET status='draft'`；数据与实测记录保留，可恢复）。
+- **未做**：二期（免登录分享 / 并发排队与配额 / 多版本回滚 / LLM 代理 / 评分接入 / iframe 沙箱隔离）；
+  `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；
   应用容器**不注入大模型 key**（二期走平台代理）。
 
