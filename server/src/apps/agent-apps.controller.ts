@@ -5,6 +5,7 @@ import {
   Delete,
   Get,
   Headers,
+  Options,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -231,10 +232,29 @@ export class AgentAppShareController {
   @Get(':key/site')
   async siteIndex(@Param('key') key: string, @Res() res: Response) {
     const asset = await this.service.siteAssetByShareKey(key, 'index.html');
+    this.cors(res);
     res.setHeader('Content-Type', asset.contentType);
     res.setHeader('Content-Length', String(asset.body.length));
     res.setHeader('Cache-Control', 'no-store');
     res.end(asset.body);
+  }
+
+  /**
+   * 分享页在 **iframe sandbox（opaque origin）** 里运行：它没有平台的 cookie/token，
+   * 调匿名对话口子算跨域 —— 所以这几个端点必须放行 CORS。
+   * 只放行分享口子（匿名 + 限流），登录态端点不放。
+   */
+  private cors(res: Response): void {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  }
+
+  @Public()
+  @Options(':key/api/chat')
+  preflight(@Res() res: Response) {
+    this.cors(res);
+    res.status(204).end();
   }
 
   @Public()
@@ -245,6 +265,7 @@ export class AgentAppShareController {
     @Res() res: Response,
   ) {
     const asset = await this.service.siteAssetByShareKey(key, file);
+    this.cors(res);
     res.setHeader('Content-Type', asset.contentType);
     res.setHeader('Content-Length', String(asset.body.length));
     res.setHeader('Cache-Control', 'no-store');
@@ -253,7 +274,14 @@ export class AgentAppShareController {
 
   @Public()
   @Post(':key/api/chat')
-  chat(@Param('key') key: string, @Body() payload: ChatPayload) {
-    return this.service.chatByShareKey(key, payload);
+  async chat(
+    @Param('key') key: string,
+    @Body() payload: ChatPayload,
+    @Res() res: Response,
+  ) {
+    const data = await this.service.chatByShareKey(key, payload);
+    this.cors(res);
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.end(JSON.stringify({ code: 0, data, message: 'ok' }));
   }
 }

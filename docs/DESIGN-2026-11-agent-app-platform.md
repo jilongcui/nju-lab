@@ -114,7 +114,7 @@ nju-lab-app-runtime 容器（每应用一个，USER 1000，512m/0.3cpu）
 | 学生代码执行 | 容器内、非 root、只读镜像、只挂自己的 zip | 与工作台同一套隔离；不 `--privileged` |
 | 越权看应用 | `assertCanRead`：作者 / 教师 / 课程内可见 | 一期教师可读全部课程的应用（教师人少） |
 | 对话记录 | 落库，教师可读 | **需要在课程说明里告知学生**（教学复盘用途）；二期加"学生可关闭记录" |
-| iframe | 同源 + 注入 base | 未加 `sandbox`（学生页面要 fetch 平台 API）；二期改成独立源 + `sandbox` |
+| iframe | 教师/匿名预览：`share/<key>` + `sandbox`（**无** `allow-same-origin`）；学生自测：登录态同源 | 分享端点放行 CORS（`*`，只放匿名口子）；页面读不到平台凭据。真正的独立源仍待四期 |
 | 产物校验 | 只接受 `zip`、≤30MB | 解包在容器内完成，宿主不解压（zip-slip 影响不到宿主） |
 | LLM 额度 | 一期不注入 key | 二期走平台代理 + 每会话 token 上限 |
 
@@ -151,7 +151,10 @@ nju-lab-app-runtime 容器（每应用一个，USER 1000，512m/0.3cpu）
 **四期（待做）**：
 - **成本看板**：按应用/学生汇总代理调用与 token（现在只有进程内存计数）；
 - **评分进成绩单**：把 `agent_app_reviews` 汇总进现有 `submissions`/`Grading`；
-- **iframe 独立源**：学生页面放 `{key}.app.example.com` 并加 `sandbox`（需要 nginx + 证书）。
+- **iframe 独立源**：学生页面放 `{key}.app.example.com`（需要 nginx + 证书）。
+  当前已做的折中：**教师预览与匿名分享走 `share/<key>` + `sandbox`（无 `allow-same-origin`）**，
+  学生页面在 opaque origin 里跑，读不到平台 cookie/localStorage；分享端点放行 CORS（`*`）以便页面
+  调匿名对话口子；学生自己预览仍走登录态（同源，自己对自己的页面负责）。
 
 ## 10. 已知限制与回滚
 

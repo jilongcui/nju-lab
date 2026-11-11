@@ -232,13 +232,14 @@ export class AgentAppsService implements OnModuleDestroy {
     const version = await this.getVersion(app);
     const upstream = await this.runtime.upstream(app.id, version.id);
     await this.waitUntilReady(upstream);
-    return this.readSiteAsset(app, upstream, file);
+    return this.readSiteAsset(app, upstream, file, `/lab/api/apps/share/${key}`);
   }
 
   private async readSiteAsset(
     app: AgentApp,
     upstream: string,
     file: string,
+    apiBase?: string,
   ): Promise<{ body: Buffer; contentType: string }> {
     const name = file || 'index.html';
     if (!/^[A-Za-z0-9._-]+$/.test(name)) throw new BadRequestException('非法文件名');
@@ -247,10 +248,11 @@ export class AgentAppsService implements OnModuleDestroy {
     let body = Buffer.from(await res.arrayBuffer());
     const contentType = res.headers.get('content-type') || 'application/octet-stream';
     if (contentType.includes('text/html')) {
-      // 让 iframe 里的相对资源与 /api 调用都回到平台前缀（学生代码不用关心部署在哪）
-      const base = `/lab/api/apps/${app.id}/site/`;
+      // 让 iframe 里的相对资源与 /api 调用都回到平台前缀（学生代码不用关心部署在哪）。
+      // 分享场景用 `share/<key>` 前缀：页面在 sandbox（无同源凭据）里也能对话。
+      const prefix = apiBase ?? `/lab/api/apps/${app.id}`;
       const inject =
-        `<base href="${base}"><script>window.__APP_API_BASE__="/lab/api/apps/${app.id}";</script>`;
+        `<base href="${prefix}/site/"><script>window.__APP_API_BASE__="${prefix}";</script>`;
       body = Buffer.from(
         body
           .toString('utf-8')

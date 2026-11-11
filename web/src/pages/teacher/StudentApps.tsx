@@ -21,6 +21,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import {
   activateAppVersion,
+  appShareUrl,
   appSiteUrl,
   getAppReview,
   listAppMessages,
@@ -321,12 +322,28 @@ export default function StudentApps() {
         destroyOnClose
       >
         {preview ? (
-          <iframe
-            key={previewKey}
-            title="teacher-app-preview"
-            src={`${window.location.origin}${appSiteUrl(preview.id)}`}
-            style={{ width: '100%', height: '80vh', border: '1px solid #eee', borderRadius: 8 }}
-          />
+          preview.shareKey ? (
+            <>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                预览在沙箱里运行（学生页面拿不到平台登录态）；这是学生实际分享出去的那条链路。
+              </Text>
+              <iframe
+                key={previewKey}
+                title="teacher-app-preview"
+                src={`${window.location.origin}${appShareUrl(preview.shareKey)}`}
+                // 不给 allow-same-origin：学生页面在 opaque origin 里跑，读不到平台 cookie/localStorage
+                sandbox="allow-scripts allow-forms allow-popups allow-downloads"
+                style={{ width: '100%', height: '80vh', border: '1px solid #eee', borderRadius: 8 }}
+              />
+            </>
+          ) : (
+            <iframe
+              key={previewKey}
+              title="teacher-app-preview"
+              src={`${window.location.origin}${appSiteUrl(preview.id)}`}
+              style={{ width: '100%', height: '80vh', border: '1px solid #eee', borderRadius: 8 }}
+            />
+          )
         ) : null}
       </Drawer>
 

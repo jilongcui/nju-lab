@@ -104,7 +104,13 @@
   `publish_app.py`（只打 `app.json/harness/web/kb`，用容器里已注入的 `NJU_LAB_SERVER_URL` +
   `NJU_LAB_TOKEN` 调平台接口，`--publish` 直接发布）。实测 17.0 KB → 版本 `47bbe998` → 发布拿到 shareKey；
   `--check` 仍 0（17 条断言，`publish_app.py` 已进 skill 包）。
-- **未做（四期）**：成本看板、评分汇总进 `submissions`/`Grading`、iframe 独立源 + `sandbox`；
+- **分享页沙箱（同日收尾）**：教师预览与匿名分享改成 `share/<key>` + iframe
+  `sandbox="allow-scripts allow-forms allow-popups allow-downloads"`（**不给 same-origin**）——
+  学生页面在 opaque origin 里跑，读不到平台 cookie/localStorage；为让页面仍能对话，
+  分享端点放行 CORS（`Access-Control-Allow-Origin: *`，只放匿名口子 + `OPTIONS` 预检 204），
+  注入的 `window.__APP_API_BASE__` 也改成 `share/<key>`。实测：site 200/CORS `*`/注入 base、
+  chat 201/CORS `*`/抽行 `HGB 88`、预检 204。学生自测仍走登录态同源（自己对自己页面负责）。
+- **未做（四期）**：成本看板、评分汇总进 `submissions`/`Grading`、iframe 真正独立源（需 nginx + 证书）；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；
   应用容器**不注入大模型 key**（二期走平台代理）。
