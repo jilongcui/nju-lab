@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
   OnModuleDestroy,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes } from 'crypto';
@@ -176,13 +177,33 @@ export class AgentAppsService implements OnModuleDestroy {
 
   // ------------------------------------------------------------ 运行与反代
 
-  /** 起（或复用）应用容器，返回预览用的上游 base */
+  /** 起（或复用）应用容器，返回预览用的上游 base（**等 HTTP 就绪**再返回） */
   async start(user: User, id: string): Promise<{ app: AgentApp; upstream: string }> {
     const app = await this.get(user, id);
     this.assertCanRead(user, app);
     const version = await this.getVersion(app);
     const upstream = await this.runtime.upstream(app.id, version.id);
+    await this.waitUntilReady(upstream);
     return { app, upstream };
+  }
+
+  /**
+   * 等容器里的 `app_host.py` 真的能应答（最多约 20 秒）。
+   *
+   * 为什么需要：容器拿到 IP 只要几百毫秒，但 `entrypoint.sh` 还要 unzip 产物、启动 python ——
+   * 这中间转发过去就是 `fetch failed`（2026-11-11 实测，冒烟第一次就撞上）。
+   */
+  private async waitUntilReady(upstream: string, attempts = 40): Promise<void> {
+    for (let i = 0; i < attempts; i += 1) {
+      try {
+        const res = await fetch(`${upstream}/api/health`);
+        if (res.ok) return;
+      } catch {
+        // 还没起来，继续等
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    throw new ServiceUnavailableException('应用启动超时（容器在跑但 HTTP 没应答），请稍后重试');
   }
 
   async siteAsset(user: User, id: string, file: string): Promise<{ body: Buffer; contentType: string }> {

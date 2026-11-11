@@ -67,6 +67,12 @@
   · **踩坑（值得记）**：`PATCH /api/projects/:id` 不带 `Content-Type: application/json` 时，
     Express 不解析 body → DTO 为空 → **接口 200 但什么都没改**（我第一次就掉了这个坑）；
     另外 `POST /courses/:id/chapters` 建出来的章节默认 `draft`，学生端不可见。
+  · **应用容器跑视觉的三处必须项**（2026-11-11 晚实测补齐，已进代码并重启 PID `136742`）：
+    ① 起容器要透传 `DEEPSEEK_API_KEY`（只写变量名）；② 要 `egressProxyIp = ensureEgressProxy()`，
+    否则 `--internal` 里 DNS 失败；③ 转发前要探测 `/api/health`（最多 20 秒），
+    否则容器刚起、`app_host` 还没应答 → `fetch failed`。三者缺任一，Web 侧传图都跑不通。
+    补齐后端到端实测：Web 只传 `scan.png`（纯图，无文本层）→ 视觉抽成 `HGB 88 low` → 报告 + 升级。
+    冒烟数据与容器已清理。
 - **未做**：二期（免登录分享 / 并发排队与配额 / 多版本回滚 / LLM 代理 / 评分接入 / iframe 沙箱隔离）；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；

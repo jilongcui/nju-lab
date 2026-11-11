@@ -110,11 +110,18 @@ export class AgentAppRuntime implements OnModuleInit, OnModuleDestroy {
       memory: AGENT_APP_MEMORY,
       cpus: AGENT_APP_CPUS,
       labels: [`${AGENT_APP_LABEL}=1`, `${AGENT_APP_LABEL_ID}=${appId}`],
+      // 出网：`--internal` 网络里 DNS 全失败，白名单域名（含 api.deepseek.com）要钉到 SNI 代理 IP，
+      // 否则视觉抽取会报 `Temporary failure in name resolution`（2026-11-11 实测）。
+      egressProxyIp: this.runtime.ensureEgressProxy(),
       mounts: [`${zip}:/pkg/app.zip:ro`],
       env: [
         'APP_HOST=0.0.0.0',
         `APP_PORT=${AGENT_APP_PORT}`,
         'APP_DATA_DIR=/work/data',
+        // 只写**变量名**（不写值）—— 与学生工作台同一条透传路径，key 不进进程列表。
+        // 图片的视觉抽取需要它（`deepseek-flash` 的 `image_url`）；二期改成平台 LLM 代理 + 计费。
+        'DEEPSEEK_API_KEY',
+        'DEEPSEEK_BASE_URL',
       ],
     });
 

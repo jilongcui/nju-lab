@@ -87,6 +87,12 @@ nju-lab-app-runtime 容器（每应用一个，USER 1000，512m/0.3cpu）
   兼容"zip 里多包一层目录"的产物（找含 `app.json` 的那层做根）；
 - 容器：`USER 1000`、`512m` / `0.3cpu`、`--internal` 网络、**只挂 zip（只读）**，
   不挂宿主任何目录 —— 学生代码碰不到平台文件；
+- **视觉/模型出网**：`--internal` 网络里 DNS 全失败，白名单域名要钉到 SNI 代理 IP
+  （`egressProxyIp = runtime.ensureEgressProxy()`），否则图片视觉抽取报
+  `Temporary failure in name resolution`；模型 key 用 `-e DEEPSEEK_API_KEY`（**只写变量名**）透传，
+  与工作台同一条路径（2026-11-11 实测：缺 key 报「环境里没有 DEEPSEEK_API_KEY」，缺 add-host 报 DNS 失败）；
+- **HTTP 就绪探测**：容器拿到 IP 只要几百毫秒，但 `entrypoint.sh` 还要 unzip + 起 python；
+  转发前必须探测 `/api/health`（最多约 20 秒），否则第一次对话就是 `fetch failed`；
 - 生命周期：`AgentAppRuntime`（内存会话表）按需起、空闲 **15 分钟**回收、全局并发 **10**；
   后端重启时按 label 收掉遗留容器（产物不丢，随时可重建）；
 - **容器里没有大模型 key**：题目给的 case 用 `plan_stub.json`；真模型要走平台代理（二期）。
