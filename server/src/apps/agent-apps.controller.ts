@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -15,6 +16,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { Public } from '../common/decorators/public.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { User, UserRole } from '../users/user.entity';
 import { ChatPayload, AgentAppsService } from './agent-apps.service';
@@ -100,6 +102,42 @@ export class AgentAppsController {
     return this.service.listMessages(user, id, Number(limit || 200));
   }
 
+  @Delete(':id')
+  @Roles(UserRole.STUDENT, UserRole.TEACHER)
+  remove(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.remove(user, id);
+  }
+
+  @Get(':id/versions')
+  versions(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.listVersions(user, id);
+  }
+
+  /** 回滚到某历史版本（发布态不变，容器重建后用该版本） */
+  @Post(':id/versions/:versionId/activate')
+  activate(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('versionId', ParseUUIDPipe) versionId: string,
+  ) {
+    return this.service.activateVersion(user, id, versionId);
+  }
+
+  @Get(':id/review')
+  review(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.getReview(user, id);
+  }
+
+  @Post(':id/review')
+  @Roles(UserRole.TEACHER)
+  createReview(
+    @CurrentUser() user: User,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: { total: number; dimensions?: never; comment?: string },
+  ) {
+    return this.service.review(user, id, dto as never);
+  }
+
   /** iframe 预览用的静态资源（默认 index.html） */
   @Get(':id/site/:file')
   async site(
@@ -151,5 +189,54 @@ export class CourseAgentAppsController {
     @Param('courseId', ParseUUIDPipe) courseId: string,
   ) {
     return this.service.listByCourse(user, courseId);
+  }
+}
+
+/**
+ * 分享链接（**匿名可看**）—— 第 20 章"学生把应用分享出去"的落地。
+ *
+ * 边界（设计见 `docs/DESIGN-2026-11-agent-app-platform.md` §9）：
+ * - 只有「已发布 + 有 shareKey」的应用能被匿名访问；下架即失效（`shareKey` 被清空）；
+ * - 匿名侧只暴露 title / scenario / theme / 附件类型，**不暴露学生与课程归属**；
+ * - 对话通道限流更紧（每链接每分钟 20 次），避免被当成免费模型入口。
+ */
+@Controller('apps/share')
+export class AgentAppShareController {
+  constructor(private readonly service: AgentAppsService) {}
+
+  @Public()
+  @Get(':key')
+  meta(@Param('key') key: string) {
+    return this.service.sharedMeta(key);
+  }
+
+  @Public()
+  @Get(':key/site')
+  async siteIndex(@Param('key') key: string, @Res() res: Response) {
+    const asset = await this.service.siteAssetByShareKey(key, 'index.html');
+    res.setHeader('Content-Type', asset.contentType);
+    res.setHeader('Content-Length', String(asset.body.length));
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(asset.body);
+  }
+
+  @Public()
+  @Get(':key/site/:file')
+  async site(
+    @Param('key') key: string,
+    @Param('file') file: string,
+    @Res() res: Response,
+  ) {
+    const asset = await this.service.siteAssetByShareKey(key, file);
+    res.setHeader('Content-Type', asset.contentType);
+    res.setHeader('Content-Length', String(asset.body.length));
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(asset.body);
+  }
+
+  @Public()
+  @Post(':key/api/chat')
+  chat(@Param('key') key: string, @Body() payload: ChatPayload) {
+    return this.service.chatByShareKey(key, payload);
   }
 }

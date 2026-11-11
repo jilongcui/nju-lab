@@ -139,3 +139,34 @@ export class AgentAppMessage {
   @CreateDateColumn()
   createdAt: Date;
 }
+
+/** 教师对学生应用的一次评分（二期；一期只在设计文档里） */
+@Entity('agent_app_reviews')
+export class AgentAppReview {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column()
+  @Index()
+  appId: string;
+
+  @Column()
+  teacherId: string;
+
+  /** 总分（0~100） */
+  @Column({ type: 'int', default: 0 })
+  total: number;
+
+  /** 各维度明细：[{ name, weight, score, comment? }] */
+  @Column({ type: 'json', nullable: true })
+  dimensions: { name: string; weight: number; score: number; comment?: string }[] | null;
+
+  @Column({ type: 'text', nullable: true })
+  comment: string | null;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+}

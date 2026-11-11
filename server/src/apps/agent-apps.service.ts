@@ -1,6 +1,8 @@
 import {
   BadRequestException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
@@ -9,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes } from 'crypto';
-import { mkdir, writeFile } from 'fs/promises';
+import { mkdir, rm, writeFile } from 'fs/promises';
 import { IsNull, Repository } from 'typeorm';
 import { User, UserRole } from '../users/user.entity';
 import {
@@ -20,6 +22,7 @@ import { AgentAppRuntime } from './agent-app-runtime';
 import {
   AgentApp,
   AgentAppMessage,
+  AgentAppReview,
   AgentAppVersion,
   AppStatus,
   AppVisibility,
@@ -36,9 +39,13 @@ export interface ChatPayload {
   attachments?: ChatAttachment[];
 }
 
+/** 每应用 / 每个分享链接的简单限流（进程内存；重启清零，教学场景够用） */
+const RATE_WINDOW_MS = 60_000;
+
 @Injectable()
 export class AgentAppsService implements OnModuleDestroy {
   private readonly logger = new Logger(AgentAppsService.name);
+  private readonly rate = new Map<string, { windowStart: number; count: number }>();
 
   constructor(
     @InjectRepository(AgentApp) private readonly apps: Repository<AgentApp>,
@@ -46,6 +53,8 @@ export class AgentAppsService implements OnModuleDestroy {
     private readonly versions: Repository<AgentAppVersion>,
     @InjectRepository(AgentAppMessage)
     private readonly messages: Repository<AgentAppMessage>,
+    @InjectRepository(AgentAppReview)
+    private readonly reviews: Repository<AgentAppReview>,
     private readonly runtime: AgentAppRuntime,
   ) {}
 
@@ -208,6 +217,26 @@ export class AgentAppsService implements OnModuleDestroy {
 
   async siteAsset(user: User, id: string, file: string): Promise<{ body: Buffer; contentType: string }> {
     const { app, upstream } = await this.start(user, id);
+    return this.readSiteAsset(app, upstream, file);
+  }
+
+  /** 分享链接（匿名）的静态资源：只允许已发布且有 `shareKey` 的应用 */
+  async siteAssetByShareKey(
+    key: string,
+    file: string,
+  ): Promise<{ body: Buffer; contentType: string }> {
+    const app = await this.getByShareKey(key);
+    const version = await this.getVersion(app);
+    const upstream = await this.runtime.upstream(app.id, version.id);
+    await this.waitUntilReady(upstream);
+    return this.readSiteAsset(app, upstream, file);
+  }
+
+  private async readSiteAsset(
+    app: AgentApp,
+    upstream: string,
+    file: string,
+  ): Promise<{ body: Buffer; contentType: string }> {
     const name = file || 'index.html';
     if (!/^[A-Za-z0-9._-]+$/.test(name)) throw new BadRequestException('非法文件名');
     const res = await fetch(`${upstream}/${name}`);
@@ -231,7 +260,33 @@ export class AgentAppsService implements OnModuleDestroy {
 
   /** 对话：把附件转成 multipart 转发给容器里的 `app_host.py`，并把两边消息落库 */
   async chat(user: User, id: string, payload: ChatPayload): Promise<Record<string, unknown>> {
+    if (!this.allow(`app:${id}`, 60)) {
+      throw new HttpException('请求太频繁（每应用每分钟 60 次），请稍后重试', HttpStatus.TOO_MANY_REQUESTS);
+    }
     const { app, upstream } = await this.start(user, id);
+    return this.forwardChat(app, upstream, payload);
+  }
+
+  /** 分享链接（匿名）的对话：限流更紧（每个链接每分钟 20 次） */
+  async chatByShareKey(key: string, payload: ChatPayload): Promise<Record<string, unknown>> {
+    const app = await this.getByShareKey(key);
+    if (!this.allow(`share:${key}`, 20)) {
+      throw new HttpException(
+        '这个分享链接访问太频繁（每分钟 20 次），请稍后重试',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+    const version = await this.getVersion(app);
+    const upstream = await this.runtime.upstream(app.id, version.id);
+    await this.waitUntilReady(upstream);
+    return this.forwardChat(app, upstream, payload);
+  }
+
+  private async forwardChat(
+    app: AgentApp,
+    upstream: string,
+    payload: ChatPayload,
+  ): Promise<Record<string, unknown>> {
     const form = new FormData();
     form.append('message', payload.message ?? '');
     if (payload.session) form.append('session', payload.session);
@@ -283,7 +338,112 @@ export class AgentAppsService implements OnModuleDestroy {
     });
   }
 
+  /**
+   * 删除应用（作者或教师）：停容器 → 删四张表 → 删落盘产物。
+   *
+   * 与"下架"的区别：下架只改状态、留数据；删除是学生清理草稿用，**不可恢复**。
+   * 前端会二次确认。
+   */
+  async remove(user: User, id: string): Promise<{ deleted: true }> {
+    const app = await this.get(user, id);
+    this.assertOwnerOrTeacher(user, app);
+    this.runtime.stop(app.id);
+    await this.messages.delete({ appId: app.id });
+    await this.reviews.delete({ appId: app.id });
+    await this.versions.delete({ appId: app.id });
+    await this.apps.delete({ id: app.id });
+    await rm(`${AGENT_APP_DATA_DIR}/${app.id}`, { recursive: true, force: true });
+    return { deleted: true };
+  }
+
+  // ------------------------------------------------------------ 分享（匿名）
+
+  /** 按 `shareKey` 取应用：只有「已发布 + 有 key」才对外 */
+  async getByShareKey(key: string): Promise<AgentApp> {
+    if (!key || !/^[0-9a-f]{16,40}$/.test(key)) throw new NotFoundException('分享链接无效');
+    const app = await this.apps.findOne({ where: { shareKey: key } });
+    if (!app || app.status !== AppStatus.PUBLISHED) {
+      throw new NotFoundException('分享链接无效或已下架');
+    }
+    return app;
+  }
+
+  /** 匿名访问只给"能看"的元信息，不带 studentId / 课程归属 */
+  async sharedMeta(key: string): Promise<Record<string, unknown>> {
+    const app = await this.getByShareKey(key);
+    return {
+      title: app.title,
+      scenario: app.scenario,
+      entry: app.entry,
+      theme: app.theme,
+      attachments: app.attachments,
+      publishedAt: app.updatedAt,
+    };
+  }
+
+  // ------------------------------------------------------------ 版本与回滚
+
+  async listVersions(user: User, id: string): Promise<AgentAppVersion[]> {
+    const app = await this.get(user, id);
+    this.assertCanRead(user, app);
+    return this.versions.find({ where: { appId: app.id }, order: { createdAt: 'DESC' } });
+  }
+
+  /** 切回某个历史版本（发布态不变；容器会在下次预览时重建） */
+  async activateVersion(
+    user: User,
+    id: string,
+    versionId: string,
+  ): Promise<AgentApp> {
+    const app = await this.get(user, id);
+    this.assertOwnerOrTeacher(user, app);
+    const version = await this.versions.findOne({ where: { id: versionId, appId: app.id } });
+    if (!version) throw new NotFoundException('这个版本不属于该应用');
+    app.latestVersionId = version.id;
+    await this.apps.save(app);
+    this.runtime.stop(app.id);
+    return app;
+  }
+
+  // ------------------------------------------------------------ 评分（教师）
+
+  async review(
+    user: User,
+    id: string,
+    dto: { total: number; dimensions?: AgentAppReview['dimensions']; comment?: string },
+  ): Promise<AgentAppReview> {
+    const app = await this.get(user, id);
+    if (user.role !== UserRole.TEACHER) throw new ForbiddenException('只有教师可以评分');
+    const total = Math.max(0, Math.min(100, Math.round(Number(dto.total) || 0)));
+    const existing = await this.reviews.findOne({ where: { appId: app.id, teacherId: user.id } });
+    const entity = existing ?? this.reviews.create({ appId: app.id, teacherId: user.id });
+    entity.total = total;
+    entity.dimensions = dto.dimensions ?? null;
+    entity.comment = dto.comment ?? null;
+    return this.reviews.save(entity);
+  }
+
+  async getReview(user: User, id: string): Promise<AgentAppReview | null> {
+    const app = await this.get(user, id);
+    this.assertCanRead(user, app);
+    const rows = await this.reviews.find({ where: { appId: app.id }, order: { updatedAt: 'DESC' } });
+    return rows[0] ?? null;
+  }
+
   // ------------------------------------------------------------ 权限
+
+  /** 简单滑动窗口限流（每 key 每分钟 `perMinute` 次） */
+  private allow(key: string, perMinute: number): boolean {
+    const now = Date.now();
+    const slot = this.rate.get(key);
+    if (!slot || now - slot.windowStart > RATE_WINDOW_MS) {
+      this.rate.set(key, { windowStart: now, count: 1 });
+      return true;
+    }
+    if (slot.count >= perMinute) return false;
+    slot.count += 1;
+    return true;
+  }
 
   private assertTeacher(user: User): void {
     if (user.role !== UserRole.TEACHER) {

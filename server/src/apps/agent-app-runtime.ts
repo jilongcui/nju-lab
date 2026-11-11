@@ -94,6 +94,11 @@ export class AgentAppRuntime implements OnModuleInit, OnModuleDestroy {
   private async start(appId: string, versionId: string): Promise<string> {
     if (this.sessions.size >= AGENT_APP_MAX_TOTAL) {
       this.sweep();
+      // 排队：先给正在用的容器一点时间被回收（最多等 15 秒），而不是立刻 503
+      for (let i = 0; i < 30 && this.sessions.size >= AGENT_APP_MAX_TOTAL; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        if (i % 10 === 9) this.sweep();
+      }
       if (this.sessions.size >= AGENT_APP_MAX_TOTAL) {
         throw new ServiceUnavailableException(
           `同时运行的应用已达上限（${AGENT_APP_MAX_TOTAL}），请稍后重试`,

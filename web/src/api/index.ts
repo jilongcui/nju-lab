@@ -38,6 +38,7 @@ import type {
   AgentApp,
   AgentAppVersion,
   AgentAppMessage,
+  AgentAppReview,
 } from '../types';
 
 // ---------- 文件 ----------
@@ -450,6 +451,8 @@ export const uploadAppVersion = (id: string, file: File, note?: string) => {
   });
 };
 export const publishApp = (id: string) => client.post<unknown, AgentApp>(`/apps/${id}/publish`);
+/** 删除应用（不可恢复；下架才是"保留数据"的路径） */
+export const deleteApp = (id: string) => client.delete<unknown, { deleted: true }>(`/apps/${id}`);
 export const unpublishApp = (id: string) => client.post<unknown, AgentApp>(`/apps/${id}/unpublish`);
 export const startApp = (id: string) =>
   client.post<unknown, { upstream: string }>(`/apps/${id}/start`, null, { timeout: 60000 });
@@ -465,3 +468,20 @@ export const chatWithApp = (
 
 /** 预览 iframe 的地址（平台反代到学生应用容器） */
 export const appSiteUrl = (id: string) => apiUrl(`/api/apps/${id}/site`);
+
+// ---------- 学生应用：二期（分享 / 版本 / 评分）----------
+export const listAppVersions = (id: string) =>
+  client.get<unknown, AgentAppVersion[]>(`/apps/${id}/versions`);
+/** 回滚到历史版本（发布态不变，容器重建后用该版本） */
+export const activateAppVersion = (id: string, versionId: string) =>
+  client.post<unknown, AgentApp>(`/apps/${id}/versions/${versionId}/activate`);
+export const getAppReview = (id: string) =>
+  client.get<unknown, AgentAppReview | null>(`/apps/${id}/review`);
+export const reviewApp = (
+  id: string,
+  payload: { total: number; comment?: string; dimensions?: AgentAppReview['dimensions'] },
+) => client.post<unknown, AgentAppReview>(`/apps/${id}/review`, payload);
+/** 匿名分享页（可直接发给别人；不需要登录） */
+export const appShareUrl = (shareKey: string) =>
+  apiUrl(`/api/apps/share/${shareKey}/site`);
+export const appShareMetaUrl = (shareKey: string) => apiUrl(`/api/apps/share/${shareKey}`);

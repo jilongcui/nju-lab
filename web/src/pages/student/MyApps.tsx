@@ -4,11 +4,14 @@ import {
   Button,
   Card,
   Descriptions,
+  Drawer,
   Empty,
   Form,
   Input,
+  List,
   Modal,
   Popconfirm,
+  Select,
   Skeleton,
   Space,
   Table,
@@ -20,15 +23,21 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile } from 'antd/es/upload/interface';
 import {
+  activateAppVersion,
+  appShareUrl,
   appSiteUrl,
   createApp,
+  deleteApp,
+  getAppReview,
+  listAppVersions,
   listMyApps,
   publishApp,
   startApp,
   unpublishApp,
+  updateApp,
   uploadAppVersion,
 } from '../../api';
-import type { AgentApp } from '../../types';
+import type { AgentApp, AgentAppReview, AgentAppVersion } from '../../types';
 import { formatDateTime } from '../../applicationState';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
 
@@ -40,11 +49,11 @@ const STATUS_META: Record<string, { text: string; color: string }> = {
   archived: { text: '已下架', color: 'error' },
 };
 
-const VISIBILITY_META: Record<string, string> = {
-  owner: '仅自己',
-  teacher: '教师可见',
-  course: '课程内可见',
-};
+const VISIBILITY_OPTIONS = [
+  { value: 'owner', label: '仅自己' },
+  { value: 'teacher', label: '教师可见' },
+  { value: 'course', label: '课程内可见' },
+];
 
 /** 学生：我的应用（第 20 章 —— 把 harness 做成可分享的应用） */
 export default function MyApps() {
@@ -57,6 +66,9 @@ export default function MyApps() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [review, setReview] = useState<Record<string, AgentAppReview | null>>({});
+  const [versionApp, setVersionApp] = useState<AgentApp | null>(null);
+  const [versions, setVersions] = useState<AgentAppVersion[] | null>(null);
   const [form] = Form.useForm<{ title: string; scenario?: string }>();
 
   useAuxiliaryPanel(
@@ -67,11 +79,12 @@ export default function MyApps() {
         <Text code>harness/api.py</Text>）+ 一个按需启动的运行容器。
       </Paragraph>
       <Paragraph type="secondary">
-        先「上传产物」，再「发布」；「预览」会拉起你的应用（第一次约 30–60 秒）。下架会停掉容器，
-        但产物与对话记录都留着，可以再发布回来。
+        先「上传产物」，再「发布」；「预览」会拉起你的应用（第一次约 30–60 秒）。
+        <strong>发布后可以「分享链接」</strong>发给别人（不需要登录也能打开）；
+        下架会立刻让分享链接失效，但产物、版本与对话记录都留着。
       </Paragraph>
       <Paragraph type="secondary">
-        在实验环境里做完全部自测后，把整个 Skill 根打成 zip 上传即可。
+        老师看完会给分（总分 + 评语），评分显示在列表的「评分」列。
       </Paragraph>
     </div>,
   );
@@ -79,7 +92,12 @@ export default function MyApps() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setRows((await listMyApps()) ?? []);
+      const list = (await listMyApps()) ?? [];
+      setRows(list);
+      const entries = await Promise.all(
+        list.map(async (app) => [app.id, await getAppReview(app.id).catch(() => null)] as const),
+      );
+      setReview(Object.fromEntries(entries));
     } finally {
       setLoading(false);
     }
@@ -119,7 +137,7 @@ export default function MyApps() {
     setBusy(app.id);
     try {
       await publishApp(app.id);
-      message.success('已发布：教师可以在「学生应用」里看到它');
+      message.success('已发布：可以复制分享链接了');
       await load();
     } finally {
       setBusy(null);
@@ -130,7 +148,66 @@ export default function MyApps() {
     setBusy(app.id);
     try {
       await unpublishApp(app.id);
-      message.success('已下架（容器已停，产物保留）');
+      message.success('已下架（分享链接同时失效；产物与记录保留）');
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleDelete = async (app: AgentApp) => {
+    setBusy(app.id);
+    try {
+      await deleteApp(app.id);
+      message.success('已删除');
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleVisibility = async (app: AgentApp, visibility: string) => {
+    setBusy(app.id);
+    try {
+      await updateApp(app.id, { visibility: visibility as AgentApp['visibility'] });
+      message.success('可见性已更新');
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const copyShare = async (app: AgentApp) => {
+    if (!app.shareKey) {
+      message.warning('先发布，才会有分享链接');
+      return;
+    }
+    const url = `${window.location.origin}${appShareUrl(app.shareKey)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      message.success('分享链接已复制（无需登录即可打开）');
+    } catch {
+      Modal.info({ title: '分享链接', content: url });
+    }
+  };
+
+  const openVersions = async (app: AgentApp) => {
+    setVersionApp(app);
+    setVersions(null);
+    try {
+      setVersions((await listAppVersions(app.id)) ?? []);
+    } catch {
+      setVersions([]);
+    }
+  };
+
+  const activate = async (version: AgentAppVersion) => {
+    if (!versionApp) return;
+    setBusy(versionApp.id);
+    try {
+      await activateAppVersion(versionApp.id, version.id);
+      message.success('已切到该版本（下次预览用新版本重建容器）');
+      await openVersions(versionApp);
       await load();
     } finally {
       setBusy(null);
@@ -149,6 +226,9 @@ export default function MyApps() {
       setPreviewLoading(false);
     }
   };
+
+  /** 预览走登录态地址（作者能看未发布的）；「分享链接」按钮给的是匿名地址 */
+  const previewSrc = (app: AgentApp) => `${window.location.origin}${appSiteUrl(app.id)}`;
 
   const columns: ColumnsType<AgentApp> = [
     {
@@ -174,18 +254,34 @@ export default function MyApps() {
     {
       title: '可见性',
       dataIndex: 'visibility',
-      width: 120,
-      render: (value: string) => VISIBILITY_META[value] ?? value,
+      width: 150,
+      render: (value: string, row) => (
+        <Select
+          size="small"
+          style={{ width: 120 }}
+          value={value}
+          options={VISIBILITY_OPTIONS}
+          disabled={busy === row.id}
+          onChange={(next) => void handleVisibility(row, next)}
+        />
+      ),
+    },
+    {
+      title: '评分',
+      dataIndex: 'id',
+      width: 90,
+      render: (id: string) =>
+        review[id] ? <Text strong>{review[id]?.total} 分</Text> : <Text type="secondary">未评</Text>,
     },
     {
       title: '更新时间',
       dataIndex: 'updatedAt',
-      width: 170,
+      width: 160,
       render: (value: string) => formatDateTime(value),
     },
     {
       title: '操作',
-      width: 320,
+      width: 400,
       render: (_, row) => (
         <Space wrap>
           <Upload
@@ -201,8 +297,22 @@ export default function MyApps() {
           <Button size="small" onClick={() => void openPreview(row)}>
             预览
           </Button>
+          <Button size="small" onClick={() => void openVersions(row)}>
+            版本
+          </Button>
+          <Button size="small" disabled={!row.shareKey} onClick={() => void copyShare(row)}>
+            分享链接
+          </Button>
+          <Popconfirm
+            title="删除这个应用？产物、版本与对话记录都会删掉，不可恢复（只想停用就点下架）"
+            onConfirm={() => void handleDelete(row)}
+          >
+            <Button size="small" danger loading={busy === row.id}>
+              删除
+            </Button>
+          </Popconfirm>
           {row.status === 'published' ? (
-            <Popconfirm title="下架这个应用？" onConfirm={() => void handleUnpublish(row)}>
+            <Popconfirm title="下架这个应用？（分享链接会失效）" onConfirm={() => void handleUnpublish(row)}>
               <Button size="small" danger loading={busy === row.id}>
                 下架
               </Button>
@@ -234,7 +344,8 @@ export default function MyApps() {
         }
       >
         <Paragraph type="secondary">
-          把第 19 章的 harness 接到前端上，做成一个能给别人用的小应用：上传产物 → 发布 → 分享给老师。
+          把第 19 章的 harness 接到前端上，做成一个能给别人用的小应用：上传产物 → 发布 →
+          复制分享链接（匿名可打开）→ 老师评分。
         </Paragraph>
         {loading ? (
           <Skeleton active />
@@ -279,20 +390,71 @@ export default function MyApps() {
               <Descriptions.Item label="状态">
                 {STATUS_META[preview.status]?.text ?? preview.status}
               </Descriptions.Item>
-              <Descriptions.Item label="可见性">
-                {VISIBILITY_META[preview.visibility] ?? preview.visibility}
-              </Descriptions.Item>
               <Descriptions.Item label="入口">{preview.entry}</Descriptions.Item>
+              <Descriptions.Item label="评分">
+                {review[preview.id] ? `${review[preview.id]?.total} 分` : '未评'}
+              </Descriptions.Item>
             </Descriptions>
             <iframe
               key={previewKey}
               title="app-preview"
-              src={appSiteUrl(preview.id)}
+              src={previewSrc(preview)}
               style={{ width: '100%', height: 560, border: '1px solid #eee', borderRadius: 8 }}
             />
           </>
         ) : null}
       </Modal>
+
+      <Drawer
+        title={versionApp ? `版本：${versionApp.title}` : '版本'}
+        open={!!versionApp}
+        onClose={() => setVersionApp(null)}
+        width={560}
+      >
+        {versions === null ? (
+          <Skeleton active />
+        ) : versions.length === 0 ? (
+          <Empty description="还没有版本" />
+        ) : (
+          <List
+            dataSource={versions}
+            renderItem={(item) => (
+              <List.Item
+                actions={[
+                  item.id === versionApp?.latestVersionId ? (
+                    <Tag color="green">当前版本</Tag>
+                  ) : (
+                    <Button
+                      size="small"
+                      loading={busy === versionApp?.id}
+                      onClick={() => void activate(item)}
+                    >
+                      切到这一版
+                    </Button>
+                  ),
+                ]}
+              >
+                <List.Item.Meta
+                  title={
+                    <Space>
+                      <Text code>{item.id.slice(0, 8)}</Text>
+                      <Text type="secondary">{(item.size / 1024).toFixed(1)} KB</Text>
+                    </Space>
+                  }
+                  description={
+                    <Space direction="vertical" size={0}>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {formatDateTime(item.createdAt)} · sha256 {item.sha256.slice(0, 12)}
+                      </Text>
+                      {item.note ? <Text type="secondary">{item.note}</Text> : null}
+                    </Space>
+                  }
+                />
+              </List.Item>
+            )}
+          />
+        )}
+      </Drawer>
     </div>
   );
 }

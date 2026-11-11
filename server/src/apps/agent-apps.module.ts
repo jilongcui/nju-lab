@@ -4,10 +4,12 @@ import { ContainerRuntimeModule } from '../container-runtime/container-runtime.m
 import {
   AgentApp,
   AgentAppMessage,
+  AgentAppReview,
   AgentAppVersion,
 } from './agent-app.entity';
 import { AgentAppRuntime } from './agent-app-runtime';
 import {
+  AgentAppShareController,
   AgentAppsController,
   CourseAgentAppsController,
 } from './agent-apps.controller';
@@ -23,10 +25,10 @@ import { AgentAppsService } from './agent-apps.service';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AgentApp, AgentAppVersion, AgentAppMessage]),
+    TypeOrmModule.forFeature([AgentApp, AgentAppVersion, AgentAppMessage, AgentAppReview]),
     ContainerRuntimeModule,
   ],
-  controllers: [AgentAppsController, CourseAgentAppsController],
+  controllers: [AgentAppShareController, AgentAppsController, CourseAgentAppsController],
   providers: [AgentAppsService, AgentAppRuntime],
   exports: [AgentAppsService],
 })

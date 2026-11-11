@@ -73,7 +73,21 @@
     否则容器刚起、`app_host` 还没应答 → `fetch failed`。三者缺任一，Web 侧传图都跑不通。
     补齐后端到端实测：Web 只传 `scan.png`（纯图，无文本层）→ 视觉抽成 `HGB 88 low` → 报告 + 升级。
     冒烟数据与容器已清理。
-- **未做**：二期（免登录分享 / 并发排队与配额 / 多版本回滚 / LLM 代理 / 评分接入 / iframe 沙箱隔离）；
+- **二期已实现（2026-11-11 晚，用户要求"继续，直到完善可用"）**：
+  · **免登录分享**：`@Public` 的 `GET /apps/share/:key`（元信息）/ `/site[/:file]`（静态，注入 base）/ 
+    `POST /api/chat`；只有「已发布 + 有 shareKey」可匿名访问，下架即失效；匿名侧不暴露学生与课程归属。
+    经 nginx 实测：`/lab/api/apps/share/<key>` 200、站点注入 base、匿名对话返回报告。
+  · **限流**：登录通道 60 次/分、分享链接 20 次/分（超了 **429**）；容器并发超上限先**排队 15 秒**再 503。
+  · **多版本回滚**：`GET /apps/:id/versions` + `POST /apps/:id/versions/:vid/activate`（切 latestVersionId 并停容器）。
+  · **评分**：新迁移 `1791400000000-AgentAppReviews`（表 `agent_app_reviews`），教师「总分 + 评语」，
+    学生端直接看到分数；端到端实测 88 分写入并回读。
+  · **删除**：`DELETE /apps/:id`（作者或教师）→ 停容器 + 删四张表 + 删落盘产物；
+    实测「上传 → 磁盘有产物 → 删除 → 磁盘产物消失」。
+  · **前端**：学生页（可见性下拉 / 分享链接复制 / 版本抽屉 / 评分列 / 删除）、教师页（可见性 / 版本 / 评分 / 下架），
+    已 build 并部署到 `/var/www/lab`（备份 `.verify-scratch/lab-web-backups/20261111-201104`）。
+  · 迁移执行：`1791400000000` 已 run；后端重启 `140747 → 143854`。
+- **未做（三期）**：**LLM 平台代理**（现在仍是 key 透传 + egress add-host，可用但不计费 —— 下一件最该做）、
+  成本看板、评分汇总进 `submissions`/`Grading`、iframe 独立源 + `sandbox`；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；
   应用容器**不注入大模型 key**（二期走平台代理）。

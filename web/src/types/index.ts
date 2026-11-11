@@ -745,6 +745,17 @@ export interface AgentAppVersion {
   createdAt: string;
 }
 
+export interface AgentAppReview {
+  id: string;
+  appId: string;
+  teacherId: string;
+  total: number;
+  dimensions: { name: string; weight: number; score: number; comment?: string }[] | null;
+  comment: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AgentAppMessage {
   id: string;
   appId: string;
