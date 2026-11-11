@@ -202,26 +202,89 @@ class Handler(BaseHTTPRequestHandler):
         })
 
 
-def call_llm(messages: list[dict], max_tokens: int = 512) -> str:
-    """调**平台代理**（容器里没有大模型 key）。没配 `APP_LLM_BASE_URL` 时直接报错。
+VISION_PROMPT = (
+    "读出图中每一行检验数据，按「指标,数值,单位」输出，一行一条，不要解释、不要代码块。"
+    "若某行不是三段式数据就跳过。"
+)
 
-    学生想接真模型时用它；题目给的 case 走 `plan_stub.json`（不需要模型）。
+
+def call_llm(messages: list[dict], max_tokens: int = 800, **options) -> dict:
+    """调模型：**优先走平台代理**（容器里没有 key），没有代理时回退直连。
+
+    两条路径（平台托管 / 学生自测各用一条）：
+
+    1. **平台代理**：`APP_LLM_BASE_URL` + `APP_LLM_TOKEN`（起容器时由平台注入）。
+       好处是 key 不进学生容器，平台能统一限流与计费；`model` 由平台钉死，学生改不了。
+    2. **直连**：`DEEPSEEK_API_KEY`（工作台 / 复验容器里透传的就是它）。
+
+    返回值就是 OpenAI 兼容的响应体（`choices[0].message.content` + `usage`）。
     """
     import urllib.error
     import urllib.request
 
-    base = os.environ.get("APP_LLM_BASE_URL")
-    if not base:
-        raise RuntimeError("未配置 APP_LLM_BASE_URL：本环境不直连大模型，请用 plan_stub.json 或平台代理")
-    payload = json.dumps({"messages": messages, "max_tokens": max_tokens}).encode()
-    req = urllib.request.Request(base.rstrip("/") + "/chat", data=payload,
-                                 headers={"Content-Type": "application/json"})
+    base = (os.environ.get("APP_LLM_BASE_URL") or "").rstrip("/")
+    token = os.environ.get("APP_LLM_TOKEN")
+    if base and token:
+        payload = {"messages": messages, "max_tokens": max_tokens, **options}
+        req = urllib.request.Request(
+            f"{base}/chat", data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json", "X-App-Token": token},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                body = json.loads(resp.read().decode())
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"平台 LLM 代理不可用（{base}）：{exc}") from exc
+        # 平台的 HTTP 响应统一包一层 `{code,data,message}`；直连是裸的 OpenAI 响应 —— 两种都兼容
+        if isinstance(body, dict) and isinstance(body.get("data"), dict) and "choices" in body["data"]:
+            body = body["data"]
+        return body
+
+    key = os.environ.get("DEEPSEEK_API_KEY")
+    if not key:
+        raise RuntimeError("既没有平台代理（APP_LLM_BASE_URL/APP_LLM_TOKEN），也没有 DEEPSEEK_API_KEY")
+    url = (os.environ.get("DEEPSEEK_BASE_URL") or "https://api.deepseek.com").rstrip("/")
+    payload = {
+        "model": os.environ.get("DEEPSEEK_MODEL") or "deepseek-flash",
+        "messages": messages, "max_tokens": max_tokens, **options,
+    }
+    req = urllib.request.Request(
+        f"{url}/chat/completions", data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
+    )
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read().decode())
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            return json.loads(resp.read().decode())
     except urllib.error.URLError as exc:
-        raise RuntimeError(f"平台 LLM 代理不可用：{exc}") from exc
-    return data.get("reply") or data.get("content") or ""
+        raise RuntimeError(f"模型直连失败（{url}）：{exc}") from exc
+
+
+def vision_extract(path, prompt: str = VISION_PROMPT):
+    """把图片交给视觉模型，返回 (文本行, usage)。**学生不用自己写这段** —— 由宿主提供。
+
+    三个实测要点（都在 `task.md` 里写过）：
+    1. `max_tokens` 太小会被思维链吃光（`reasoning_effort=None` 最省）；
+    2. 输出格式会漂（`PLT, 18, …` 与 `PLT,18,…`），所以下游要用容错正则抽行；
+    3. 图片用 data URI 内联（容器里没有对象存储，也不想把图传到别处）。
+    """
+    import base64
+    from pathlib import Path
+
+    encoded = base64.b64encode(Path(path).read_bytes()).decode()
+    data = call_llm(
+        [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded}"}},
+            ],
+        }],
+        max_tokens=800,
+        temperature=0,
+        reasoning_effort="none",
+    )
+    text = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+    return [line for line in text.splitlines() if line.strip()], (data.get("usage") or {})
 
 
 def main() -> None:

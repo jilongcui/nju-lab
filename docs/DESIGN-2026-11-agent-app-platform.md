@@ -137,10 +137,19 @@ nju-lab-app-runtime 容器（每应用一个，USER 1000，512m/0.3cpu）
 6. ✅ **前端补齐**：学生页（可见性下拉 / 分享链接复制 / 版本回滚 / 评分列 / 删除）；
    教师页（可见性 / 版本回滚 / 评分 / 下架）。
 
-**三期（待做）**：
-- **LLM 平台代理**：容器内 `APP_LLM_BASE_URL` 指向平台 `/api/apps/llm/chat`，平台统一计费与审计
-  （当前是 key 透传 + egress add-host，可用但不计费；这是下一件最该做的事）；
-- **成本看板**：按应用/学生汇总视觉调用与 token；
+**三期（2026-11-11 已实现）**：
+- ✅ **LLM 平台代理**：容器里**不再放大模型 key**。起容器时下发一次性 `APP_LLM_TOKEN`，
+  容器内 `app_host.call_llm()` 把请求打到 `APP_LLM_BASE_URL = <平台>/lab/api/apps/llm`；
+  平台侧 `POST /api/apps/llm/chat`（`@Public` + token 校验）负责：
+  `model` 钉死 `deepseek-flash`、`max_tokens` 上限 2000、每应用 **30 次/分**、内存记用量
+  （`GET /apps/:id/usage` 给作者/教师看）。
+  - 容器可达性：`extraHosts` 把平台主机名钉到 `egressGateway()`（与工作台 `WORKSPACE_PLATFORM_API`
+    同一套），**绕开 `--internal` 无 DNS**；
+  - 没配 `WORKSPACE_PLATFORM_API` 时**自动回退** key 透传（本地/离线演练仍能跑）；
+  - 实测：容器 `env` 里已无 `DEEPSEEK_API_KEY`，图片仍能抽成 `HGB 88 low`，用量 1 次 / 231 tokens。
+
+**四期（待做）**：
+- **成本看板**：按应用/学生汇总代理调用与 token（现在只有进程内存计数）；
 - **评分进成绩单**：把 `agent_app_reviews` 汇总进现有 `submissions`/`Grading`；
 - **iframe 独立源**：学生页面放 `{key}.app.example.com` 并加 `sandbox`（需要 nginx + 证书）。
 

@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -106,6 +107,22 @@ export class AgentAppsController {
   @Roles(UserRole.STUDENT, UserRole.TEACHER)
   remove(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
     return this.service.remove(user, id);
+  }
+
+  /** 平台模型代理（容器用一次性 token 调，不是 JWT）：公开路由 + 自己校验 token */
+  @Public()
+  @Post('llm/chat')
+  llmChat(
+    @Headers('x-app-token') token: string,
+    @Body()
+    payload: { messages?: unknown; max_tokens?: number; temperature?: number; reasoning_effort?: string },
+  ) {
+    return this.service.llmChat(token, payload);
+  }
+
+  @Get(':id/usage')
+  usage(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.usageOf(user, id);
   }
 
   @Get(':id/versions')

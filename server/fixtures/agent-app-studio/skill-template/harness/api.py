@@ -40,9 +40,18 @@ def plan_step(state: dict, step: dict, ctx: dict) -> str:
     - `finish`  → `完成`
 
     解析是这一章的核心：PDF 抽未压缩内容流里的 `Tj` 文本、DOCX 解 zip 读 `word/document.xml`
-    （这两个**自己写**，环境里没有 `pypdf` / `python-docx`）；**图片必须走视觉模型**
-    （`deepseek-flash` 支持 `image_url`，key 在 `DEEPSEEK_API_KEY`）—— 图片没有文本层，正则读不到。
-    最小示例（注意 `reasoning_effort: none` 与 `max_tokens` 给足）见 `task.md` 的「图片走视觉」一节。
+    （这两个**自己写**，环境里没有 `pypdf` / `python-docx`）；**图片交给宿主**：
+
+    ```python
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from app_host import vision_extract       # 宿主统一走平台代理（本地自测回退直连）
+    lines, usage = vision_extract(path)       # → 文本行（再用容错正则抽 item,value,unit）
+    ```
+
+    为什么由宿主提供：容器里**不再放大模型 key**（平台代理限流 + 计费），
+    学生代码只负责"把模型读出来的行抽成结构化数据"。口径见 `task.md` 的「图片走视觉」一节。
     """
     raise NotImplementedError("TODO: 实现四种 action（task.md §二）")
 

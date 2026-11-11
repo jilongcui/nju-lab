@@ -5,7 +5,9 @@ import {
   OnModuleInit,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { randomBytes } from 'crypto';
 import { ContainerRuntime } from '../container-runtime/container-runtime';
+import { WORKSPACE_PLATFORM_API } from '../workspace/workspace.config';
 import {
   AGENT_APP_CPUS,
   AGENT_APP_DATA_DIR,
@@ -40,6 +42,9 @@ interface AppSession {
 export class AgentAppRuntime implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AgentAppRuntime.name);
   private readonly sessions = new Map<string, AppSession>();
+  /** 容器用的平台代理凭证：token → appId（容器里不再放模型 key） */
+  private readonly llmTokens = new Map<string, string>();
+  private readonly appToken = new Map<string, string>();
   private timer?: NodeJS.Timeout;
 
   constructor(private readonly runtime: ContainerRuntime) {}
@@ -81,10 +86,38 @@ export class AgentAppRuntime implements OnModuleInit, OnModuleDestroy {
   }
 
   stop(appId: string): void {
+    const token = this.appToken.get(appId);
+    if (token) {
+      this.llmTokens.delete(token);
+      this.appToken.delete(appId);
+    }
     const s = this.sessions.get(appId);
     if (!s) return;
     this.runtime.stop(s.containerName);
     this.sessions.delete(appId);
+  }
+
+  /** 平台代理用它反查是哪个应用在调模型（无效 token → null） */
+  appIdForToken(token: string): string | null {
+    return this.llmTokens.get(token) ?? null;
+  }
+
+  /** 平台代理的基址（容器内可达：宿主机名 + `/lab/api/apps/llm`） */
+  llmProxyBase(): string | null {
+    if (!WORKSPACE_PLATFORM_API) return null;
+    return `${WORKSPACE_PLATFORM_API.replace(/\/+$/, '')}/apps/llm`;
+  }
+
+  /** 容器要能解析平台主机名（`--internal` 网络里 DNS 失败 → 钉到宿主网关） */
+  private platformHosts(): string[] {
+    if (!WORKSPACE_PLATFORM_API) return [];
+    try {
+      const { hostname } = new URL(WORKSPACE_PLATFORM_API);
+      const gateway = this.runtime.egressGateway();
+      return gateway ? [`${hostname}:${gateway}`] : [];
+    } catch {
+      return [];
+    }
   }
 
   stopAll(): void {
@@ -109,6 +142,11 @@ export class AgentAppRuntime implements OnModuleInit, OnModuleDestroy {
 
     const containerName = `nju-lab-app-${appId.slice(0, 8)}-${Date.now().toString(36)}`;
     const zip = this.bundleZipPath(appId, versionId);
+    // 每次起容器发一个短期 token：容器只能在**平台代理**里换到模型能力，拿不到 key
+    const llmToken = randomBytes(20).toString('hex');
+    this.llmTokens.set(llmToken, appId);
+    this.appToken.set(appId, llmToken);
+    const llmBase = this.llmProxyBase();
     this.runtime.runDetached({
       name: containerName,
       image: AGENT_APP_IMAGE,
@@ -118,15 +156,16 @@ export class AgentAppRuntime implements OnModuleInit, OnModuleDestroy {
       // 出网：`--internal` 网络里 DNS 全失败，白名单域名（含 api.deepseek.com）要钉到 SNI 代理 IP，
       // 否则视觉抽取会报 `Temporary failure in name resolution`（2026-11-11 实测）。
       egressProxyIp: this.runtime.ensureEgressProxy(),
+      extraHosts: this.platformHosts(),
       mounts: [`${zip}:/pkg/app.zip:ro`],
       env: [
         'APP_HOST=0.0.0.0',
         `APP_PORT=${AGENT_APP_PORT}`,
         'APP_DATA_DIR=/work/data',
-        // 只写**变量名**（不写值）—— 与学生工作台同一条透传路径，key 不进进程列表。
-        // 图片的视觉抽取需要它（`deepseek-flash` 的 `image_url`）；二期改成平台 LLM 代理 + 计费。
-        'DEEPSEEK_API_KEY',
-        'DEEPSEEK_BASE_URL',
+        // 模型能力走**平台代理**：容器里只有一次性 token，没有 key（三期已完成）。
+        ...(llmBase ? [`APP_LLM_BASE_URL=${llmBase}`, `APP_LLM_TOKEN=${llmToken}`] : []),
+        // 回退通道：没配平台基址时仍用透传的 key（本地/离线演练）；配了就不注入 key。
+        ...(llmBase ? [] : ['DEEPSEEK_API_KEY', 'DEEPSEEK_BASE_URL']),
       ],
     });
 

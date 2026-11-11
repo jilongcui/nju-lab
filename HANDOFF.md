@@ -86,8 +86,21 @@
   · **前端**：学生页（可见性下拉 / 分享链接复制 / 版本抽屉 / 评分列 / 删除）、教师页（可见性 / 版本 / 评分 / 下架），
     已 build 并部署到 `/var/www/lab`（备份 `.verify-scratch/lab-web-backups/20261111-201104`）。
   · 迁移执行：`1791400000000` 已 run；后端重启 `140747 → 143854`。
-- **未做（三期）**：**LLM 平台代理**（现在仍是 key 透传 + egress add-host，可用但不计费 —— 下一件最该做）、
-  成本看板、评分汇总进 `submissions`/`Grading`、iframe 独立源 + `sandbox`；
+- **三期已实现（2026-11-11 晚，同一轮"完善可用"）—— 模型走平台代理，容器里不再有 key**：
+  · 起容器时下发一次性 `APP_LLM_TOKEN` + `APP_LLM_BASE_URL=<平台>/lab/api/apps/llm`，
+    `extraHosts` 把平台主机名钉到 `egressGateway()`（绕开 `--internal` 无 DNS，与工作台同一套）；
+  · 平台端点 `POST /api/apps/llm/chat`（`@Public` + `X-App-Token` 校验）：`model` 钉死
+    `deepseek-flash`、`max_tokens` ≤2000、每应用 **30 次/分**、内存记用量（`GET /apps/:id/usage`）；
+  · 视觉调用下沉到宿主 `app_host.vision_extract()`（学生只负责把行抽成结构化数据），
+    没配 `WORKSPACE_PLATFORM_API` 时**自动回退** key 透传；
+  · 实测：容器 `env` 里已无 `DEEPSEEK_API_KEY`、有 `APP_LLM_*`，图片仍抽成 `HGB 88 low`，
+    用量 `{calls: 1, tokens: 231}`；
+  · 包侧：`app_host.py`（两份一致）改 `call_llm`（代理优先 + 直连回退）与 `vision_extract`；
+    `harness/api.py` 改调宿主函数；`--check` 0（17 条）、复验 **2/2 / 硬性 17/17**；
+    项目已重传并 PATCH（skill sha `210aa369a7b7`）。
+  · **踩坑**：平台所有 HTTP 响应被 `TransformInterceptor` 包成 `{code,data,message}`，
+    容器里直接取 `choices` 会拿到 `None` —— `call_llm` 现在**两种形态都兼容**（这一幕在 `task.md` 里也写了）。
+- **未做（四期）**：成本看板、评分汇总进 `submissions`/`Grading`、iframe 独立源 + `sandbox`；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；
   应用容器**不注入大模型 key**（二期走平台代理）。

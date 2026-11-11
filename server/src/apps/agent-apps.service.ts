@@ -8,6 +8,7 @@ import {
   NotFoundException,
   OnModuleDestroy,
   ServiceUnavailableException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes } from 'crypto';
@@ -46,6 +47,8 @@ const RATE_WINDOW_MS = 60_000;
 export class AgentAppsService implements OnModuleDestroy {
   private readonly logger = new Logger(AgentAppsService.name);
   private readonly rate = new Map<string, { windowStart: number; count: number }>();
+  /** 平台代理的用量（进程内存；重启清零，够教学场景看"谁在用"） */
+  private readonly usage = new Map<string, { calls: number; tokens: number }>();
 
   constructor(
     @InjectRepository(AgentApp) private readonly apps: Repository<AgentApp>,
@@ -354,6 +357,63 @@ export class AgentAppsService implements OnModuleDestroy {
     await this.apps.delete({ id: app.id });
     await rm(`${AGENT_APP_DATA_DIR}/${app.id}`, { recursive: true, force: true });
     return { deleted: true };
+  }
+
+  // ------------------------------------------------------------ 平台模型代理
+
+  /**
+   * 应用容器调模型的**唯一入口**（容器里没有 key）。
+   *
+   * 为什么要这一层：① key 不进学生容器；② `model` 与 `max_tokens` 由平台钉死，
+   * 学生改不了；③ 能按应用计次（`allow('llm:<appId>', 30)`）并在内存里记用量。
+   * 鉴权用起容器时下发的一次性 token（`X-App-Token`），不是 JWT。
+   */
+  async llmChat(
+    token: string,
+    payload: { messages?: unknown; max_tokens?: number; temperature?: number; reasoning_effort?: string },
+  ): Promise<Record<string, unknown>> {
+    const appId = token ? this.runtime.appIdForToken(token) : null;
+    if (!appId) throw new UnauthorizedException('应用凭证无效或已过期（容器重启后需要重新获取）');
+    if (!this.allow(`llm:${appId}`, 30)) {
+      throw new HttpException('模型调用太频繁（每应用每分钟 30 次）', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    const messages = Array.isArray(payload?.messages) ? payload.messages : null;
+    if (!messages || messages.length === 0) throw new BadRequestException('messages 不能为空');
+
+    const key = process.env.DEEPSEEK_API_KEY;
+    if (!key) throw new ServiceUnavailableException('平台没有配置模型额度（DEEPSEEK_API_KEY）');
+    const base = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com').replace(/\/+$/, '');
+    const model = process.env.APP_LLM_MODEL || 'deepseek-flash';
+    const maxTokens = Math.min(Math.max(Number(payload.max_tokens) || 800, 16), 2000);
+    const body = {
+      model,
+      messages,
+      max_tokens: maxTokens,
+      ...(payload.temperature !== undefined ? { temperature: payload.temperature } : {}),
+      ...(payload.reasoning_effort ? { reasoning_effort: payload.reasoning_effort } : {}),
+    };
+    const res = await fetch(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const text = (await res.text()).slice(0, 300);
+      throw new BadRequestException(`模型返回 ${res.status}：${text}`);
+    }
+    const data = (await res.json()) as { usage?: { total_tokens?: number } };
+    const stat = this.usage.get(appId) ?? { calls: 0, tokens: 0 };
+    stat.calls += 1;
+    stat.tokens += Number(data.usage?.total_tokens) || 0;
+    this.usage.set(appId, stat);
+    return data as Record<string, unknown>;
+  }
+
+  /** 用量（教师/作者可看） */
+  async usageOf(user: User, id: string): Promise<{ calls: number; tokens: number }> {
+    const app = await this.get(user, id);
+    this.assertCanRead(user, app);
+    return this.usage.get(app.id) ?? { calls: 0, tokens: 0 };
   }
 
   // ------------------------------------------------------------ 分享（匿名）

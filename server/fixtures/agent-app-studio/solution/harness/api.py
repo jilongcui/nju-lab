@@ -28,6 +28,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from run import bm25_rank, flag_of, tf_cosine_rank, validate_call  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from app_host import vision_extract as host_vision  # noqa: E402  （视觉调用由宿主统一走平台代理）
 
 ROW_PATTERN = re.compile(r"^([A-Za-z][A-Za-z0-9_]*)\s*,\s*(-?\d+(?:\.\d+)?)\s*,\s*(\S+)$")
 TEXT_PATTERN = re.compile(r"\(((?:\\.|[^\\)])*)\)\s*Tj")
@@ -79,69 +81,6 @@ def parse_docx(path: Path) -> list[str]:
     return lines
 
 
-VISION_PROMPT = (
-    "读出图中每一行检验数据，按「指标,数值,单位」输出，一行一条，不要解释、不要代码块。"
-    "若某行不是三段式数据就跳过。"
-)
-
-
-def image_size(path: Path) -> tuple[int, int]:
-    """只读 PNG 头拿宽高（登记用；不做像素识别）。"""
-    head = path.read_bytes()[:33]
-    if head[:8] != b"\x89PNG\r\n\x1a\n" or head[12:16] != b"IHDR":
-        return 0, 0
-    return struct.unpack(">II", head[16:24])
-
-
-def vision_extract(path: Path) -> tuple[list[str], dict]:
-    """把图片交给视觉模型，返回 (文本行, usage)。
-
-    为什么必须走视觉：图片里没有文本层，`zipfile`/正则那套读取方式对它无效。
-    工程上三个注意点（都在这里踩过）：
-    1. `${DEEPSEEK_BASE_URL:-https://api.deepseek.com}` + `image_url`（data URI，base64）；
-    2. `deepseek-flash` 是**推理模型**，`max_tokens` 太小会被思维链吃光（`reasoning_effort: none` 最省）；
-    3. 输出**格式会漂**（`PLT, 18, …` 与 `PLT,18,…` 都可能），所以下游必须用容错正则抽行，
-       不能拿原始文本做逐字比对。
-    """
-    key = os.environ.get("DEEPSEEK_API_KEY")
-    if not key:
-        raise RuntimeError("图片要走视觉模型，但环境里没有 DEEPSEEK_API_KEY")
-    base = (os.environ.get("DEEPSEEK_BASE_URL") or "https://api.deepseek.com").rstrip("/")
-    model = os.environ.get("DEEPSEEK_MODEL") or "deepseek-flash"
-    encoded = base64.b64encode(path.read_bytes()).decode()
-    payload = {
-        "model": model,
-        "max_tokens": 800,
-        "temperature": 0,
-        "reasoning_effort": "none",
-        "messages": [{
-            "role": "user",
-            "content": [
-                {"type": "text", "text": VISION_PROMPT},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded}"}},
-            ],
-        }],
-    }
-    request = urllib.request.Request(
-        f"{base}/chat/completions",
-        data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=120) as response:
-            data = json.load(response)
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"视觉模型调用失败（{base}）：{exc}") from exc
-    text = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
-    return [line for line in text.splitlines() if line.strip()], (data.get("usage") or {})
-
-
-def text_checksum(lines: list[str]) -> str:
-    """解析文本的校验和（口径见 task.md）：每行去首尾空白、按 `\\n` 连接。"""
-    joined = "\n".join(line.strip() for line in lines)
-    return hashlib.sha256(joined.encode("utf-8")).hexdigest()[:12]
-
-
 def parse_attachment(info: dict) -> dict:
     path = Path(info["path"])
     kind = info["kind"]
@@ -151,7 +90,7 @@ def parse_attachment(info: dict) -> dict:
     elif kind == "docx":
         lines, via = parse_docx(path), "text"
     elif kind == "image":
-        lines, usage = vision_extract(path)      # ← 视觉通道
+        lines, usage = host_vision(path)         # ← 视觉通道：宿主统一走平台代理（或直连回退）
         via = "vision"
     else:
         lines, via = [], "other"
