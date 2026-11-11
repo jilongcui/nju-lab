@@ -24,6 +24,7 @@ import {
   CloudDownloadOutlined,
   CloudServerOutlined,
   DashboardOutlined,
+  DeploymentUnitOutlined,
   ExperimentOutlined,
   FileDoneOutlined,
   FormOutlined,
@@ -67,6 +68,7 @@ const MENUS = {
     { key: '/teacher/dashboard', icon: <DashboardOutlined />, label: '工作台' },
     { key: '/teacher/courses', icon: <BookOutlined />, label: '课程管理' },
     { key: '/teacher/projects', icon: <ExperimentOutlined />, label: '实验项目' },
+    { key: '/teacher/apps', icon: <DeploymentUnitOutlined />, label: '学生应用' },
     { key: '/teacher/workspace', icon: <CloudServerOutlined />, label: '实验环境' },
   ],
   student: [
@@ -75,6 +77,7 @@ const MENUS = {
     { key: '/browse', icon: <SearchOutlined />, label: '选课' },
     { key: '/student/applications', icon: <FormOutlined />, label: '我的申请' },
     { key: '/student/submissions', icon: <FileDoneOutlined />, label: '我的提交与反馈' },
+    { key: '/student/apps', icon: <DeploymentUnitOutlined />, label: '我的应用' },
     { key: '/student/client', icon: <CloudDownloadOutlined />, label: '客户端下载' },
     { key: '/student/workspace', icon: <CloudServerOutlined />, label: '实验环境' },
   ],

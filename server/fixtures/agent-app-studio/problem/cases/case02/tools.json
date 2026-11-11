@@ -1,0 +1,18 @@
+{
+  "tools": [
+    {
+      "name": "flag_metric",
+      "description": "按参考区间判某项指标的 flag",
+      "parameters": {
+        "item": {
+          "type": "string",
+          "required": true
+        },
+        "value": {
+          "type": "number",
+          "required": true
+        }
+      }
+    }
+  ]
+}

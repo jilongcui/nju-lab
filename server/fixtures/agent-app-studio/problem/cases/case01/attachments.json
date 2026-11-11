@@ -1,0 +1,19 @@
+{
+  "attachments": [
+    {
+      "name": "report.pdf",
+      "kind": "pdf",
+      "size": 773
+    },
+    {
+      "name": "metrics.docx",
+      "kind": "docx",
+      "size": 1022
+    },
+    {
+      "name": "scan.png",
+      "kind": "image",
+      "size": 74
+    }
+  ]
+}

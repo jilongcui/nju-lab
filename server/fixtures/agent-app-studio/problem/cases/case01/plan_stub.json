@@ -1,0 +1,62 @@
+{
+  "turns": [
+    {
+      "turn": 1,
+      "steps": [
+        {
+          "action": "recall"
+        },
+        {
+          "action": "parse",
+          "file": "report.pdf"
+        },
+        {
+          "action": "kb"
+        },
+        {
+          "action": "finish"
+        }
+      ]
+    },
+    {
+      "turn": 2,
+      "steps": [
+        {
+          "action": "recall"
+        },
+        {
+          "action": "parse",
+          "file": "metrics.docx"
+        },
+        {
+          "action": "tool",
+          "call_id": "C01"
+        },
+        {
+          "action": "kb"
+        },
+        {
+          "action": "finish"
+        }
+      ]
+    },
+    {
+      "turn": 3,
+      "steps": [
+        {
+          "action": "recall"
+        },
+        {
+          "action": "parse",
+          "file": "scan.png"
+        },
+        {
+          "action": "kb"
+        },
+        {
+          "action": "finish"
+        }
+      ]
+    }
+  ]
+}

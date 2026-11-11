@@ -14,6 +14,7 @@ import { ProjectsModule } from './projects/projects.module';
 import { SubmissionsModule } from './submissions/submissions.module';
 import { UsersModule } from './users/users.module';
 import { WorkspaceModule } from './workspace/workspace.module';
+import { AgentAppsModule } from './apps/agent-apps.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { WorkspaceModule } from './workspace/workspace.module';
     FilesModule,
     WorkspaceModule,
     SlidesModule,
+    AgentAppsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

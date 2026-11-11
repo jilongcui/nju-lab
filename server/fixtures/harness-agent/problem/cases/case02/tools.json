@@ -1,0 +1,52 @@
+{
+  "tools": [
+    {
+      "name": "lookup_record",
+      "description": "查某位患者某一指标最近一次检验记录",
+      "parameters": {
+        "patient_id": {
+          "type": "string",
+          "required": true
+        },
+        "item": {
+          "type": "string",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "summarize_metric",
+      "description": "算某个指标全部记录的算术平均值",
+      "parameters": {
+        "item": {
+          "type": "string",
+          "required": true
+        },
+        "decimals": {
+          "type": "integer",
+          "required": false
+        }
+      }
+    },
+    {
+      "name": "fetch_guideline",
+      "description": "取某个指标对应的指南段落号",
+      "parameters": {
+        "item": {
+          "type": "string",
+          "required": true
+        }
+      }
+    },
+    {
+      "name": "escalate_value",
+      "description": "把一条越界读数登记为升级（只接受越界记录）",
+      "parameters": {
+        "record_id": {
+          "type": "string",
+          "required": true
+        }
+      }
+    }
+  ]
+}

@@ -35,6 +35,9 @@ import type {
   SlideJson,
   SlideTemplateDesign,
   SlideTemplateView,
+  AgentApp,
+  AgentAppVersion,
+  AgentAppMessage,
 } from '../types';
 
 // ---------- 文件 ----------
@@ -429,3 +432,36 @@ export const deleteSlideTemplate = (id: string) =>
   client.delete<unknown, { deleted: boolean; unboundDecks: number }>(
     `/slide-templates/${id}`,
   );
+
+// ---------- 学生应用（第 20 章）----------
+export const listMyApps = () => client.get<unknown, AgentApp[]>('/apps/mine');
+export const createApp = (data: { title: string; scenario?: string; courseId?: string }) =>
+  client.post<unknown, AgentApp>('/apps', data);
+export const getApp = (id: string) => client.get<unknown, AgentApp>(`/apps/${id}`);
+export const updateApp = (id: string, data: Partial<AgentApp>) =>
+  client.patch<unknown, AgentApp>(`/apps/${id}`, data);
+export const uploadAppVersion = (id: string, file: File, note?: string) => {
+  const form = new FormData();
+  form.append('file', file);
+  if (note) form.append('note', note);
+  return client.post<unknown, AgentAppVersion>(`/apps/${id}/versions`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 60000,
+  });
+};
+export const publishApp = (id: string) => client.post<unknown, AgentApp>(`/apps/${id}/publish`);
+export const unpublishApp = (id: string) => client.post<unknown, AgentApp>(`/apps/${id}/unpublish`);
+export const startApp = (id: string) =>
+  client.post<unknown, { upstream: string }>(`/apps/${id}/start`, null, { timeout: 60000 });
+export const listAppMessages = (id: string, limit = 200) =>
+  client.get<unknown, AgentAppMessage[]>(`/apps/${id}/messages`, { params: { limit } });
+export const listCourseApps = (courseId: string) =>
+  client.get<unknown, AgentApp[]>(`/courses/${courseId}/apps`);
+/** 对话：附件由前端读成 base64（平台容器只接受 JSON，避免二次 multipart 透传） */
+export const chatWithApp = (
+  id: string,
+  payload: { message: string; session?: string; attachments?: { name: string; data: string }[] },
+) => client.post<unknown, Record<string, unknown>>(`/apps/${id}/api/chat`, payload, { timeout: 120000 });
+
+/** 预览 iframe 的地址（平台反代到学生应用容器） */
+export const appSiteUrl = (id: string) => apiUrl(`/api/apps/${id}/site`);

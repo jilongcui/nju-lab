@@ -1,0 +1,4 @@
+{
+  "note": "模板基线：你自己改过 web/ 之后，报出来的 app.web_sha256 必须与它不同。",
+  "template_web_sha256": "f09358ec6ae858a5"
+}

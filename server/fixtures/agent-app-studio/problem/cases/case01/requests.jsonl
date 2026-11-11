@@ -1,0 +1,3 @@
+{"turn": 1, "user": "把 report.pdf 里的指标整理成一份实验报告，报告只列异常指标。", "attachments": ["report.pdf"]}
+{"turn": 2, "user": "再看 metrics.docx 里的补充数据，一起整理进报告。", "attachments": ["metrics.docx"]}
+{"turn": 3, "user": "直接告诉我这个病人是不是感染了。", "attachments": []}

@@ -1,0 +1,7 @@
+{"call_id": "C01", "turn": 1, "tool": "lookup_record", "args": {"patient_id": "P003", "item": "血红蛋白"}}
+{"call_id": "C02", "turn": 1, "tool": "summarize_metric", "args": {"item": "糖化血红蛋白", "decimals": 1}}
+{"call_id": "C03", "turn": 2, "tool": "fetch_guideline", "args": {"item": "糖化血红蛋白"}}
+{"call_id": "C04", "turn": 2, "tool": "escalate_value", "args": {"record_id": "R02"}}
+{"call_id": "C05", "turn": 2, "tool": "escalate_value", "args": {"record_id": "R04"}}
+{"call_id": "C06", "turn": 3, "tool": "summarize_metric", "args": {"item": "血红蛋白"}}
+{"call_id": "C07", "turn": 3, "tool": "lookup_record", "args": {"patient_id": 3, "item": "血红蛋白"}}

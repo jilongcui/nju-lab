@@ -712,3 +712,44 @@ export interface ChapterSlidesResponse {
     keyConfigured?: boolean;
   };
 }
+
+// ---------- 学生应用（第 20 章 · 平台一期）----------
+
+export type AppVisibility = 'owner' | 'teacher' | 'course';
+export type AppStatus = 'draft' | 'published' | 'archived';
+
+export interface AgentApp {
+  id: string;
+  studentId: string;
+  courseId: string | null;
+  projectId: string | null;
+  title: string;
+  scenario: string | null;
+  entry: string;
+  theme: { mode?: string; accent?: string } | null;
+  attachments: string[] | null;
+  visibility: AppVisibility;
+  status: AppStatus;
+  latestVersionId: string | null;
+  shareKey: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentAppVersion {
+  id: string;
+  appId: string;
+  sha256: string;
+  size: number;
+  note: string | null;
+  createdAt: string;
+}
+
+export interface AgentAppMessage {
+  id: string;
+  appId: string;
+  sessionId: string;
+  role: 'user' | 'assistant' | string;
+  content: string;
+  createdAt: string;
+}

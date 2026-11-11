@@ -30,6 +30,8 @@
 | [`memory-easy/`](memory-easy/) | 给随访助手加一张记忆表（**写入/检索/更新/遗忘**） | **应用驱动 · 记忆入门（easy，第 11 章）** | 8 条断言（逐步快照 + 检索只取 active + 更新/遗忘边界）+ `judge.md` |
 | [`mcp-easy/`](mcp-easy/) | 手写一次 MCP 往返（**initialize → tools/list → tools/call**） | **应用驱动 · 工具协议入门（easy，第 12 章）** | 9 条断言（逐条报文 + 通知不回 + 错误码不混用）+ `judge.md` |
 | [`skill-easy/`](skill-easy/) | 把检验判定写成脚本（**口径与边界**） | **应用驱动 · 技能入门（easy，第 13 章）** | 9 条断言（逐项 flag + 危急闭区间 + 表外项目 unknown）+ `judge.md` |
+| [`harness-agent/`](harness-agent/) | 给随访助手写一个 harness（**循环 / 记忆分层 / 工具 / 知识库**） | **应用驱动 · 智能体 Harness（medium，第 19 章 · 2026-11 升级）** | 14 条断言（`trace` 逐步 + 工具错误码 + 记忆行为性 + 检索对照 + 升级/拒答）+ `judge.md` |
+| [`agent-app-studio/`](agent-app-studio/) | 把 harness 做成可分享的应用（**附件解析 + 报告 + 零依赖前端**） | **应用驱动 · 综合实践（hard，第 20 章 · 2026-11 新增）** | 16 条断言（附件校验和 + 报告逐行 + 记忆改变行集 + 前端哈希 ≠ 模板）+ `judge.md` |
 
 > **智能体单元的四个入门实验**（2026-10-31 新增，第 10 / 11 / 12 / 13 章各一个）：
 > `agent-easy`（四环随访助手）、`memory-easy`（记忆四操作）、`mcp-easy`（最小 MCP 往返）、

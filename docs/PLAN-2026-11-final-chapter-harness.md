@@ -1,0 +1,252 @@
+# 收官两章落地计划：第 19 章 Harness 智能体 + 第 20 章 应用实践
+
+> 状态：**进行中**（2026-11-11 起）。第 19 章实验包已落地（`server/fixtures/harness-agent/`），
+> 平台侧应用托管的设计见 [`DESIGN-2026-11-agent-app-platform.md`](DESIGN-2026-11-agent-app-platform.md)。
+>
+> 配套必读：[`EXPERIMENT-CREATION-GUIDE.md`](EXPERIMENT-CREATION-GUIDE.md)（怎么做）、
+> [`EXPERIMENT-DESIGN-FRAMEWORK.md`](EXPERIMENT-DESIGN-FRAMEWORK.md)（怎么设计）、
+> [`PLAN-2026-10-experiment-roadmap.md`](PLAN-2026-10-experiment-roadmap.md)（前三个批次的记录与经验）、
+> [`EXPERIMENT-PACKAGE-SPEC.md`](EXPERIMENT-PACKAGE-SPEC.md)（包格式）。
+
+---
+
+## 0. 一句话
+
+课程原来在第 19 章用 `learning-assistant`（四环闭环）收尾。本次按"综合运用前面所有章节"的口径**升级收官**：
+
+- **第 19 章**（改造）= `harness-agent`：学生手写 harness 的六个部件 —— **循环 / 记忆分层 / 工具（MCP 风格）/ 知识库检索 / 安全边界 / 答案与出处**；
+- **第 20 章**（新建）= `agent-app-studio`：把 harness 接到**零依赖静态前端**上做成一个真应用（示例：上传实验数据 → 按规定格式生成实验报告），**发布到平台、分享给老师、由教师管理**。
+
+## 0.1 用户选定的三条口径（2026-11-11）
+
+| # | 决策点 | 结论 |
+|---|---|---|
+| 1 | 章节定位 | **19 章升级为 harness 智能体，20 章新增具体应用实践**（`learning-assistant` 下架保留、不删数据） |
+| 2 | 分享与运行 | **平台托管运行容器**（完整方案，**分两期**）：一期单实例 + 教师可见，二期再接三档可见性与并发配额 |
+| 3 | 交付边界 | **教师给零依赖静态前端模板，学生自由改**；后端只写 harness core，**HTTP / 上传封装由模板提供** |
+
+## 0.2 与既有批次的关系
+
+| 批次 | 内容 | 状态 |
+|---|---|---|
+| 批次 1 | 第 18 / 5 / 9 章（技能 / 知识库 / 问答原型） | ✅ 已上线 |
+| 批次 2 | 第 4 / 16 / 19 章（注意力 / 记忆 / 学习助手） | ✅ 已上线 |
+| 批次 3（本文件） | 第 19 章升级 + 第 20 章新建 + 平台应用托管 | 🚧 进行中 |
+
+> 第 19 章原来的 `learning-assistant` 项目**下架保留**：数据与实测记录都留着，
+> 需要回滚时重新 publish 即可（见 §5）。
+
+---
+
+## 1. 第 19 章：`harness-agent`（已落地）
+
+### 1.1 应用与任务形态
+
+随访助手要能听懂一句"帮我看下 P001 最近的血小板计数"，自己走完一轮又一轮。
+**难的不是接模型，而是包在模型外面的那一层**：谁执行、谁记账、谁记住、谁拦住。
+
+所以题目把"模型"变成**桩**：`plan_stub.json` 给出每轮的决策序列（`recall` / `tool` / `kb` / `finish`），
+学生实现的 harness 必须真的循环、每步记 `observation`、尊重 `max_steps`。
+好处是**输入全部写死 ⇒ 逐字段可比**（沿用 `attention-ablation` 的经验）。
+
+### 1.2 包结构
+
+```
+server/fixtures/harness-agent/
+├── problem/                         → problem.zip（下发；**没有 reference/**）
+│   ├── manifest.json                IO 契约 + flow=engineering + 14 条断言
+│   ├── task.md                      六步流程 + 六个部件的口径 + 交付格式
+│   ├── judge.md                     语义判据（理由说清 / 检索≠结论 / 安全边界 / 局限）
+│   ├── README.md                    导学 + 排错表
+│   └── cases/case0{1,2}/            dialogue / records / tools / tool_calls / plan_stub / limits / kb/ + expected
+├── skill-template/                  → skill-template.zip（起点骨架）
+│   ├── SKILL.md                     能力边界预填（不留文档 TODO）
+│   ├── report.md                    报告六节（工程实现型列）
+│   └── scripts/harness.py           六件各留一个 TODO 函数
+├── solution/                        ⚠️ 教师侧解答样例（不下发、不打包）
+│   ├── SKILL.md
+│   ├── report.md                    实测档案
+│   └── scripts/harness.py           完整实现 + `--regen-expected`
+├── tools/gen_data.py                造题工具（不下发）
+└── README.md
+```
+
+### 1.3 判据设计（14 条断言）
+
+| 组 | 断言 | 判什么 |
+|---|---|---|
+| 结构 | 字段完整 / 循环真的发生 | 十项都在；`trace` 每步有 `turn/step/action/observation` |
+| 循环 | 终止条件正确 / trace 逐步一致 | `terminated` 每轮一条；截断记 `max_steps`；逐步与 expected 对上 |
+| 工具 | 逐条一致 / 非法如实记 / **错误码不混用** / **业务校验拦人** | `-32601`（未知工具）vs `-32602`（参数类）；`not_out_of_range` |
+| 记忆 | 三层都在 / **行为性：旧条目进 superseded、被遗忘的进 forgotten** / 应用一致 | 更新与遗忘真的生效，不是只写不管 |
+| 检索 | top3 逐轮一致 + `top3_diff_turns` 一致 | BM25 与 TF 余弦的差异被报出来 |
+| 安全 | 越界逐行升级 + 拒答 | `message` 与固定话术逐字相同 |
+| 收尾 | 图 + 工具记账自洽 + `notes` ≥60 字 | `takeaway` 与 `metrics` 自洽 |
+
+**防退化两端**：
+
+| 偷懒解 | 会被哪条拦住 |
+|---|---|
+| 不实现循环，直接把 `steps` 抄成结论 | "循环真的发生"（`trace` 空）+ "终止条件正确" |
+| 检索只用 TF 余弦（不做长度归一） | `top3_diff_turns` 与 `bm25_top3` 逐轮比对 |
+| `escalate_value` 一律执行成功 | `not_out_of_range` 计数 ≥1 且必须 rejected |
+
+### 1.4 出题时的实测依据（2026-11-11，`nju-lab-verify:0.2.0-rc.2-pkg6`）
+
+| case | 轮数 | 总步数 | terminated | 工具 executed/rejected | 记忆三态 | top3 不同的轮次 | `trace_checksum` |
+|---|---|---|---|---|---|---|---|
+| case01 | 5 | 23 | 全 `done` | 4 / 4 | 1 / 1 / 0 | `[1,2,3,4]` | `106c1be2c1b6` |
+| case02 | 3 | 12 | `done` / **`max_steps`** / `done` | 5 / 2 | 0 / 0 / 1 | `[1,3]` | `ed407ae57a69` |
+
+- 两 case 的失败分布合起来覆盖四类：`unknown_tool` / `missing_required` / `type_mismatch` / `not_out_of_range`；
+- case02 第 2 轮**故意给 6 步**（`max_steps=4`）：专门考"到点就停并把原因写出来"；
+- case02 的 `top3_diff_turns=[1,3]` 由语料结构保证：最长的综述 `KB-04` 在 TF 余弦下被顶到第一，BM25 因为长度归一没被带走。
+
+### 1.5 上线动作
+
+```sh
+cd server/fixtures/harness-agent
+(cd problem && zip -qr ../problem.zip .) && (cd skill-template && zip -qr ../skill-template.zip .)
+docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg6 \
+  --check --skill /p/skill-template.zip --problem /p/problem.zip
+# → 参考实现复验（应 2/2）
+cd /home/ubuntu/nju-lab
+docker run --rm --env-file server/.env --memory 2g -e VERIFY_REASONING_EFFORT=low -e VERIFY_MAX_CASES=0 \
+  -v "$PWD/server/fixtures/harness-agent:/p:ro" -v "$PWD/.verify-scratch/out:/outputs" \
+  nju-lab-verify:0.2.0-rc.2-pkg6 --skill /p/solution --problem /p/problem.zip \
+  --out /outputs/harness-agent.json --timeout-ms 300000
+```
+
+之后：上传两个包 → 建项目（chapterId = 第 19 章 `8fb368bb-e56a-4cd5-8e93-c0761792ec99`）→ publish；
+原 `learning-assistant` 项目 unpublish；第 19 章正文按 §3.1 改造并重生成 deck。
+
+---
+
+## 2. 第 20 章：`agent-app-studio`（待落地）
+
+### 2.1 应用与任务形态
+
+学生把第 19 章的 harness 接上一个**真前端**，做成能交付给护士/老师用的应用。
+题目给三个候选场景（学生也可自选，需在 `app.json` 里写清）：
+
+1. **实验数据 → 标准格式实验报告**（主样板）：上传 `.xlsx` / `.pdf` / `.docx` / 图片 → 抽指标表 →
+   按 `report_format.json` 出四节报告 + 指标表 + 危急值提示 + 出处；
+2. 检验单解读（复用第 18 章口径）；
+3. 文献/教材问答（复用第 5 / 9 章检索）。
+
+### 2.2 交付契约（四件套）
+
+```
+skill-template/
+├── app.json           # 元信息：title / scenario / entry / theme{accent,bg} / attachments.types / visibility
+├── harness/api.py     # 只写 core：load(app_dir) + handle(message, attachments, session) -> {reply, report, citations}
+├── web/               # 零依赖静态前端（从 web-template 复制后自由改）
+│   ├── index.html     #   对话区 + 上传控件 + 报告预览
+│   └── theme.css      #   主题变量（≥3 个 CSS 变量，供"改背景/配色"）
+├── app_host.py        # 教师提供，**学生不改**：HTTP + multipart + 附件落盘 + 会话持久化 + 调平台 LLM 代理
+├── SKILL.md
+└── report.md
+```
+
+**为什么前端必须零依赖**：工作台与运行容器都在 `--internal` 网络里、没有外网，
+`npm install` 不可能成功。所以前端 = 纯 HTML/CSS/JS，学生改主题与交互，不引入构建链。
+
+### 2.3 判据草案（16 条，含 2 条"交付形态"）
+
+字段完整 → `app.json` 元信息完整 → `web/index.html` 含必需元素（对话容器 / `input[type=file]` 覆盖
+pdf+docx+图片 / `data-theme` 容器）→ **零依赖**（`web/` 下无 `package.json`、无外链 `http(s)://` script/style）
+→ 主题变量 ≥3 且与 `app.json.theme` 一致 → **与模板不完全相同**（防"直接交模板"）→
+附件解析（`pdf` / `docx` 抽出文本的 checksum 与 expected 一致）→ 指标表逐行一致 →
+报告四节齐 + `min_chars` → `requests.jsonl` 端到端走完 loop → 跨轮记忆生效 →
+工具校验/执行/rejected 一致 → 检索出处一致 → 危急值升级 + 拒答 → 图 ≥1 → `notes` ≥80 字。
+
+**判分分工**：`output.json` 判 harness 与报告（自动）；**前端体验 / 分享与权限 / 演示答辩 → 教师 rubric**
+（沿用第 19 章正文已有的"演示答辩"验收项）。
+
+### 2.4 依赖与门槛
+
+| 项 | 结论 |
+|---|---|
+| `pypdf` / `python-docx` | **需预装**（重建一次 verify + workspace 镜像；`docx` 也可用标准库自解析，但 PDF 不行） |
+| 图片上传 | **只做登记 + 预览 + 尺寸/格式校验**；当前模型无视觉，不做图片理解（要理解需换视觉模型） |
+| 复验容器 | 判分只跑 core + 固定附件（`cases/<case>/attachments/`），**不依赖运行容器** |
+| 平台依赖 | 应用发布 / 托管运行 / 分享 / 教师管理（见 DESIGN 文档两期计划） |
+
+### 2.5 上线顺序（建议）
+
+1. 先落**实验包**（能 `--check` + 复验 2/2），平台侧可以先用"交 zip + 教师在工作台里跑"验收；
+2. 平台一期（托管运行 + 教师可见）上线后，把题干里的"发布与分享"从"交 zip"改成"点发布"；
+3. 平台二期（三档可见性 + 评分）上线后，把教师 rubric 接进评分页。
+
+---
+
+## 3. 章节正文改造（用 `update-chapter` skill）
+
+### 3.1 第 19 章（改造，不新增章节）
+
+改法：保留"项目目标 + 四模块架构 + 三阶段路径 + 安全红线"的骨架，
+把叙事从"学习助手"换成"**harness**"，并明确六个部件：
+
+| 原正文 | 改成 |
+|---|---|
+| 阶段二：`mem0` / MCP 工具 / LangChain-LangGraph 编排 | **本地等价物**：条目表 + mock 工具 + 自己的编排脚本（保留"与真实工程的差距"一段） |
+| 四模块（感知 / 大脑 / 行动 / 记忆） | 保留为上位架构，下面新增 **harness 六件**：模型接口层 / 循环控制器 / 工具层 / 记忆分层 / 知识库 / 安全边界 |
+| 验收标准（功能闭环 / 可溯源 / 安全边界 / 工程规范 / 演示答辩） | 前四条对应六件；**演示答辩**留给第 20 章 |
+| 章末"动手实践" | 指向 `harness-agent`（要求：两个 case 都过、`trace` 逐步可比、报告由工具生成） |
+
+### 3.2 第 20 章（新建，order 20）
+
+标题建议：**《综合实践：从 Harness 到可分享的智能体应用》**。正文六节：
+① 为什么"能用"和"能交付"是两件事 → ② 应用的四件套（core / 前端 / 附件 / 权限）→
+③ 前端只有零依赖这一条路（无外网 + 模板）→ ④ 附件解析与"口径钉死" → ⑤ 发布、分享与教师管理 →
+⑥ 工程规范与演示答辩 + 安全红线。
+
+新建章节：
+
+```sh
+TOKEN=$(curl -s -X POST http://127.0.0.1:3100/api/auth/login -H 'Content-Type: application/json' \
+  -d '{"username":"teacher","password":"teacher123"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["accessToken"])')
+curl -s -X POST http://127.0.0.1:3100/api/courses/course-cd11ea33/chapters \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"title":"综合实践：从 Harness 到可分享的智能体应用","order":20,"content":"…"}'
+```
+
+---
+
+## 4. 平台工程：应用托管（两期）
+
+细节见 [`DESIGN-2026-11-agent-app-platform.md`](DESIGN-2026-11-agent-app-platform.md)。要点：
+
+- **不改 nginx**：静态前端与对话接口都走 `/lab/api/apps/...`（已存在的 `/lab/api/` 通道）；
+- **运行时**复用 `ContainerRuntime`：`nju-lab-app-runtime` 镜像（`FROM nju-lab-verify`）+ `app_host.py`；
+- **LLM 不落容器**：容器只访问平台代理 `/api/llm/chat`（限流 + 审计 + 不泄露 key）；
+- 一期：上传 / 发布 / 起容器 / 反代（HTTP+SSE）/ 教师可见 / 对话日志；
+- 二期：三档可见性（教师 / 课程内 / 免登录只读）、多版本回滚、并发排队与配额、成本看板、评分接入。
+
+---
+
+## 5. 里程碑
+
+| 期 | 交付 | 验收 |
+|---|---|---|
+| **M1** | 第 19 章实验包 + 正文改造 + deck 重生成 + 项目发布（`learning-assistant` 下架） | `--check` 0；复验 2/2；`unzip -l problem.zip` 无 `solution/` |
+| **M2** | 第 20 章新建 + 实验包（含 `web-template` / `app_host.py` / `solution`） | 同上；学生端章节页可见 |
+| **M3** | 平台一期 | `server npm test` / `web build` 全绿；端到端手工清单 |
+| **M4** | 平台二期 | 三档可见性各验一遍；10 并发压测 |
+| **M5** | 收尾 | `fixtures/README` 加行、`HANDOFF.md` 顶部条目、`git commit && push` |
+
+---
+
+## 6. 风险与未决
+
+| 风险 | 对策 |
+|---|---|
+| 运行容器并发与内存（1g/0.5cpu 每容器） | 一期并发上限 10 + 队列；空闲 15 min 回收 |
+| 学生代码在容器内跑 | 非 root、只读镜像、只挂自己的 app 目录、`--internal`、禁 `--privileged` |
+| 判分与线上不一致 | `app_host.py` / `web-template` 由包下发**且**镜像内置同一份，sha256 断言钉死 |
+| 模型不确定性破坏逐字段判据 | case 全走 `llm_stub`；真模型只用于自测与演示 |
+| 解析库要重建镜像 | 一次重建（verify + workspace 同步升 tag），照 `UPGRADE-playbook.md` §4 的坑执行 |
+| 历史文档不能改 | `docs/ACCEPTANCE-*` 与已发布实测记录不动；升级信息只追加到 `HANDOFF.md` 顶部 |
+
+**未决（M3 前要定）**：应用容器并发上限与每会话 token 配额；免登录分享要不要开；
+`learning-assistant` 是否保留为第 19 章的 easy 档。

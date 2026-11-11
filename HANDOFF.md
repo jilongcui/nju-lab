@@ -5,6 +5,41 @@
 
 ## 0. 一句话现状
 
+**2026-11-11（收官两章：第 19 章升级为 Harness 智能体 + 新增第 20 章「可分享的智能体应用」；平台新增应用托管一期）—— 🚧 代码与实验包已完成，**尚未重启/发布****
+
+- **用户要求**（原话）："最后一章综合利用前面几章的知识……构建自己的 harness 智能体（loop、记忆层级、mcp/tools、知识库），
+  前端页面可以对话和上传图片/文件 pdf/word，可以改背景……学生生成的独立智能体的前端必须能够分享出来，并被老师所管理"。
+- **用户拍板的三条口径**（2026-11-11）：① **19 章升级为 harness 智能体，20 章新加具体应用实践**；
+  ② 分享与运行走**平台托管运行容器**（完整方案，**分两期**）；③ 教师给**零依赖静态前端模板**、学生自由改，
+  后端只写 harness core（HTTP/上传封装由模板提供）。
+- **产物一：两个实验包**（都不给参考实现；`solution/` 与 `problem/` 平级、不进 ZIP）
+  - `server/fixtures/harness-agent/`（第 19 章，medium）：六件 = 循环 / 记忆分层 / 工具（MCP 风格）/ 检索 / 安全 / 出处。
+    **14 条断言**；`--check` 退出码 0；复验 **2/2**、硬性 **14/14**（case01 score 1.0 / case02 0.95）。
+    实测：case01 5 轮 23 步全 `done`、工具 4/4、`trace_checksum=106c1be2c1b6`；
+    case02 3 轮 12 步（第 2 轮 **`max_steps`** 截断）、工具 5/2、`top3_diff_turns=[1,3]`、checksum `ed407ae57a69`。
+  - `server/fixtures/agent-app-studio/`（第 20 章，hard）：新增**附件解析**（PDF 未压缩流 / DOCX OOXML / PNG 头）、
+    口径钉死的报告、**记忆改变行集**、**前端哈希 ≠ 模板基线**。**16 条断言**；`--check` 退出码 0；复验 **2/2**、硬性 **16/16**。
+    实测：case01 `total/abnormal/listed = 4/3/3`（偏好生效）；case02 `4/3/4`（忘掉偏好后恢复全量）；
+    web 哈希 `4fc2116779f23330` vs 模板基线 `f09358ec6ae858a5`。
+- **产物二：平台应用托管一期**（`docs/DESIGN-2026-11-agent-app-platform.md`）
+  - 迁移 `1791300000000-AgentApps`（**已在库里执行**，只新增 3 张表：`agent_apps` / `agent_app_versions` / `agent_app_messages`）；
+  - 模块 `server/src/apps/`：`AgentAppsService`（上传/发布/下架/反代/对话落库/权限）+ `AgentAppRuntime`
+    （按需起容器、空闲 15 min 回收、并发上限 10、后端重启按 label 收遗留容器）；
+  - 运行时镜像 **`nju-lab-app-runtime:0.1.0`**（`FROM nju-lab-verify:0.2.0-rc.2-pkg8` + `entrypoint.sh`；
+    `USER 1000`、512m/0.3cpu、`--internal`、**只读挂 zip**、容器内解包到 `/work/app`）；
+  - 前端两页 + 菜单：学生「我的应用」（`/student/apps`）、教师「学生应用」（`/teacher/apps`）；
+  - **不改 nginx**：静态页与对话都走 `/lab/api/apps/...`；HTML 注入 `<base>` 与 `window.__APP_API_BASE__`。
+  - **端到端实测**（临时实例 3101 端口，非生产进程）：上传 zip → 发布 → 起容器 → `GET /site`（注入 base）→
+    `GET /site/theme.css` 200 → `POST /api/chat`（带 `report.pdf`）返回回复 + `citations=[KB-01]` +
+    `metric_rows=[PLT 18 low, WBC 12.5 high]` + 升级 2 条 → 教师 `GET /courses/:id/apps` 可见 →
+    `GET /apps/:id/messages` 有 user/assistant 两条。冒烟数据已清理（三张表 + 容器 + scratch）。
+- **验证**：`server npm run build` 通过；`web npm run build` 通过（`tsc --noEmit` + vite）；迁移 `migration:show` 显示 `[X]`。
+- **未做（下一步）**：① **重启后端**让 apps 模块与 `/api/apps` 路由生效（当前生产进程仍是旧 dist）；
+  ② 第 19 章正文改造 + deck 重生成（`update-chapter` skill）；③ 新建第 20 章（`order=20`）+ 正文 + deck；
+  ④ 两个项目上传/绑定/发布 + 原 `learning-assistant` 下架；⑤ `.env` 加 `AGENT_APP_*`（有默认值，只有改默认才需要）。
+- **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；
+  应用容器**不注入大模型 key**（二期走平台代理）。
+
 **2026-10-31（引导适配第二轮：流程**按题目包声明**判定，工程实现型 + 数据库类都上线，镜像 pkg26）—— ✅ 已上线**
 
 - **用户反馈**（原话）："我测试了，到处还是关于机器学习相关的说法，我们是智能体啊，不是机器学习"。

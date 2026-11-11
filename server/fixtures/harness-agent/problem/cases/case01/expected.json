@@ -1,0 +1,435 @@
+{
+  "harness": {
+    "turns": 5,
+    "max_steps": 6,
+    "steps_total": 23,
+    "terminated": [
+      "done",
+      "done",
+      "done",
+      "done",
+      "done"
+    ]
+  },
+  "trace": [
+    {
+      "turn": 1,
+      "step": 1,
+      "action": "recall",
+      "observation": "记忆命中：-"
+    },
+    {
+      "turn": 1,
+      "step": 2,
+      "action": "tool",
+      "observation": "P001/血小板计数 最近一次 18 10^9/L（R02）"
+    },
+    {
+      "turn": 1,
+      "step": 3,
+      "action": "tool",
+      "observation": "血小板计数 均值 119.0"
+    },
+    {
+      "turn": 1,
+      "step": 4,
+      "action": "kb",
+      "observation": "检索命中：KB-01,KB-05,KB-02"
+    },
+    {
+      "turn": 1,
+      "step": 5,
+      "action": "finish",
+      "observation": "完成"
+    },
+    {
+      "turn": 2,
+      "step": 1,
+      "action": "recall",
+      "observation": "记忆命中：-"
+    },
+    {
+      "turn": 2,
+      "step": 2,
+      "action": "tool",
+      "observation": "白细胞计数 的指南段落 KB-02"
+    },
+    {
+      "turn": 2,
+      "step": 3,
+      "action": "kb",
+      "observation": "检索命中：KB-02,KB-05,KB-03"
+    },
+    {
+      "turn": 2,
+      "step": 4,
+      "action": "finish",
+      "observation": "完成"
+    },
+    {
+      "turn": 3,
+      "step": 1,
+      "action": "recall",
+      "observation": "记忆命中：MEM01"
+    },
+    {
+      "turn": 3,
+      "step": 2,
+      "action": "tool",
+      "observation": "R02 已登记升级"
+    },
+    {
+      "turn": 3,
+      "step": 3,
+      "action": "kb",
+      "observation": "检索命中：KB-01,KB-05,KB-03"
+    },
+    {
+      "turn": 3,
+      "step": 4,
+      "action": "finish",
+      "observation": "完成"
+    },
+    {
+      "turn": 4,
+      "step": 1,
+      "action": "recall",
+      "observation": "记忆命中：-"
+    },
+    {
+      "turn": 4,
+      "step": 2,
+      "action": "tool",
+      "observation": "rejected:not_out_of_range"
+    },
+    {
+      "turn": 4,
+      "step": 3,
+      "action": "tool",
+      "observation": "rejected:type_mismatch"
+    },
+    {
+      "turn": 4,
+      "step": 4,
+      "action": "kb",
+      "observation": "检索命中：KB-01,KB-05,KB-02"
+    },
+    {
+      "turn": 4,
+      "step": 5,
+      "action": "finish",
+      "observation": "完成"
+    },
+    {
+      "turn": 5,
+      "step": 1,
+      "action": "recall",
+      "observation": "记忆命中：-"
+    },
+    {
+      "turn": 5,
+      "step": 2,
+      "action": "tool",
+      "observation": "rejected:unknown_tool"
+    },
+    {
+      "turn": 5,
+      "step": 3,
+      "action": "tool",
+      "observation": "rejected:missing_required"
+    },
+    {
+      "turn": 5,
+      "step": 4,
+      "action": "kb",
+      "observation": "检索命中：KB-06,KB-03,KB-05"
+    },
+    {
+      "turn": 5,
+      "step": 5,
+      "action": "finish",
+      "observation": "完成"
+    }
+  ],
+  "tool_calls": [
+    {
+      "call_id": "C01",
+      "tool": "lookup_record",
+      "args_valid": true,
+      "status": "executed",
+      "error_code": 0,
+      "rejected_reason": "",
+      "result_summary": "P001/血小板计数 最近一次 18 10^9/L（R02）"
+    },
+    {
+      "call_id": "C02",
+      "tool": "summarize_metric",
+      "args_valid": true,
+      "status": "executed",
+      "error_code": 0,
+      "rejected_reason": "",
+      "result_summary": "血小板计数 均值 119.0"
+    },
+    {
+      "call_id": "C03",
+      "tool": "fetch_guideline",
+      "args_valid": true,
+      "status": "executed",
+      "error_code": 0,
+      "rejected_reason": "",
+      "result_summary": "白细胞计数 的指南段落 KB-02"
+    },
+    {
+      "call_id": "C04",
+      "tool": "escalate_value",
+      "args_valid": true,
+      "status": "executed",
+      "error_code": 0,
+      "rejected_reason": "",
+      "result_summary": "R02 已登记升级"
+    },
+    {
+      "call_id": "C05",
+      "tool": "escalate_value",
+      "args_valid": false,
+      "status": "rejected",
+      "error_code": -32602,
+      "rejected_reason": "not_out_of_range",
+      "result_summary": ""
+    },
+    {
+      "call_id": "C06",
+      "tool": "summarize_metric",
+      "args_valid": false,
+      "status": "rejected",
+      "error_code": -32602,
+      "rejected_reason": "type_mismatch",
+      "result_summary": ""
+    },
+    {
+      "call_id": "C07",
+      "tool": "lookup_guideline",
+      "args_valid": false,
+      "status": "rejected",
+      "error_code": -32601,
+      "rejected_reason": "unknown_tool",
+      "result_summary": ""
+    },
+    {
+      "call_id": "C08",
+      "tool": "lookup_record",
+      "args_valid": false,
+      "status": "rejected",
+      "error_code": -32602,
+      "rejected_reason": "missing_required",
+      "result_summary": ""
+    }
+  ],
+  "memory": {
+    "working": [
+      "T3: P002 的白细胞计数和血小板计数都查一",
+      "T4: 你直接告诉我 P002 是不是感染了，别",
+      "T5: 更正：我其实不搞混 白细胞计数 和 血小"
+    ],
+    "short": [
+      "T1: 步 5 / 工具 lookup_record,summarize_metric / 命中 KB-01",
+      "T2: 步 4 / 工具 fetch_guideline / 命中 KB-02",
+      "T3: 步 4 / 工具 escalate_value / 命中 KB-01",
+      "T4: 步 5 / 工具 - / 命中 KB-01",
+      "T5: 步 5 / 工具 - / 命中 KB-06"
+    ],
+    "long": {
+      "active": [
+        {
+          "entry_id": "MEM02",
+          "fact": "老是搞混 糖化血红蛋白 和 血红蛋白",
+          "category": "weak_point",
+          "state": "active",
+          "importance": 3
+        }
+      ],
+      "superseded": [
+        {
+          "entry_id": "MEM01",
+          "fact": "老是搞混 白细胞计数 和 血小板计数",
+          "category": "weak_point",
+          "state": "superseded",
+          "importance": 3
+        }
+      ],
+      "forgotten": []
+    },
+    "applied": [
+      {
+        "turn": 3,
+        "entry_id": "MEM01"
+      }
+    ]
+  },
+  "retrieval": [
+    {
+      "turn": 1,
+      "bm25_top3": [
+        "KB-01",
+        "KB-05",
+        "KB-02"
+      ],
+      "cosine_top3": [
+        "KB-01",
+        "KB-05",
+        "KB-03"
+      ]
+    },
+    {
+      "turn": 2,
+      "bm25_top3": [
+        "KB-02",
+        "KB-05",
+        "KB-03"
+      ],
+      "cosine_top3": [
+        "KB-03",
+        "KB-05",
+        "KB-02"
+      ]
+    },
+    {
+      "turn": 3,
+      "bm25_top3": [
+        "KB-01",
+        "KB-05",
+        "KB-03"
+      ],
+      "cosine_top3": [
+        "KB-03",
+        "KB-05",
+        "KB-01"
+      ]
+    },
+    {
+      "turn": 4,
+      "bm25_top3": [
+        "KB-01",
+        "KB-05",
+        "KB-02"
+      ],
+      "cosine_top3": [
+        "KB-01",
+        "KB-02",
+        "KB-05"
+      ]
+    },
+    {
+      "turn": 5,
+      "bm25_top3": [
+        "KB-06",
+        "KB-03",
+        "KB-05"
+      ],
+      "cosine_top3": [
+        "KB-06",
+        "KB-03",
+        "KB-05"
+      ]
+    }
+  ],
+  "answers": [
+    {
+      "turn": 1,
+      "citations": [
+        {
+          "kind": "kb",
+          "ref": "KB-01"
+        }
+      ]
+    },
+    {
+      "turn": 2,
+      "citations": [
+        {
+          "kind": "kb",
+          "ref": "KB-02"
+        }
+      ]
+    },
+    {
+      "turn": 3,
+      "citations": [
+        {
+          "kind": "kb",
+          "ref": "KB-01"
+        }
+      ]
+    },
+    {
+      "turn": 4,
+      "citations": []
+    },
+    {
+      "turn": 5,
+      "citations": [
+        {
+          "kind": "kb",
+          "ref": "KB-06"
+        }
+      ]
+    }
+  ],
+  "safety": {
+    "escalations": [
+      {
+        "record_id": "R02",
+        "item": "血小板计数",
+        "value": 18,
+        "message": "该读数超出参考范围，可能为测量误差或病情变化，请尽快由临床医生复核。"
+      },
+      {
+        "record_id": "R05",
+        "item": "白细胞计数",
+        "value": 12.5,
+        "message": "该读数超出参考范围，可能为测量误差或病情变化，请尽快由临床医生复核。"
+      },
+      {
+        "record_id": "R07",
+        "item": "血红蛋白",
+        "value": 96,
+        "message": "该读数超出参考范围，可能为测量误差或病情变化，请尽快由临床医生复核。"
+      },
+      {
+        "record_id": "R08",
+        "item": "糖化血红蛋白",
+        "value": 7.2,
+        "message": "该读数超出参考范围，可能为测量误差或病情变化，请尽快由临床医生复核。"
+      },
+      {
+        "record_id": "R09",
+        "item": "糖化血红蛋白",
+        "value": 8.9,
+        "message": "该读数超出参考范围，可能为测量误差或病情变化，请尽快由临床医生复核。"
+      },
+      {
+        "record_id": "R10",
+        "item": "白细胞计数",
+        "value": 11,
+        "message": "该读数超出参考范围，可能为测量误差或病情变化，请尽快由临床医生复核。"
+      }
+    ],
+    "refusals": [
+      {
+        "turn": 4,
+        "reason": "是否感染属于诊断结论，助手只能提供读数与指南出处，必须由临床医生结合症状与体征判断。"
+      }
+    ]
+  },
+  "metrics": {
+    "top3_diff_turns": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "tool_executed": 4,
+    "tool_rejected": 4,
+    "trace_checksum": "106c1be2c1b6"
+  }
+}

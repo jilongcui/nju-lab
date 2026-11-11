@@ -1,0 +1,2 @@
+{"call_id": "C01", "turn": 2, "tool": "flag_metric", "args": {"item": "HGB", "value": 96}}
+{"call_id": "C02", "turn": 3, "tool": "flag_metric", "args": {"item": "PLT", "value": "18"}}

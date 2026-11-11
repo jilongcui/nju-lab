@@ -16,12 +16,14 @@ import ChapterSlides from './pages/teacher/ChapterSlides';
 import ProjectDetail from './pages/teacher/ProjectDetail';
 import ProjectList from './pages/teacher/ProjectList';
 import Grading from './pages/teacher/Grading';
+import StudentApps from './pages/teacher/StudentApps';
 import StudentHome from './pages/student/Home';
 import MyCourses from './pages/student/MyCourses';
 import StudentCourseDetail from './pages/student/CourseDetail';
 import ChapterRead from './pages/student/ChapterRead';
 import ExperimentDetail from './pages/student/ExperimentDetail';
 import MySubmissions from './pages/student/MySubmissions';
+import MyApps from './pages/student/MyApps';
 import MyApplications from './pages/student/MyApplications';
 import ClientDownload from './pages/student/ClientDownload';
 import Workspace from './pages/student/Workspace';
@@ -95,6 +97,7 @@ const router = createBrowserRouter([
       { path: 'teacher/chapters/:chapterId/edit', element: teacher(<ChapterEdit />) },
       { path: 'teacher/chapters/:chapterId/slides', element: teacher(<ChapterSlides />) },
       { path: 'teacher/projects', element: teacher(<ProjectList />) },
+      { path: 'teacher/apps', element: teacher(<StudentApps />) },
       { path: 'teacher/projects/:projectId', element: teacher(<ProjectDetail />) },
       { path: 'teacher/submissions/:submissionId/grade', element: teacher(<Grading />) },
       // 实验环境两个角色都可用（教师用于课堂演示）
@@ -108,6 +111,7 @@ const router = createBrowserRouter([
       { path: 'student/projects/:projectId', element: student(<ExperimentDetail />) },
       { path: 'student/applications', element: student(<MyApplications />) },
       { path: 'student/submissions', element: student(<MySubmissions />) },
+      { path: 'student/apps', element: student(<MyApps />) },
       { path: 'student/client', element: student(<ClientDownload />) },
       { path: 'student/workspace', element: student(<Workspace />) },
     ],

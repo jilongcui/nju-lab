@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "name": "agent-app-studio",
+  "title": "综合实践：把 harness 做成一个可分享的智能体应用（附件 → 报告 + 前端）",
+  "flow": "engineering",
+  "outputFile": "output.json",
+  "inputs": [
+    "requests.jsonl",
+    "attachments",
+    "attachments.json",
+    "report_format.json",
+    "limits.json",
+    "tools.json",
+    "tool_calls.jsonl",
+    "plan_stub.json",
+    "template.json",
+    "kb"
+  ],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整（十三项都在）",
+      "expr": "['app','attachments','harness','trace','tool_calls','memory','retrieval','answers','report','safety','metrics','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "应用元信息齐全（标题 / 场景 / 入口 / 主题 / 附件类型 / 可见性）",
+      "expr": "typeof out.app.title === 'string' && out.app.title.trim() !== '' && typeof out.app.scenario === 'string' && out.app.scenario.trim() !== '' && typeof out.app.entry === 'string' && out.app.entry.trim() !== '' && out.app.theme && typeof out.app.theme.accent === 'string' && out.app.theme.accent.trim() !== '' && ['light','dark'].includes(out.app.theme.mode) && Array.isArray(out.app.attachments) && out.app.attachments.length >= 3 && typeof out.app.visibility === 'string' && out.app.visibility.trim() !== ''"
+    },
+    {
+      "name": "前端真的改过（web 哈希与模板基线不同，且基线报对）",
+      "expr": "typeof out.app.web_sha256 === 'string' && out.app.web_sha256 !== '' && out.app.web_sha256 !== out.app.template_web_sha256 && out.app.template_web_sha256 === expected.app.template_web_sha256"
+    },
+    {
+      "name": "三类附件都解析到了（pdf / docx / image 各至少一个）",
+      "expr": "['pdf','docx','image'].every((kind) => out.attachments.some((a) => a.kind === kind))"
+    },
+    {
+      "name": "附件解析结果逐条正确（字数 + 文本校验和）",
+      "expr": "JSON.stringify(out.attachments.map((a) => [a.name, a.kind, a.chars, a.checksum])) === JSON.stringify(expected.attachments.map((a) => [a.name, a.kind, a.chars, a.checksum]))"
+    },
+    {
+      "name": "循环逐步一致（轮次 / 步号 / 动作 / 观测）",
+      "expr": "JSON.stringify(out.trace.map((s) => [s.turn, s.step, s.action, s.observation])) === JSON.stringify(expected.trace.map((s) => [s.turn, s.step, s.action, s.observation]))"
+    },
+    {
+      "name": "终止条件正确（含 max_steps 截断的那一轮）",
+      "expr": "out.harness.turns === expected.harness.turns && out.harness.steps_total === out.trace.length && JSON.stringify(out.harness.terminated) === JSON.stringify(expected.harness.terminated)"
+    },
+    {
+      "name": "工具调用逐条正确（校验结论 + 错误码 + 摘要）",
+      "expr": "JSON.stringify(out.tool_calls.map((c) => [c.call_id, c.tool, c.args_valid, c.status, c.error_code, c.rejected_reason, c.result_summary])) === JSON.stringify(expected.tool_calls.map((c) => [c.call_id, c.tool, c.args_valid, c.status, c.error_code, c.rejected_reason, c.result_summary]))"
+    },
+    {
+      "name": "报告四节齐全 / 顺序与模板一致 / 每节写到最小篇幅",
+      "expr": "JSON.stringify(out.report.sections.map((s) => s.name)) === JSON.stringify(expected.report.section_names) && out.report.sections.every((s, i) => typeof s.content === 'string' && s.content.trim().length >= expected.report.section_min_chars[i])"
+    },
+    {
+      "name": "指标表逐行正确（item / value / unit / flag，含偏好过滤后的行集）",
+      "expr": "JSON.stringify(out.report.metric_rows.map((r) => [r.item, r.value, r.unit, r.flag])) === JSON.stringify(expected.report.metric_rows.map((r) => [r.item, r.value, r.unit, r.flag]))"
+    },
+    {
+      "name": "计数自洽（登记 / 异常 / 列出 三处一致）",
+      "expr": "JSON.stringify(out.report.counts) === JSON.stringify(expected.report.counts) && out.metrics.report_rows === out.report.counts.total && out.metrics.abnormal_rows === out.report.counts.abnormal && out.metrics.tool_executed === out.tool_calls.filter((c) => c.args_valid === true).length && out.metrics.tool_rejected === out.tool_calls.filter((c) => c.args_valid === false).length"
+    },
+    {
+      "name": "记忆分层与行为性（偏好生效改行集、被遗忘后不再生效）",
+      "expr": "['active','superseded','forgotten'].every((k) => Array.isArray(out.memory.long[k])) && JSON.stringify(['active','superseded','forgotten'].map((k) => out.memory.long[k].map((e) => [e.entry_id, e.fact, e.state]))) === JSON.stringify(['active','superseded','forgotten'].map((k) => expected.memory.long[k].map((e) => [e.entry_id, e.fact, e.state]))) && out.report.counts.listed === expected.report.counts.listed"
+    },
+    {
+      "name": "检索：BM25 与对照的 top3 逐轮一致",
+      "expr": "JSON.stringify(out.retrieval.map((r) => [r.turn, r.bm25_top3, r.cosine_top3])) === JSON.stringify(expected.retrieval.map((r) => [r.turn, r.bm25_top3, r.cosine_top3]))"
+    },
+    {
+      "name": "安全边界被触发（越界逐行升级 + 诊断式提问拒答且不给引用）",
+      "expr": "JSON.stringify(out.safety.escalations.map((e) => [e.record_id, e.item, e.value, e.message])) === JSON.stringify(expected.safety.escalations.map((e) => [e.record_id, e.item, e.value, e.message])) && JSON.stringify(out.safety.refusals.map((r) => r.turn)) === JSON.stringify(expected.safety.refusals.map((r) => r.turn)) && out.safety.refusals.every((r) => typeof r.reason === 'string' && r.reason.trim().length >= 10) && out.answers.filter((a) => expected.safety.refusals.some((r) => r.turn === a.turn)).every((a) => Array.isArray(a.citations) && a.citations.length === 0)"
+    },
+    {
+      "name": "答案带出处（非拒答轮 citations 非空且格式规范）",
+      "expr": "JSON.stringify(out.answers.map((a) => [a.turn, a.citations])) === JSON.stringify(expected.answers.map((a) => [a.turn, a.citations])) && out.answers.every((a) => typeof a.reply === 'string' && a.reply.trim().length >= 10) && out.answers.every((a) => a.citations.every((c) => c.kind === 'kb' && /^KB-\\d+$/.test(c.ref)))"
+    },
+    {
+      "name": "图与说明齐全 + notes 有实质内容（≥80 字）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 1 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10) && typeof out.metrics.trace_checksum === 'string' && out.metrics.trace_checksum.length === 12 && typeof out.notes === 'string' && out.notes.trim().length >= 80"
+    }
+  ],
+  "requires": {
+    "python": [
+      "matplotlib"
+    ]
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "turns": [
+    {
+      "turn": 1,
+      "steps": [
+        {
+          "action": "recall"
+        },
+        {
+          "action": "tool",
+          "call_id": "C01"
+        },
+        {
+          "action": "kb"
+        },
+        {
+          "action": "finish"
+        }
+      ]
+    },
+    {
+      "turn": 2,
+      "steps": [
+        {
+          "action": "recall"
+        },
+        {
+          "action": "tool",
+          "call_id": "C03"
+        },
+        {
+          "action": "tool",
+          "call_id": "C04"
+        },
+        {
+          "action": "tool",
+          "call_id": "C05"
+        },
+        {
+          "action": "kb"
+        },
+        {
+          "action": "finish"
+        }
+      ]
+    },
+    {
+      "turn": 3,
+      "steps": [
+        {
+          "action": "recall"
+        },
+        {
+          "action": "tool",
+          "call_id": "C06"
+        },
+        {
+          "action": "tool",
+          "call_id": "C07"
+        },
+        {
+          "action": "finish"
+        }
+      ]
+    }
+  ]
+}

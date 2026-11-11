@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "name": "harness-agent",
+  "title": "应用实验：给随访助手写一个 harness（循环 / 记忆分层 / 工具 / 知识库）",
+  "flow": "engineering",
+  "outputFile": "output.json",
+  "inputs": [
+    "dialogue.jsonl",
+    "records.csv",
+    "tools.json",
+    "tool_calls.jsonl",
+    "plan_stub.json",
+    "limits.json",
+    "kb"
+  ],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整（十项都在）",
+      "expr": "['harness','trace','tool_calls','memory','retrieval','answers','safety','metrics','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "循环真的发生了（trace 每步都有轮次 / 步号 / 动作 / 观测）",
+      "expr": "Array.isArray(out.trace) && out.trace.length > 0 && out.trace.every((s) => Number.isInteger(s.turn) && Number.isInteger(s.step) && ['recall','tool','kb','finish'].includes(s.action) && typeof s.observation === 'string' && s.observation !== '')"
+    },
+    {
+      "name": "终止条件正确（步数 / 每轮终止原因都与 expected 一致，含 max_steps 截断）",
+      "expr": "out.harness.turns === expected.harness.turns && out.harness.steps_total === out.trace.length && out.harness.max_steps === expected.harness.max_steps && JSON.stringify(out.harness.terminated) === JSON.stringify(expected.harness.terminated)"
+    },
+    {
+      "name": "trace 逐步一致（轮次 / 步号 / 动作 / 观测）",
+      "expr": "JSON.stringify(out.trace.map((s) => [s.turn, s.step, s.action, s.observation])) === JSON.stringify(expected.trace.map((s) => [s.turn, s.step, s.action, s.observation]))"
+    },
+    {
+      "name": "工具调用逐条正确（校验结论 + 错误码 + mock 结果摘要）",
+      "expr": "JSON.stringify(out.tool_calls.map((c) => [c.call_id, c.tool, c.args_valid, c.status, c.error_code, c.rejected_reason, c.result_summary])) === JSON.stringify(expected.tool_calls.map((c) => [c.call_id, c.tool, c.args_valid, c.status, c.error_code, c.rejected_reason, c.result_summary]))"
+    },
+    {
+      "name": "非法调用被如实记为 rejected（写出理由，不假装成功）",
+      "expr": "out.tool_calls.filter((c) => c.args_valid === false).length === expected.metrics.tool_rejected && out.tool_calls.filter((c) => c.args_valid === false).every((c) => c.status === 'rejected' && typeof c.rejected_reason === 'string' && c.rejected_reason.trim() !== '')"
+    },
+    {
+      "name": "边界：未知工具 -32601 与参数类 -32602 不混用",
+      "expr": "(() => { const pick = (reason) => out.tool_calls.filter((c) => c.rejected_reason === reason).map((c) => c.error_code); const u = pick('unknown_tool'), m = pick('missing_required'), t = pick('type_mismatch'), i = pick('invalid_args'); return u.every((code) => code === -32601) && [...m, ...t, ...i].every((code) => code === -32602); })()"
+    },
+    {
+      "name": "边界：业务校验拦住「对正常读数要求升级」",
+      "expr": "out.tool_calls.filter((c) => c.rejected_reason === 'not_out_of_range').length === expected.tool_calls.filter((c) => c.rejected_reason === 'not_out_of_range').length && out.tool_calls.filter((c) => c.rejected_reason === 'not_out_of_range').length >= 1 && out.tool_calls.filter((c) => c.rejected_reason === 'not_out_of_range').every((c) => c.status === 'rejected')"
+    },
+    {
+      "name": "记忆分成三层（working / short / long 都在，条目字段齐全）",
+      "expr": "Array.isArray(out.memory.working) && Array.isArray(out.memory.short) && ['active','superseded','forgotten'].every((k) => Array.isArray(out.memory.long[k])) && [].concat(out.memory.long.active, out.memory.long.superseded, out.memory.long.forgotten).every((e) => typeof e.entry_id === 'string' && e.entry_id !== '' && typeof e.fact === 'string' && e.fact !== '' && typeof e.category === 'string' && e.category !== '' && typeof e.importance === 'number')"
+    },
+    {
+      "name": "记忆行为性：更新后旧条目进 superseded、被遗忘的进 forgotten（不会再出现在 active）",
+      "expr": "JSON.stringify(['active','superseded','forgotten'].map((k) => out.memory.long[k].map((e) => [e.entry_id, e.fact, e.state]))) === JSON.stringify(['active','superseded','forgotten'].map((k) => expected.memory.long[k].map((e) => [e.entry_id, e.fact, e.state]))) && out.memory.long.active.every((e) => e.state === 'active')"
+    },
+    {
+      "name": "记忆真的被用上了（跨轮应用与 expected 一致）",
+      "expr": "JSON.stringify(out.memory.applied.map((a) => [a.turn, a.entry_id])) === JSON.stringify(expected.memory.applied.map((a) => [a.turn, a.entry_id]))"
+    },
+    {
+      "name": "检索：BM25 与对照的 top3 逐轮一致，并报出两者不同的轮次",
+      "expr": "JSON.stringify(out.retrieval.map((r) => [r.turn, r.bm25_top3, r.cosine_top3])) === JSON.stringify(expected.retrieval.map((r) => [r.turn, r.bm25_top3, r.cosine_top3])) && JSON.stringify(out.metrics.top3_diff_turns) === JSON.stringify(expected.metrics.top3_diff_turns)"
+    },
+    {
+      "name": "安全边界被触发（越界逐行升级 + 诊断式提问拒答）",
+      "expr": "JSON.stringify(out.safety.escalations.map((e) => [e.record_id, e.item, e.value, e.message])) === JSON.stringify(expected.safety.escalations.map((e) => [e.record_id, e.item, e.value, e.message])) && JSON.stringify(out.safety.refusals.map((r) => r.turn)) === JSON.stringify(expected.safety.refusals.map((r) => r.turn)) && out.safety.refusals.every((r) => typeof r.reason === 'string' && r.reason.trim().length >= 10)"
+    },
+    {
+      "name": "图与说明齐全 + 工具记账自洽 + notes 有实质内容",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 1 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10) && out.metrics.tool_executed === out.tool_calls.filter((c) => c.args_valid === true).length && out.metrics.tool_rejected === out.tool_calls.filter((c) => c.args_valid === false).length && typeof out.metrics.trace_checksum === 'string' && out.metrics.trace_checksum.length === 12 && typeof out.notes === 'string' && out.notes.trim().length >= 60"
+    }
+  ],
+  "requires": {
+    "python": [
+      "matplotlib"
+    ]
+  }
+}

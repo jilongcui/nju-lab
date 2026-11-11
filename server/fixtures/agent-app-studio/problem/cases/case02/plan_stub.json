@@ -1,0 +1,63 @@
+{
+  "turns": [
+    {
+      "turn": 1,
+      "steps": [
+        {
+          "action": "recall"
+        },
+        {
+          "action": "parse",
+          "file": "lab.pdf"
+        },
+        {
+          "action": "kb"
+        },
+        {
+          "action": "finish"
+        }
+      ]
+    },
+    {
+      "turn": 2,
+      "steps": [
+        {
+          "action": "recall"
+        },
+        {
+          "action": "parse",
+          "file": "note.docx"
+        },
+        {
+          "action": "tool",
+          "call_id": "C01"
+        },
+        {
+          "action": "tool",
+          "call_id": "C02"
+        },
+        {
+          "action": "kb"
+        },
+        {
+          "action": "finish"
+        }
+      ]
+    },
+    {
+      "turn": 3,
+      "steps": [
+        {
+          "action": "recall"
+        },
+        {
+          "action": "parse",
+          "file": "photo.png"
+        },
+        {
+          "action": "finish"
+        }
+      ]
+    }
+  ]
+}

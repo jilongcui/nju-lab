@@ -1,0 +1,19 @@
+{
+  "attachments": [
+    {
+      "name": "lab.pdf",
+      "kind": "pdf",
+      "size": 770
+    },
+    {
+      "name": "note.docx",
+      "kind": "docx",
+      "size": 997
+    },
+    {
+      "name": "photo.png",
+      "kind": "image",
+      "size": 74
+    }
+  ]
+}
