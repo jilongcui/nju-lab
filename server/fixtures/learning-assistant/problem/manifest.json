@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "name": "learning-assistant",
   "title": "智能体综合实践：分子医学学习助手（四环闭环 + 出处 + 安全边界）",
+  "flow": "engineering",
   "outputFile": "output.json",
   "inputs": [
     "questions.csv",
@@ -63,5 +64,9 @@
       "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 60"
     }
   ],
-  "requires": { "python": ["matplotlib"] }
+  "requires": {
+    "python": [
+      "matplotlib"
+    ]
+  }
 }

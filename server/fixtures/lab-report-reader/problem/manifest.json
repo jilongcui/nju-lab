@@ -2,8 +2,13 @@
   "schemaVersion": 1,
   "name": "lab-report-reader",
   "title": "技能实验：检验报告解读 Skill（口径比对 + 危急值拦截 + 技能卡）",
+  "flow": "engineering",
   "outputFile": "output.json",
-  "inputs": ["lab_report.csv", "reference_ranges.csv", "patient.json"],
+  "inputs": [
+    "lab_report.csv",
+    "reference_ranges.csv",
+    "patient.json"
+  ],
   "judgeMode": "llm",
   "maxCases": 0,
   "assertions": [
@@ -56,5 +61,9 @@
       "expr": "typeof out.summary === 'string' && out.summary.trim().length >= 60 && typeof out.notes === 'string' && out.notes.trim().length >= 60"
     }
   ],
-  "requires": { "python": ["matplotlib"] }
+  "requires": {
+    "python": [
+      "matplotlib"
+    ]
+  }
 }

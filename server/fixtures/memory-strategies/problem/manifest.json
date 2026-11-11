@@ -2,8 +2,13 @@
   "schemaVersion": 1,
   "name": "memory-strategies",
   "title": "记忆系统实验：记忆四操作 + 三种上下文策略的对照（窗口 / 摘要 / 检索）",
+  "flow": "engineering",
   "outputFile": "output.json",
-  "inputs": ["dialogue.csv", "queries.csv", "memory_config.json"],
+  "inputs": [
+    "dialogue.csv",
+    "queries.csv",
+    "memory_config.json"
+  ],
   "judgeMode": "llm",
   "maxCases": 0,
   "assertions": [
@@ -60,5 +65,9 @@
       "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 60"
     }
   ],
-  "requires": { "python": ["matplotlib"] }
+  "requires": {
+    "python": [
+      "matplotlib"
+    ]
+  }
 }

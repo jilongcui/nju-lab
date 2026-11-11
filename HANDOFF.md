@@ -39,6 +39,23 @@
 - **回滚**：`WORKSPACE_IMAGE=nju-lab-workspace:0.2.0-rc.2-pkg24`（上一版）+ build + 重启；kit 用
   `.20261031-1405.bak` / `.20261031-1420.bak`；代码 `git revert`。
 
+**2026-10-31（补：先前漏声明 `flow` 的 5 个实验已补齐）—— ✅ 已上传（不用重建镜像）**
+
+- **起因（用户追问"上传了吗"顺带查出）**：上一轮只给 11 个包加了 `flow`，还有 5 个没声明 →
+  只能靠 `detectKind` 猜。其中 `memory-strategies`（第 16 章）输出里有 `metrics.recall_at_k_*`，
+  会被猜成 `retrieval`，面板仍然显示「定基线 / 报出指标」。
+- **补齐**：`attention-ablation`（第 4 章）、`memory-strategies`（16）、`learning-assistant`（19）、
+  `lab-report-reader`（18）→ `"flow": "engineering"`；`keyword-search`（5）→ `"flow": "database"`；
+  这五个包的 `task.md` 也补了「流程归属（给引导用的提示）」段落（与四个 easy 包同款口径）。
+- **验证**（镜像 **pkg26** 内实跑 `kindFromDeclaration` + `stepsFor`，不是 grep）：
+  **16 个非 ML 包全部识别正确** —— 9 个 `engineering` 得到 `understand,look,build,verify,edge,report`，
+  7 个 `database` 得到 `understand,look,setup,crud,verify,report`；ML 包（`iris-classify` 等）无声明 → `null`，
+  仍走机器学习流程（无回归）。
+- **上传**：五个包重打包（`--check` 退出码 0）→ `POST /api/files` → `PATCH /api/projects/<id>`
+  （新 sha：`a35e5597f289` / `f86d7e30f6fa` / `c21880071780` / `5c90c13e79b1` / `c4234e1261ca`）；
+  从 `server/uploads` 解包回读，线上 manifest 的 `flow` 与预期一一对上。
+- **不需要**：重建镜像 / 重启后端 / 重打 kit —— `kindFromDeclaration` 读的就是题目包里的声明。
+
 **2026-10-31（实验引导适配：学员模式新增「工程实现型」分支，镜像 pkg24 + kit 重打）—— ✅ 已上线**
 
 - **问题（用户提出）**："实验引导环节，每个实验可能不一样……构建实验包的时候有没有做调整"。

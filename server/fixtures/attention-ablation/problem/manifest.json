@@ -2,8 +2,13 @@
   "schemaVersion": 1,
   "name": "attention-ablation",
   "title": "大语言模型实验：手写缩放点积注意力 + 三档消融 + 下一个 token 的采样",
+  "flow": "engineering",
   "outputFile": "output.json",
-  "inputs": ["sentences.csv", "embeddings.csv", "params.json"],
+  "inputs": [
+    "sentences.csv",
+    "embeddings.csv",
+    "params.json"
+  ],
   "judgeMode": "llm",
   "maxCases": 0,
   "assertions": [
@@ -64,5 +69,10 @@
       "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 60"
     }
   ],
-  "requires": { "python": ["numpy", "matplotlib"] }
+  "requires": {
+    "python": [
+      "numpy",
+      "matplotlib"
+    ]
+  }
 }

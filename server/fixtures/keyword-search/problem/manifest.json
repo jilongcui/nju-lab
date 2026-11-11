@@ -2,8 +2,13 @@
   "schemaVersion": 1,
   "name": "keyword-search",
   "title": "知识库实验：倒排索引 + BM25 检索（含字符 2-gram 对照与 recall@3）",
+  "flow": "database",
   "outputFile": "output.json",
-  "inputs": ["corpus.csv", "queries.csv", "qrels.csv"],
+  "inputs": [
+    "corpus.csv",
+    "queries.csv",
+    "qrels.csv"
+  ],
   "judgeMode": "llm",
   "maxCases": 0,
   "assertions": [
@@ -56,5 +61,9 @@
       "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 60"
     }
   ],
-  "requires": { "python": ["matplotlib"] }
+  "requires": {
+    "python": [
+      "matplotlib"
+    ]
+  }
 }
