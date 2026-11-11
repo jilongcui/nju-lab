@@ -139,6 +139,13 @@
   · **防呆**：`web/package.json` 新增 `npm run deploy:lab`（`VITE_BASE=/lab/` 构建 + 复制 + **校验
     index.html 里含 `/lab/assets/`**，校验不过不打印成功）。以后部署前端**只用这条命令**。
   · 回滚点：`.verify-scratch/lab-web-backups/20261111-201104`（事故前的正确 index.html 与 assets）。
+  · **怎么判定"打不开"是哪一类**（本机与公网看到的不是一回事）：
+    ① 公网 `curl https://medai.nju.edu.cn/lab/...` 会拿到 **302 → authservertest**，这是**校园网关**
+       强制认证（校内/VPN 直通、校外认证；`authservertest` 是网关配置，不是平台代码）；
+    ② 直连本机 `curl http://127.0.0.1/lab/...` 才是我们 nginx 的真实行为 —— 这次就是这样发现
+       `index.html` 引用 `/assets/...` 而 `/lab/assets/...` 才有文件的；
+    ③ 浏览器里若白屏，先看 Console 是否有一串 **404 `/assets/xxx.js`**：是构建漏 base；
+       若看到的是 CAS 登录页/「应用未注册」，那是网关层，与平台无关。
 - **未做（四期）**：成本看板、评分汇总进 `submissions`/`Grading`、iframe 真正独立源（需 nginx + 证书）；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；
