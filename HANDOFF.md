@@ -129,6 +129,16 @@
 - **实测（经 nginx，Host=medai.nju.edu.cn 的真实入口）**：建应用 → `publish_app.py`（22.1 KB）→
   发布 → 匿名打开 `/lab/api/apps/share/<key>/site` **200**（CORS `*`、注入 share base）→
   匿名对话 **201**（`HGB 88 low`）。分享链路确认可用；诊断数据与容器已清理。
+- **事故与修复（2026-11-11 晚，用户报"`/lab/browse` 打不开"）—— 前端构建漏了 `VITE_BASE`**：
+  · 根因：我部署前端时用了 `npm run build`（**没**带 `VITE_BASE=/lab/`），产出的 `index.html` 引用
+    `/assets/index-xxx.js`（根路径），而站点在 `/lab/` 下 → 浏览器请求
+    `https://medai.nju.edu.cn/assets/...` 全部 **404** → 整站白屏（不只是 `/lab/browse`）。
+    仓库 `web/README.md` §构建 早就写了「base 必须带」，是我漏看。
+  · 修复：`VITE_BASE=/lab/ npm run build` 后重新部署；`/lab/`、`/lab/browse`、`/lab/student/apps`、
+    `/lab/teacher/apps` 全部 200，`index.html` 引用的 5 个资源全 200，JS 内无根路径引用。
+  · **防呆**：`web/package.json` 新增 `npm run deploy:lab`（`VITE_BASE=/lab/` 构建 + 复制 + **校验
+    index.html 里含 `/lab/assets/`**，校验不过不打印成功）。以后部署前端**只用这条命令**。
+  · 回滚点：`.verify-scratch/lab-web-backups/20261111-201104`（事故前的正确 index.html 与 assets）。
 - **未做（四期）**：成本看板、评分汇总进 `submissions`/`Grading`、iframe 真正独立源（需 nginx + 证书）；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；

@@ -28,7 +28,8 @@ npm run preview  # 预览生产构建
 线上是 `http://medai.nju.edu.cn/lab/`：nginx `root /var/www` + SPA `try_files` 回退 `/lab/index.html`。
 
 ```bash
-cd web && VITE_BASE=/lab/ npm run build   # base 必须带，否则资源路径全错
+cd web && npm run deploy:lab   # 构建 + 部署 + 校验 base（**部署到 /lab 只用这条**）
+# 只想要产物：VITE_BASE=/lab/ npm run build   # base 必须带，否则资源路径全错
 cd .. && bash deploy/deploy-web-lab.sh    # 构建 → 备份 → 先 chunk 后 index.html → md5/Content-Type 自检
 ```
 

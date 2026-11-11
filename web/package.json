@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:lab": "VITE_BASE=/lab/ npm run build && cp -a dist/index.html /var/www/lab/index.html && cp -a dist/assets/. /var/www/lab/assets/ && grep -q '/lab/assets/' /var/www/lab/index.html && echo 'deployed: /var/www/lab (base=/lab/)'"
   },
   "dependencies": {
     "antd": "^5.21.0",
