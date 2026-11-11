@@ -100,6 +100,10 @@
     项目已重传并 PATCH（skill sha `210aa369a7b7`）。
   · **踩坑**：平台所有 HTTP 响应被 `TransformInterceptor` 包成 `{code,data,message}`，
     容器里直接取 `choices` 会拿到 `None` —— `call_llm` 现在**两种形态都兼容**（这一幕在 `task.md` 里也写了）。
+- **可用性收尾（同日）**：学生工作区在远端容器，浏览器拿不到文件 → 题目包新增
+  `publish_app.py`（只打 `app.json/harness/web/kb`，用容器里已注入的 `NJU_LAB_SERVER_URL` +
+  `NJU_LAB_TOKEN` 调平台接口，`--publish` 直接发布）。实测 17.0 KB → 版本 `47bbe998` → 发布拿到 shareKey；
+  `--check` 仍 0（17 条断言，`publish_app.py` 已进 skill 包）。
 - **未做（四期）**：成本看板、评分汇总进 `submissions`/`Grading`、iframe 独立源 + `sandbox`；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；

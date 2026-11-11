@@ -20,7 +20,7 @@ agent-app-studio/
 │   ├── README.md       导学 + 排错表
 │   └── cases/case0N/   requests / attachments（pdf+docx+png）/ report_format / limits /
 │                       tools / tool_calls / plan_stub / template.json / kb/ + expected.json
-├── skill-template/     → skill-template.zip 学生起点
+├── skill-template/     → skill-template.zip 学生起点（含 `publish_app.py`：容器内一条命令交产物）
 │   ├── SKILL.md / report.md
 │   ├── app.json        元信息（标题/场景/入口/主题/附件类型/可见性 + 报告口径 `report`）
 │   ├── app_host.py     应用宿主（**学生不改**；平台运行时用同一份）
@@ -31,6 +31,20 @@ agent-app-studio/
 ├── tools/gen_cases.py  造题工具（生成 pdf/docx/png + 模板基线哈希，不下发）
 └── README.md
 ```
+
+## 学生怎么把产物交到平台（**可用性关键**）
+
+学生的工作区在**远端容器**（dsh 工作台）里，浏览器拿不到那些文件 —— 所以"网页点上传"对学员
+这条路是走不通的。题目包给了 `publish_app.py`：
+
+```sh
+python3 publish_app.py --app <应用 id>            # 打包（只打 app.json/harness/web/kb）+ 上传
+python3 publish_app.py --app <应用 id> --publish  # 再发布，打印分享链接
+```
+
+它用工作台容器里已注入的 `NJU_LAB_SERVER_URL` / `NJU_LAB_TOKEN` 调平台接口（token 过期在平台
+右上角「API Token」重领）。教师本地也能用同一脚本（手动 export 那两个变量即可）。
+实测：17.0 KB 产物 → 版本 `47bbe998` → 发布 → 拿到 `shareKey`。
 
 ## 场景与口径（为什么这样出题）
 
