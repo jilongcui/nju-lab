@@ -314,7 +314,9 @@ def run_case(case_dir: Path, app_dir: Path, fig_dir: Path = Path("figures")) -> 
             "web_sha256": web_digest,
             "template_web_sha256": case["template"]["template_web_sha256"],
         },
-        "attachments": [{k: v for k, v in item.items() if k in ("name", "kind", "chars", "checksum")}
+        "attachments": [{"name": item["name"], "kind": item["kind"],
+                         "via": item.get("via", "text"), "chars": item["chars"],
+                         "rows": len(item["rows"]), "checksum": item["checksum"]}
                         for item in parsed.values()],
         "harness": {"turns": len(case["requests"]), "max_steps": max_steps,
                     "steps_total": len(trace), "terminated": terminated},
@@ -332,6 +334,7 @@ def run_case(case_dir: Path, app_dir: Path, fig_dir: Path = Path("figures")) -> 
         "metrics": {
             "tool_executed": sum(1 for c in tool_calls if c["args_valid"]),
             "tool_rejected": sum(1 for c in tool_calls if not c["args_valid"]),
+            "vision_calls": int(state.get("_vision_calls", 0)),
             "report_rows": len(rows),
             "abnormal_rows": len(abnormal),
             "trace_checksum": checksum,

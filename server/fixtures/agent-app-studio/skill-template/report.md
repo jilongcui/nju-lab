@@ -12,7 +12,7 @@
 
 ## 2. 各 case 的结果
 
-| case | 附件（pdf/docx/image） | 指标行（total / abnormal / listed） | 工具（executed / rejected） | 是否达标 |
+| case | 附件（pdf/docx/image，图片走视觉） | 指标行（total / abnormal / listed） | 工具（executed / rejected） | 是否达标 |
 |---|---|---|---|---|
 | case01 |  |  |  |  |
 | case02 |  |  |  |  |

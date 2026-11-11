@@ -120,6 +120,41 @@ def make_docx(paragraphs: list[str]) -> bytes:
     return buf.getvalue()
 
 
+def make_scan_png(lines: list[str], footer: str) -> bytes:
+    """生成一张"扫描件"风格的图片（白底 + 等宽字的三段式数据行）。
+
+    为什么要生成真图片：第 20 章的图片通道走**视觉模型抽取**（`deepseek-flash` 实测支持
+    `image_url`），判据比的是抽出来的结构化行 —— 所以图片里必须真的有可读的指标行。
+    ⚠️ 文字用 ASCII：镜像里没有中文字体。
+    ⚠️ 造题工具需要 `matplotlib`（用 `nju-lab-verify` 镜像跑），工作台/复验不需要它来解图。
+    """
+    import io
+
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ModuleNotFoundError as exc:  # pragma: no cover - 只在裸机上跑时触发
+        raise SystemExit(
+            "gen_cases.py 需要 matplotlib 生成扫描图；请在 nju-lab-verify 镜像里跑：\n"
+            "  docker run --rm --user \"$(id -u):$(id -g)\" -v \"$PWD:/w\" -w /w \\n"
+            "    --entrypoint python3 nju-lab-verify:0.2.0-rc.2-pkg6 tools/gen_cases.py"
+        ) from exc
+
+    fig = plt.figure(figsize=(3.4, 1.6), dpi=120)
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.axis("off")
+    ys = [0.80 - i * 0.26 for i in range(len(lines))]
+    for y, line in zip(ys, lines):
+        ax.text(0.05, y, line, fontsize=13, family="monospace", color="#1f2430")
+    ax.text(0.05, 0.06, footer, fontsize=8, family="monospace", color="#8a8f98")
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", facecolor="white")
+    plt.close(fig)
+    return buf.getvalue()
+
+
 def make_png(width: int, height: int, rgb=(230, 240, 250)) -> bytes:
     """最小真 PNG（IHDR + 单 IDAT + IEND）：够用来登记尺寸，不做像素解析。"""
     def chunk(kind: bytes, data: bytes) -> bytes:
@@ -206,7 +241,10 @@ CASES: dict[str, dict] = {
                     "备注: PLT 为复查结果",
                 ]),
             },
-            "scan.png": {"kind": "image", "bytes": make_png(8, 4)},
+            "scan.png": {
+                "kind": "image",
+                "bytes": make_scan_png(["HGB, 88, g/L"], "Report-2026-11"),
+            },
         },
         "requests": [
             {"turn": 1, "user": "把 report.pdf 里的指标整理成一份实验报告，报告只列异常指标。",
@@ -298,7 +336,10 @@ CASES: dict[str, dict] = {
                     "备注: 空腹采样",
                 ]),
             },
-            "photo.png": {"kind": "image", "bytes": make_png(4, 4)},
+            "photo.png": {
+                "kind": "image",
+                "bytes": make_scan_png(["GLU, 9.1, mmol/L"], "Follow-up note"),
+            },
         },
         "requests": [
             {"turn": 1, "user": "lab.pdf 是这次门诊的数据，帮我整理成报告，报告只列异常指标。",

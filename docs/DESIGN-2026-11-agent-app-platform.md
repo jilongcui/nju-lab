@@ -90,6 +90,8 @@ nju-lab-app-runtime 容器（每应用一个，USER 1000，512m/0.3cpu）
 - 生命周期：`AgentAppRuntime`（内存会话表）按需起、空闲 **15 分钟**回收、全局并发 **10**；
   后端重启时按 label 收掉遗留容器（产物不丢，随时可重建）；
 - **容器里没有大模型 key**：题目给的 case 用 `plan_stub.json`；真模型要走平台代理（二期）。
+  例外是**图片**：视觉抽取需要模型（`deepseek-flash` 支持 `image_url`），一期用工作台/复验同一条
+  `DEEPSEEK_API_KEY` 透传路径，二期改成平台代理并计费。
 
 ## 7. 前端
 

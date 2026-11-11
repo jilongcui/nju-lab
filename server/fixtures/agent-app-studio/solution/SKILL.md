@@ -17,24 +17,29 @@ description: 教师侧解答样例（不下发）：可分享智能体应用的�
 | `web/` | **改过的前端**：主色换成 `#1f9d78`、标题改成「门诊数据整理助手」、加了「下载报告 JSON」 |
 | `app.json` | 元信息（`theme.accent=#1f9d78`，与 `theme.css` 一致） |
 
-## 三个零依赖解析器
+## 三种附件、两条通道
 
-| 类型 | 实现 | 注意 |
+| 类型 | 实现 | 通道 |
 |---|---|---|
-| PDF | 找 `stream…endstream` → 正则抽 `(...) Tj` → 反转义 | 本实验的 PDF 是**未压缩内容流 + ASCII**（造题时就这么生成） |
-| DOCX | `zipfile` 读 `word/document.xml` → 每个 `<w:p>` 拼 `<w:t>` | 不处理 `w:tbl`（表格不在口径里） |
-| PNG | 读 `IHDR` 得宽高 | 不做像素识别 |
+| PDF | 找 `stream…endstream` → 正则抽 `(...) Tj` → 反转义（**零依赖**） | `text` |
+| DOCX | `zipfile` 读 `word/document.xml` → 每个 `<w:p>` 拼 `<w:t>`（**零依赖**） | `text` |
+| 图片 | 调 `deepseek-flash` 的 `image_url`（data URI）读图 → 容错正则抽成 `item,value,unit` | `vision` |
 
-## 实测数值（2026-11-11，`nju-lab-verify:0.2.0-rc.2-pkg6`）
+> 视觉调用实测口径：`temperature=0`、`reasoning_effort="none"`、`max_tokens=800`。
+> **原始输出格式会漂**（`PLT, 18, …` / `PLT,18,…`），所以 `checksum` 只对**结构化行**算 —— 实测 3/3 一致。
 
-| case | 轮数/步数 | terminated | 工具 exec/rej | 指标行 total/abnormal/listed | 记忆 | web 哈希（vs 模板） |
-|---|---|---|---|---|---|---|
-| case01 | 3 / 13 | 全 `done` | 1 / 1 | 4 / 3 / **3** | active `MEM01` | `4fc2116779f23330` vs `f09358ec6ae858a5` |
-| case02 | 3 / 12 | `done` / **`max_steps`** / `done` | 1 / 2 | 4 / 3 / **4** | forgotten `MEM01` | 同上 |
+## 实测数值（2026-11-11 二次实测：图片走视觉，`nju-lab-verify:0.2.0-rc.2-pkg6`）
 
-- case01 的偏好生效：`listed=3`（`HGB 142` 正常被过滤）；
-- case02 的 T3 忘掉偏好：`listed=4`（`HGB 145` 正常重新列出）—— 这是"记忆真的改变输出"的行为性证据；
-- case02 的 T2 故意给 6 步（`max_steps=5`）→ 记 `max_steps`。
+| case | 轮数/步数 | terminated | 工具 exec/rej | 指标行 total/abnormal/listed | 视觉 | 记忆 | web 哈希（vs 模板） |
+|---|---|---|---|---|---|---|---|
+| case01 | 3 / 13 | 全 `done` | 1 / 1 | 5 / 4 / **4** | `scan.png` 1 行（`c482e7ae14a4`） | active `MEM01` | `4fc2116779f23330` vs `f09358ec6ae858a5` |
+| case02 | 3 / 12 | `done` / **`max_steps`** / `done` | 1 / 2 | 5 / 4 / **5** | `photo.png` 1 行（`e9cf731d3940`） | forgotten `MEM01` | 同上 |
+
+- 图片行真的进了指标表：case01 的 `HGB 88`（low）、case02 的 `GLU 9.1`（high）；
+- case01 的偏好生效：`listed=4`（`HGB 142` 正常被过滤）；
+- case02 的 T3 忘掉偏好：`listed=5`（`HGB 145` 正常重新列出）—— 记忆真的改变输出的行为性证据；
+- case02 的 T2 故意给 6 步（`max_steps=5`）→ 记 `max_steps`；
+- 视觉稳定性：同一张图连跑 3 次，图片 `checksum` 与 `trace_checksum` **完全一致**。
 
 ## 运行
 

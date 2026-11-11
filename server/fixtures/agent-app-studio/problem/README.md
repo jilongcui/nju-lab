@@ -27,8 +27,9 @@ APP_DIR=<skill> python3 <skill>/app_host.py     # 打开 http://127.0.0.1:9200
 
 然后自己核对九件事（这就是判据的口径）：
 
-1. **附件解析**：`attachments` 的 `[name, kind, chars, checksum]` 与 `expected.json` 一致
-   （`checksum` = 解析文本 `sha256` 前 12 位；图片用 `image:{宽}x{高}:{字节数}`）；
+1. **附件解析**：`attachments` 的 `[name, kind, via, rows, chars, checksum]` 与 `expected.json` 一致
+   —— PDF/DOCX 是 `via="text"`（`checksum` = 文本 `sha256` 前 12 位），
+   **图片是 `via="vision"`**（先调视觉模型读出数据行，`checksum` = 结构化行 `sha256` 前 12 位）；
 2. **循环**：`trace` 的 `[turn, step, action, observation]` 逐步一致；`harness.terminated` 每轮一条；
 3. **工具**：`[call_id, tool, args_valid, status, error_code, rejected_reason, result_summary]` 一致；
 4. **报告**：四节名称与顺序同模板、每节 ≥ `min_chars`；`metric_rows` 逐行 `[item, value, unit, flag]` 一致；
@@ -48,7 +49,9 @@ APP_DIR=<skill> python3 <skill>/app_host.py     # 打开 http://127.0.0.1:9200
 |---|---|---|
 | 解析出的行数比 expected 少 | 只抽了"看起来像数据"的行 | 口径是：**所有** `ITEM,VALUE,UNIT` 三元组行都登记，`备注:` 之类的非数据行忽略（行仍计入 `chars`） |
 | `chars` 对不上 | 把 PDF 的头部/尾部也算进去了 | 只算**抽出来的文本行**（`Tj` 里的内容 / `<w:t>` 的内容），不含 PDF 结构字符串 |
-| 图片 `checksum` 对不上 | 对文件字节做了哈希 | 图片用 `image:{宽}x{高}:{字节数}` 的哈希（宽高从 `IHDR` 读） |
+| 图片 `checksum` 对不上 | 对文件字节/原始模型输出做了哈希 | 图片 `via="vision"`：先抽成 `item,value,unit` 行，再对**规范化行文本**算哈希 |
+| 图片解析出 0 行 | 没调视觉，或者 `max_tokens` 太小被思维链吃光 | 模型 `deepseek-flash` + `image_url`（data URI），`max_tokens` 给到 800、`reasoning_effort: none` |
+| 视觉调用报 401 / 连不上 | 没有 `DEEPSEEK_API_KEY`，或端点写错 | key 已在环境变量里；端点 `https://api.deepseek.com`（可用 `DEEPSEEK_BASE_URL` 覆盖） |
 | `listed` 与 `total` 总是一样 | 偏好没生效 | 报告要按**本轮记忆更新之后**的状态生成；`报告只列异常指标` 生效时只列 `flag != normal` |
 | `web_sha256` 等于基线 | 直接交了模板 | 改 `web/`（换主题色、加区块、改文案），再按口径重算哈希 |
 | 拒答轮还带了引用 | 拒答和正常回答走了同一条分支 | 拒答轮 `citations` 必须是空数组 |

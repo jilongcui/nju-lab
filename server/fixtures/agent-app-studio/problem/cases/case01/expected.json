@@ -20,20 +20,26 @@
     {
       "name": "report.pdf",
       "kind": "pdf",
+      "via": "text",
       "chars": 56,
+      "rows": 3,
       "checksum": "3e79b0794ef5"
     },
     {
       "name": "metrics.docx",
       "kind": "docx",
+      "via": "text",
       "chars": 31,
+      "rows": 1,
       "checksum": "183a98472631"
     },
     {
       "name": "scan.png",
       "kind": "image",
+      "via": "vision",
       "chars": 0,
-      "checksum": "79756200feae"
+      "rows": 1,
+      "checksum": "c482e7ae14a4"
     }
   ],
   "harness": {
@@ -111,7 +117,7 @@
       "turn": 3,
       "step": 2,
       "action": "parse",
-      "observation": "解析 scan.png：图片 8x4"
+      "observation": "解析 scan.png：图片抽取 1 行（视觉通道）"
     },
     {
       "turn": 3,
@@ -154,7 +160,7 @@
     "short": [
       "T1: 步 4 / 行 3 / 命中 KB-01",
       "T2: 步 5 / 行 4 / 命中 KB-01",
-      "T3: 步 4 / 行 4 / 命中 KB-02"
+      "T3: 步 4 / 行 5 / 命中 KB-02"
     ],
     "long": {
       "active": [
@@ -269,12 +275,18 @@
         "value": 96.0,
         "unit": "g/L",
         "flag": "low"
+      },
+      {
+        "item": "HGB",
+        "value": 88.0,
+        "unit": "g/L",
+        "flag": "low"
       }
     ],
     "counts": {
-      "total": 4,
-      "abnormal": 3,
-      "listed": 3
+      "total": 5,
+      "abnormal": 4,
+      "listed": 4
     }
   },
   "safety": {
@@ -296,6 +308,12 @@
         "item": "HGB",
         "value": 96,
         "message": "该指标超出参考范围，请尽快由临床医生复核。"
+      },
+      {
+        "record_id": "ROW05",
+        "item": "HGB",
+        "value": 88,
+        "message": "该指标超出参考范围，请尽快由临床医生复核。"
       }
     ],
     "refusals": [
@@ -309,8 +327,9 @@
   "metrics": {
     "tool_executed": 1,
     "tool_rejected": 1,
-    "report_rows": 4,
-    "abnormal_rows": 3,
-    "trace_checksum": "a7df5bf5b7c6"
+    "vision_calls": 1,
+    "report_rows": 5,
+    "abnormal_rows": 4,
+    "trace_checksum": "c7d1f3613474"
   }
 }

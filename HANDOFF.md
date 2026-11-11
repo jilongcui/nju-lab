@@ -48,6 +48,25 @@
        problem sha `dccb9c66743e` / skill sha `7d83ece2f67e`；
      · 旧 `learning-assistant` 项目 `a42bb532-364e-4872-8b2f-6e47dd433048` **下架为 draft**
        （没有 unpublish 端点，直接 `UPDATE experiment_projects SET status='draft'`；数据与实测记录保留，可恢复）。
+- **追加（2026-11-11 晚 · 用户纠正「deepseek-flash 支持图片」→ 已实测并改掉口径）**：
+  · **实测结论**：`deepseek-flash` 接受 OpenAI 兼容的 `image_url`（data URI），能把扫描图里的
+    `PLT, 18, 10^9/L` 这类三段式数据行**准确读出**；`reasoning_effort: none` + `max_tokens=800` 最稳
+    （给小了会被思维链吃光、`content` 为空 —— 与 `slides.config.ts` 记的坑一致）。
+    **在复验/工作台同一条出网路径下也验过**（`--network nju-verify-egress` + `--add-host api.deepseek.com:<代理>`）。
+    之前"当前模型无视觉"的判断是**错的**，第 20 章已改成图片走视觉。
+  · **实验包改动**：`gen_cases.py` 生成真扫描图（`HGB, 88` / `GLU, 9.1`）→ `parse_attachment` 分两条通道
+    （`via: text|vision`）→ 图片先视觉读、再容错正则抽成结构化行，`checksum` 只对**结构化行**算
+    （视觉原文的空格/换行会漂）；`attachments[]` 增 `via/rows`，`metrics` 增 `vision_calls`。
+    断言 **16 → 17 条**（新增"视觉通道真的被调用过"）。实测 17/17、复验 **2/2**；
+    图片行真的进指标表：case01 `HGB 88`(low)、case02 `GLU 9.1`(high)；指标行 5/4/4 与 5/4/5；
+    同一张图连跑 3 次，图片 `checksum` 与 `trace_checksum` **完全一致**。
+  · **平台/项目**：`agent-app-studio` 重新打包上传并 PATCH（problem sha `e7e6539395e9` /
+    skill sha `52ad0a76ba17`，fileId `e95bc486…` / `0fc7ad40…`）；第 20 章正文改「图片走视觉」那段并
+    重生成 deck（**20 页**，`chapterChanged=False`）；第 20 章原为 `draft`（学生看不到）→ 直接改库置
+    `published`（平台没有"发布章节"端点，与 `update-chapter` skill 同一路径）。
+  · **踩坑（值得记）**：`PATCH /api/projects/:id` 不带 `Content-Type: application/json` 时，
+    Express 不解析 body → DTO 为空 → **接口 200 但什么都没改**（我第一次就掉了这个坑）；
+    另外 `POST /courses/:id/chapters` 建出来的章节默认 `draft`，学生端不可见。
 - **未做**：二期（免登录分享 / 并发排队与配额 / 多版本回滚 / LLM 代理 / 评分接入 / iframe 沙箱隔离）；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；

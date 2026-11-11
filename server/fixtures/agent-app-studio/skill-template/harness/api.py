@@ -33,13 +33,16 @@ def plan_step(state: dict, step: dict, ctx: dict) -> str:
 
     四种 action 的口径见 task.md §二：
     - `recall`  → `记忆命中：<偏好条目 id 用逗号连；没有就 ->`
-    - `parse`   → `解析 {文件名}：{行数} 行（{chars} 字）`，并把结果写进 `ctx["parsed"]` / `ctx["rows"]`
+    - `parse`   → 文本类写 `解析 {文件名}：{行数} 行（{chars} 字）`；图片写
+                  `解析 {文件名}：图片抽取 {行数} 行（视觉通道）`，并把结果写进 `ctx["parsed"]` / `ctx["rows"]`
     - `tool`    → 调 `ctx["calls_by_id"]` 里那条调用：合法执行、非法写 `rejected:<reason>`
     - `kb`      → `检索命中：{ctx["kb_top"] 用逗号连}`
     - `finish`  → `完成`
 
-    解析是这一章的核心：PDF 抽未压缩内容流里的 `Tj` 文本、DOCX 解 zip 读 `word/document.xml`、
-    图片只登记尺寸。**不要引入第三方库**（环境里没有 `pypdf` / `python-docx`）。
+    解析是这一章的核心：PDF 抽未压缩内容流里的 `Tj` 文本、DOCX 解 zip 读 `word/document.xml`
+    （这两个**自己写**，环境里没有 `pypdf` / `python-docx`）；**图片必须走视觉模型**
+    （`deepseek-flash` 支持 `image_url`，key 在 `DEEPSEEK_API_KEY`）—— 图片没有文本层，正则读不到。
+    最小示例（注意 `reasoning_effort: none` 与 `max_tokens` 给足）见 `task.md` 的「图片走视觉」一节。
     """
     raise NotImplementedError("TODO: 实现四种 action（task.md §二）")
 

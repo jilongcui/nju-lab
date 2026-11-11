@@ -39,13 +39,15 @@ agent-app-studio/
 
 | 新增 | 口径要点 | 判据落点 |
 |---|---|---|
-| **附件解析** | PDF 走未压缩内容流 + `Tj`；DOCX 走 OOXML（`zipfile` + `<w:t>`）；PNG 只读 `IHDR` | `attachments[].chars` / `checksum` |
+| **附件解析（两条通道）** | PDF 走未压缩内容流 + `Tj`（自己解）；DOCX 走 OOXML（`zipfile` + `<w:t>`，自己解）；**图片走视觉模型**（`deepseek-flash` 支持 `image_url`） | `attachments[].via` / `rows` / `chars` / `checksum` + `metrics.vision_calls` |
 | **报告** | 四节名称与顺序照模板、`min_chars`；指标表按附件出现顺序逐行登记；`flag` 由参考区间判 | 节顺序 + 篇幅 + `metric_rows` 逐行 + `counts` |
 | **记忆改变输出** | 「报告只列异常指标」生效 → 只列 `flag != normal`；「忘掉 MEM01」→ 恢复全量 | `report.counts.listed` + `memory.long` 三态 |
 | **前端可交付** | `web/` 必须改过：`app.web_sha256` **不等于** `template.json` 的基线 | `app.web_sha256 != app.template_web_sha256` |
 
 **为什么前端必须零依赖**：环境无外网、`npm install` 装不了任何东西；也没有 `pypdf` / `python-docx` ——
 所以**解析附件本身就是题目的一部分**（"附件不是魔法"），不是调个库了事。
+唯一的例外是图片：图片没有文本层，**只能走视觉模型**（实测 `deepseek-flash` 接受 `image_url`
+且能准确读出三段式数据行）；判据因此只比对"抽出来的结构化行"，不比模型原始输出。
 
 **防退化两端**：
 
@@ -57,14 +59,17 @@ agent-app-studio/
 
 ## 出题时的实测依据（2026-11-11，`nju-lab-verify:0.2.0-rc.2-pkg6`）
 
-| case | 轮数/步数 | `terminated` | 工具 exec/rej | 指标行 total/abnormal/listed | 记忆 | web 哈希（vs 模板） |
-|---|---|---|---|---|---|---|
-| case01 | 3 / 13 | 全 `done` | 1 / 1 | 4 / 3 / **3** | active `MEM01` | `4fc2116779f23330` vs `f09358ec6ae858a5` |
-| case02 | 3 / 12 | `done` / **`max_steps`** / `done` | 1 / 2 | 4 / 3 / **4** | forgotten `MEM01` | 同上 |
+| case | 轮数/步数 | `terminated` | 工具 exec/rej | 指标行 total/abnormal/listed | 视觉（图片行 / checksum） | 记忆 | web 哈希（vs 模板） |
+|---|---|---|---|---|---|---|---|
+| case01 | 3 / 13 | 全 `done` | 1 / 1 | 5 / 4 / **4** | `HGB 88` low / `c482e7ae14a4` | active `MEM01` | `4fc2116779f23330` vs `f09358ec6ae858a5` |
+| case02 | 3 / 12 | `done` / **`max_steps`** / `done` | 1 / 2 | 5 / 4 / **5** | `GLU 9.1` high / `e9cf731d3940` | forgotten `MEM01` | 同上 |
 
-- case01 偏好生效：`listed=3`（`HGB 142` 正常被过滤）；
-- case02 第 3 轮忘掉偏好：`listed=4`（`HGB 145` 正常重新列出）—— **记忆真的改变输出**的行为性证据；
-- case02 第 2 轮故意给 6 步（`max_steps=5`）→ 记 `max_steps`。
+- **图片行真的进了指标表**：case01 的 `HGB 88`（low）、case02 的 `GLU 9.1`（high）；
+- case01 偏好生效：`listed=4`（`HGB 142` 正常被过滤）；
+- case02 第 3 轮忘掉偏好：`listed=5`（`HGB 145` 正常重新列出）—— **记忆真的改变输出**的行为性证据；
+- case02 第 2 轮故意给 6 步（`max_steps=5`）→ 记 `max_steps`；
+- **视觉稳定性**：同一张图连跑 3 次，图片 `checksum` 与 `trace_checksum` 完全一致（`PLT, 18, …` 与
+  `PLT,18,…` 两种输出被容错正则归一，所以判据不会被空格差异打穿）。
 
 **平台侧端到端实测**（2026-11-11，`nju-lab-app-runtime:0.1.0` + 临时实例 3101 端口）：
 
@@ -74,7 +79,7 @@ agent-app-studio/
 | 发布 / 起容器 | 容器 `nju-lab-app-…`（512m/0.3cpu，`--internal`，只读挂 zip） |
 | `GET /site` | 返回注入 `<base href="/lab/api/apps/<id>/site/">` 的 HTML |
 | `GET /site/theme.css` | 200 |
-| `POST /api/chat`（带 `report.pdf`） | 回复 + `citations=[KB-01]` + `metric_rows=[PLT 18 low, WBC 12.5 high]` + 升级 2 条 |
+| `POST /api/chat`（带 `report.pdf`） | 回复 + `citations=[KB-01]` + `metric_rows=[PLT 18 low, WBC 12.5 high]` + 升级 2 条（Web 侧同样走视觉通道，传图即可） |
 | 教师 `GET /courses/:id/apps` | 看到已发布应用 |
 | `GET /apps/:id/messages` | 落库的 user/assistant 两条 |
 
@@ -82,6 +87,7 @@ agent-app-studio/
 
 ```sh
 cd server/fixtures/agent-app-studio
+# ⚠️ 图片走视觉：造题 / regen-expected 要带模型额度（`--env-file server/.env`），复验容器自身有额度
 rm -f problem.zip skill-template.zip
 (cd problem && zip -qr ../problem.zip .) && (cd skill-template && zip -qr ../skill-template.zip .)
 docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg6 \
@@ -94,8 +100,7 @@ docker run --rm --env-file server/.env --memory 2g -e VERIFY_REASONING_EFFORT=lo
   --out /outputs/agent-app-studio.json --timeout-ms 480000
 ```
 
-实测：`--check` 退出码 0（16 条断言、依赖齐）；复验 **2/2 通过**
-（case01 `score=0.85`、case02 `score=1.0`，两 case 硬性 **16/16**）。
+实测：`--check` 退出码 0（**17 条断言**、依赖齐）；复验 **2/2 通过**、两 case 硬性 **17/17**。
 
 > ⚠️ 模板或 `web/` 改动之后要重跑 `python3 tools/gen_cases.py`（它会把模板基线哈希写进
 > `cases/*/template.json`，并重算 `expected.json` 用到的输入）。改动 `harness/api.py` 的解析口径

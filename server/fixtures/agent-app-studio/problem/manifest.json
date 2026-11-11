@@ -32,12 +32,12 @@
       "expr": "typeof out.app.web_sha256 === 'string' && out.app.web_sha256 !== '' && out.app.web_sha256 !== out.app.template_web_sha256 && out.app.template_web_sha256 === expected.app.template_web_sha256"
     },
     {
-      "name": "三类附件都解析到了（pdf / docx / image 各至少一个）",
-      "expr": "['pdf','docx','image'].every((kind) => out.attachments.some((a) => a.kind === kind))"
+      "name": "三类附件都解析到了，且图片走的是视觉通道（pdf/docx=text，image=vision）",
+      "expr": "['pdf','docx','image'].every((kind) => out.attachments.some((a) => a.kind === kind)) && out.attachments.filter((a) => a.kind === 'image').every((a) => a.via === 'vision') && out.attachments.filter((a) => a.kind === 'pdf' || a.kind === 'docx').every((a) => a.via === 'text')"
     },
     {
-      "name": "附件解析结果逐条正确（字数 + 文本校验和）",
-      "expr": "JSON.stringify(out.attachments.map((a) => [a.name, a.kind, a.chars, a.checksum])) === JSON.stringify(expected.attachments.map((a) => [a.name, a.kind, a.chars, a.checksum]))"
+      "name": "附件解析结果逐条正确（通道 / 行数 / 字数 / 校验和）",
+      "expr": "JSON.stringify(out.attachments.map((a) => [a.name, a.kind, a.via, a.rows, a.chars, a.checksum])) === JSON.stringify(expected.attachments.map((a) => [a.name, a.kind, a.via, a.rows, a.chars, a.checksum]))"
     },
     {
       "name": "循环逐步一致（轮次 / 步号 / 动作 / 观测）",
@@ -60,8 +60,12 @@
       "expr": "JSON.stringify(out.report.metric_rows.map((r) => [r.item, r.value, r.unit, r.flag])) === JSON.stringify(expected.report.metric_rows.map((r) => [r.item, r.value, r.unit, r.flag]))"
     },
     {
-      "name": "计数自洽（登记 / 异常 / 列出 三处一致）",
-      "expr": "JSON.stringify(out.report.counts) === JSON.stringify(expected.report.counts) && out.metrics.report_rows === out.report.counts.total && out.metrics.abnormal_rows === out.report.counts.abnormal && out.metrics.tool_executed === out.tool_calls.filter((c) => c.args_valid === true).length && out.metrics.tool_rejected === out.tool_calls.filter((c) => c.args_valid === false).length"
+      "name": "计数自洽（登记 / 异常 / 列出 / 视觉调用 四处一致）",
+      "expr": "JSON.stringify(out.report.counts) === JSON.stringify(expected.report.counts) && out.metrics.report_rows === out.report.counts.total && out.metrics.abnormal_rows === out.report.counts.abnormal && out.metrics.tool_executed === out.tool_calls.filter((c) => c.args_valid === true).length && out.metrics.tool_rejected === out.tool_calls.filter((c) => c.args_valid === false).length && out.metrics.vision_calls === expected.metrics.vision_calls"
+    },
+    {
+      "name": "视觉通道真的被调用过（vision_calls ≥ 1，且图片抽出的行进了指标表）",
+      "expr": "out.metrics.vision_calls >= 1 && out.metrics.vision_calls === expected.metrics.vision_calls && out.attachments.filter((a) => a.via === 'vision').every((a) => a.rows >= 1) && out.report.counts.total === out.attachments.reduce((sum, a) => sum + a.rows, 0)"
     },
     {
       "name": "记忆分层与行为性（偏好生效改行集、被遗忘后不再生效）",

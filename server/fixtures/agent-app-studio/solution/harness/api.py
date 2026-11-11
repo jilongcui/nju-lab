@@ -5,19 +5,24 @@
 
 与 `skill-template/harness/api.py` 的函数签名完全一致 —— 学生写的那份替换它即可。
 
-三个零依赖的解析器（本实验的附件是"约定形态"，见 task.md §一）：
+解析口径（见 task.md §一）：
 
-- **PDF**：未压缩内容流 + `Tj` 文本操作符 → 正则抽文本行；
-- **DOCX**：标准 OOXML（`zipfile` + `re`）→ 取 `word/document.xml` 里每个 `<w:p>` 的 `<w:t>`；
-- **PNG**：读 IHDR 得宽高（不做像素识别）。
+- **PDF**：未压缩内容流 + `Tj` 文本操作符 → 正则抽文本行（**零依赖**）；
+- **DOCX**：标准 OOXML（`zipfile` + `re`）→ 取 `word/document.xml` 里每个 `<w:p>` 的 `<w:t>`（**零依赖**）；
+- **图片**：走**视觉模型**（`deepseek-flash` 支持 `image_url`）把图里的三段式数据行读出来，
+  再用同一套 `ROW_PATTERN` 抽成结构化行 —— 图片没有文本层，靠 OCR/视觉才读得到。
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
+import os
 import re
 import struct
 import sys
+import urllib.error
+import urllib.request
 import zipfile
 from pathlib import Path
 
@@ -74,12 +79,61 @@ def parse_docx(path: Path) -> list[str]:
     return lines
 
 
-def parse_image(path: Path) -> dict:
+VISION_PROMPT = (
+    "读出图中每一行检验数据，按「指标,数值,单位」输出，一行一条，不要解释、不要代码块。"
+    "若某行不是三段式数据就跳过。"
+)
+
+
+def image_size(path: Path) -> tuple[int, int]:
+    """只读 PNG 头拿宽高（登记用；不做像素识别）。"""
     head = path.read_bytes()[:33]
     if head[:8] != b"\x89PNG\r\n\x1a\n" or head[12:16] != b"IHDR":
-        return {"width": 0, "height": 0}
-    width, height = struct.unpack(">II", head[16:24])
-    return {"width": width, "height": height}
+        return 0, 0
+    return struct.unpack(">II", head[16:24])
+
+
+def vision_extract(path: Path) -> tuple[list[str], dict]:
+    """把图片交给视觉模型，返回 (文本行, usage)。
+
+    为什么必须走视觉：图片里没有文本层，`zipfile`/正则那套读取方式对它无效。
+    工程上三个注意点（都在这里踩过）：
+    1. `${DEEPSEEK_BASE_URL:-https://api.deepseek.com}` + `image_url`（data URI，base64）；
+    2. `deepseek-flash` 是**推理模型**，`max_tokens` 太小会被思维链吃光（`reasoning_effort: none` 最省）；
+    3. 输出**格式会漂**（`PLT, 18, …` 与 `PLT,18,…` 都可能），所以下游必须用容错正则抽行，
+       不能拿原始文本做逐字比对。
+    """
+    key = os.environ.get("DEEPSEEK_API_KEY")
+    if not key:
+        raise RuntimeError("图片要走视觉模型，但环境里没有 DEEPSEEK_API_KEY")
+    base = (os.environ.get("DEEPSEEK_BASE_URL") or "https://api.deepseek.com").rstrip("/")
+    model = os.environ.get("DEEPSEEK_MODEL") or "deepseek-flash"
+    encoded = base64.b64encode(path.read_bytes()).decode()
+    payload = {
+        "model": model,
+        "max_tokens": 800,
+        "temperature": 0,
+        "reasoning_effort": "none",
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": VISION_PROMPT},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded}"}},
+            ],
+        }],
+    }
+    request = urllib.request.Request(
+        f"{base}/chat/completions",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            data = json.load(response)
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"视觉模型调用失败（{base}）：{exc}") from exc
+    text = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+    return [line for line in text.splitlines() if line.strip()], (data.get("usage") or {})
 
 
 def text_checksum(lines: list[str]) -> str:
@@ -91,33 +145,32 @@ def text_checksum(lines: list[str]) -> str:
 def parse_attachment(info: dict) -> dict:
     path = Path(info["path"])
     kind = info["kind"]
+    usage: dict = {}
     if kind == "pdf":
-        lines = parse_pdf(path)
-        extra = {"pages": 1}
+        lines, via = parse_pdf(path), "text"
     elif kind == "docx":
-        lines = parse_docx(path)
-        extra = {"paragraphs": len(lines)}
+        lines, via = parse_docx(path), "text"
     elif kind == "image":
-        size = parse_image(path)
-        lines = []
-        extra = size
+        lines, usage = vision_extract(path)      # ← 视觉通道
+        via = "vision"
     else:
-        lines, extra = [], {}
+        lines, via = [], "other"
     rows = []
     for line in lines:
         match = ROW_PATTERN.match(line.strip())
         if match:
             rows.append([match.group(1), float(match.group(2)), match.group(3)])
-    if kind == "image":
-        # 图片没有文本：checksum 用「尺寸 + 字节数」算，口径见 task.md §一
-        checksum = hashlib.sha256(
-            f"image:{extra.get('width')}x{extra.get('height')}:{info['size']}".encode()
-        ).hexdigest()[:12]
+    if via == "vision":
+        # 视觉输出格式会漂（空格差异），所以 checksum 只对**结构化行**算，跨次稳定
+        canonical = "\n".join(f"{item},{value:g},{unit}" for item, value, unit in rows)
+        checksum = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
+        chars = 0
     else:
         checksum = text_checksum(lines)
+        chars = sum(len(line) for line in lines)
     return {
-        "name": info["name"], "kind": kind, "chars": sum(len(x) for x in lines),
-        "lines": lines, "rows": rows, "checksum": checksum, **extra,
+        "name": info["name"], "kind": kind, "via": via, "chars": chars,
+        "lines": lines, "rows": rows, "checksum": checksum, "usage": usage,
     }
 
 
@@ -184,8 +237,9 @@ def plan_step(state: dict, step: dict, ctx: dict) -> str:
                     "flag": flag_of(row[0], row[1], ctx["thresholds"]),
                 })
         item = parsed[name]
-        if item["kind"] == "image":
-            return f"解析 {name}：图片 {item.get('width')}x{item.get('height')}"
+        if item["via"] == "vision":
+            state["_vision_calls"] = int(state.get("_vision_calls", 0)) + 1
+            return f"解析 {name}：图片抽取 {len(item['rows'])} 行（视觉通道）"
         return f"解析 {name}：{len(item['rows'])} 行（{item['chars']} 字）"
 
     if action == "tool":

@@ -20,20 +20,26 @@
     {
       "name": "lab.pdf",
       "kind": "pdf",
+      "via": "text",
       "chars": 53,
+      "rows": 3,
       "checksum": "bebcd3553bb2"
     },
     {
       "name": "note.docx",
       "kind": "docx",
+      "via": "text",
       "chars": 26,
+      "rows": 1,
       "checksum": "49c37fdc9f08"
     },
     {
       "name": "photo.png",
       "kind": "image",
+      "via": "vision",
       "chars": 0,
-      "checksum": "4e989f556ec8"
+      "rows": 1,
+      "checksum": "e9cf731d3940"
     }
   ],
   "harness": {
@@ -111,7 +117,7 @@
       "turn": 3,
       "step": 2,
       "action": "parse",
-      "observation": "解析 photo.png：图片 4x4"
+      "observation": "解析 photo.png：图片抽取 1 行（视觉通道）"
     },
     {
       "turn": 3,
@@ -157,7 +163,7 @@
     "short": [
       "T1: 步 4 / 行 3 / 命中 KB-01",
       "T2: 步 5 / 行 4 / 命中 KB-01",
-      "T3: 步 3 / 行 4 / 命中 KB-02"
+      "T3: 步 3 / 行 5 / 命中 KB-02"
     ],
     "long": {
       "active": [],
@@ -278,12 +284,18 @@
         "value": 6.4,
         "unit": "mmol/L",
         "flag": "high"
+      },
+      {
+        "item": "GLU",
+        "value": 9.1,
+        "unit": "mmol/L",
+        "flag": "high"
       }
     ],
     "counts": {
-      "total": 4,
-      "abnormal": 3,
-      "listed": 4
+      "total": 5,
+      "abnormal": 4,
+      "listed": 5
     }
   },
   "safety": {
@@ -305,6 +317,12 @@
         "item": "GLU",
         "value": 6.4,
         "message": "该指标超出参考范围，请尽快由临床医生复核。"
+      },
+      {
+        "record_id": "ROW05",
+        "item": "GLU",
+        "value": 9.1,
+        "message": "该指标超出参考范围，请尽快由临床医生复核。"
       }
     ],
     "refusals": [
@@ -318,8 +336,9 @@
   "metrics": {
     "tool_executed": 1,
     "tool_rejected": 2,
-    "report_rows": 4,
-    "abnormal_rows": 3,
-    "trace_checksum": "619f9ce3e946"
+    "vision_calls": 1,
+    "report_rows": 5,
+    "abnormal_rows": 4,
+    "trace_checksum": "d019bd4b420e"
   }
 }

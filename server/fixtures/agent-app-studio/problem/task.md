@@ -64,16 +64,40 @@
 
 **解析口径**（本实验的附件是"约定形态"，不是通用解析器）：
 
-| 类型 | 怎么解 | 文本怎么算 |
+| 类型 | 怎么解 | 通道（`via`） |
 |---|---|---|
-| PDF | 找 `stream … endstream`，抽 `(...) Tj` 里的文本，按出现顺序成行 | 每行 `strip()` 后用 `\n` 连接 |
-| DOCX | `zipfile` 读 `word/document.xml`，每个 `<w:p>` 取其 `<w:t>` 文本拼接成一行 | 同上 |
-| 图片 | 只读 PNG 头（`IHDR`）拿宽高，不做像素识别 | 不参与文本 |
+| PDF | 找 `stream … endstream`，抽 `(...) Tj` 里的文本，按出现顺序成行 | `text` |
+| DOCX | `zipfile` 读 `word/document.xml`，每个 `<w:p>` 取其 `<w:t>` 文本拼接成一行 | `text` |
+| 图片 | **交给视觉模型**把图里的三段式数据行读出来（图片没有文本层，正则读不到） | `vision` |
 
-- `chars` = 解析出的所有行长度之和（图片写 `0`）；
-- `checksum` = 上面"文本"的 `sha256` **前 12 位**；图片没有文本，用
-  `sha256("image:{宽}x{高}:{字节数}")` 的前 12 位；
-- 行里形如 `ITEM,VALUE,UNIT`（三项、数值在第 2 列）的才登记进指标表，其余是备注、忽略。
+- 行里形如 `ITEM,VALUE,UNIT`（三项、数值在第 2 列）的才登记进指标表，其余是备注、忽略；
+- `chars` = 文本类附件的行长度之和（**图片写 `0`**，它没有文本层）；
+- `rows` = 该附件抽出的指标行数；
+- `checksum`：文本类用"每行 `strip()` 后以 `\n` 连接"的 `sha256` **前 12 位**；
+  图片用**结构化行**的规范化文本（`item,value,unit` 逗号无空格、按行 `\n` 连接）的 `sha256` 前 12 位
+  —— 视觉输出的**空格/换行会漂**，所以只对抽出来的行算。
+
+### 图片走视觉：怎么调、为什么要这么调
+
+环境里已经注入了模型额度（`DEEPSEEK_API_KEY`），端点是 OpenAI 兼容的：
+
+```python
+payload = {
+    "model": "deepseek-flash",          # 支持 image_url（实测）
+    "max_tokens": 800,
+    "temperature": 0,
+    "reasoning_effort": "none",         # 它是推理模型：预算含思维链，给太小会只剩空 content
+    "messages": [{"role": "user", "content": [
+        {"type": "text", "text": "读出图中每一行检验数据，按「指标,数值,单位」输出，一行一条…"},
+        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded}"}},
+    ]}],
+}
+# POST {DEEPSEEK_BASE_URL:-https://api.deepseek.com}/chat/completions
+```
+
+> 三个坑（都是实测踩到的）：① `max_tokens` 太小会被思维链吃光，`content` 可能是空的；
+> ② 输出**格式会漂**（`PLT, 18, 10^9/L` 与 `PLT,18,10^9/L` 都可能出现）—— 所以下游必须用
+> **容错正则**抽行，不能拿原始文本逐字比对；③ 环境没有外网以外的东西，别指望装 OCR 库。
 
 ## 二、决策序列与循环（**口径钉死**）
 
@@ -82,7 +106,7 @@
 | action | observation（**逐字**） |
 |---|---|
 | `recall` | `记忆命中：` + 逗号连接的 active 偏好条目 id；没有就 `记忆命中：-` |
-| `parse` | `解析 {文件名}：{登记行数} 行（{chars} 字）`；图片写 `解析 {文件名}：图片 {宽}x{高}` |
+| `parse` | 文本类：`解析 {文件名}：{登记行数} 行（{chars} 字）`；图片：`解析 {文件名}：图片抽取 {登记行数} 行（视觉通道）` |
 | `tool` | 校验通过 → `{item}={value} flag={flag}`；不通过 → `rejected:{rejected_reason}` |
 | `kb` | `检索命中：` + 逗号连接的 `bm25_top3` |
 | `finish` | `完成`，并结束本轮 |
@@ -141,7 +165,10 @@
            "theme": { "mode": "light", "accent": "#1f9d78" },
            "attachments": ["pdf", "docx", "image"], "visibility": "teacher",
            "web_sha256": "（你的 web/ 哈希，16 位）", "template_web_sha256": "（template.json 里的基线）" },
-  "attachments": [ { "name": "report.pdf", "kind": "pdf", "chars": 56, "checksum": "3e79b0794ef5" } ],
+  "attachments": [ { "name": "report.pdf", "kind": "pdf", "via": "text", "chars": 56, "rows": 3,
+                     "checksum": "3e79b0794ef5" },
+                   { "name": "scan.png", "kind": "image", "via": "vision", "chars": 0, "rows": 1,
+                     "checksum": "c482e7ae14a4" } ],
   "harness": { "turns": 3, "max_steps": 5, "steps_total": 13, "terminated": ["done","done","done"] },
   "trace": [ { "turn": 1, "step": 1, "action": "recall", "observation": "记忆命中：-" } ],
   "tool_calls": [ { "call_id": "C01", "tool": "flag_metric", "args_valid": true, "status": "executed",
@@ -156,8 +183,8 @@
               "counts": { "total": 4, "abnormal": 3, "listed": 3 } },
   "safety": { "escalations": [ { "record_id": "ROW01", "item": "PLT", "value": 18, "message": "<固定话术>" } ],
               "refusals": [ { "turn": 3, "reply": "…", "reason": "…（≥10 字）" } ] },
-  "metrics": { "tool_executed": 1, "tool_rejected": 1, "report_rows": 4, "abnormal_rows": 3,
-               "trace_checksum": "…（12 位）" },
+  "metrics": { "tool_executed": 1, "tool_rejected": 1, "vision_calls": 1,
+               "report_rows": 5, "abnormal_rows": 4, "trace_checksum": "…（12 位）" },
   "figures": [ { "path": "figures/app_report_overview.png", "takeaway": "…（一句话结论）" } ],
   "notes": "…（≥80 字：为什么自己解附件、偏好记忆改变了什么、至少两条局限）"
 }
@@ -171,6 +198,7 @@
 ## 怎么算完成
 
 1. `harness/api.py` 的六个函数都实现，`python3 harness/run.py . output.json` 能产出结果；
+   三个附件都要解析到（**图片走视觉**，`metrics.vision_calls` 至少 1 次）；
 2. `web/` 改到能看出是你的应用（主题能换、结构有你的改动），`app.json` 填好；
 3. 在 `cases/case01` 与 `cases/case02` 上都跑通 —— 判据对两个 case 各判一次；
 4. 本地跑 `python3 app_host.py` 能打开页面，上传附件、拿到回复与报告；
