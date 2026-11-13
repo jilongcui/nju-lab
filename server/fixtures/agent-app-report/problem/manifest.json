@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "name": "agent-app-report",
+  "title": "入门实验：把附件整理成一份能复核的报告（附件 → 报告 · 容易）",
+  "flow": "engineering",
+  "outputFile": "output.json",
+  "inputs": ["attachments", "report_format.json", "brief.md"],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整（五项都在）",
+      "expr": "['attachments','report','metrics','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "三类附件都解析到了（PDF / Word 走自己解，图片走视觉）",
+      "expr": "['pdf','docx','image'].every((kind) => out.attachments.some((a) => a.kind === kind)) && out.attachments.filter((a) => a.kind === 'image').every((a) => a.via === 'vision') && out.attachments.filter((a) => a.kind !== 'image').every((a) => a.via === 'text')"
+    },
+    {
+      "name": "每份附件抽出的行数正确（图片也要有行）",
+      "expr": "JSON.stringify(out.attachments.map((a) => [a.name, a.kind, a.via, a.rows])) === JSON.stringify(expected.attachments.map((a) => [a.name, a.kind, a.via, a.rows]))"
+    },
+    {
+      "name": "指标表逐行正确（item / value / unit / flag）",
+      "expr": "JSON.stringify(out.report.metric_rows.map((r) => [r.item, r.value, r.unit, r.flag])) === JSON.stringify(expected.report.metric_rows.map((r) => [r.item, r.value, r.unit, r.flag]))"
+    },
+    {
+      "name": "flag 只用 low / high / normal 三种取值",
+      "expr": "out.report.metric_rows.every((r) => ['low','high','normal'].includes(r.flag))"
+    },
+    {
+      "name": "计数自洽（登记行 = 各附件行数之和，异常行数对得上）",
+      "expr": "out.report.counts.total === out.attachments.reduce((sum, a) => sum + a.rows, 0) && out.report.counts.abnormal === out.report.metric_rows.filter((r) => r.flag !== 'normal').length && out.metrics.total_rows === out.report.counts.total && out.metrics.abnormal_rows === out.report.counts.abnormal"
+    },
+    {
+      "name": "报告四节齐全 / 顺序与模板一致 / 每节写到最小篇幅",
+      "expr": "JSON.stringify(out.report.sections.map((s) => s.name)) === JSON.stringify(expected.report.section_names) && out.report.sections.every((s, i) => typeof s.content === 'string' && s.content.trim().length >= expected.report.section_min_chars[i])"
+    },
+    {
+      "name": "图与说明齐全（至少 1 张，含一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 1 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "说清口径与局限（notes ≥60 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 60"
+    }
+  ],
+  "requires": {
+    "python": ["matplotlib"]
+  }
+}

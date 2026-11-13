@@ -1,0 +1,81 @@
+{
+  "attachments": [
+    {
+      "name": "metrics.docx",
+      "kind": "docx",
+      "via": "text",
+      "rows": 1,
+      "chars": 31
+    },
+    {
+      "name": "report.pdf",
+      "kind": "pdf",
+      "via": "text",
+      "rows": 3,
+      "chars": 56
+    },
+    {
+      "name": "scan.png",
+      "kind": "image",
+      "via": "vision",
+      "rows": 1,
+      "chars": 0
+    }
+  ],
+  "report": {
+    "section_names": [
+      "目的",
+      "方法",
+      "结果",
+      "讨论"
+    ],
+    "section_min_chars": [
+      20,
+      20,
+      30,
+      30
+    ],
+    "metric_rows": [
+      {
+        "item": "HGB",
+        "value": 96.0,
+        "unit": "g/L",
+        "flag": "low"
+      },
+      {
+        "item": "PLT",
+        "value": 18.0,
+        "unit": "10^9/L",
+        "flag": "low"
+      },
+      {
+        "item": "WBC",
+        "value": 12.5,
+        "unit": "10^9/L",
+        "flag": "high"
+      },
+      {
+        "item": "HGB",
+        "value": 142.0,
+        "unit": "g/L",
+        "flag": "normal"
+      },
+      {
+        "item": "HGB",
+        "value": 88.0,
+        "unit": "g/L",
+        "flag": "low"
+      }
+    ],
+    "counts": {
+      "total": 5,
+      "abnormal": 4,
+      "listed": 5
+    }
+  },
+  "metrics": {
+    "attachments_parsed": 3,
+    "total_rows": 5,
+    "abnormal_rows": 4
+  }
+}

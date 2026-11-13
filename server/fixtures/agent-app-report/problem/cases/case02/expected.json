@@ -1,0 +1,81 @@
+{
+  "attachments": [
+    {
+      "name": "lab.pdf",
+      "kind": "pdf",
+      "via": "text",
+      "rows": 3,
+      "chars": 53
+    },
+    {
+      "name": "note.docx",
+      "kind": "docx",
+      "via": "text",
+      "rows": 1,
+      "chars": 26
+    },
+    {
+      "name": "photo.png",
+      "kind": "image",
+      "via": "vision",
+      "rows": 1,
+      "chars": 0
+    }
+  ],
+  "report": {
+    "section_names": [
+      "目的",
+      "方法",
+      "结果",
+      "讨论"
+    ],
+    "section_min_chars": [
+      20,
+      20,
+      30,
+      30
+    ],
+    "metric_rows": [
+      {
+        "item": "GLU",
+        "value": 7.8,
+        "unit": "mmol/L",
+        "flag": "high"
+      },
+      {
+        "item": "HBA1C",
+        "value": 8.4,
+        "unit": "%",
+        "flag": "high"
+      },
+      {
+        "item": "HGB",
+        "value": 145.0,
+        "unit": "g/L",
+        "flag": "normal"
+      },
+      {
+        "item": "GLU",
+        "value": 6.4,
+        "unit": "mmol/L",
+        "flag": "high"
+      },
+      {
+        "item": "GLU",
+        "value": 9.1,
+        "unit": "mmol/L",
+        "flag": "high"
+      }
+    ],
+    "counts": {
+      "total": 5,
+      "abnormal": 4,
+      "listed": 5
+    }
+  },
+  "metrics": {
+    "attachments_parsed": 3,
+    "total_rows": 5,
+    "abnormal_rows": 4
+  }
+}

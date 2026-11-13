@@ -1,0 +1,43 @@
+{
+  "sections": [
+    {
+      "name": "目的",
+      "min_chars": 20
+    },
+    {
+      "name": "方法",
+      "min_chars": 20
+    },
+    {
+      "name": "结果",
+      "min_chars": 30
+    },
+    {
+      "name": "讨论",
+      "min_chars": 30
+    }
+  ],
+  "metric_columns": [
+    "item",
+    "value",
+    "unit",
+    "flag"
+  ],
+  "thresholds": {
+    "PLT": {
+      "low": 100,
+      "high": 300
+    },
+    "WBC": {
+      "low": 3.5,
+      "high": 10
+    },
+    "HGB": {
+      "low": 110,
+      "high": 160
+    }
+  },
+  "messages": {
+    "warn": "该指标超出参考范围，请尽快由临床医生复核。"
+  }
+}

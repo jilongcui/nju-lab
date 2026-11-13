@@ -245,7 +245,7 @@ token 过期就去平台右上角「API Token」重新领一个。
 2. `web/` 改到能看出是你的应用（主题能换、结构有你的改动），`app.json` 填好；
 3. 在 `cases/case01` 与 `cases/case02` 上都跑通 —— 判据对两个 case 各判一次；
 4. 本地跑 `python3 app_host.py` 能打开页面，上传附件、拿到回复与报告；
-5. 把结论与坑记下来 —— 报告会由工具整理进 `report.md`，**不需要改 `SKILL.md`**。
+5. 把结论与坑记下来 —— 写进 `report.md`（模板在骨架里，六节照填），**不需要改 `SKILL.md`**。
 
 判据全文见 `judge.md`；怎么自测、包内还有什么，见 `README.md`。
 

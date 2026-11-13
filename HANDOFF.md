@@ -162,8 +162,24 @@
   · 已重打并重传两个 `problem.zip` + PATCH 两个项目（published）：`harness-agent` problem sha `424c3ccc282a`、
     `agent-app-studio` problem sha `61564ebb4e3f`。
   · 按用户口径**没有重跑复验**（"现在也不需要做自动验证"）；只跑了 `--check` 确认包结构没坏。
+- **实验口径调整（2026-11-11 晚，用户拍板三条）—— 已落地**：
+  ① **成绩只看平台应用**：第 20 章主交付 = 在「我的应用」发布 + 分享链接（老师按应用评）；
+     不再要求把 Skill 包提交到「我的提交」（题面 content 已写明"发布应用 + 分享链接就是交付"）。
+  ② **第 19 / 20 章不再跑自动复验**：两个项目的 `evalConfig` 已清空为 `null`（页面不再显示评估配置），
+     rubric 改成人工口径 —— 19 章「口径正确 40 / 边界与踩坑 30 / 结论与局限 30」；
+     20 章 hard「应用能用 40 / 交付形态 30 / 边界与踩坑 20 / 演示答辩 10」。
+     （平台本来也**不会自动**跑复验：`POST /submissions/:id/verify` 是教师手动触发，现在不点了。）
+  ③ **第 20 章拆成两档**：新增 **`server/fixtures/agent-app-report/`（easy，`agent-app-report`）** ——
+     只做 core（PDF/Word 自解 + 图片走视觉 → 四节报告 + 指标表 + 计数），**给参考实现**（先读后仿），
+     不要求前端、不要求发布。9 条断言；`--check` 通过；实测两个 case 均 `total=5 / abnormal=4`
+     （图片分别抽出 `HGB 88 low`、`GLU 9.1 high`）。
+  · 平台项目：`agent-app-report` 新建并发布（easy，第 20 章，id `abdf9bb5-…`），
+    与 hard 档并列供学生按难度选；三个项目重传后 sha：19 章 problem `42ff80dbfaa0` /
+    hard problem `e326d183140b` / easy problem `fd217801222a`。
+  · 题面/文案同步：`task.md` 交付句改成"写进 `report.md`（模板在骨架里）"，不再暗示要走工具生成；
+    20 章 content 加"同章还有入门档 / 不用提交到我的提交"；19 章 content 加"不跑自动复验，成绩看过程记录"。
 - **未做（四期）**：成本看板、评分汇总进 `submissions`/`Grading`、iframe 真正独立源（需 nginx + 证书）；
-  以及本轮提出的几个"要不要做"的选项（拆 easy 档 / 关闭自动复验 / 图文引导），等用户拍板；
+  图文引导（需要能跑浏览器的环境截图）暂缓；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；
   应用容器**不注入大模型 key**（二期走平台代理）。
