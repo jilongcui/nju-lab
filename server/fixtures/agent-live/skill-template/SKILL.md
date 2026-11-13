@@ -20,8 +20,9 @@ report.md          ← 过程记录
 **已经给好、不用改**：
 
 ```
-agent/llm.py       ← 模型客户端：重试、token 记账、调用日志
+agent/llm.py       ← 模型客户端：重试、token 记账、调用日志（发布后自动走平台代理）
 agent/data.py      ← 读题目包：台账 / 手册 / 限额 / 工具名册
+agent/api.py       ← 平台入口：把你的 run_dialogue() 接到对话请求上（发布成应用时用）
 agent/profile.json ← 定制：名字 / 语气 / 签名 / 禁语
 scripts/run.py     ← 跑完 6 组对话 → output.json + 图
 ```

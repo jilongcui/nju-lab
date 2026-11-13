@@ -69,6 +69,16 @@
   `teacherScore`（教师分），前端取 `teacherScore ?? autoScoreSuggestion`。
 - 规范补充：`docs/EXPERIMENT-PACKAGE-SPEC.md` §3.0「单场景包（无 cases / 无 expected）」。
 
+**追加（2026-11-15，用户追问"学员构建好 agent 之后怎么用"）**：第 19 章的 agent 现在**能直接发布成应用**，
+零平台改动 —— `app_host.py` 的 `ENTRY_CANDIDATES` 第一项本来就是 `skill/agent/api.py`，
+只是新包没提供这个文件。已给好 `agent/api.py`（平台入口）+ `agent/llm.py` 支持平台模型代理；
+学生把数据拷进 Skill 根后即可在「我的应用」里一键创建，得到网页对话 + 分享链接。
+实测：第 1 轮报 5 台逾期、第 2 轮"我负责 A 区"、第 3 轮只报 A 区 2 台（跨轮记忆在应用里生效）。
+
+> **口径待定**：第 20 章原本写"应用 = Skill"（2026-11-13 用户拍板）。现在第 19 章的 agent 也能发布，
+> 于是第 20 章有两条路可选（平台 agent + 写 Skill，或直接用自己的 agent）。要不要把这点写进第 20 章题干，
+> 需要用户定。
+
 **第 20 章不受影响**：第 20 章交付的是 **Skill**（`handle()`，由平台 agent 调度），判据本来就
 不依赖第 19 章的 `harness-agent` 包，故本次不动。
 

@@ -520,6 +520,32 @@ function extractUsage(dshHome, sinceMs) {
  * 花 5 分钟改代码却没运行它，最终没有产出 → 复验失败且原因难解释。
  * 直接执行则确定性高、耗时从 ~290s 降到几十秒、也不烧 agent 的 token。
  */
+/**
+ * 从产出里提取模型用量（`llm.calls[].prompt_tokens` / `completion_tokens` 之和）。
+ *
+ * script 模式下平台不代跑 agent，token 只能由产物**自报** —— 用于成本核算与
+ * 「token 效率」那一项建议分，**不作为正确性判据**（学生可以少报，教师抽查时看流水）。
+ */
+function tokensFromOutput(outputText) {
+  const zero = { input: 0, output: 0, reasoning: 0 };
+  if (!outputText) return zero;
+  let parsed;
+  try {
+    parsed = JSON.parse(outputText);
+  } catch {
+    return zero;
+  }
+  const calls = parsed?.llm?.calls;
+  if (!Array.isArray(calls)) return zero;
+  let input = 0;
+  let output = 0;
+  for (const c of calls) {
+    input += Number(c?.prompt_tokens) || 0;
+    output += Number(c?.completion_tokens) || 0;
+  }
+  return { input, output, reasoning: 0 };
+}
+
 function runScript({ spec, workdir, timeoutMs }) {
   const startedAt = Date.now();
   const proc = spawnSync('sh', ['-c', spec.runCommand], {
@@ -539,7 +565,7 @@ function runScript({ spec, workdir, timeoutMs }) {
     exitCode: proc.status,
     timedOut,
     durationMs,
-    tokens: { input: 0, output: 0, reasoning: 0 },
+    tokens: tokensFromOutput(outputText),
     sessionId: null,
     outputText,
     finalText: (proc.stdout ?? '').trim().slice(0, 500),

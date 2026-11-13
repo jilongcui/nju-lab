@@ -27,10 +27,15 @@ class LlmClient:
                  timeout: int = 120, retries: int = 2):
         self.base_url = (base_url or os.environ.get("AGENT_LLM_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
         self.model = model or os.environ.get("AGENT_LLM_MODEL") or DEFAULT_MODEL
+        # 发布成应用后，容器里**没有**模型 key：平台用一次性 token 走它自己的代理。
+        # 工作台里没有这两个变量，所以走下面的直连分支 —— 同一份代码两边都能跑。
+        self.proxy_base = (os.environ.get("APP_LLM_BASE_URL") or "").rstrip("/")
+        self.proxy_token = os.environ.get("APP_LLM_TOKEN") or ""
         self.api_key = os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("AGENT_LLM_API_KEY") or ""
-        if not self.api_key:
+        if not self.api_key and not (self.proxy_base and self.proxy_token):
             raise LlmError(
-                "未找到 DEEPSEEK_API_KEY：平台工作台默认已配；本地自测请 `export DEEPSEEK_API_KEY=...`"
+                "既没有平台模型代理（APP_LLM_BASE_URL/APP_LLM_TOKEN），也没有 DEEPSEEK_API_KEY："
+                "平台工作台默认已配 key；本地自测请 `export DEEPSEEK_API_KEY=...`"
             )
         self.timeout = timeout
         self.retries = retries
@@ -75,6 +80,8 @@ class LlmClient:
 
     # ---------------------------------------------------------------- 内部
     def _post(self, body: dict) -> dict:
+        if self.proxy_base and self.proxy_token:
+            return self._post_proxy(body)
         req = urllib.request.Request(
             f"{self.base_url}/chat/completions",
             data=json.dumps(body).encode("utf-8"),
@@ -92,4 +99,31 @@ class LlmClient:
             raise LlmError(f"HTTP {exc.code}: {detail}") from exc
         if not isinstance(data, dict) or "choices" not in data:
             raise LlmError(f"返回结构不认识：{str(data)[:200]}")
+        return data
+
+    def _post_proxy(self, body: dict) -> dict:
+        """走平台模型代理：容器里拿不到 key，只有一次性 token。
+
+        代理自己决定用哪个模型，所以这里不传 `model`；平台接口会把结果包一层
+        `{code,data,message}`，所以拿到后要剥一层再判断。
+        """
+        payload = {k: v for k, v in body.items() if k != "model"}
+        req = urllib.request.Request(
+            f"{self.proxy_base}/chat",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json", "X-App-Token": self.proxy_token},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", "replace")[:300]
+            raise LlmError(f"模型代理 HTTP {exc.code}: {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise LlmError(f"模型代理不可用（{self.proxy_base}）：{exc}") from exc
+        if isinstance(data, dict) and isinstance(data.get("data"), dict) and "choices" in data["data"]:
+            data = data["data"]
+        if not isinstance(data, dict) or "choices" not in data:
+            raise LlmError(f"模型代理返回结构不认识：{str(data)[:200]}")
         return data

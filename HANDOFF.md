@@ -37,7 +37,20 @@
   - `server` 已 `npm run build` 并重启（新 PID，`nju-lab.service` active）→ 复验默认镜像 pkg10 生效；
   - **遗留**：`docs/GUIDE-ch19-20-screenshots.md` 里 19-01/02/03 三张图待重截（已标注过期，
     新 content 不再引用旧图）；`harness-agent` 包本身保留在仓库作历史。
-- **第 20 章不受影响**：第 20 章交的是 **Skill**（由平台 agent 调度），判据不依赖第 19 章的包。
+- **追加（2026-11-15 晚，用户追问"学员构建好 agent 之后怎么用"）**：第 19 章的 agent **能直接发布成应用**，
+  零平台改动 —— `app_host.py` 的 `ENTRY_CANDIDATES[0]` 本来就是 `skill/agent/api.py`，`entrypoint.sh` 与
+  `detectEntry` 也都认，只是新包原来没提供这个文件。
+  - 新增 `skill-template/agent/api.py`（给好）：`handle(state, message, attachments, session)` 把
+    `run_dialogue()` 接到对话请求上，记忆条目表存进平台 `session`；
+  - `agent/llm.py`：检测到 `APP_LLM_BASE_URL` + `APP_LLM_TOKEN` 就改走平台模型代理（应用容器里没有 key），
+    工作台里仍直连 DeepSeek；
+  - 学生把 `assets.csv` / `kb/` / `limits.json` / `tools.json` 拷到 Skill 根即可（task.md 有命令）；
+  - 实测（`nju-lab-app-runtime:0.8.0` 起容器）：第 1 轮报 5 台逾期、第 2 轮记「我负责 A 区」、
+    第 3 轮只报 A 区 2 台 —— **跨轮记忆在应用里也生效**；
+  - 新包已重传并改绑：problem `54b9209a`（sha `a85878e6d3c2`）、skill `907e2d02`（sha `2740404e5928`）；
+    复验仍 **pass / 1.0 / 15-15 / 46s**。
+  - **口径待定**：第 20 章题干写「应用 = Skill」，现在第 19 章的 agent 也能发布，两条路并存 —— 是否改第 20 章口径待用户定。
+- **第 20 章判据不受影响**：它交的是 Skill（由平台 agent 调度），判据不依赖第 19 章的包。
 
 **2026-11-11（收官两章：第 19 章升级为 Harness 智能体 + 新增第 20 章「可分享的智能体应用」；平台新增应用托管一期）—— ✅ 已上线（含重启、正文、建章、deck、项目发布）**
 

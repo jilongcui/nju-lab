@@ -28,7 +28,8 @@ agent/loop.py      ← 循环：问模型 → 解析动作 → 执行 → 观察
 agent/tools.py     ← 三个工具：query_assets / overdue_assets / search_manual
 agent/memory.py    ← 跨轮记忆：写入 / 应用 / 更正
 scripts/run.py     ← 已给好，不用改：遍历 tasks → 写 output.json → 画图
-agent/llm.py       ← 已给好，不用改：模型客户端（重试 + token 记账）
+agent/llm.py       ← 已给好，不用改：模型客户端（重试 + token 记账；发布后会自己改走平台代理）
+agent/api.py       ← 已给好，不用改：平台入口，把 run_dialogue() 接到对话请求上
 agent/profile.json ← agent 的定制：名字 / 语气 / 签名 / 禁语
 report.md          ← 过程记录
 ```
@@ -98,6 +99,30 @@ python3 scripts/run.py --tasks <题目包>/tasks --out output.json
 }
 ```
 
+## 做完之后：让它真的能用（约 10 分钟）
+
+跑完 6 组只证明"它能转"；这一节让它变成**别人能对话的东西**（不算第 20 章那份正式应用，
+但你现在就能用起来）。
+
+1. **把数据拷进 Skill 根**（发布时数据要跟着 agent 一起走）：
+
+   ```sh
+   cp <题目包>/assets.csv <题目包>/limits.json <题目包>/tools.json .
+   cp -r <题目包>/kb .
+   ```
+
+2. **确认包里有 `agent/api.py`** —— 已经给好了，不用改：它把你的 `run_dialogue()` 接到平台的
+   对话请求上（一次喂一条消息），记忆条目表存在平台的会话里，所以第 2 句还认得第 1 句。
+
+3. **打成 zip 提交**，然后在平台左侧「我的应用」里点 **用我的 Skill 创建应用**；
+   平台会给你一个应用地址和一条**分享链接**（发给别人，免登录也能打开）。
+
+4. 打开应用，试着连着说两句：`我负责 A 区` → `我们区有哪些设备该保养了`——
+   它应该只报 A 区的设备。这就证明你的 agent 不只是"能跑批"，而是**真的在被用**。
+
+> 应用容器里**没有模型 key**：`agent/llm.py` 会自动改走平台的模型代理（工作台里仍是直连）。
+> 所以你什么都不用配。
+
 ## 交付前自检
 
 - [ ] `python3 scripts/run.py --tasks tasks --out output.json` 能跑完 6 组，不抛异常；
@@ -107,7 +132,8 @@ python3 scripts/run.py --tasks <题目包>/tasks --out output.json
 - [ ] `T6` 第 1 轮 `refused=true` 且 `citations=[]`；
 - [ ] 每条 `citations` 里的编号，都能在本轮 `search_manual` 的 `observation` 里找到；
 - [ ] `figures/` 有一张图，`notes`（写在 SKILL 根的 `notes.md`，≥80 字）讲了取舍与局限；
-- [ ] `report.md` 写了自测时间与至少一条踩坑。
+- [ ] `report.md` 写了自测时间与至少一条踩坑；
+- [ ] （可选）已按上面的步骤发布成应用，并自己对话试过两轮。
 
 ## 评分
 
