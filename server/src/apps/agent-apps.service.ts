@@ -592,6 +592,76 @@ export class AgentAppsService implements OnModuleDestroy {
     return this.publish(user, app.id);
   }
 
+  /**
+   * **提交即发布**：把一次提交变成（或更新成）该学生在这个项目下的应用。
+   *
+   * 为什么不是每次 `createFromSubmission`：学生会改十几版，一版一个应用会把「我的应用」堆满。
+   * 所以按 `(studentId, projectId)` 复用同一个应用，每次提交只加一个版本再 publish ——
+   * 学生改完提交，预览容器重建，旁边就能看到新版本。
+   *
+   * 没有 `skillZipRef`（或不是 zip）时返回 null：老作业/旧提交不因为这条链路而失败。
+   */
+  async upsertFromSubmission(user: User, submissionId: string): Promise<AgentApp | null> {
+    const submission = await this.submissions.findOne({ where: { id: submissionId } });
+    if (!submission) return null;
+    const fileId = this.fileIdFromRef(submission.skillZipRef);
+    if (!fileId) return null;
+    let payload: Buffer;
+    try {
+      payload = await this.filesService.readBuffer(fileId);
+    } catch {
+      return null;
+    }
+    if (!payload?.length || payload[0] !== 0x50 || payload[1] !== 0x4b) return null;
+
+    const assignment = submission.assignmentId
+      ? await this.assignments.findOne({
+          where: { id: submission.assignmentId },
+          relations: ['project'],
+        })
+      : null;
+    const projectId = assignment?.projectId ?? null;
+    const courseId = assignment?.project?.courseId ?? null;
+
+    let app = projectId
+      ? await this.apps.findOne({ where: { studentId: user.id, projectId } })
+      : null;
+    if (!app) {
+      app = await this.apps.save(
+        this.apps.create({
+          studentId: user.id,
+          courseId,
+          projectId,
+          title: (assignment?.project?.title || '我的智能体应用').slice(0, 120),
+          scenario: '由平台托管的智能体应用',
+          entry: this.detectEntry(payload),
+          visibility: AppVisibility.TEACHER,
+          status: AppStatus.DRAFT,
+        }),
+      );
+    }
+
+    const version = await this.versions.save(
+      this.versions.create({
+        appId: app.id,
+        fileId,
+        bundlePath: '',
+        sha256: submission.skillZipSha256 || '',
+        size: payload.length,
+        note: `来自提交 ${submission.id.slice(0, 8)}`,
+      }),
+    );
+    const dir = `${AGENT_APP_DATA_DIR}/${app.id}`;
+    await mkdir(dir, { recursive: true });
+    await writeFile(this.runtime.bundleZipPath(app.id, version.id), payload);
+    app.latestVersionId = version.id;
+    await this.apps.save(app);
+
+    // 换版本后要重建容器，否则预览还是旧版本
+    this.runtime.stop(app.id);
+    return this.publish(user, app.id);
+  }
+
   /** 本人可用来创建应用的提交（有 Skill 包的那些，最近 20 条） */
   async listSkillSubmissions(user: User): Promise<
     { submissionId: string; assignmentId: string; projectTitle: string; version: number; submittedAt: Date }[]

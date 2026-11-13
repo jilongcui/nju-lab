@@ -20,10 +20,13 @@ import {
 } from './evaluation-runner';
 import { DockerEvaluationRunner } from './docker-evaluation-runner';
 import { CoursesModule } from '../courses/courses.module';
+import { AgentAppsModule } from '../apps/agent-apps.module';
 
 @Module({
   imports: [
     CoursesModule,
+    // 开放实验：提交即发布成应用（第 19/20 章）
+    AgentAppsModule,
     TypeOrmModule.forFeature([Submission, Evaluation, Assignment, Course]),
     FilesModule,
     ContainerRuntimeModule,

@@ -11,10 +11,14 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { User, UserRole } from '../users/user.entity';
 import { GradeDto, SubmitDto } from './dto/submission.dto';
 import { SubmissionsService } from './submissions.service';
+import { AgentAppsService } from '../apps/agent-apps.service';
 
 @Controller('submissions')
 export class SubmissionsController {
-  constructor(private readonly submissionsService: SubmissionsService) {}
+  constructor(
+    private readonly submissionsService: SubmissionsService,
+    private readonly agentApps: AgentAppsService,
+  ) {}
 
   /** 教师触发复验（EVALUATION_RUNNER 环境变量选择 Mock 或真实容器复验） */
   @Post(':id/verify')
@@ -47,17 +51,25 @@ export class SubmissionsController {
 
 @Controller('assignments')
 export class AssignmentSubmitController {
-  constructor(private readonly submissionsService: SubmissionsService) {}
+  constructor(
+    private readonly submissionsService: SubmissionsService,
+    private readonly agentApps: AgentAppsService,
+  ) {}
 
   /** 学生提交：ZIP + .dshc + 审计事件（引用与哈希）；重复提交生成新版本（上限 10，verifying 中拒绝） */
   @Post(':id/submit')
   @Roles(UserRole.STUDENT)
-  submit(
+  async submit(
     @CurrentUser() user: User,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SubmitDto,
   ) {
-    return this.submissionsService.submit(user, id, dto);
+    const submission = await this.submissionsService.submit(user, id, dto);
+    // 开放实验（第 19/20 章）：**提交即发布** —— 学生交上来的就是一个能对话的应用。
+    // 同一项目复用同一个应用，每次提交加一版并重建容器（预览即新版本）。
+    // 老作业（没有 skillZipRef）会返回 null，不影响既有流程。
+    const app = await this.agentApps.upsertFromSubmission(user, submission.id).catch(() => null);
+    return { ...submission, app };
   }
 
   /** 版本历史（学生限本人，教师限课程 owner），按版本号降序 */
@@ -69,7 +81,10 @@ export class AssignmentSubmitController {
 
 @Controller('me')
 export class MeEvaluationsController {
-  constructor(private readonly submissionsService: SubmissionsService) {}
+  constructor(
+    private readonly submissionsService: SubmissionsService,
+    private readonly agentApps: AgentAppsService,
+  ) {}
 
   /** GET /api/me/evaluations/:id 学生查看自己的复验结果与反馈 */
   @Get('evaluations/:id')
