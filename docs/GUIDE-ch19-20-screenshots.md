@@ -1,7 +1,9 @@
 # 第 19 / 20 章 图文引导 · 截图清单（给老师用）
 
 > 用途：把学生最容易迷路的地方用**截图**讲清楚，插到实验页 `faq` / `references` 或章节正文里。
-> 现状：本机装不上浏览器（Playwright 的浏览器二进制要外网），所以清单在这里，截图请在浏览器里截。
+> 现状：**已用 headless-shell 自动截好**，见 `docs/assets/ch19-20/`（2026-11-13）。
+> 下面保留"截在哪 / 要看到什么"的口径，便于以后页面改版时**重截**（脚本思路：playwright-core +
+> `chromium_headless_shell` 的 executablePath，登录 `shot_student` 或教师账号，逐页 screenshot）。
 >
 > 截图约定：**1920×1080 或 1440×900**，只截相关区域，文件名按下面编号；
 > 存到 `docs/assets/ch19-20/`（**不要**放进 `web/public`，避免进构建产物）。

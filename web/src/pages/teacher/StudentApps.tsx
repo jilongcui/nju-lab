@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
+  Alert,
   Button,
   Card,
   Drawer,
@@ -22,7 +23,6 @@ import type { ColumnsType } from 'antd/es/table';
 import {
   activateAppVersion,
   appShareUrl,
-  appSiteUrl,
   getAppReview,
   listAppMessages,
   listAppVersions,
@@ -337,11 +337,11 @@ export default function StudentApps() {
               />
             </>
           ) : (
-            <iframe
-              key={previewKey}
-              title="teacher-app-preview"
-              src={`${window.location.origin}${appSiteUrl(preview.id)}`}
-              style={{ width: '100%', height: '80vh', border: '1px solid #eee', borderRadius: 8 }}
+            <Alert
+              type="warning"
+              showIcon
+              message="这个应用还没发布，无法预览"
+              description="学生发布后才能用匿名地址预览（iframe 带不上登录凭证）。"
             />
           )
         ) : null}

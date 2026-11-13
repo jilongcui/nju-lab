@@ -14,6 +14,7 @@
 """
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
 import os
@@ -193,12 +194,22 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(length) if length else b""
         content_type = self.headers.get("Content-Type") or ""
-        if "multipart/form-data" not in content_type:
-            return self._json(400, {"error": "需要 multipart/form-data"})
-        fields, files = parse_multipart(content_type, body)
-        session_id, session = load_session(fields.get("session") or None)
-        uploads = [save_upload(session_id, filename, payload) for _, filename, payload in files]
-        message = fields.get("message", "")
+        if "application/json" in content_type:
+            # 平台契约：JSON + base64 附件（前端统一走这条，避免 multipart 跨域预检）
+            payload = json.loads(body.decode("utf-8") or "{}")
+            message = payload.get("message", "")
+            session_id, session = load_session(payload.get("session") or None)
+            uploads = []
+            for item in payload.get("attachments") or []:
+                raw = base64.b64decode(item.get("data") or "")
+                uploads.append(save_upload(session_id, item.get("name") or "upload.bin", raw))
+        elif "multipart/form-data" in content_type:
+            fields, files = parse_multipart(content_type, body)
+            session_id, session = load_session(fields.get("session") or None)
+            uploads = [save_upload(session_id, filename, p) for _, filename, p in files]
+            message = fields.get("message", "")
+        else:
+            return self._json(400, {"error": "需要 application/json 或 multipart/form-data"})
 
         try:
             skill = load_skill()

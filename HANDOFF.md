@@ -298,6 +298,26 @@
   profile/output）、20 章 7 张（两个需求 → 用我的 Skill 创建应用 → 分享链接 → 预览里的签名 → 教师端），
   另 3 张可选（拒答 / 视觉读图 / flag 表）；写清"截在哪、要看到什么、配什么话、插到哪里"。
   截图仍需老师在浏览器里截（本机装不上 Playwright 浏览器）。
+- **截图自己截（2026-11-13 用户："截图不是你自己截的吗"）—— 能截，且顺带修了 5 个真 bug**：
+  · **能力**：本机 `~/.cache/ms-playwright/chromium_headless_shell-1243` 可用（`chromium-1243` 启动 SIGTRAP，
+    但 **headless-shell 可用**）。用 `playwright-core` + `executablePath=chrome-headless-shell` 即可登录、点击、截图；
+    注册一次性学生 `shot_student`（截图后删除）走学生视角。
+  · **修掉的 bug（都是真机上"看起来不能用"的元凶）**：
+    ① **预览 401**：iframe 导航带不上 JWT，`/apps/:id/site` 直接返回 `{"code":401}` →
+       预览与教师预览改走**匿名分享地址** `share/<key>/site`（未发布时按钮禁用并提示"先发布"）；
+    ② **`app.js` 写死 `const api = ''`**：注入的 `__APP_API_BASE__` 从没被读 → 对话请求打到 `POST /api/chat`
+       （落到 FoxCMS，返回 `controller not exists:app\api\controller\Chat`）→ 改成读注入值；
+    ③ **附件契约不一致**：前端发 multipart、平台分享端点收 JSON → `app_host` 与前端统一成 **JSON + base64**；
+    ④ **响应包装不兼容**：平台返回 `{code,data}`、`app_host` 返回裸对象 → `app.js` 两种都兼容；
+    ⑤ **「我的应用」表格挤压**：加了可见性/评分列后标题被压成竖排、操作列被挤出可视区 →
+       标题列固定 260 + 省略、去掉"更新时间"列、操作列 `fixed:'right'`、`scroll.x=1180`。
+    另：`platform/web/index.html` 默认标题中性化；分享/预览注入 `window.__APP_META__`（标题/主题）；
+    `signature` 生效（截图里回复末尾有"—— 你的助手"）。
+  · **镜像**：`nju-lab-app-runtime:0.8.0`（0.2→0.8 全部由这一轮真机验证推动），后端重启 PID `943508`。
+  · **产物**：`docs/assets/ch19-20/` 下 **10 张真实截图**（19-01/02、20-01~08），
+    对应清单 `docs/GUIDE-ch19-20-screenshots.md`（清单里"截图待老师在浏览器里截"的说法已不再适用）。
+  · 端到端实测（学生视角、浏览器内）：登录 → 我的应用 → 用我的 Skill 创建应用 → 发布 →
+    预览 → 上传 `report.pdf` → 报告四节 + PLT=18(low)/WBC=12.5(high) + 两条安全提示 + 签名。
 - **未做（四期）**：成本看板、评分汇总进 `submissions`/`Grading`、iframe 真正独立源（需 nginx + 证书）；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；

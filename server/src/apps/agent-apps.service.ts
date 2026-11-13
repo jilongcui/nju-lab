@@ -267,8 +267,16 @@ export class AgentAppsService implements OnModuleDestroy {
       // 让 iframe 里的相对资源与 /api 调用都回到平台前缀（学生代码不用关心部署在哪）。
       // 分享场景用 `share/<key>` 前缀：页面在 sandbox（无同源凭据）里也能对话。
       const prefix = apiBase ?? `/lab/api/apps/${app.id}`;
+      const meta = JSON.stringify({
+        title: app.title,
+        subtitle: app.scenario ?? '',
+        theme: app.theme ?? { mode: 'light', accent: '#2f6feb' },
+        attachments: app.attachments ?? ['pdf', 'docx', 'image'],
+      });
+      // sandbox iframe 里 fetch /api/app 是跨域 → 直接把元信息注入页面
       const inject =
-        `<base href="${prefix}/site/"><script>window.__APP_API_BASE__="${prefix}";</script>`;
+        `<base href="${prefix}/site/"><script>window.__APP_API_BASE__="${prefix}";` +
+        `window.__APP_META__=${meta};</script>`;
       body = Buffer.from(
         body
           .toString('utf-8')

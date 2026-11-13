@@ -60,7 +60,11 @@ export default function ExperimentDetail() {
         领取后，模板与标准测试数据将下发到你的本地工作区；模型与推理档位由平台统一锁定，
         自测条件与复验条件一致。
       </Paragraph>
-      <Paragraph type="secondary">提交内容：完整 Skill 目录包 + .dshc 证据包 + 审计事件。</Paragraph>
+      <Paragraph type="secondary">
+        材料领取后会下载到你的工作区；具体怎么做、交什么，见下方「实验指导」里的步骤与自查清单。
+        需要提交 Skill 包的实验，用工作台里的「提交」工具；<strong>第 19 / 20 章不跑自动复验</strong>，
+        成绩按 rubric 评。
+      </Paragraph>
     </div>,
   );
 

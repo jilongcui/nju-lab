@@ -10,7 +10,7 @@
 
 /** 应用运行时镜像（构建见 `server/apps-image/`） */
 export const AGENT_APP_IMAGE =
-  process.env.AGENT_APP_IMAGE || 'nju-lab-app-runtime:0.4.0';
+  process.env.AGENT_APP_IMAGE || 'nju-lab-app-runtime:0.8.0';
 
 /** 容器内 `app_host.py` 监听的端口 */
 export const AGENT_APP_PORT = Number(process.env.AGENT_APP_PORT || 9200);

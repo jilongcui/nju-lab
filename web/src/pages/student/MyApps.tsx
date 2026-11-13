@@ -82,16 +82,17 @@ export default function MyApps() {
     '怎么用这一页',
     <div>
       <Paragraph type="secondary">
-        一个应用 = 一版产物（zip：根目录下有 <Text code>app.json</Text> 与{' '}
-        <Text code>harness/api.py</Text>）+ 一个按需启动的运行容器。
+        <Text strong>主路径</Text>：在工作台里写好 <Text code>Skill</Text>（<Text code>SKILL.md</Text> +{' '}
+        <Text code>scripts/api.py</Text> + 可选 <Text code>profile.json</Text>）→ 提交 → 回来点
+        「<Text strong>用我的 Skill 创建应用</Text>」→ 平台自动装包、发布，给你分享链接。
       </Paragraph>
       <Paragraph type="secondary">
-        先「上传产物」，再「发布」；「预览」会拉起你的应用（第一次约 30–60 秒）。
-        <strong>发布后可以「分享链接」</strong>发给别人（不需要登录也能打开）；
-        下架会立刻让分享链接失效，但产物、版本与对话记录都留着。
+        <strong>一个 Skill = 一个应用</strong>：agent 是平台提供的运行时（可定制名字/语气/签名），
+        真正决定"这个应用能干什么"的是 Skill。
       </Paragraph>
       <Paragraph type="secondary">
-        老师看完会给分（总分 + 评语），评分显示在列表的「评分」列。
+        「预览」会拉起你的应用（第一次约 30–60 秒）；「分享链接」给的是**匿名可打开**的地址；
+        下架会让链接立刻失效，但产物、版本与对话记录都留着。老师按 rubric 评分，显示在「评分」列。
       </Paragraph>
     </div>,
   );
@@ -307,13 +308,22 @@ export default function MyApps() {
     }
   };
 
-  /** 预览走登录态地址（作者能看未发布的）；「分享链接」按钮给的是匿名地址 */
-  const previewSrc = (app: AgentApp) => `${window.location.origin}${appSiteUrl(app.id)}`;
+  /**
+   * 预览必须走**匿名分享地址**：iframe 导航带不上 JWT（浏览器不会把 localStorage 里的 token 塞进
+   * iframe 请求），用登录态接口 `/apps/:id/site` 只会拿到 401（2026-11-13 实测）。
+   * 所以「先发布」是预览的前提 —— 发布本身就一键，代价很低。
+   */
+  const previewSrc = (app: AgentApp) =>
+    app.shareKey
+      ? `${window.location.origin}${appShareUrl(app.shareKey)}`
+      : `${window.location.origin}${appSiteUrl(app.id)}`;
 
   const columns: ColumnsType<AgentApp> = [
     {
       title: '标题',
       dataIndex: 'title',
+      width: 260,
+      ellipsis: true,
       render: (value: string, row) => (
         <Space direction="vertical" size={0}>
           <Text strong>{value}</Text>
@@ -357,14 +367,9 @@ export default function MyApps() {
         review[id] ? <Text strong>{review[id]?.total} 分</Text> : <Text type="secondary">未评</Text>,
     },
     {
-      title: '更新时间',
-      dataIndex: 'updatedAt',
-      width: 160,
-      render: (value: string) => formatDateTime(value),
-    },
-    {
       title: '操作',
       width: 400,
+      fixed: 'right',
       render: (_, row) => (
         <Space wrap>
           <Upload
@@ -377,7 +382,12 @@ export default function MyApps() {
               上传产物
             </Button>
           </Upload>
-          <Button size="small" onClick={() => void openPreview(row)}>
+          <Button
+            size="small"
+            disabled={!row.shareKey}
+            title={row.shareKey ? '匿名预览（和分享给别人的一样）' : '先发布，才能预览'}
+            onClick={() => void openPreview(row)}
+          >
             预览
           </Button>
           <Button size="small" onClick={() => void copyUploadCommand(row)}>
@@ -452,7 +462,13 @@ export default function MyApps() {
         ) : rows.length === 0 ? (
           <Empty description="还没有应用，点右上角「新建应用」" />
         ) : (
-          <Table rowKey="id" columns={columns} dataSource={rows} pagination={false} />
+          <Table
+            rowKey="id"
+            columns={columns}
+            dataSource={rows}
+            pagination={false}
+            scroll={{ x: 1180 }}
+          />
         )}
       </Card>
 
