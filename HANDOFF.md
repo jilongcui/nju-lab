@@ -293,6 +293,11 @@
     第 3 轮 `max_steps` 截断）；solution 与 expected 逐字段一致；`--check` 16 条断言通过。
   · 项目重传：problem `19812f29bf7f` / skill `e16e0e09e77c`；标题改为
     「应用实验：构建一个通用 agent（循环 / 记忆 / 工具 / 知识库 / skill 调度）」。
+- **截图清单按新流程重写（2026-11-13）**：`docs/GUIDE-ch19-20-screenshots.md`
+  （旧的 `GUIDE-ch20-screenshots.md` 已删除，避免误导）—— 19 章 5 张（通用 agent 的样例/材料/skills 目录/
+  profile/output）、20 章 7 张（两个需求 → 用我的 Skill 创建应用 → 分享链接 → 预览里的签名 → 教师端），
+  另 3 张可选（拒答 / 视觉读图 / flag 表）；写清"截在哪、要看到什么、配什么话、插到哪里"。
+  截图仍需老师在浏览器里截（本机装不上 Playwright 浏览器）。
 - **未做（四期）**：成本看板、评分汇总进 `submissions`/`Grading`、iframe 真正独立源（需 nginx + 证书）；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；
