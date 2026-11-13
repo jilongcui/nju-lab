@@ -261,6 +261,24 @@
     并把它发布成应用」。deck 重生成：**19 章 19 页 / 20 章 14 页**（`no_notes` 空、`chapterChanged=false`）。
   · 项目重传：19 章 problem sha `a91cceaddd59` / skill `05f57d905cc3`；20 章 problem `837a92cedd85` /
     skill `25fc0d14d16a`。
+- **应用单元校正（2026-11-13 第三轮，用户："agent 不是应用，skill 才是应用"）—— 已落地**：
+  · **平台**：`from-submission` 的 `detectEntry()` 现在**只认 Skill**（必须有 `scripts/api.py`）——
+    只含 `agent/api.py` 的包会被明确拒绝（提示"应用以 Skill 为单位，agent 的定制放进 Skill 的 profile.json"）；
+    旧完整产物（`harness/api.py`）仍兼容。`platform/app_host.py` 新增 `profile.json` 读取
+    （`display_name` / `tone` / `signature` / `forbidden`）并**把 `signature` 自动加到每轮答复末尾**，
+    让"agent 定制"在输出上可见。镜像 **`nju-lab-app-runtime:0.4.0`**，后端重启 PID `875850`。
+  · **第 19 章**：`agent/profile.json`（名字/语气/签名/禁语）进骨架与参考实现；`task.md` 的
+    「② 发布成应用」改成「② agent 的定制」，并写明 **agent 不是应用**（应用 = Skill，下一章做）；
+    自查清单改为"签名能在平台预览里看到"。
+  · **第 20 章**：`task.md` 新增「为什么应用 = Skill，不是 Agent」对照表（agent = 运行时+人格；Skill = 业务能力；
+    一个 Skill = 一个应用）；交付表加 `profile.json`；第五节标题改「这个 Skill 就是应用」；
+    项目 content 同步加这一段。
+  · **正文**：19 章「六·五 ②」改成「agent 的定制（人格/风格）」并加"agent 不是应用"；
+    20 章插入「四·五、为什么应用 = Skill」并把第五节改成「这个 Skill 就是应用」。
+    deck 重生成：19 章 **18 页**（第 2/3 页首次缺讲稿，逐页重生成后补齐）/ 20 章 **16 页**，
+    `no_notes` 已清空、`chapterChanged=false`。
+  · 项目重传：19 章 problem `50a563e78132` / skill `f90a9bf2a9cc`；20 章 problem `703fb7dd01c8` /
+    skill `065773585b61`。
 - **未做（四期）**：成本看板、评分汇总进 `submissions`/`Grading`、iframe 真正独立源（需 nginx + 证书）；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；

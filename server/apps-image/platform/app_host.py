@@ -67,7 +67,7 @@ def load_skill():
 
 def build_state() -> dict:
     """平台交给 Skill 的上下文：报告口径、知识库、限额（有就用，没有就空）。"""
-    state: dict = {"report": None, "kb": {}, "limits": {}}
+    state: dict = {"report": None, "kb": {}, "limits": {}, "profile": {}}
     for name in ("report_format.json", "limits.json"):
         path = SKILL_DIR / name
         if path.exists():
@@ -76,6 +76,10 @@ def build_state() -> dict:
     kb_dir = SKILL_DIR / "kb"
     if kb_dir.is_dir():
         state["kb"] = {p.stem: p.read_text(encoding="utf-8") for p in sorted(kb_dir.glob("*.md"))}
+    # agent 的"定制"放在 Skill 包里（应用 = Skill）：称呼 / 语气 / 签名 / 禁语
+    profile = SKILL_DIR / "profile.json"
+    if profile.exists():
+        state["profile"] = json.loads(profile.read_text(encoding="utf-8"))
     return state
 
 
@@ -211,6 +215,11 @@ class Handler(BaseHTTPRequestHandler):
                 "safety": {"escalations": [], "refusals": []},
                 "attachments": [{"name": a["name"], "kind": a["kind"]} for a in uploads],
             })
+
+        # agent 定制：签名（profile.json 的 signature）—— 让"风格"真的体现在输出上
+        signature = ((STATE["state"].get("profile") or {}).get("signature") or "").strip()
+        if signature and isinstance(result.get("reply"), str) and signature not in result["reply"]:
+            result["reply"] = result["reply"].rstrip() + f"\n\n{signature}"
 
         session.setdefault("history", []).append({
             "turn": session["turn"], "user": message,

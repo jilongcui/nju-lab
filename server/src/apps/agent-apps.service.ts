@@ -539,19 +539,27 @@ export class AgentAppsService implements OnModuleDestroy {
   }
 
   /**
-   * 从 zip 字节里判断这是哪种产物（zip 的文件名是明文，不需要解压库）。
+   * 判断 zip 是不是一个**可发布的应用**。
    *
-   * - `agent/api.py`        → 第 19 章的 **agent**（能调度 skill）
-   * - `scripts/api.py`      → 第 20 章的 **Skill**
-   * - `harness/api.py`      → 学生自带完整产物（旧形态，平台只托管）
+   * 口径（2026-11-13 用户拍板）：**应用 = Skill**，不是 agent。
+   * - 应用必须有 `SKILL.md` + `scripts/api.py`（`handle()`）；
+   * - **agent 包**（只有 `agent/api.py` / `skills/`）不算应用 —— 它是"可定制的运行时"，
+   *   平台已经有一个通用 agent，学生定制的那份不作为应用对外发布。
+   * - 旧形态（`harness/api.py`，学生自带整套产物）仍然兼容，但不再是推荐路径。
    */
   private detectEntry(zip: Buffer): string {
     const text = zip.toString('latin1');
-    if (text.includes('agent/api.py')) return 'skill/agent/api.py';
-    if (text.includes('skills/') && text.includes('SKILL.md')) return 'skill/agent/api.py';
-    if (text.includes('scripts/api.py')) return 'skill/scripts/api.py';
+    const hasSkill = text.includes('scripts/api.py');
+    const hasAgentOnly = text.includes('agent/api.py') && !hasSkill;
+    if (hasAgentOnly) {
+      throw new BadRequestException(
+        '这个包是 agent（只有 agent/api.py），不是应用：应用以 **Skill** 为单位 —— ' +
+          '请交含 SKILL.md + scripts/api.py 的 Skill 包（agent 的定制放进 Skill 包的 profile.json）',
+      );
+    }
+    if (hasSkill) return 'skill/scripts/api.py';
     if (text.includes('harness/api.py')) return 'harness/api.py';
-    return 'skill/scripts/api.py';
+    throw new BadRequestException('这个包里没有 scripts/api.py（Skill 入口），不能作为应用发布');
   }
 
   private fileIdFromRef(ref: string | null | undefined): string | null {
