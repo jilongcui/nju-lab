@@ -23,6 +23,7 @@ import {
   CheckOutlined,
   CloudDownloadOutlined,
   CloudServerOutlined,
+  ThunderboltOutlined,
   DashboardOutlined,
   DeploymentUnitOutlined,
   ExperimentOutlined,
@@ -80,6 +81,7 @@ const MENUS = {
     { key: '/student/apps', icon: <DeploymentUnitOutlined />, label: '我的应用' },
     { key: '/student/client', icon: <CloudDownloadOutlined />, label: '客户端下载' },
     { key: '/student/workspace', icon: <CloudServerOutlined />, label: '实验环境' },
+    { key: '/student/preview', icon: <ThunderboltOutlined />, label: '预览我的应用' },
   ],
 };
 

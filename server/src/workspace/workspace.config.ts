@@ -126,6 +126,15 @@ export const WORKSPACE_SESSION_COOKIE = 'nju_ws';
 export const WORKSPACE_DATA_DIR = process.env.WORKSPACE_DATA_DIR ?? '/data/workspaces';
 
 /**
+ * 容器内工作区的挂载根（= 容器的 `HOME`）。
+ *
+ * 宿主 `<数据根>/<userId>` 挂到这里，所以学生代码都在 `<HOME>/nju-lab/<assignmentId>/skill`。
+ * 预览要拼这个路径 —— 由后端给出，前端不硬编码。
+ */
+export const WORKSPACE_CONTAINER_HOME =
+  process.env.WORKSPACE_CONTAINER_HOME || '/home/ubuntu';
+
+/**
  * 把会话键也写进容器 label（`nju-lab-workspace-key=<wsKey>`）。
  *
  * 用途：后端重启后**接管**容器时读回它，于是学生的 URL 与 cookie **继续有效** ——

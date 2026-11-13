@@ -13,6 +13,7 @@ import { AuthService } from '../auth/auth.service';
 import { ContainerRuntime } from '../container-runtime/container-runtime';
 import { User } from '../users/user.entity';
 import {
+  WORKSPACE_CONTAINER_HOME,
   WORKSPACE_CONTAINER_PORT,
   WORKSPACE_CPUS,
   WORKSPACE_DATA_DIR,
@@ -55,6 +56,11 @@ export interface WorkspaceInfo {
    * 见 `docs/DESIGN-2026-09-28-platform-workspace.md` §4.5.2。
    */
   enterUrl: string | null;
+  /**
+   * 容器内的工作区根（学生代码都在这下面）。预览要用它拼 `nju-lab/<assignmentId>/skill`，
+   * 前端不该硬编码这个约定 —— 由后端给出。
+   */
+  workspaceDir: string;
   startedAt: number;
   lastSeenAt: number;
   error?: string;
@@ -328,6 +334,8 @@ export class WorkspaceService implements OnModuleInit, OnModuleDestroy {
         : null,
       publicBase: ready ? this.publicBase(s.wsKey) : null,
       enterUrl: ready ? `/api/workspace/enter?k=${s.wsKey}` : null,
+      // 容器内的工作区根：预览要用它拼 `nju-lab/<assignmentId>/skill`
+      workspaceDir: WORKSPACE_CONTAINER_HOME,
       startedAt: s.startedAt,
       lastSeenAt: s.lastSeenAt,
       error: s.error,

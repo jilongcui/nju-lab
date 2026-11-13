@@ -500,6 +500,8 @@ export interface WorkspaceInfo {
   publicBase: string | null;
   /** 「进入实验环境」应导航到的入口；前端用 `apiUrl()` 转成带部署前缀后再跳转 */
   enterUrl: string | null;
+  /** 容器内工作区根（学生代码在其下的 `nju-lab/<assignmentId>/skill`） */
+  workspaceDir?: string;
   startedAt: number;
   lastSeenAt: number;
   error?: string;

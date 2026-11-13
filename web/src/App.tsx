@@ -27,6 +27,7 @@ import MyApps from './pages/student/MyApps';
 import MyApplications from './pages/student/MyApplications';
 import ClientDownload from './pages/student/ClientDownload';
 import Workspace from './pages/student/Workspace';
+import PreviewApp from './pages/student/PreviewApp';
 
 /** 登录后的默认落地页：各自的工作台 */
 function homeOf(role?: Role) {
@@ -114,6 +115,7 @@ const router = createBrowserRouter([
       { path: 'student/apps', element: student(<MyApps />) },
       { path: 'student/client', element: student(<ClientDownload />) },
       { path: 'student/workspace', element: student(<Workspace />) },
+      { path: 'student/preview', element: student(<PreviewApp />) },
     ],
   },
   { path: '*', element: <NotFoundRedirect /> },

@@ -139,7 +139,8 @@ async function ask(){
   busy=true; send.disabled=true; q.value=''; add('me',text);
   const pending=add('it','…');
   try{
-    const r=await fetch('chat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({message:text})});
+    const token=new URLSearchParams(location.search).get('token')||'';
+    const r=await fetch('nju-lab.preview.chat'+(token?'?token='+encodeURIComponent(token):''),{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({message:text})});
     const data=await r.json();
     pending.textContent=data.reply||'(空回复)';
     if(data.citations&&data.citations.length){pending.textContent+= '\\n\\n出处：'+data.citations.map(c=>c.ref||c).join('、')}
