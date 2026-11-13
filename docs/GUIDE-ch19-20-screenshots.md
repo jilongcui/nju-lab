@@ -19,11 +19,12 @@
 |---|---|---|---|---|
 | 1 | `19-01-project.png` | 章节页 → 第 19 章实验详情 | 标题「构建一个通用 agent」+ 「两个不同领域样例」表（图书借阅 / 设备维护） | 「这章做的是运行时，不是某个业务助手」 |
 | 2 | `19-02-materials.png` | 同一页「实验材料」 | 两个下载按钮 + 「在平台实验环境里完成」 | 「材料在这里下，做在左侧『实验环境』」 |
-| 3 | `19-03-skills-dir.png` | 工作台文件树 | `problem/cases/case01/skills/` 下两个 skill 的 `SKILL.md` | 「agent 要按 triggers 选对 skill，选不中就返回 null」 |
+| 3 | `19-03-skills-dir.png` | 工作台输入框里打 `@SKILL`（Files & folders 面板） | `problem/cases/case01` 与 `case02` 各有 `skills/maintenance`、`skills/summary-report` 两份 `SKILL.md`（路径也显示在右列） | 「agent 要按 triggers 选对 skill，选不中就返回 null」 |
 | 4 | `19-04-agent-profile.png` | 工作台打开 `agent/profile.json` | 中性模版（名字 / 语气 / 签名 / 禁语） | 「这份是 agent 的定制，不是应用」 |
 | 5 | `19-05-output.png` | 工作台跑完样例后的 `output.json` | `answers[].skill` 与 `metrics.skills_routed` | 「每轮用了哪个 skill，都记在产出里」 |
 
-> 3–5 张（工作台内部）**还没截**：需要起一次工作台容器，截图后按下面的"换图"流程补插到 `description`。
+> 3 已截并插入（2026-11-13，起一次工作台容器截的）；4–5（`profile.json` / `output.json`）还没截 ——
+> 同样是起容器后在 `@` 面板里找文件，按下面「换图 / 补图流程」3 步补。
 
 ## 第 20 章（用 agent 做真实应用）· 7 张
 
@@ -47,13 +48,34 @@
 
 | # | 文件名 | 内容 |
 |---|---|---|
+| 4 | `19-04-agent-profile.png` | 工作台打开 `agent/profile.json`（名字 / 语气 / 签名 / 禁语） |
+| 5 | `19-05-output.png` | 跑完样例后的 `output.json`：`answers[].skill` 与 `metrics.skills_routed` |
 | 9 | `20-09-refusal.png` | 问「直接告诉我是不是 XX 病」时被拒答的样子（说明边界真的生效） |
 | 10 | `20-10-vision.png` | 一张截图附件与它被**视觉**读出来的几行（说明图片不用自己 OCR） |
 
+## 工作台内部的图怎么截（可复现，2026-11-13 实测）
+
+1. 注册一次性学生 → 教师 `POST /lab/api/courses/<courseId>/enrollments {"studentIds":[id]}` →
+   学生 `POST /lab/api/workspace/start`，轮询 `/workspace/status` 到 `running`。
+2. 把题目包解压进该学生的挂载目录（工作台工作区 = `/home/ubuntu`，宿主对应
+   `/data/workspaces/<userId>/`）：`unzip -q problem.zip -d /data/workspaces/<userId>/problem`。
+   不做这一步，工作台里看不到 `problem/`（真实学生是让 agent 调 `nju_lab_claim` 领的）。
+3. playwright：`--host-resolver-rules=MAP medai.nju.edu.cn 127.0.0.1`，登录后进
+   `/lab/student/workspace` → 点「进入实验环境」→ 点掉 `Preview Notice` 的 `Continue` →
+   在输入框里打 `@` + 关键字（如 `@SKILL`）唤出 **Files & folders** 面板。
+4. 截图用 `deviceScaleFactor: 2` + `clip`（只留左侧栏与文件面板）—— 1 倍密度缩到 758px 宽会糊。
+5. 收尾：`POST /workspace/stop`（停容器）→ 删 `users`/`enrollments` 行 →
+   `rm -rf /data/workspaces/<userId>`。
+
+> 已知小瑕疵：`/wsbridge/client.js` 会 403（网关不透传 WS 时的桥），不影响页面与文件面板。
+
 ## 已插入的位置（2026-11-13）
 
-- **19 章**（项目 `a9c69502-…`）：`content` 末尾新增「页面长什么样（照着点）」—— `19-01` +
-  `19-02` 两张，各配一句话；图在「实验内容」卡里，"材料"那张正好对应下方领取后出现的「实验材料」卡。
+- **19 章**（项目 `a9c69502-…`）：`content` 末尾新增「页面长什么样（照着点）」—— 三步：
+  ① `19-01`（首屏两样例表）② `19-02`（材料卡"在这里下、在左侧实验环境里做"）
+  ③ `19-03`（进工作台后按 `@` 搜 skills：两个样例各两个 `SKILL.md`，`triggers` 写在里面）。
+  第 ③ 张按 2 倍像素密度截（`deviceScaleFactor: 2`）+ 只裁「左侧栏 + 文件面板」，
+  避开右侧「NJU-Lab 实验任务」面板（那里显示"没有分配给你的任务"，学生未领取时会误读）。
 - **20 章**（项目 `28ba4aaf-…`）：
   - `content`「为什么应用 = Skill」节末 → `20-01`（首屏两需求 + 对照表）；
   - `description`「建议步骤」下方 → 新增「照着点一遍（主路径不用命令行、不用打包）」六步，
@@ -66,6 +88,7 @@
 |---|---|
 | `19-01-project.png` | `f4416eb8-f7c1-41d2-896f-0b39b3995278` |
 | `19-02-materials.png` | `f3b1c632-e206-476a-990b-63b1d2a3e711` |
+| `19-03-skills-dir.png` | `ff66884f-6ee3-4aa7-bd82-8644681fb890` |
 | `20-01-needs.png` | `22fb5878-8d6f-445e-9dfe-252483a9eb4e` |
 | `20-02-my-apps.png` | `a4b5a414-13d9-48a9-bf70-f0a7638e916c` |
 | `20-03-skill-submissions.png` | `22eec4c6-2b27-430a-9ad8-8543e9850e99` |

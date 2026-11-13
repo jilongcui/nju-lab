@@ -345,8 +345,20 @@
     19 章 2 张 / 20 章 8 张全部 `naturalWidth>0` 且 `src` 是 `data:image/png;base64`，**无 401、无
     console error**；点图后 Modal 内图片 **1277×798**（原图 1440×900），截图文字可读；`Esc` 关闭后
     `.ant-modal-wrap` `display:none`。测试账号与 enrollment 已删除。
-  · **未做**：19 章 3–5 张（工作台内部：skills 目录 / `profile.json` / `output.json`）还没截 ——
-    要起一次工作台容器；补图按 GUIDE「换图 / 补图流程」3 步。
+  · **补第 ③ 张：skill 路由的工作台截图（2026-11-13，同一轮后续）**：用户要"第 19 章也补一张
+    skill 路由的截图（工作台里的目录截图还没截）"。做法：注册一次性学生 → enroll →
+    `POST /workspace/start` → 把 19 章 `problem.zip`（sha `19812f29bf7f`，与平台 `2f0762eb` 一致）
+    解压到 `/data/workspaces/<uid>/problem` → playwright 走 `--host-resolver-rules=MAP
+    medai.nju.edu.cn 127.0.0.1` 进「实验环境」→ 点掉 `Preview Notice` 的 `Continue` →
+    输入框打 `@SKILL` 唤出 **Files & folders** 面板（列出 `problem/cases/case01|case02/skills`
+    下四个 `SKILL.md`）→ `deviceScaleFactor: 2` + `clip{x:0,y:0,w:800,h:560}` 截图
+    （1 倍密度缩到 758px 会糊；右侧「NJU-Lab 实验任务」面板显示"没有分配给你的任务"，裁掉避免误读）。
+    产物 `docs/assets/ch19-20/19-03-skills-dir.png`（1600×1120，193 KB）→ 上传 fileId
+    `ff66884f-6ee3-4aa7-bd82-8644681fb890` → 19 章 `content` 追加第 ③ 步（现共 3 张）。
+    学生视角实测：3 张全部 `naturalWidth>0`、无 4xx。容器已停、账号/enrollment/`/data/workspaces/<uid>` 已清。
+    完整可复现步骤写进 `docs/GUIDE-ch19-20-screenshots.md`「工作台内部的图怎么截」。
+  · **未做**：19 章第 4–5 张（`agent/profile.json` / `output.json`）还没截 —— 同上流程，
+    容器里打开这两个文件即可（GUIDE 同一节）。
 - **未做（四期）**：成本看板、评分汇总进 `submissions`/`Grading`、iframe 真正独立源（需 nginx + 证书）；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；
