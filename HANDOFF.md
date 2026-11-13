@@ -191,6 +191,20 @@
   `warnings` 为空、`chapterChanged=false`。
 - **图文引导**：新增 `docs/GUIDE-ch20-screenshots.md`（10 张必截 + 3 张可选，含"截在哪、要看到什么、
   配什么说明、插到哪里"）。本机装不上 Playwright 浏览器（要外网），截图待老师补。
+- **实验可做性评估 + 最小路径（2026-11-11 晚，用户："第 19/20 章分别是哪些实验，是否适合学生做"）**：
+  · 事实：第 19 章 1 个 published（`harness-agent` medium）+ 1 个 draft（旧 `learning-assistant`）；
+    第 20 章 2 个 published（`agent-app-report` easy / `agent-app-studio` hard）。三档都 `unlock=none`、材料齐。
+  · 门槛实测（骨架体量）：`harness-agent` 268 行 / **16 处 TODO / 12 个函数**（不给参考，2–3h）；
+    `agent-app-report` 68 行 / 7 处 TODO（真正核心 2 个函数，**给参考实现**，30–60min）；
+    `agent-app-studio` 83 行 / 6 处 TODO（另加改前端 + 发布，3–5h）。
+  · 判断：easy **适合课堂直接做**；19 章**偏难**（机械部分多、还要逐字对齐），适合课后主作业；
+    hard 只适合课后大作业/加分，且应先做 easy（附件解析与报告口径两档完全相同）。
+  · 已落地的低风险改进：两章 `task.md` 各加「时间不够时的最小路径」（19 章：先只实现循环+答复让
+    `output.json` 先出来，再补记忆/工具/检索；20 章 hard：先出报告 → 再让页面能打开 → 最后补记忆与边界），
+    三个项目 `content` 末尾补「用时与前置 / 卡住时怎么做 / 及格线」三行；重打重传 problem.zip
+    （19 章 `437a035cf065` / hard `393fe0bdc73f`），`--check` 均 ok。
+  · **未做（需要拍板）**：把 19 章骨架里 5 个机械函数（BM25 / 余弦 / 校验 / mock 执行 / 越界扫描）直接给成
+    实现，TODO 从 16 降到 ~8 —— 能显著降门槛，但会削弱"迁移检验"（原本刻意不给参考实现），所以没擅自改。
 - **未做（四期）**：成本看板、评分汇总进 `submissions`/`Grading`、iframe 真正独立源（需 nginx + 证书）；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；
