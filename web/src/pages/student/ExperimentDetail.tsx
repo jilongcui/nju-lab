@@ -29,6 +29,7 @@ import StatusTag from '../../components/StatusTag';
 import MarkdownView from '../../components/MarkdownView';
 import { DifficultyTag } from '../../utils/difficulty';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
+import { withBase } from '../../config';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -216,7 +217,9 @@ export default function ExperimentDetail() {
             )}
           </Space>
           <Paragraph type="secondary" style={{ fontSize: 12, marginTop: 12, marginBottom: 0 }}>
-            完整流程（领取 → 开发 → 自测 → 提交）请在本地 DSH（nju-lab-student profile）中完成。
+            完整流程（领取 → 开发 → 自测 → 发布）在平台「<a href={withBase('student/workspace')}>实验环境</a>
+            」里完成（浏览器里的工作台，打开即用）；想在本机做，也可以下载客户端（左侧「客户端下载」）。
+            交材料的方式见下面的「实验指导」。
           </Paragraph>
         </Card>
       )}
