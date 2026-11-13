@@ -388,6 +388,29 @@
     前端 `deploy/deploy-web-lab.sh`（备份 `.verify-scratch/lab-web-backups/20261113-160825`）。
     真机（headless-shell、教师账号）实测：成绩表 8 列含「应用评分」且该生 88；
     学生应用页合计 1 个应用 / 42 次 / 15,380 tokens，无 4xx。
+- **分享链接短路径（2026-11-13，用户问"能不能用 `/lab/apps/share/<key>/site`"）—— 组件已备好，等 root 执行**：
+  · **现状**：分享页是 `/lab/api/apps/share/<shareKey>/site`。
+  · **实测为什么不能直接改**：现网 `/lab` 只有两条前缀 location（`^~ /lab/api/` → 后端、
+    `^~ /lab/` → SPA `try_files … /lab/index.html`）。`/lab/apps/…` 只命中后者，磁盘没有该文件 →
+    回落平台首页，**`200 text/html`**（看起来能打开、其实是登录页），比 404 更难排查。
+  · **用户拍板**："等有 root 时加 nginx location（最干净）"，所以**前端路径先不动**。
+  · **已备好（本机无法执行，两条命令留给有 root 的机器）**：
+    ① `deploy/nginx/medai-lab-apps.conf` —— `location ^~ /lab/apps/ { proxy_pass http://127.0.0.1:3100/api/apps/; }`
+       （**必须转 `/api/apps/`**：NestJS 全局前缀 `api` 在 `server/src/main.ts:8`；第一次写 `/apps/`
+       得到 `Cannot GET …`，用 nginx 容器探针抓到的）；
+    ② `deploy/apply-nginx-app-share.sh` —— 幂等：备份 cms.conf → 装片段 → 在
+       `include …/medai-lab.conf;` 后补 include → `nginx -t` → `reload` → **按 Content-Type 自检**
+       （`application/json`=已交后端 / `text/html`=仍命中 SPA 回退，自动回滚）；`--check` 只校验不改。
+  · **实测证据（本机用 `nginx:alpine` + `--network host` 起临时探针，不碰 /etc/nginx）**：
+    `/lab/apps/share/<假key>/site` → `404 application/json`
+    `{"code":404,"message":"分享链接无效或已下架"}`（= 到达 share 端点）；
+    `/lab/apps/share/<假key>`、`…/site/theme.css` 同样到后端；`/lab/some-spa-route` 仍
+    `200 text/html`（SPA 回退未受影响）；与 `/lab/api/apps/share/<假key>/site` 应答**逐字一致**。
+    `nginx -t` 通过（同一份片段文件挂进容器）。
+  · **前端切换点已就位（默认行为不变，线上已重新部署）**：`web/src/api/index.ts` 的
+    `const APP_SHARE_PATH = 'api/apps/share'`。nginx 生效后把它改成 `'apps/share'` +
+    `cd web && npm run deploy:lab`，分享链接即变短；老路径继续可用（两条都通，可平滑切）。
+  · 待执行（有 root 时）：`sudo bash deploy/apply-nginx-app-share.sh` → 改常量 → 重建部署。
 - **未做**：`VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；
   应用容器**不注入大模型 key**（二期走平台代理）。

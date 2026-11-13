@@ -103,6 +103,12 @@ nju-lab-app-runtime 容器（每应用一个，USER 1000，512m/0.3cpu）
 
 - 学生「我的应用」：新建 → 上传产物 → 发布 → 预览（iframe）；
 - 教师「学生应用」：按课程列表 → 预览 / 对话记录 / 下架 / 恢复发布；
+- **分享页短路径（备好待执行）**：`/lab/apps/share/<key>/site`。现网 `/lab` 只有
+  `/lab/api/`（→ 后端）与 `/lab/`（→ SPA）两条前缀，`/lab/apps/…` 会落到 SPA 回退并返回
+  平台首页（`200 text/html`）。片段与幂等脚本在 `deploy/nginx/medai-lab-apps.conf` +
+  `deploy/apply-nginx-app-share.sh`（需 root；转 `/api/apps/`，别漏全局前缀 `api`）；
+  生效后前端把 `web/src/api/index.ts` 的 `APP_SHARE_PATH` 改成 `'apps/share'` 再构建。
+  两条路径并存，可平滑切换。
 - iframe 源是 `/lab/api/apps/<id>/site`：后端把 HTML 注入 `<base>` 与 `window.__APP_API_BASE__`，
   于是学生写的相对路径（`./theme.css`）与 `fetch('/api/chat')` 都能在平台前缀下工作，
   **学生代码不需要知道部署在哪个子路径**。

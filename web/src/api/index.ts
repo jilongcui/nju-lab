@@ -1,5 +1,5 @@
 import client from './client';
-import { apiUrl } from '../config';
+import { apiUrl, withBase } from '../config';
 import type {
   Assignment,
   Chapter,
@@ -495,6 +495,19 @@ export const reviewApp = (
   payload: { total: number; comment?: string; dimensions?: AgentAppReview['dimensions'] },
 ) => client.post<unknown, AgentAppReview>(`/apps/${id}/review`, payload);
 /** 匿名分享页（可直接发给别人；不需要登录） */
+/**
+ * 分享页路径前缀（**相对部署根**，不含 `/lab/`）。
+ *
+ *   `'api/apps/share'` → `/lab/api/apps/share/<key>/site`（当前线上；走 `location ^~ /lab/api/` 反代）
+ *   `'apps/share'`     → `/lab/apps/share/<key>/site`（短路径；**需先加 nginx location**：
+ *                          `deploy/nginx/medai-lab-apps.conf` + `deploy/apply-nginx-app-share.sh`）
+ *
+ * 为什么不能现在就改成短路径：`/lab/apps/` 不匹配 `/lab/api/`，会落到 SPA 的
+ * `try_files … /lab/index.html` —— 返回平台首页（200 text/html），分享者看到的是登录页
+ * 而不是应用（2026-11-13 实测）。所以先加 nginx，再改这一行 + 重新构建部署。
+ */
+const APP_SHARE_PATH = 'api/apps/share';
+
 export const appShareUrl = (shareKey: string) =>
-  apiUrl(`/api/apps/share/${shareKey}/site`);
-export const appShareMetaUrl = (shareKey: string) => apiUrl(`/api/apps/share/${shareKey}`);
+  withBase(`${APP_SHARE_PATH}/${shareKey}/site`);
+export const appShareMetaUrl = (shareKey: string) => withBase(`${APP_SHARE_PATH}/${shareKey}`);
