@@ -178,8 +178,20 @@
     hard problem `e326d183140b` / easy problem `fd217801222a`。
   · 题面/文案同步：`task.md` 交付句改成"写进 `report.md`（模板在骨架里）"，不再暗示要走工具生成；
     20 章 content 加"同章还有入门档 / 不用提交到我的提交"；19 章 content 加"不跑自动复验，成绩看过程记录"。
+- **"打不开"的另一半（同日排查）—— 第 20 章被解锁规则全挡住**：
+  · 默认解锁规则是「**先完成本实验所属章节**」（`checkUnlock`：`rule.type==='default'` → 要求本章
+    `chapter_progress.status='completed'`）。DB 实测：第 19 章有 6 人在学 / 5 人已完成，
+    **第 20 章 0 条进度记录** → 29 个学生点第 20 章实验**全部未解锁、领不了**。
+  · 修复：三个 published 项目（19 章 `harness-agent`、20 章 hard/easy）`unlockRule` 全改成
+    `{type:"none"}`（收官章不该被"先标记学完"挡住）；DB 回读确认。
+- **正文与 deck（同日）**：第 19 / 20 章的「动手实践」段重写 —— 20 章改成**两档对照表**
+  （做什么/交什么/参考实现给不给）+ 三个必须做到；19 章改成"交什么 + 自查 + **不跑自动复验**"，
+  去掉判据字段清单。deck 重生成：19 章 **17 页**、20 章 **18 页**；20 章第 1–4 页首次扩写失败
+  （JSON 解析错误 → 计划骨架兜底、无讲稿），用 `regenerate-page` 逐页补齐后 `no_notes` 清空、
+  `warnings` 为空、`chapterChanged=false`。
+- **图文引导**：新增 `docs/GUIDE-ch20-screenshots.md`（10 张必截 + 3 张可选，含"截在哪、要看到什么、
+  配什么说明、插到哪里"）。本机装不上 Playwright 浏览器（要外网），截图待老师补。
 - **未做（四期）**：成本看板、评分汇总进 `submissions`/`Grading`、iframe 真正独立源（需 nginx + 证书）；
-  图文引导（需要能跑浏览器的环境截图）暂缓；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；
   应用容器**不注入大模型 key**（二期走平台代理）。
