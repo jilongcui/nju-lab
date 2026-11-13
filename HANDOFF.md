@@ -359,7 +359,7 @@
     完整可复现步骤写进 `docs/GUIDE-ch19-20-screenshots.md`「工作台内部的图怎么截」。
   · **未做**：19 章第 4–5 张（`agent/profile.json` / `output.json`）还没截 —— 同上流程，
     容器里打开这两个文件即可（GUIDE 同一节）。
-- **四期落地（2026-11-13，用户："四期待办：成本看板、评分汇总进成绩单、iframe 独立源"）—— 2/3 完成**：
+- **四期结项（2026-11-13，用户："四期待办：成本看板、评分汇总进成绩单、iframe 独立源"）—— 2 项落地 + 1 项决定不做**：
   · **评分汇总进成绩单（✅）**：`GET /api/projects/:id/submissions` 每行补
     `app: {id,title,score,comment,reviewedAt}`（该生在本项目下**已发布应用的最高分**，并列取最近）；
     成绩 CSV 加「应用 / 应用评分 / 应用评语」三列（现 14 列）；教师项目详情成绩表加「应用评分」列
@@ -375,20 +375,20 @@
     教师端 `GET /api/courses/:id/apps/costs`（`costBoard`：课程合计 / 按学生降序 / 按应用明细带评分）；
     「学生应用」页顶部三张统计卡 + 按学生小表 + 表格「模型用量」列（42 次 / 15.4k tokens 实测）。
     口径：只算**平台模型代理**（应用对话）；复验 token 看成绩单「Token成本」列，两套不混算。
-    坑：加列后表格把「应用」标题压成竖排 → 标题列 `width:260` + `ellipsis`、表格 `scroll.x=1280`。
-  · **iframe 独立源（⏸ 未实施，环境阻塞）**：需要改 nginx + 通配证书，而本机
-    `/etc/nginx/**` **只读**（`Read-only file system`）、`sudo` 不可用、无 `letsencrypt`（只有 snakeoil）
-    —— 代码侧没动，落地 4 步写进 `docs/DESIGN-2026-11-agent-app-platform.md` §9 四期。
-    **不是安全缺口**：教师预览/匿名分享当前 `share/<key>` + iframe
-    `sandbox="allow-scripts allow-forms allow-popups allow-downloads"`（无 `allow-same-origin`）
-    已让页面跑在 opaque origin，读不到平台 cookie/localStorage；独立域只影响 URL 与
-    service worker/绝对路径这类能力。
+    坑：加列后表格把「应用」标题压成竖排 → 标题列 `width:260` + `ellipsis`、操作列 `fixed:'right'`、`scroll.x=1320`。
+  · **iframe 独立源（❌ 决定不做，2026-11-13 用户："我觉得是不需要的，独立的域名的，没有这个条件啊"）**：
+    原方案 = 学生页面放 `{key}.app.<域>`，需要改 nginx + 通配证书；本机 `/etc/nginx/**` **只读**、
+    `sudo` 不可用、无 `letsencrypt`（只有 snakeoil）→ **不具备条件**，故不进待办、代码不预留改动。
+    **安全上不缺**：教师预览/匿名分享已是 `share/<key>` + iframe
+    `sandbox="allow-scripts allow-forms allow-popups allow-downloads"`（无 `allow-same-origin`），
+    页面在 **opaque origin**（origin=null）里跑，读不到平台 cookie/localStorage/JWT，与独立域等价；
+    独立域额外能给的只有 `localStorage` / service worker / 绝对路径，教学场景用不到。
+    将来真有域名+证书时按 `docs/DESIGN-2026-11-agent-app-platform.md` §9 那 4 步做，业务代码不用重构。
   · 后端：`npm run build` + 迁移 → kill 旧进程由 systemd 拉起（PID `943508 → 1046303`），登录 201；
     前端 `deploy/deploy-web-lab.sh`（备份 `.verify-scratch/lab-web-backups/20261113-160825`）。
     真机（headless-shell、教师账号）实测：成绩表 8 列含「应用评分」且该生 88；
     学生应用页合计 1 个应用 / 42 次 / 15,380 tokens，无 4xx。
-- **未做（四期剩余）**：iframe 真正独立源（需 nginx + 证书，见上）；
-  `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
+- **未做**：`VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；
   应用容器**不注入大模型 key**（二期走平台代理）。
 

@@ -114,7 +114,7 @@ nju-lab-app-runtime 容器（每应用一个，USER 1000，512m/0.3cpu）
 | 学生代码执行 | 容器内、非 root、只读镜像、只挂自己的 zip | 与工作台同一套隔离；不 `--privileged` |
 | 越权看应用 | `assertCanRead`：作者 / 教师 / 课程内可见 | 一期教师可读全部课程的应用（教师人少） |
 | 对话记录 | 落库，教师可读 | **需要在课程说明里告知学生**（教学复盘用途）；二期加"学生可关闭记录" |
-| iframe | 教师/匿名预览：`share/<key>` + `sandbox`（**无** `allow-same-origin`）；学生自测：登录态同源 | 分享端点放行 CORS（`*`，只放匿名口子）；页面读不到平台凭据。真正的独立源仍待四期 |
+| iframe | 教师/匿名预览：`share/<key>` + `sandbox`（**无** `allow-same-origin`）；学生自测：登录态同源 | 分享端点放行 CORS（`*`，只放匿名口子）；页面读不到平台凭据。独立域方案已决定不做（见 §9 四期） |
 | 产物校验 | 只接受 `zip`、≤30MB | 解包在容器内完成，宿主不解压（zip-slip 影响不到宿主） |
 | LLM 额度 | 一期不注入 key | 二期走平台代理 + 每会话 token 上限 |
 
@@ -163,21 +163,25 @@ nju-lab-app-runtime 容器（每应用一个，USER 1000，512m/0.3cpu）
   - 前置修正：`createFromSubmission` 原来把 `projectId` **写死为 null**，应用根本挂不回它来自的
     实验项目 → 成绩聚合永远对不上。现在按 `submission → assignment → project` 反查
     `projectId` / `courseId`（`dto.projectId` 可显式覆盖）。
-- ⏸ **iframe 独立源（未实施：本机做不了）**：方案是把学生页面放到 `{key}.app.<域>` 的独立 origin，
-  需要 **改 nginx（新增 server/location + 通配证书）**；这台机器上 `/etc/nginx/**` 是**只读挂载**
-  （`Read-only file system`）、`sudo` 不可用、也没有 `letsencrypt` 目录（只有 `snakeoil`）。
-  因此**代码侧未改动**，落地步骤留给有 root + 证书的环境：
-  1. 申请通配证书（`*.app.medai.nju.edu.cn`，或内网 CA），`/etc/nginx/snippets/` 加一个
-     `server { server_name ~^(?<key>[0-9a-f]{32})\.app\.medai\.nju\.edu\.cn$; ... }`，
-     按 `auth_request` 拿容器上游（复用 `medai-workspace-server.conf` 的写法）；
-  2. 后端把 `appShareUrl()` / 注入的 `__APP_API_BASE__` 指向该独立域的 `share/<key>`；
-  3. 前端 iframe 去掉 `sandbox` 或改成 `allow-same-origin`（此时已是跨源，平台 cookie 天然读不到）；
-  4. 回归：`/lab/api/apps/share/<key>/site` 与新域对同一 key 都要能打开，CORS 白名单收窄到该域。
-  - **已经达成的部分**：教师预览与匿名分享当前就是 `share/<key>` + iframe
-    `sandbox="allow-scripts allow-forms allow-popups allow-downloads"`（**无** `allow-same-origin`）
-    —— 学生页面跑在 **opaque origin** 里，读不到平台 cookie/localStorage/JWT，
-    与"独立源"在**安全效果**上等价；差别只在 URL 与"能不能用 service worker / 绝对路径请求"。
-    所以这一项应理解为**部署形态**升级，不是安全缺口。
+- ❌ **iframe 独立源 —— 决定不做（2026-11-13 用户拍板）**。原方案是把学生页面放到
+  `{key}.app.<域>` 的独立 origin，需要 **改 nginx（新增 server + 通配证书）**；
+  而这台机器 `/etc/nginx/**` 是**只读挂载**（`Read-only file system`）、`sudo` 不可用、
+  没有 `letsencrypt` 目录（只有 `snakeoil`）——即**不具备条件**。用户明确："不需要独立域名，
+  没有这个条件"。因此**不进待办、代码侧不预留改动**。
+  - **安全上不缺**：教师预览与匿名分享当前是 `share/<key>` + iframe
+    `sandbox="allow-scripts allow-forms allow-popups allow-downloads"`（**无** `allow-same-origin`），
+    学生页面跑在 **opaque origin**（origin = `null`）里，**读不到**平台 cookie / localStorage / JWT；
+    分享端点放行 CORS（`*`，只放匿名口子）以便页面调匿名对话通道。
+    这与"独立域"在**安全效果**上等价。
+  - **独立域额外能给的**（教学场景用不到）：`localStorage` / `sessionStorage`、service worker（PWA 离线）、
+    学生页面写绝对路径 `/theme.css` 不必依赖注入的 `<base>`。将来若真拿到了独立域 + 证书，
+    按下面 4 步做即可，业务代码不必重构：
+    ① 申请通配证书，`/etc/nginx/snippets/` 加
+    `server { server_name ~^(?<key>[0-9a-f]{32})\.app\.<域>$; ... }`，用 `auth_request`
+    取容器上游（复用 `medai-workspace-server.conf` 的写法）；
+    ② 后端 `appShareUrl()` 与注入的 `__APP_API_BASE__` 指向该域的 `share/<key>`；
+    ③ 前端 iframe 去掉 `sandbox`（已是跨源，平台凭据天然读不到）；
+    ④ 回归：同一 key 在新域与 `/lab/api/apps/share/<key>/site` 都能打开；CORS 白名单从 `*` 收窄到该域。
 
 ## 10. 已知限制与回滚
 
