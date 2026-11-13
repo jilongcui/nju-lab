@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "name": "agent-app-skill",
+  "title": "应用实践：写一个 Skill，把检验数据整理成能分享的报告",
+  "flow": "engineering",
+  "outputFile": "output.json",
+  "inputs": [
+    "attachments",
+    "requests.jsonl",
+    "report_format.json",
+    "brief.md",
+    "kb"
+  ],
+  "judgeMode": "llm",
+  "maxCases": 0,
+  "assertions": [
+    {
+      "name": "报告字段完整（五项都在）",
+      "expr": "['turns','report','metrics','figures','notes'].every((k) => out[k] !== undefined && out[k] !== null)"
+    },
+    {
+      "name": "每一轮都有答复（≥10 字）",
+      "expr": "Array.isArray(out.turns) && out.turns.length >= 1 && out.turns.every((t) => typeof t.reply === 'string' && t.reply.trim().length >= 10)"
+    },
+    {
+      "name": "轮数与每轮的指标行计数都对（含「只列异常」生效与「忘掉」恢复）",
+      "expr": "out.turns.length === expected.turn_replies && JSON.stringify(out.turns.map((t) => t.counts && [t.counts.total, t.counts.abnormal, t.counts.listed])) === JSON.stringify(expected.turn_counts.map((c) => c && [c.total, c.abnormal, c.listed]))"
+    },
+    {
+      "name": "报告四节齐全 / 顺序与模板一致 / 每节写到最小篇幅",
+      "expr": "JSON.stringify(out.report.sections.map((s) => s.name)) === JSON.stringify(expected.report.section_names) && out.report.sections.every((s, i) => typeof s.content === 'string' && s.content.trim().length >= expected.report.section_min_chars[i])"
+    },
+    {
+      "name": "指标表逐行正确（item / value / unit / flag）",
+      "expr": "JSON.stringify(out.report.metric_rows.map((r) => [r.item, r.value, r.unit, r.flag])) === JSON.stringify(expected.report.metric_rows.map((r) => [r.item, r.value, r.unit, r.flag]))"
+    },
+    {
+      "name": "计数自洽（异常 = 指标表里非 normal 的行数；总行数对得上）",
+      "expr": "out.report.counts.abnormal === expected.report.counts.abnormal && out.metrics.total_rows === out.report.counts.total && out.metrics.abnormal_rows === out.report.counts.abnormal && out.metrics.listed_rows === out.report.counts.listed"
+    },
+    {
+      "name": "越界行的升级条数与 expected 一致（越界只提示复核）",
+      "expr": "JSON.stringify(out.turns.map((t) => t.escalations)) === JSON.stringify(expected.turn_escalations)"
+    },
+    {
+      "name": "诊断式提问被拒答，且拒答轮不给引用",
+      "expr": "JSON.stringify(out.turns.map((t) => t.refusals)) === JSON.stringify(expected.turn_refusals) && out.turns.filter((t) => t.refusals > 0).every((t) => !t.citations || t.citations.length === 0)"
+    },
+    {
+      "name": "图与说明齐全（至少 1 张，含一句话结论）",
+      "expr": "Array.isArray(out.figures) && out.figures.length >= 1 && out.figures.every((f) => f && typeof f.path === 'string' && f.path.trim() !== '' && typeof f.takeaway === 'string' && f.takeaway.trim().length >= 10)"
+    },
+    {
+      "name": "说清口径与局限（notes ≥60 字）",
+      "expr": "typeof out.notes === 'string' && out.notes.trim().length >= 60"
+    }
+  ],
+  "requires": {
+    "python": [
+      "matplotlib"
+    ]
+  }
+}

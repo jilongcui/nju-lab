@@ -1,0 +1,89 @@
+{
+  "turn_replies": 3,
+  "turn_counts": [
+    {
+      "total": 5,
+      "abnormal": 4,
+      "listed": 4
+    },
+    {
+      "total": 5,
+      "abnormal": 4,
+      "listed": 5
+    },
+    {
+      "total": 5,
+      "abnormal": 4,
+      "listed": 5
+    }
+  ],
+  "turn_refusals": [
+    0,
+    0,
+    1
+  ],
+  "turn_escalations": [
+    4,
+    4,
+    0
+  ],
+  "report": {
+    "section_names": [
+      "目的",
+      "方法",
+      "结果",
+      "讨论"
+    ],
+    "section_min_chars": [
+      20,
+      20,
+      30,
+      30
+    ],
+    "metric_rows": [
+      {
+        "item": "GLU",
+        "value": 7.8,
+        "unit": "mmol/L",
+        "flag": "high"
+      },
+      {
+        "item": "HBA1C",
+        "value": 8.4,
+        "unit": "%",
+        "flag": "high"
+      },
+      {
+        "item": "HGB",
+        "value": 145.0,
+        "unit": "g/L",
+        "flag": "normal"
+      },
+      {
+        "item": "GLU",
+        "value": 6.4,
+        "unit": "mmol/L",
+        "flag": "high"
+      },
+      {
+        "item": "GLU",
+        "value": 9.1,
+        "unit": "mmol/L",
+        "flag": "high"
+      }
+    ],
+    "counts": {
+      "total": 5,
+      "abnormal": 4,
+      "listed": 5
+    }
+  },
+  "metrics": {
+    "turns": 3,
+    "total_rows": 5,
+    "abnormal_rows": 4,
+    "listed_rows": 5,
+    "escalations": 8,
+    "refusals": 1
+  }
+}

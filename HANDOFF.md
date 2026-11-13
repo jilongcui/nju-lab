@@ -224,6 +224,23 @@
     `5 行 / 4 异常`（`PLT 18 low`、`WBC 12.5 high`、`HGB 96 low`、`HGB 88 low`）+ 升级提示；
     容器镜像确认 `nju-lab-app-runtime:0.2.0`。冒烟数据（应用/提交/容器）已清理。
   · `FilesService.readBuffer()` 新增（平台内部把提交的 zip 复制成应用版本）；后端已重启（PID 801201）。
+- **教学侧同步（2026-11-13，同一轮）—— 第 20 章改成"写 Skill"，旧两档下架**：
+  · **新增** `server/fixtures/agent-app-skill/`（medium，10 条断言，`--check` ok）：
+    学生只实现 `scripts/api.py` 的 `handle(state, message, attachments, session)`；
+    附件（含图片走视觉）由平台解析，记忆偏好由平台维护，诊断式提问由平台兜底。
+    两个样例的**记忆行为可见**：case01 第 2 轮「只列异常」→ listed 5→4；case02 第 1 轮带偏好（4）、
+    第 2 轮「忘掉 MEM01」→ 恢复 5；两 case 均「拒答 1 次、升级 4/4/0」。
+    参考 Skill 随包下发（`problem/reference/`），骨架只留 `handle()` 的 TODO（`flag_of` 已给）。
+  · **下架**：`agent-app-studio`（hard，要求改前端 + 跑 publish）与 `agent-app-report`（easy，写 core 函数）
+    → `status='draft'`（数据与实测保留，可回滚）。第 20 章现在**只有一个** published 项目。
+  · **平台项目**：新建并发布「应用实践：写一个 Skill，把检验数据整理成能分享的报告」
+    （id `28ba4aaf-25cc-4217-bc01-459aade1cd0a`，medium，`unlockRule=none`，
+    rubric = 业务口径正确 40 / 边界守得住 30 / 应用可用 30；problem sha `ba0fdc5015fd` / skill `7b093ae7efd7`）。
+  · **章正文改写**：第 20 章整章重写为「谁负责什么（平台 vs 你）→ Skill 长什么样 → 把口径写成代码 →
+    从 Skill 到能分享的应用 → 工程规范 → 动手实践 → 思考题」（5464 字节，标题改为
+    《应用实践：基于 Agent 构建 Skill，把它变成能分享的应用》）；第 19 章结尾那句改成
+    "哪些属于 agent、哪些属于业务"。两份 deck 重生成：**19 章 18 页 / 20 章 16 页**（`no_notes` 空、
+    `chapterChanged=false`）。
 - **未做（四期）**：成本看板、评分汇总进 `submissions`/`Grading`、iframe 真正独立源（需 nginx + 证书）；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；
