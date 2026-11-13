@@ -101,6 +101,31 @@
           "action": "finish"
         }
       ]
+    },
+    {
+      "turn": 6,
+      "steps": [
+        {
+          "action": "recall"
+        },
+        {
+          "action": "kb"
+        },
+        {
+          "action": "finish"
+        }
+      ]
+    },
+    {
+      "turn": 7,
+      "steps": [
+        {
+          "action": "recall"
+        },
+        {
+          "action": "finish"
+        }
+      ]
     }
   ]
 }

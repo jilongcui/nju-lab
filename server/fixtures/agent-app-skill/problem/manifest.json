@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "name": "agent-app-skill",
-  "title": "应用实践：写一个 Skill，把检验数据整理成能分享的报告",
+  "title": "应用实践：用你的 Agent 做一个真实应用（实验报告 / 随访提醒 二选一）",
   "flow": "engineering",
   "outputFile": "output.json",
   "inputs": [

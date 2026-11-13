@@ -117,6 +117,38 @@ def update_memory(entries: list[dict], text: str, seq: int) -> int:
 
 # ---------------------------------------------------------------- ① 循环（TODO）
 
+def load_skills(case_dir: Path) -> list[dict]:
+    """读 `skills/*/SKILL.md` 的 front-matter（name / description / triggers）。
+
+    已经给好了：这是"把目录读成清单"的机械活，不用你写。
+    """
+    skills = []
+    root = case_dir / "skills"
+    if not root.is_dir():
+        return skills
+    for path in sorted(root.glob("*/SKILL.md")):
+        meta: dict[str, str] = {}
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if ":" in line and not line.startswith("#"):
+                key, _, value = line.partition(":")
+                meta[key.strip()] = value.strip()
+        triggers = [t.strip() for t in (meta.get("triggers") or "").replace("，", ",").split(",") if t.strip()]
+        skills.append({"name": meta.get("name") or path.parent.name,
+                       "description": meta.get("description") or "",
+                       "triggers": triggers, "path": str(path.parent),
+                       "api": str(path.parent / "scripts" / "api.py")})
+    return skills
+
+
+def route_skill(message: str, skills: list[dict]) -> str | None:
+    """TODO：按 triggers 选一个 skill；**一个都不中就返回 None（不硬凑）**。
+
+    为什么这条重要：选错 skill 会让后面全错（工具与口径都不对）；硬凑一个'最像的'
+    比返回 None 更糟 —— 用户会以为你懂。真实工程里常用意图分类或向量召回，但取舍一样。
+    """
+    raise NotImplementedError("TODO: 实现 skill 路由")
+
+
 def run_turn(turn: dict, steps: list[dict], ctx: dict) -> tuple[list[dict], str]:
     """执行一轮的决策序列，返回 `(trace 片段, 终止原因)`；终止原因是 `done` 或 `max_steps`。
 

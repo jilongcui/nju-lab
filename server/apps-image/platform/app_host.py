@@ -28,7 +28,13 @@ APP_DIR = Path(os.environ.get("APP_DIR") or Path(__file__).resolve().parent)
 DATA_DIR = Path(os.environ.get("APP_DATA_DIR") or "/tmp/app-data")
 WEB_DIR = APP_DIR / "web"
 SKILL_DIR = APP_DIR / "skill"
-SKILL_API = SKILL_DIR / "scripts" / "api.py"
+# 入口优先级：学生自己的 **agent**（第 19 章）→ **Skill**（第 20 章）→ 兼容旧的 scripts/
+ENTRY_CANDIDATES = [
+    SKILL_DIR / "agent" / "api.py",
+    SKILL_DIR / "scripts" / "api.py",
+    SKILL_DIR / "skill" / "scripts" / "api.py",
+]
+SKILL_API = ENTRY_CANDIDATES[0]
 APP_JSON = APP_DIR / "app.json"
 
 sys.path.insert(0, str(APP_DIR))
@@ -39,11 +45,19 @@ STATE: dict = {}
 
 # ---------------------------------------------------------------- 装载
 
+def find_entry() -> Path:
+    for path in ENTRY_CANDIDATES:
+        if path.exists():
+            return path
+    raise RuntimeError(
+        "这个应用没有入口：需要 agent/api.py（第 19 章的 agent）或 scripts/api.py（第 20 章的 Skill）"
+    )
+
+
 def load_skill():
-    """学生的 Skill 入口：`skill/scripts/api.py` 的 `handle()`。"""
-    if not SKILL_API.exists():
-        raise RuntimeError(f"这个应用没有 Skill 入口（缺 {SKILL_API}）")
-    spec = importlib.util.spec_from_file_location("student_skill_api", SKILL_API)
+    """加载学生交付的入口：`agent/api.py`（agent）或 `scripts/api.py`（Skill），都要有 `handle()`。"""
+    entry = find_entry()
+    spec = importlib.util.spec_from_file_location("student_skill_api", entry)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)  # type: ignore[union-attr]
     if not hasattr(module, "handle"):
@@ -219,7 +233,7 @@ def main() -> None:
     host = os.environ.get("APP_HOST") or "127.0.0.1"
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer((host, port), Handler)
-    print(f"[platform-host] listening on http://{host}:{port}  (skill={SKILL_API})", flush=True)
+    print(f"[platform-host] listening on http://{host}:{port}", flush=True)
     server.serve_forever()
 
 

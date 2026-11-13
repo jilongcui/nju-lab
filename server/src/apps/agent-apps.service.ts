@@ -457,6 +457,7 @@ export class AgentAppsService implements OnModuleDestroy {
       throw new BadRequestException('提交的 Skill 包不是合法 zip');
     }
 
+    const entry = this.detectEntry(payload);
     const title = (dto.title || (await this.defaultTitle(user, submission))).slice(0, 120);
     const app = await this.apps.save(
       this.apps.create({
@@ -465,7 +466,7 @@ export class AgentAppsService implements OnModuleDestroy {
         projectId: null,
         title,
         scenario: '由平台托管的智能体应用（Skill 驱动）',
-        entry: 'skill/scripts/api.py',
+        entry,
         visibility: AppVisibility.TEACHER,
         status: AppStatus.DRAFT,
       }),
@@ -535,6 +536,22 @@ export class AgentAppsService implements OnModuleDestroy {
     });
     if (!rows.length) throw new NotFoundException('你还没有提交过任何 Skill 包');
     return rows[0] as unknown as SubmissionLike;
+  }
+
+  /**
+   * 从 zip 字节里判断这是哪种产物（zip 的文件名是明文，不需要解压库）。
+   *
+   * - `agent/api.py`        → 第 19 章的 **agent**（能调度 skill）
+   * - `scripts/api.py`      → 第 20 章的 **Skill**
+   * - `harness/api.py`      → 学生自带完整产物（旧形态，平台只托管）
+   */
+  private detectEntry(zip: Buffer): string {
+    const text = zip.toString('latin1');
+    if (text.includes('agent/api.py')) return 'skill/agent/api.py';
+    if (text.includes('skills/') && text.includes('SKILL.md')) return 'skill/agent/api.py';
+    if (text.includes('scripts/api.py')) return 'skill/scripts/api.py';
+    if (text.includes('harness/api.py')) return 'harness/api.py';
+    return 'skill/scripts/api.py';
   }
 
   private fileIdFromRef(ref: string | null | undefined): string | null {

@@ -66,6 +66,38 @@ def read_jsonl(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
+def load_skills(case_dir: Path) -> list[dict]:
+    """读 `skills/*/SKILL.md` 的 front-matter：name / description / triggers。
+
+    agent 的职责是"按用户请求选对 skill"—— 这里用最朴素的关键词路由（真实工程里常用
+    意图分类或向量召回，但**选错/选不中的代价**是一样的：调错工具或什么都调不到）。
+    """
+    skills = []
+    root = case_dir / "skills"
+    if not root.is_dir():
+        return skills
+    for path in sorted(root.glob("*/SKILL.md")):
+        meta: dict[str, str] = {}
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if ":" in line and not line.startswith("#"):
+                key, _, value = line.partition(":")
+                meta[key.strip()] = value.strip()
+        triggers = [t.strip() for t in (meta.get("triggers") or "").replace("，", ",").split(",") if t.strip()]
+        skills.append({"name": meta.get("name") or path.parent.name,
+                       "description": meta.get("description") or "",
+                       "triggers": triggers, "path": str(path.parent),
+                       "api": str(path.parent / "scripts" / "api.py")})
+    return skills
+
+
+def route_skill(message: str, skills: list[dict]) -> str | None:
+    """按 triggers 命中第一个 skill；一个都不中就返回 None（**不硬凑**）。"""
+    for skill in skills:
+        if any(trigger in message for trigger in skill["triggers"]):
+            return skill["name"]
+    return None
+
+
 def read_case(case_dir: Path) -> dict:
     limits = json.loads((case_dir / "limits.json").read_text(encoding="utf-8"))
     with (case_dir / "records.csv").open(encoding="utf-8", newline="") as fh:
@@ -246,9 +278,11 @@ def run_case(case_dir: Path, fig_dir: Path) -> dict:
     refusals: list[dict] = []
     terminated: list[str] = []
 
+    skills = load_skills(case_dir)
     for turn in case["dialogue"]:
         t = int(turn["turn"])
         text = turn["user"]
+        skill_used = route_skill(text, skills)
 
         # ① 检索（BM25 与 TF 余弦对照）—— 每轮开始前完成，与 loop 顺序无关
         bm25_top = bm25_rank(text, case["kb"], top_k)
@@ -320,11 +354,13 @@ def run_case(case_dir: Path, fig_dir: Path) -> dict:
                 "turn": t,
                 "reason": "是否感染属于诊断结论，助手只能提供读数与指南出处，必须由临床医生结合症状与体征判断。",
             })
-            answer = {"turn": t, "answer": "这个结论我不能替你下：只能给读数与出处，诊断由医生作出。", "citations": []}
+            answer = {"turn": t, "skill": skill_used,
+                      "answer": "这个结论我不能替你下：只能给读数与出处，诊断由医生作出。", "citations": []}
         else:
             top1 = bm25_top[0] if bm25_top else "无"
             answer = {
                 "turn": t,
+                "skill": skill_used,
                 "answer": f"第 {t} 轮已按请求处理（工具：{','.join(executed_ids) or '无'}），指南出处见 {top1}。",
                 "citations": [{"kind": "kb", "ref": top1}] if bm25_top else [],
             }
@@ -392,6 +428,7 @@ def run_case(case_dir: Path, fig_dir: Path) -> dict:
             "top3_diff_turns": [r["turn"] for r in retrieval if r["bm25_top3"] != r["cosine_top3"]],
             "tool_executed": n_executed,
             "tool_rejected": n_rejected,
+            "skills_routed": sum(1 for a in answers if a.get("skill")),
             "trace_checksum": checksum,
         },
         "figures": [{
@@ -453,7 +490,8 @@ def regen_expected() -> None:
             "tool_calls": out["tool_calls"],
             "memory": out["memory"],
             "retrieval": out["retrieval"],
-            "answers": [{"turn": a["turn"], "citations": a["citations"]} for a in out["answers"]],
+            "answers": [{"turn": a["turn"], "skill": a.get("skill"), "citations": a["citations"]}
+                        for a in out["answers"]],
             "safety": out["safety"],
             "metrics": out["metrics"],
         }

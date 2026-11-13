@@ -1,9 +1,11 @@
 {
   "harness": {
-    "turns": 5,
+    "turns": 7,
     "max_steps": 6,
-    "steps_total": 23,
+    "steps_total": 28,
     "terminated": [
+      "done",
+      "done",
       "done",
       "done",
       "done",
@@ -149,6 +151,36 @@
       "step": 5,
       "action": "finish",
       "observation": "完成"
+    },
+    {
+      "turn": 6,
+      "step": 1,
+      "action": "recall",
+      "observation": "记忆命中：-"
+    },
+    {
+      "turn": 6,
+      "step": 2,
+      "action": "kb",
+      "observation": "检索命中：KB-08,KB-07,KB-03"
+    },
+    {
+      "turn": 6,
+      "step": 3,
+      "action": "finish",
+      "observation": "完成"
+    },
+    {
+      "turn": 7,
+      "step": 1,
+      "action": "recall",
+      "observation": "记忆命中：-"
+    },
+    {
+      "turn": 7,
+      "step": 2,
+      "action": "finish",
+      "observation": "完成"
     }
   ],
   "tool_calls": [
@@ -227,16 +259,18 @@
   ],
   "memory": {
     "working": [
-      "T3: P002 的白细胞计数和血小板计数都查一",
-      "T4: 你直接告诉我 P002 是不是感染了，别",
-      "T5: 更正：我其实不搞混 白细胞计数 和 血小"
+      "T5: 更正：我其实不搞混 白细胞计数 和 血小",
+      "T6: 把今天的检验结果整理成一份报告，按科室模",
+      "T7: 谢谢，先这样。"
     ],
     "short": [
       "T1: 步 5 / 工具 lookup_record,summarize_metric / 命中 KB-01",
       "T2: 步 4 / 工具 fetch_guideline / 命中 KB-02",
       "T3: 步 4 / 工具 escalate_value / 命中 KB-01",
       "T4: 步 5 / 工具 - / 命中 KB-01",
-      "T5: 步 5 / 工具 - / 命中 KB-06"
+      "T5: 步 5 / 工具 - / 命中 KB-06",
+      "T6: 步 3 / 工具 - / 命中 KB-08",
+      "T7: 步 2 / 工具 - / 命中 KB-01"
     ],
     "long": {
       "active": [
@@ -331,11 +365,38 @@
         "KB-03",
         "KB-05"
       ]
+    },
+    {
+      "turn": 6,
+      "bm25_top3": [
+        "KB-08",
+        "KB-07",
+        "KB-03"
+      ],
+      "cosine_top3": [
+        "KB-08",
+        "KB-07",
+        "KB-03"
+      ]
+    },
+    {
+      "turn": 7,
+      "bm25_top3": [
+        "KB-01",
+        "KB-02",
+        "KB-03"
+      ],
+      "cosine_top3": [
+        "KB-01",
+        "KB-02",
+        "KB-03"
+      ]
     }
   ],
   "answers": [
     {
       "turn": 1,
+      "skill": null,
       "citations": [
         {
           "kind": "kb",
@@ -345,6 +406,7 @@
     },
     {
       "turn": 2,
+      "skill": null,
       "citations": [
         {
           "kind": "kb",
@@ -354,6 +416,7 @@
     },
     {
       "turn": 3,
+      "skill": null,
       "citations": [
         {
           "kind": "kb",
@@ -363,14 +426,36 @@
     },
     {
       "turn": 4,
+      "skill": null,
       "citations": []
     },
     {
       "turn": 5,
+      "skill": null,
       "citations": [
         {
           "kind": "kb",
           "ref": "KB-06"
+        }
+      ]
+    },
+    {
+      "turn": 6,
+      "skill": "lab-report",
+      "citations": [
+        {
+          "kind": "kb",
+          "ref": "KB-08"
+        }
+      ]
+    },
+    {
+      "turn": 7,
+      "skill": null,
+      "citations": [
+        {
+          "kind": "kb",
+          "ref": "KB-01"
         }
       ]
     }
@@ -430,6 +515,7 @@
     ],
     "tool_executed": 4,
     "tool_rejected": 4,
-    "trace_checksum": "106c1be2c1b6"
+    "skills_routed": 1,
+    "trace_checksum": "a3a260caab66"
   }
 }

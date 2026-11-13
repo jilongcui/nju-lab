@@ -67,6 +67,51 @@ TOOLS = {
 
 WARN_MESSAGE = "该读数超出参考范围，可能为测量误差或病情变化，请尽快由临床医生复核。"
 
+# ---------------------------------------------------------------- 两个可被 agent 调度的 skill
+
+SKILLS = {
+    "lab-report": {
+        "skill_md": """---
+name: lab-report
+description: 把检验结果整理成科室模板的四节报告（目的/方法/结果/讨论）
+triggers: 报告, 整理成, 模板, 出报告
+---
+
+# 检验结果 → 报告
+
+收到「整理成报告」「按科室模板出报告」这类请求时使用。输入是当前会话里已查到的检验记录与指南段落。
+""",
+        "api_py": """# 示例 skill：把检验记录整理成四节报告（只示意「skill 长什么样」）
+
+
+def handle(state, message, attachments, session):
+    rows = session.get("rows") or []
+    return {
+        "reply": f"已按科室模板生成报告：共 {len(rows)} 条记录。",
+        "report": {"template_used": "dept-template", "sections": [], "records": rows},
+    }
+""",
+    },
+    "followup": {
+        "skill_md": """---
+name: followup
+description: 按随访规则给出下次复查安排（间隔、复查项、提醒话术）
+triggers: 随访, 提醒, 复查, 下次
+---
+
+# 随访安排
+
+收到「随访怎么安排」「下次什么时候复查」这类请求时使用。
+""",
+        "api_py": """# 示例 skill：给出随访安排（只示意「skill 长什么样」）
+
+
+def handle(state, message, attachments, session):
+    return {"reply": "建议 3 个月后复查血常规与糖化血红蛋白，并把结果带回门诊。", "report": None}
+""",
+    },
+}
+
 # ---------------------------------------------------------------- case 定义
 
 CASES: dict[str, dict] = {
@@ -122,6 +167,16 @@ CASES: dict[str, dict] = {
                 "user": "更正：我其实不搞混 白细胞计数 和 血小板计数 了，是搞混 糖化血红蛋白 和 血红蛋白。",
                 "gold_kb": "KB-06",
             },
+            {
+                "turn": 6,
+                "user": "把今天的检验结果整理成一份报告，按科室模板。",
+                "gold_kb": "KB-01",
+            },
+            {
+                "turn": 7,
+                "user": "谢谢，先这样。",
+                "gold_kb": "KB-01",
+            },
         ],
         "tool_calls": [
             ("C01", 1, "lookup_record", {"patient_id": "P001", "item": "血小板计数"}),
@@ -165,6 +220,15 @@ CASES: dict[str, dict] = {
                 {"action": "tool", "call_id": "C07"},
                 {"action": "tool", "call_id": "C08"},
                 {"action": "kb"},
+                {"action": "finish"},
+            ]},
+            {"turn": 6, "steps": [
+                {"action": "recall"},
+                {"action": "kb"},
+                {"action": "finish"},
+            ]},
+            {"turn": 7, "steps": [
+                {"action": "recall"},
                 {"action": "finish"},
             ]},
         ],
@@ -269,6 +333,16 @@ CASES: dict[str, dict] = {
             {
                 "turn": 3,
                 "user": "忘掉 MEM01，这两个我记住了。换一个：P004 的血红蛋白轻度下降，要不要紧？",
+                "gold_kb": "KB-02",
+            },
+            {
+                "turn": 4,
+                "user": "帮我看看这个病人的随访提醒该怎么安排。",
+                "gold_kb": "KB-02",
+            },
+            {
+                "turn": 5,
+                "user": "好，先到这。",
                 "gold_kb": "KB-02",
             },
         ],
@@ -404,6 +478,13 @@ def write_case(case_dir: Path, case: dict) -> None:
     kb_dir.mkdir(exist_ok=True)
     for passage_id, text in case["kb"].items():
         (kb_dir / f"{passage_id}.md").write_text(text + "\n", encoding="utf-8")
+
+    # skills/：agent 要能"按请求路由到对应 skill"（第 19 章的新要求）
+    for name, skill in SKILLS.items():
+        skill_dir = case_dir / "skills" / name
+        (skill_dir / "scripts").mkdir(parents=True, exist_ok=True)
+        (skill_dir / "SKILL.md").write_text(skill["skill_md"], encoding="utf-8")
+        (skill_dir / "scripts" / "api.py").write_text(skill["api_py"], encoding="utf-8")
 
 
 def main() -> None:

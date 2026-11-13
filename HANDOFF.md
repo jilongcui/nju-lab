@@ -241,6 +241,26 @@
     《应用实践：基于 Agent 构建 Skill，把它变成能分享的应用》）；第 19 章结尾那句改成
     "哪些属于 agent、哪些属于业务"。两份 deck 重生成：**19 章 18 页 / 20 章 16 页**（`no_notes` 空、
     `chapterChanged=false`）。
+- **口径再校正（2026-11-13 第二轮，用户："第 19 章是构建 agent，这个 agent 可以调度 skill；
+  分享成应用是前一章的内容；20 章是做具体 skill 来完成应用"）—— 已落地**：
+  · **第 19 章（agent，含调度与发布）**：`harness-agent` 新增 `skills/`（两个 skill：`lab-report` / `followup`，
+    各含 `SKILL.md`（front-matter 带 `triggers`）+ `scripts/api.py`）；每轮**先路由**（按 skill 名升序、命中即停、
+    不命中就 `null`），写进 `answers[].skill`，并统计 `metrics.skills_routed`；断言 **14 → 16** 条；
+    solution 附 `agent/api.py`（平台单轮入口，复用 harness 部件），骨架给它留 TODO。
+    case01 实测：7 轮里第 6 轮命中 `lab-report`；case02：5 轮里第 4 轮命中 `followup`（闲聊轮次都是 `null`）。
+  · **第 20 章（具体应用，需求驱动）**：`agent-app-skill` 的 `task.md` / `judge.md` 重写为
+    **两个需求二选一**（A 实验数据→标准报告 / B 随访·用药安全提醒）——**数据学生自己准备（脱敏/虚构）**、
+    **产出形态学生自己定**，只要求"能复核"；`cases/*` 标注为**示例数据（可不用）**；
+    项目 rubric 改为 5 维：需求覆盖 25 / 数据与口径 25 / 结果可复核 20 / 边界与安全 15 / 演示 15。
+  · **平台侧**：`platform/app_host.py` 的入口按优先级找 `agent/api.py`（第 19 章的 agent）→
+    `scripts/api.py`（第 20 章的 Skill）→ 兼容旧路径；`from-submission` 的 `detectEntry()` 从 zip 字节判断
+    形态（`agent/api.py` / `scripts/api.py` / `harness/api.py`），学生两种包都能**点一下就发布**；
+    镜像 **`nju-lab-app-runtime:0.3.0`**（内置平台 harness + 入口优先级），后端重启 PID `833136`。
+  · **正文**：第 20 章整章重写为《应用实践：用你的 Agent 做一个真实应用》（角色分工 / 两个需求 /
+    数据自己准备 / 产出要能复核 / 一键变应用 / 五维验收）；第 19 章新增「六·五、让 Agent 调度 Skill，
+    并把它发布成应用」。deck 重生成：**19 章 19 页 / 20 章 14 页**（`no_notes` 空、`chapterChanged=false`）。
+  · 项目重传：19 章 problem sha `a91cceaddd59` / skill `05f57d905cc3`；20 章 problem `837a92cedd85` /
+    skill `25fc0d14d16a`。
 - **未做（四期）**：成本看板、评分汇总进 `submissions`/`Grading`、iframe 真正独立源（需 nginx + 证书）；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；

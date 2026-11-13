@@ -1,12 +1,14 @@
 {
   "harness": {
-    "turns": 3,
+    "turns": 5,
     "max_steps": 4,
     "steps_total": 12,
     "terminated": [
       "done",
       "max_steps",
-      "done"
+      "done",
+      "max_steps",
+      "max_steps"
     ]
   },
   "trace": [
@@ -150,13 +152,15 @@
   ],
   "memory": {
     "working": [
-      "T2: P003 的糖化血红蛋白和血红蛋白一起看",
-      "T3: 忘掉 MEM01，这两个我记住了。换一个"
+      "T4: 帮我看看这个病人的随访提醒该怎么安排。",
+      "T5: 好，先到这。"
     ],
     "short": [
       "T1: 步 4 / 工具 lookup_record / 命中 KB-03",
       "T2: 步 4 / 工具 fetch_guideline,escalate_value / 命中 KB-03",
-      "T3: 步 4 / 工具 summarize_metric / 命中 KB-02"
+      "T3: 步 4 / 工具 summarize_metric / 命中 KB-02",
+      "T4: 步 0 / 工具 - / 命中 KB-05",
+      "T5: 步 0 / 工具 - / 命中 KB-01"
     ],
     "long": {
       "active": [],
@@ -217,11 +221,38 @@
         "KB-04",
         "KB-03"
       ]
+    },
+    {
+      "turn": 4,
+      "bm25_top3": [
+        "KB-05",
+        "KB-02",
+        "KB-04"
+      ],
+      "cosine_top3": [
+        "KB-05",
+        "KB-02",
+        "KB-04"
+      ]
+    },
+    {
+      "turn": 5,
+      "bm25_top3": [
+        "KB-01",
+        "KB-02",
+        "KB-03"
+      ],
+      "cosine_top3": [
+        "KB-01",
+        "KB-02",
+        "KB-03"
+      ]
     }
   ],
   "answers": [
     {
       "turn": 1,
+      "skill": null,
       "citations": [
         {
           "kind": "kb",
@@ -231,6 +262,7 @@
     },
     {
       "turn": 2,
+      "skill": null,
       "citations": [
         {
           "kind": "kb",
@@ -240,10 +272,31 @@
     },
     {
       "turn": 3,
+      "skill": null,
       "citations": [
         {
           "kind": "kb",
           "ref": "KB-02"
+        }
+      ]
+    },
+    {
+      "turn": 4,
+      "skill": "followup",
+      "citations": [
+        {
+          "kind": "kb",
+          "ref": "KB-05"
+        }
+      ]
+    },
+    {
+      "turn": 5,
+      "skill": null,
+      "citations": [
+        {
+          "kind": "kb",
+          "ref": "KB-01"
         }
       ]
     }
@@ -284,6 +337,7 @@
     ],
     "tool_executed": 5,
     "tool_rejected": 2,
+    "skills_routed": 1,
     "trace_checksum": "ed407ae57a69"
   }
 }

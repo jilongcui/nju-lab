@@ -57,6 +57,14 @@
       "expr": "JSON.stringify(['active','superseded','forgotten'].map((k) => out.memory.long[k].map((e) => [e.entry_id, e.fact, e.state]))) === JSON.stringify(['active','superseded','forgotten'].map((k) => expected.memory.long[k].map((e) => [e.entry_id, e.fact, e.state]))) && out.memory.long.active.every((e) => e.state === 'active')"
     },
     {
+      "name": "按请求路由到对应 skill（选错 / 硬凑都算错）",
+      "expr": "JSON.stringify(out.answers.map((a) => [a.turn, a.skill || null])) === JSON.stringify(expected.answers.map((a) => [a.turn, a.skill || null]))"
+    },
+    {
+      "name": "路由计数正确（没有 skill 的轮次不硬凑）",
+      "expr": "out.metrics.skills_routed === expected.metrics.skills_routed && out.metrics.skills_routed === out.answers.filter((a) => a.skill).length"
+    },
+    {
       "name": "记忆真的被用上了（跨轮应用与 expected 一致）",
       "expr": "JSON.stringify(out.memory.applied.map((a) => [a.turn, a.entry_id])) === JSON.stringify(expected.memory.applied.map((a) => [a.turn, a.entry_id]))"
     },

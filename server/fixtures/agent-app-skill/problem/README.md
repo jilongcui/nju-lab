@@ -4,7 +4,7 @@
 |---|---|
 | `task.md` | 题干：从这里开始 5 步、`handle()` 四件事、口径、数据字典、交付格式、自查 |
 | `judge.md` | 语义判据 |
-| `cases/case01`、`case02` | 三份附件 + 多轮请求 + 报告模板 + 知识库 + `expected.json` |
+| `cases/case01`、`case02` | **示例数据（可不用）**：三份附件 + 多轮请求 + 报告模板 + 知识库 + `expected.json`<br>本章数据由学生自己准备，这两份只是"跑通链路"的样例 |
 | `reference/` | **参考 Skill（随包下发）**：`SKILL.md` + `scripts/api.py` + `run_case.py` + `platform_core.py` |
 
 ## 本地自测
