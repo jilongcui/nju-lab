@@ -127,12 +127,20 @@ export function apply(ctx: Context, config: Config): void {
 
   registerConditionLock(ctx, () => evalConfig)
   registerTools(ctx, actions)
-  // 学员模式：步骤状态机 + 实验报告自动生成（guidedMode 默认开、可在设置里关）
-  registerGuidedTools(ctx, actions, { guided: () => readConfig().guidedMode })
+  // 开放实验（项目下发 evalConfig.guided === false）：最后两章要给学生自由发挥 ——
+  // **连步骤机都不注册**（否则模型会主动推着学生走），引导换成"只答疑不代做"。
+  const openExperiment = () => evalConfig?.guided === false
+  if (!openExperiment()) {
+    // 学员模式：步骤状态机 + 实验报告自动生成（guidedMode 默认开、可在设置里关）
+    registerGuidedTools(ctx, actions, { guided: () => readConfig().guidedMode })
+  }
 
   // 模型引导（HANDOFF 第 5 步）：常驻的 system prompt 段 + 可按需加载的 skill。
   // 两者都走 ctx.inject 软依赖，缺 systemPrompt / skills 时静默跳过。
-  registerGuidance(ctx, { guided: () => readConfig().guidedMode })
+  registerGuidance(ctx, {
+    guided: () => readConfig().guidedMode,
+    open: openExperiment,
+  })
 
   // 面板路由挂在 Connection 的 /api 通道上；headless（无 web server）没有这个服务。
   ctx.inject(['connection'], (scoped) => {

@@ -107,6 +107,27 @@ export const GUIDANCE_TEXT = `${GUIDANCE_TOOL_MAP}
 他卡住时（报错、概念不懂）痛快地帮。\`notes\` / \`figures.takeaway\` 与结论、踩坑**最好由他说**，
 你给结构、帮他把话说清楚；实验报告由工具生成，**不要改 SKILL.md**（平台不检查那个文件）。`
 
+/**
+ * 开放实验（`evalConfig.guided === false`）的常驻引导：**只答疑，不代做**。
+ *
+ * 最后两章是给学生自由发挥的：从需求到交付全由他自己决定。我们唯一要给的是"别替他做"。
+ */
+export const GUIDANCE_TEXT_OPEN = `${GUIDANCE_TOOL_MAP}
+
+【这是**开放实验**：你只答疑，不要代做】
+
+学生在自己完成一个开放实验 —— 做什么、怎么做、做成什么样，**都由他决定**。
+你的位置是"被问才答"：
+
+- 他问概念、工具用法、命令报错 → 直接答，给最小够用的说明；
+- **不要主动新建或修改他的文件**，不要替他实现功能。他明确说"帮我写这一段"时，
+  也只写他指出的那一小块，写完让他自己跑；
+- **不要给步骤清单、不要催进度、不要问"要不要进入下一步"** —— 这个实验没有步骤；
+- **不要替他做决定**（用什么结构、先做哪个功能、交付成什么样）：把 2-3 个选项摆出来，让他选；
+- 他卡住时的固定动作：先问"你试过什么、看到什么报错"，再给他下一个**具体动作**。
+
+题目里没写到的部分，鼓励他做自己想做的版本 —— 不必和示例或别的同学一致。`
+
 /** skill 名（必须 kebab-case，注册表会校验）。 */
 export const SKILL_NAME = 'nju-lab-experiment'
 
@@ -309,7 +330,7 @@ export const GUIDANCE_GUIDED_TEXT = `${GUIDANCE_TOOL_MAP}
 
 export function registerGuidance(
   ctx: Context,
-  options: { guided?: () => boolean } = {},
+  options: { guided?: () => boolean; open?: () => boolean } = {},
 ): void {
   ctx.inject(['systemPrompt'], (scoped) => {
     scoped.effect(
@@ -319,7 +340,13 @@ export function registerGuidance(
           order: GUIDANCE_ORDER,
           // 学员模式开关是 volatile 配置：每次组装现读，学生改了立即生效
           // 学员模式与自由模式的教学口径**互斥**：两段同时在上下文里时，旧的"带他走一遍"会赢
-          text: () => (options.guided?.() ? GUIDANCE_GUIDED_TEXT : GUIDANCE_TEXT),
+          // 三态互斥：开放实验（项目强制）> 学员模式（学生开关）> 自由模式
+          text: () =>
+            options.open?.()
+              ? GUIDANCE_TEXT_OPEN
+              : options.guided?.()
+                ? GUIDANCE_GUIDED_TEXT
+                : GUIDANCE_TEXT,
         }),
       'nju-lab-client: guidance section',
     )

@@ -12,6 +12,11 @@ import type { Volatile } from '@deepseek-ai/cordis'
 export interface EvalConfig {
   model?: string
   reasoningEffort?: string
+  /**
+   * 是否启用步骤机（平台下发）。最后两章是开放实验 → `false`：
+   * 客户端不注册 `nju_lab_step`，引导换成"只答疑不代做"。
+   */
+  guided?: boolean
   /** 工具白名单（平台下发，如 ["shell"]）；由 ctx.tools.restrict 生效 */
   tools?: string[]
   /** 平台侧的运行超时；DSH 侧无法强制，仅展示 */

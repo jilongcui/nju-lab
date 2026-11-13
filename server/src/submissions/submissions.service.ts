@@ -131,6 +131,14 @@ export class SubmissionsService {
       throw new NotFoundException('任务不存在');
     }
 
+    // 开放实验（最后两章）：项目上设了 autoVerify=false —— 不做自动复验，
+    // 成绩由教师按 rubric 打（代码 + 演示）。这里明确拒绝，避免误点后拿到无意义的自动分。
+    if ((assignment.project.evalConfig as { autoVerify?: boolean } | null)?.autoVerify === false) {
+      throw new BadRequestException(
+        '本项目是开放实验，不自动复验：请直接按 rubric 评分（代码 + 演示）',
+      );
+    }
+
     // submitted → verifying → verified；复验执行失败 → failed（允许重新提交/复验）
     submission.status = SubmissionStatus.VERIFYING;
     await this.submissionRepo.save(submission);

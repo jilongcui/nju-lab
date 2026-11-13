@@ -1,39 +1,31 @@
 ---
 name: equipment-agent
-description: 一个能跑的设备维护助手 —— 自己调模型、自己决定下一步、自己调工具、自己记住用户说过的话；换一份台账与手册仍然能跑。
+description: 设备维护助手 —— 能对话地回答"这台设备该不该保养、手册怎么要求"。具体怎么做由实现者决定。
 ---
 
-# 设备维护助手（你的 agent）
+# 设备维护助手（你的包）
 
-这一章你交付的是**一个真的在跑的 agent**：模型决定下一步，代码负责执行、记账、记住、拦住。
+这个文件是你交付包的说明；**代码要你自己写**。
 
-## 你要改的文件
-
-```
-agent/loop.py      ← 循环（核心）：问模型 → 解析动作 → 执行 → 观察 → 再问
-agent/tools.py     ← 三个工具：query_assets / overdue_assets / search_manual（真读文件）
-agent/memory.py    ← 跨轮记忆：写入 / 应用 / 更正
-notes.md           ← 取舍与局限（≥80 字，进 output.json 的 notes）
-report.md          ← 过程记录
-```
-
-**已经给好、不用改**：
+## 交付形态（平台靠它把东西装起来）
 
 ```
-agent/llm.py       ← 模型客户端：重试、token 记账、调用日志（发布后自动走平台代理）
-agent/data.py      ← 读题目包：台账 / 手册 / 限额 / 工具名册
-agent/api.py       ← 平台入口：把你的 run_dialogue() 接到对话请求上（发布成应用时用）
-agent/profile.json ← 定制：名字 / 语气 / 签名 / 禁语
-scripts/run.py     ← 跑完 6 组对话 → output.json + 图
+SKILL.md             ← 这个文件
+agent/api.py         ← 你写的入口，必须实现 handle()
+assets.csv           ← 台账（从题目包拷）
+kb/                  ← 维护手册（从题目包拷）
+limits.json          ← 周期与基准日（从题目包拷）
+tools.json           ← 工具名册（从题目包拷；用不用随你）
+```
+
+入口约定：
+
+```python
+def handle(state, message, attachments, session) -> dict:
+    """state / session 由平台给；返回 {"reply": str, "citations": list} 即可。"""
 ```
 
 ## 能力边界
 
-- 能做：本实验约定形态的材料（`assets.csv` + `kb/*.md` + `tasks/*.jsonl` + `limits.json`）；
-  换取一份同结构的台账/手册仍能跑（工具是读文件的，不是写死的）
-- 不做：真实设备协议、现场传感器接入、剩余寿命判定（`KB-05` 明确禁止远程下结论）
-- 已知失效：台账列名一变就要改 `data.py` 的解析；手册段落过长时 BM25 风格的检索会被长文档带走
-
-## 交付
-
-`output.json`（`agent` / `llm` / `dialogues` / `metrics` / `figures` / `notes`）+ 一张图 + `report.md`。
+- 能答：台账查询、保养周期与逾期、手册条款
+- **不能答**：设备剩余寿命、能不能继续用 —— 必须拒答，并把话题引回可查的内容（见 `KB-05`）

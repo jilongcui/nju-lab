@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import { ProjectDifficulty } from '../project.entity';
 import {
   IsArray,
+  IsBoolean,
   IsDateString,
   IsIn,
   IsNotEmpty,
@@ -30,6 +31,24 @@ class EvalConfigDto {
 
   @IsOptional()
   timeoutSeconds?: number;
+
+  /**
+   * 是否启用工作台的"学员模式步骤机"（默认 true）。
+   *
+   * 最后两章是**开放实验**：只给题目，学生自己决定怎么做 —— 步骤机反而把人推着走，
+   * 所以项目上设 false：客户端不注册 `nju_lab_step`，注入的引导也换成"只答疑不代做"。
+   */
+  @IsOptional()
+  @IsBoolean()
+  guided?: boolean;
+
+  /**
+   * 提交后是否自动复验（默认 true）。false → 提交即 `verified`，不跑容器、不出自动分，
+   * 成绩由教师按 rubric 打（最后两章：代码一半 + 演示一半）。
+   */
+  @IsOptional()
+  @IsBoolean()
+  autoVerify?: boolean;
 }
 
 class RubricDimensionDto {
