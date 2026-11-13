@@ -1,4 +1,6 @@
 # 依赖与构建产物
+__pycache__/
+*.pyc
 node_modules/
 dist/
 dsh/nju-lab-client/lib/

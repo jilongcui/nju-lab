@@ -154,17 +154,26 @@ function resolveSkillRoot(dir) {
   fail(`invalid skill package: no unique SKILL.md layer under ${dir}`);
 }
 
-/** 题目包根：含 cases/ 的那一层（同样允许一层顶层目录）。 */
+/**
+ * Problem package root: the layer holding `cases/` (one optional top-level dir allowed).
+ *
+ * Single-scenario packages (engineering flow, one task set) have no `cases/` layer:
+ * materials sit at the package root, so the layer holding `manifest.json` is the root.
+ */
 function resolveProblemRoot(dir) {
   if (existsSync(join(dir, 'cases'))) return dir;
+  if (existsSync(join(dir, 'manifest.json'))) return dir;
   const entries = readdirSync(dir, { withFileTypes: true }).filter((e) => e.isDirectory());
   const withCases = entries.filter((e) => existsSync(join(dir, e.name, 'cases')));
-  if (withCases.length === 1) return join(withCases[0].name);
-  fail(`invalid problem package: no unique cases/ layer under ${dir}`);
+  if (withCases.length === 1) return join(dir, withCases[0].name);
+  const withManifest = entries.filter((e) => existsSync(join(dir, e.name, 'manifest.json')));
+  if (withManifest.length === 1) return join(dir, withManifest[0].name);
+  fail(`invalid problem package: no unique cases/ (or manifest.json) layer under ${dir}`);
 }
 
 // ---------- 题目包的包声明（manifest.json / task.md / judge.md） ----------
 
+const SINGLE_CASE = 'main';
 const EXPECTED_RE = /^expected(\..+)?$/i;
 
 /**
@@ -178,6 +187,8 @@ function readProblemSpec(problemRoot) {
     outputFile: 'output.csv',
     inputs: null,
     judgeMode: null,
+    runMode: 'dsh',   // dsh: 被测 agent 自己做（默认）；script: 直接执行 runCommand
+    runCommand: null,
     maxCases: 0,
     assertions: [],
     requires: { python: [], commands: [] },
@@ -236,6 +247,14 @@ function readProblemSpec(problemRoot) {
       });
     }
     if (raw.maxCases !== undefined) spec.maxCases = Number(raw.maxCases) || 0;
+    if (raw.runMode !== undefined) {
+      const mode = String(raw.runMode);
+      if (!['dsh', 'script'].includes(mode)) {
+        fail('problem/manifest.json 的 runMode 只能是 dsh 或 script');
+      }
+      spec.runMode = mode;
+    }
+    if (raw.runCommand !== undefined) spec.runCommand = String(raw.runCommand);
     if (raw.requires !== undefined) {
       const req = raw.requires ?? {};
       if (typeof req !== 'object' || Array.isArray(req)) {
@@ -259,6 +278,10 @@ function readProblemSpec(problemRoot) {
     spec.files.judge = true;
     spec.judgeRules = readFileSync(judgePath, 'utf8').trim();
     if (!spec.judgeRules) fail('problem/judge.md 是空的：评分细则不能为空');
+  }
+
+  if (spec.runMode === 'script' && !spec.runCommand) {
+    fail('runMode=script 时必须提供 runCommand（在包的工作目录里执行的命令）');
   }
 
   return spec;
@@ -303,6 +326,9 @@ function checkRequires(spec) {
   return { ok: missing.length === 0, missing, declared: { python: py, commands: cmds } };
 }
 
+/** 单场景包里**不进学生工作目录**的教师侧文件（题干/判据/契约/包说明）。 */
+const SINGLE_CASE_EXCLUDE = new Set(['manifest.json', 'task.md', 'judge.md', 'README.md', 'cases']);
+
 /** case 输入文件：manifest.inputs 优先，否则 case 目录下除 expected.* 之外的全部条目。 */
 function caseInputs(caseDir, spec) {
   if (spec.inputs?.length) {
@@ -316,15 +342,15 @@ function caseInputs(caseDir, spec) {
   }
   return readdirSync(caseDir, { withFileTypes: true })
     .filter((e) => !EXPECTED_RE.test(e.name))
+    .filter((e) => !(spec.singleCase && SINGLE_CASE_EXCLUDE.has(e.name)))
     .map((e) => ({ rel: e.name, abs: join(caseDir, e.name) }));
 }
 
 /** case 期望产出：expected.<outputFile 的扩展名>，或目录下唯一的 expected.* 。 */
 function caseExpected(caseDir, spec) {
   const cands = readdirSync(caseDir).filter((f) => EXPECTED_RE.test(f));
-  if (cands.length === 0) {
-    fail(`case 缺少期望产出文件（expected.*）：${caseDir}`);
-  }
+  // Single-scenario / no-reference packages may omit expected.* (assertions + rubric only)
+  if (cands.length === 0) return null;
   const wantName = `expected${extname(spec.outputFile)}`.toLowerCase();
   const exact = cands.find((f) => f.toLowerCase() === wantName);
   const picked = exact ?? (cands.length === 1 ? cands[0] : null);
@@ -375,7 +401,9 @@ function hashTree(root) {
  * 兼容（历史作业不掉分）：`report.md` → `dossier.md` → `SKILL.md` 旧位置。
  * 老格式没有表格结构，只要求"自测时间 + 至少一条踩坑"。
  */
-function scanReport(root) {
+function scanReport(root, opts = {}) {
+  // requireCaseRows=false: single-scenario packages have no case rows in report.md
+  const requireCaseRows = opts.requireCaseRows !== false;
   const readOptional = (name) => {
     try {
       return readFileSync(join(root, name), 'utf8');
@@ -422,7 +450,7 @@ function scanReport(root) {
   const pitfallsRecorded = count(pitfallsOf(raw));
   const reportComplete =
     reportSource === 'report.md'
-      ? hasSelfTest(raw) && caseRowFilled(raw, 1) && caseRowFilled(raw, 2) && pitfallsRecorded >= 1
+      ? hasSelfTest(raw) && pitfallsRecorded >= 1 && (!requireCaseRows || (caseRowFilled(raw, 1) && caseRowFilled(raw, 2)))
       : hasSelfTest(raw) && pitfallsRecorded >= 1;
   return { reportComplete, pitfallsRecorded, reportSource };
 }
@@ -484,7 +512,49 @@ function extractUsage(dshHome, sinceMs) {
   return { tokens, sessionId };
 }
 
+/**
+ * script 模式：直接执行包声明的命令，不经 dsh。
+ *
+ * 适用的包：交付物本身就是一段**可执行的 agent 程序**（搭建型实验）。
+ * 为什么不让 dsh 代劳：实测（2026-11-15）dsh 会把题干当成"实现任务"，
+ * 花 5 分钟改代码却没运行它，最终没有产出 → 复验失败且原因难解释。
+ * 直接执行则确定性高、耗时从 ~290s 降到几十秒、也不烧 agent 的 token。
+ */
+function runScript({ spec, workdir, timeoutMs }) {
+  const startedAt = Date.now();
+  const proc = spawnSync('sh', ['-c', spec.runCommand], {
+    cwd: workdir,
+    env: { ...process.env },
+    timeout: timeoutMs,
+    maxBuffer: 64 * 1024 * 1024,
+    encoding: 'utf8',
+  });
+  const durationMs = Date.now() - startedAt;
+  writeFileSync(join(workdir, 'stdout.txt'), proc.stdout ?? '');
+  writeFileSync(join(workdir, 'stderr.txt'), proc.stderr ?? '');
+  const outputPath = join(workdir, spec.outputFile);
+  const outputText = existsSync(outputPath) ? readFileSync(outputPath, 'utf8') : null;
+  const timedOut = proc.error?.code === 'ETIMEDOUT' || proc.signal === 'SIGTERM';
+  return {
+    exitCode: proc.status,
+    timedOut,
+    durationMs,
+    tokens: { input: 0, output: 0, reasoning: 0 },
+    sessionId: null,
+    outputText,
+    finalText: (proc.stdout ?? '').trim().slice(0, 500),
+    error: proc.error
+      ? String(proc.error.message ?? proc.error)
+      : proc.status !== 0
+        ? `exit ${proc.status}: ${(proc.stderr ?? '').trim().slice(-300)}`
+        : outputText === null
+          ? `命令执行成功但没有生成 ${spec.outputFile}（检查 runCommand 的输出路径）`
+          : null,
+  };
+}
+
 function runRound({ opts, spec, inputs, workdir }) {
+  if (spec.runMode === 'script') return runScript({ spec, workdir, timeoutMs: opts.timeoutMs });
   const task = buildTaskPrompt({ spec, inputs, outputFile: spec.outputFile });
 
   const startedAt = Date.now();
@@ -583,7 +653,9 @@ async function judgeWithLlm({ spec, expected, expectedName, actual }) {
         role: 'user',
         content: useBuiltin
           ? `清洗规则：\n${CLEAN_RULES}\n\nexpected.csv：\n${expected}\n\noutput.csv：\n${actual ?? '(未生成)'}`
-          : `期望产出（${expectedName}）：\n${expected}\n\n实际产出（${spec.outputFile}）：\n${actual ?? '(未生成)'}`,
+          : expected === null
+            ? `No reference answer in this package (engineering task: several correct solutions). Grade the actual output by the rules in judge.md.\n\nActual output (${spec.outputFile}):\n${actual ?? '(not produced)'}`
+            : `期望产出（${expectedName}）：\n${expected}\n\n实际产出（${spec.outputFile}）：\n${actual ?? '(未生成)'}`,
       },
     ],
   };
@@ -631,6 +703,9 @@ async function judgeWithLlm({ spec, expected, expectedName, actual }) {
 }
 
 function judgeExact({ spec, expected, expectedName, actual }) {
+  if (expected === null || expected === undefined) {
+    return { pass: false, score: 0, rationale: 'no expected.* in this package (no single right answer): use judgeMode=llm or the teacher rubric', judgeTokens: { input: 0, output: 0 } };
+  }
   if (actual === null) {
     return { pass: false, score: 0, rationale: `未生成 ${spec.outputFile}`, judgeTokens: { input: 0, output: 0 } };
   }
@@ -653,6 +728,8 @@ function judge(mode, args) {
 
 function listCases(problemRoot, opts, spec) {
   const casesDir = join(problemRoot, 'cases');
+  // No cases/ layer -> single-scenario package: the problem root itself is the workspace
+  if (!existsSync(casesDir)) return [SINGLE_CASE];
   let names = readdirSync(casesDir, { withFileTypes: true })
     .filter((d) => d.isDirectory()).map((d) => d.name).sort();
   if (opts.cases) names = names.filter((c) => opts.cases.includes(c));
@@ -672,6 +749,8 @@ function inspectPackage({ problemRoot, spec, skillRoot, caseNames }) {
     outputFile: spec.outputFile,
     inputs: spec.inputs,
     judgeMode: spec.judgeMode,
+    runMode: spec.runMode,
+    runCommand: spec.runCommand,
     assertions: spec.assertions.length,
     maxCases: spec.maxCases,
     requires: spec.requires,
@@ -679,15 +758,15 @@ function inspectPackage({ problemRoot, spec, skillRoot, caseNames }) {
     taskPromptSource: spec.taskPrompt ? 'problem/task.md' : 'builtin(csv-cleaner)',
     judgeRulesSource: spec.judgeRules ? 'problem/judge.md' : 'builtin(csv-cleaner)',
     cases: caseNames.map((name) => {
-      const caseDir = join(problemRoot, 'cases', name);
+      const caseDir = spec.singleCase ? problemRoot : join(problemRoot, 'cases', name);
       return {
         name,
         inputs: caseInputs(caseDir, spec).map((i) => i.rel),
-        expected: caseExpected(caseDir, spec).name,
+        expected: caseExpected(caseDir, spec)?.name ?? null,
       };
     }),
     skill: skillRoot
-      ? { root: skillRoot, files: Object.keys(hashTree(skillRoot)), info: scanReport(skillRoot) }
+      ? { root: skillRoot, files: Object.keys(hashTree(skillRoot)), info: scanReport(skillRoot, { requireCaseRows: !spec.singleCase }) }
       : null,
   };
 }
@@ -697,6 +776,7 @@ async function main() {
 
   const problemRoot = resolveProblemRoot(unpack(opts.problem, 'problem'));
   const spec = readProblemSpec(problemRoot);
+  spec.singleCase = !existsSync(join(problemRoot, 'cases'));
   const skillRoot = opts.skill ? resolveSkillRoot(unpack(opts.skill, 'skill')) : null;
   // 单轮复验必须带 Skill：baseline 轮已取消，"没有 Skill 的裸做"不再是评测对象。
   if (!opts.check && !skillRoot) {
@@ -745,15 +825,15 @@ async function main() {
     package: pkg,
     dependencyCheck: deps,
     skillFileHashes,
-    skillInfo: skillRoot ? scanReport(skillRoot) : null,
+    skillInfo: skillRoot ? scanReport(skillRoot, { requireCaseRows: !spec.singleCase }) : null,
     cases: [],
   };
 
   for (const caseName of caseNames) {
-    const caseDir = join(problemRoot, 'cases', caseName);
+    const caseDir = spec.singleCase ? problemRoot : join(problemRoot, 'cases', caseName);
     const inputs = caseInputs(caseDir, spec);
     const expected = caseExpected(caseDir, spec);
-    const expectedText = readFileSync(expected.path, 'utf8');
+    const expectedText = expected ? readFileSync(expected.path, 'utf8') : null;
     const workdir = join(runRoot, caseName, 'run');
     mkdirSync(workdir, { recursive: true });
     for (const inp of inputs) {
@@ -768,7 +848,7 @@ async function main() {
     const j = await judge(judgeMode, {
       spec,
       expected: expectedText,
-      expectedName: expected.name,
+      expectedName: expected?.name ?? null,
       actual: r.outputText,
     });
     // 硬性判据（代码判定）不成立 → 直接不通过；LLM 的判定只覆盖结构与语义

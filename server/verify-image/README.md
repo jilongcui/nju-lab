@@ -25,7 +25,20 @@
   >
   > 只加小文件层，体积与 pkg5 持平（2.17GB），无需 export/import 压平。
   > `server/src/submissions/docker-evaluation-runner.ts` 的默认镜像已切到 pkg6。**pkg5 保留作回滚点**。
-- `run-eval.mjs` — 复验驱动（**包驱动**）：解包 `--skill` / `--problem` 两个 ZIP
+  >
+  > **2026-11 起的后续（都只覆盖驱动，基底沿用 pkg5）**：
+  >
+  > | tag | 改动 |
+  > |---|---|
+  > | pkg7 / pkg8 | 应用运行时与项目级模型映射（`VERIFY_MODEL` / `VERIFY_REASONING_EFFORT`）等 |
+  > | **pkg9** | **`expected.*` 可选**（无标准答案的包不再报错）+ **无 `cases/` 目录时把包根当唯一工作目录**（case 名 `main`）+ 报告扫描不再硬要求"两个 case 的表格行" |
+  > | **pkg10** | **`runMode: "script"`**：交付物是可执行程序时直接执行 `runCommand`，不经 dsh（实测 293s → 45s，且不会出现"agent 改完代码却没运行"） |
+  >
+  > **当前生产镜像：`nju-lab-verify:0.2.0-rc.2-pkg10`**；`docker-evaluation-runner.ts` 默认值已切。
+  > 回滚点：pkg8（不含上面两项）。
+- `run-eval.mjs` — 复验驱动（**包驱动**）：默认跑一轮 dsh headless（`manifest.runMode=dsh`）；
+  包声明 `runMode=script` 时改为 `sh -c runCommand` 直接执行学生程序。其余流程同上：
+  解包 `--skill` / `--problem` 两个 ZIP
   （resolveSkillRoot / resolveProblemRoot 语义；CLI 参数名保留历史称法，仓库里的包现在叫
   `skill-template.zip` / `problem.zip`）→ 读题目包的 `manifest.json` / `task.md` / `judge.md`
   → 依赖自检 → 逐 case 跑一轮 dsh headless（题干 + 学生的 Skill；

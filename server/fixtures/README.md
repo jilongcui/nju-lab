@@ -30,7 +30,8 @@
 | [`memory-easy/`](memory-easy/) | 给随访助手加一张记忆表（**写入/检索/更新/遗忘**） | **应用驱动 · 记忆入门（easy，第 11 章）** | 8 条断言（逐步快照 + 检索只取 active + 更新/遗忘边界）+ `judge.md` |
 | [`mcp-easy/`](mcp-easy/) | 手写一次 MCP 往返（**initialize → tools/list → tools/call**） | **应用驱动 · 工具协议入门（easy，第 12 章）** | 9 条断言（逐条报文 + 通知不回 + 错误码不混用）+ `judge.md` |
 | [`skill-easy/`](skill-easy/) | 把检验判定写成脚本（**口径与边界**） | **应用驱动 · 技能入门（easy，第 13 章）** | 9 条断言（逐项 flag + 危急闭区间 + 表外项目 unknown）+ `judge.md` |
-| [`harness-agent/`](harness-agent/) | 给随访助手写一个 harness（**循环 / 记忆分层 / 工具 / 知识库**） | **应用驱动 · 智能体 Harness（medium，第 19 章 · 2026-11 升级）** | 14 条断言（`trace` 逐步 + 工具错误码 + 记忆行为性 + 检索对照 + 升级/拒答）+ `judge.md` |
+| [`agent-live/`](agent-live/) | 搭一个**真的在跑**的通用 agent（模型决定下一步 + 真工具 + 记忆 + 边界） | **搭建型 · 单场景（medium，第 19 章 · 2026-11-15 重构）** | 15 条**冒烟 + 自洽**断言（真调模型 / 工具真跑 / 引用有据 / 拒答无引用 / 计数一致）+ `judge.md` 教师 rubric；**无 expected** |
+| [`harness-agent/`](harness-agent/) ⚠️**已下架**（第 19 章改由 agent-live 承担） | 给随访助手写一个 harness（**循环 / 记忆分层 / 工具 / 知识库**） | **应用驱动 · 智能体 Harness（medium，第 19 章 · 2026-11 升级）** | 14 条断言（`trace` 逐步 + 工具错误码 + 记忆行为性 + 检索对照 + 升级/拒答）+ `judge.md` |
 | [`agent-app-skill/`](agent-app-skill/) | 写一个 **Skill**（`handle()`）把检验数据整理成能分享的报告（**平台提供 agent 与托管**） | **应用驱动 · 应用实践（medium，第 20 章 · 2026-11-13 重构）** | 10 条断言（每轮行数含「只列异常」与「忘掉」+ 报告逐行 + 升级/拒答条数）+ `judge.md` |
 | [`agent-app-report/`](agent-app-report/) ⚠️**已下架**（并入 agent-app-skill） | 把附件整理成能复核的报告（**只做 core：附件 → 报告**，给参考实现） | **应用驱动 · 综合实践入门（easy，第 20 章 · 2026-11 新增）** | 9 条断言（三类附件行数 + 指标表逐行 + 计数自洽 + 四节篇幅）+ `judge.md` |
 | [`agent-app-studio/`](agent-app-studio/) ⚠️**已下架**（发布改由平台负责） | 把 harness 做成可分享的应用（**附件解析 + 报告 + 零依赖前端**） | **应用驱动 · 综合实践（hard，第 20 章 · 2026-11 新增）** | 17 条断言（三条附件通道含**视觉抽取** + 报告逐行 + 记忆改变行集 + 前端哈希 ≠ 模板）+ `judge.md` |
@@ -160,7 +161,7 @@ rm -f skill-template.zip problem.zip
 (cd problem        && zip -qr ../problem.zip .)          # zip 根即 cases/ 与 manifest.json
 
 # 上传前自检（不烧 token）：结构 + 依赖
-docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg6 \
+docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg10 \
   --check --skill /p/skill-template.zip --problem /p/problem.zip
 ```
 
@@ -170,6 +171,16 @@ docker run --rm -v "$PWD:/p:ro" nju-lab-verify:0.2.0-rc.2-pkg6 \
 
 注意：`problem/cases/*/expected.*` 是评分基准，改任一 case 即视为新版本 ——
 **不要在有学生做的时候换**。
+
+### 单场景包（无 `cases/` / 无 `expected`）
+
+`agent-live` 用的是新形态（规范见 `docs/EXPERIMENT-PACKAGE-SPEC.md` §3.0）：题目包里没有
+`cases/`，材料直接放根；`manifest.assertions` 只做**冒烟 + 自洽**，不比对标准答案，
+成绩以 `judge.md` 的教师 rubric 为主。打包与校验命令同上面一样。
+
+它需要 **`run-eval.mjs` 支持"expected 可选 / 无 cases 目录"**（2026-11-15 起）——
+该能力在镜像 `nju-lab-verify:0.2.0-rc.2-pkg9` 及以后（`runMode=script` 需 pkg10）；用 pkg8 及更早的镜像跑会报
+`case 缺少期望产出文件（expected.*）`。
 
 ## 平台绑定现状（2026-10-08 更新）
 

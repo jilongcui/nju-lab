@@ -5,6 +5,31 @@
 
 ## 0. 一句话现状
 
+**2026-11-15（第 19 章重构：`harness-agent` → `agent-live`「搭一个能跑的 agent」；判分基建支持单场景包 / script 模式）—— 包与镜像已就绪，平台绑定待做**
+
+- **用户反馈（原话）**：「我觉得目前的实验是相当傻的，还把我们的实验当成之前的机器学习实验，
+  但是我们现在就是简单的构建一个通用 agent，还搞什么 case1、case2 对比…… 我是做 agent 搭建的实验啊」。
+- **核对结论（成立）**：`harness-agent` 的 16 条断言里 **11 条**要求与 `expected.json` 逐字段一致；
+  模型被替换成 `plan_stub.json` 桩，学生写的是"按剧本执行 + 记账"的确定性脚本（12 函数 / 16 TODO）
+  —— **包里其实没有 agent**。
+- **用户拍板**：① 第 19 章改成**真写一个能跑的 agent**（接真模型 + 真工具 + 循环，**一个场景**，
+  验收看它能不能完成一组真实对话任务）；② 判分**冒烟断言 + 教师 rubric 为主**（不再比对 `expected`）。
+- **新包 `server/fixtures/agent-live/`**（单场景 · 设备维护 · 6 组真实对话 · 无 `cases/` 无 `expected`）：
+  15 条冒烟断言（真调模型 / 工具真跑 / 引用有据 / 拒答无引用 / 计数三处一致）+ `judge.md` 四维教师 rubric。
+  实测：`--check` 退出码 0；**完整复验 pass / score 0.95 / 15-15 / 45 秒**；
+  参考实现直跑 6 组 15 轮 17 次工具调用 32 次模型调用 1 次拒答（~48s）。
+- **判分基建 `server/verify-image/run-eval.mjs` 四项泛化（向后兼容 38 个历史包）**：
+  ① `expected.*` 可选；② 无 `cases/` 目录时把包根当唯一工作目录（case 名 `main`）；
+  ③ **`runMode: "script"`**：`sh -c runCommand` 直接执行学生程序，不经 dsh
+  （实测对比：dsh 模式 **293s**，且被测 agent 改完代码却没运行它 → 无产出判负；script 模式 **45s** 稳定产出）；
+  ④ 报告扫描不再硬要求"两个 case 的表格行"。
+- **镜像**：`nju-lab-verify:0.2.0-rc.2-pkg10`（pkg9 = `expected` 可选 + 单场景；pkg10 = `runMode=script`）。
+  `server/src/submissions/docker-evaluation-runner.ts` 默认 tag 已切 pkg10 —— **服务重启后才生效**。
+- **平台侧待办（未做，避免影响在做的学生）**：上传 `problem.zip` / `skill-template.zip` 拿 fileId →
+  第 19 章项目（`a9c69502-dd7e-4e91-84c7-97c4d11000bd`）改绑 `agent-live` → `harness-agent` unpublish →
+  章节正文与 `docs/GUIDE-ch19-20-screenshots.md` 按新口径改（不再提 case01/case02）→ 重启 server。
+- **第 20 章不受影响**：第 20 章交的是 **Skill**（由平台 agent 调度），判据不依赖第 19 章的包。
+
 **2026-11-11（收官两章：第 19 章升级为 Harness 智能体 + 新增第 20 章「可分享的智能体应用」；平台新增应用托管一期）—— ✅ 已上线（含重启、正文、建章、deck、项目发布）**
 
 - **用户要求**（原话）："最后一章综合利用前面几章的知识……构建自己的 harness 智能体（loop、记忆层级、mcp/tools、知识库），

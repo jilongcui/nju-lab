@@ -13,7 +13,7 @@
 
 | 材料 | 谁看 | 作用 |
 |---|---|---|
-| **题目包 ZIP**（仓库里叫 `problem/` → `problem.zip`） | 学生（claim 时下载）+ 复验容器（只读挂载） | **标准**：题面（`task.md`）、评分细则（`judge.md`）、IO 契约（`manifest.json`）、用例（`cases/`：输入 + 期望输出） |
+| **题目包 ZIP**（仓库里叫 `problem/` → `problem.zip`） | 学生（claim 时下载）+ 复验容器（只读挂载） | **标准**：题面（`task.md`）、评分细则（`judge.md`）、IO 契约（`manifest.json`）、用例（`cases/`：输入 + 期望输出；**单场景包可无**，见 §3.0） |
 | **Skill 模板 ZIP**（`skill-template/` → `skill-template.zip`） | 学生（claim 时下载） | **起点**：`SKILL.md`（能力边界预填）+ `report.md` 报告模板 + `scripts/` + `references/`；**代码**里的 TODO 保留，**文档**里不留 TODO |
 | **参考实现**（`problem/reference/`） | **学生**（随题目包下发） | **学习示范**：一份写完的 Skill，学生先读后仿；同时用于教师「题目可解性」自检 |
 
@@ -55,7 +55,8 @@ skill-template/          ← 可以包一层顶层目录，但只允许一层
    学生提交自检、平台复验三处都会报 `no unique SKILL.md layer`。
 2. 模板里的 `TODO` **只留在代码里**（`scripts/*.py` 的实现处）；**文档里不留**：
    平台**不检查 `SKILL.md` 的内容**，只判断 `report.md` 是否齐全（`reportComplete`：
-   自测时间 + 两个 case 的表格行有数字 + 踩坑记录 ≥1 条），结果进复验产物的 `dossierSnapshot`。
+   自测时间 + 踩坑记录 ≥1 条 + **多 case 包**里每个 case 的表格行有数字；单场景包不要求 case 行），
+   结果进复验产物的 `dossierSnapshot`。
    所以模板必须带一份 `report.md`，且列与该实验的 `metrics` 对齐（见 CREATION-GUIDE §2.5）。
 3. 打包：zip 根即 `SKILL.md`（`cd skill-template && zip -qr ../skill-template.zip .`）。
 
@@ -71,10 +72,51 @@ problem/
   cases/case02/…
 ```
 
+**两种形态**（2026-11-15 起）：多 case 包（上面这个）与**单场景包**（见 §3.0）。
+
 > 复验时这个包只读挂载给驱动：`cases/*/input.*` 会被拷进 agent 的工作目录，
 > 而 `expected.*` 与 `judge.md` 只用于判分 —— **agent 看不到答案**。
 
-### 3.1 `cases/` 的约定
+### 3.0 单场景包（无 `cases/` / 无 `expected`）
+
+搭建型、工程实现型的实验（做一次任务，**没有唯一正确答案**）用这个形态：
+
+```
+problem/
+  manifest.json    ← 必需；驱动靠它在包根识别出根目录
+  task.md          ← 题干
+  judge.md         ← 评分细则（教师 rubric）
+  README.md        ← 导学
+  <材料文件与目录>  ← 直接放根：数据、任务集、限额…… 复验时整体拷进工作目录
+```
+
+规则：
+
+- **没有 `cases/`**：驱动把包根当唯一工作目录，`manifest.inputs` 不写时取根目录下
+  除 `manifest.json` / `task.md` / `judge.md` / `README.md` / `cases/` / `expected.*` 之外的全部条目。
+- **没有 `expected.*`**：`assertions` 里不得引用 `expected`（它是 `null`）；
+  `judgeMode` 用 `llm`（判据只判语义与自洽）或 `exact`（会在该包直接判不通过，无意义）。
+- **判据只写"冒烟 + 自洽 + 防退化"**：产物字段齐、真的调了模型、工具真的被调用、
+  引用有据、拒答轮无引用、计数三处一致。**不要写"逐字段等于标准答案"** —— 没有标准答案。
+- **成绩以教师 rubric 为主**：复验产出的 `autoScoreSuggestion` 只是建议分，
+  教师在评分页按 `judge.md` 的 rubric 打 `teacherScore`（前端取 `teacherScore ?? autoScoreSuggestion`）。
+- 单场景包的 case 名固定为 `main`（结果 JSON 里 `cases[0].case === "main"`）。
+- **建议 `runMode: "script"`**：交付物本身就是一段可执行程序时，直接执行它，不让被测 agent 代劳：
+
+  ```json
+  "runMode": "script",
+  "runCommand": "python3 skill/scripts/run.py --tasks ./tasks --out output.json"
+  ```
+
+  工作目录布局：包内材料在根（`./tasks` 等），学生 Skill 在 `./skill`。
+  `sh -c` 执行、超时同 `--timeout-ms`、stdout/stderr 落在工作目录的 `stdout.txt`/`stderr.txt`，
+  执行后仍读 `outputFile` 与 `assertions`。
+  实测（2026-11-15）对比：`runMode=dsh` 花了 293 秒、被测 agent 改完代码却没运行它（无产出）；
+  `runMode=script` 约 80 秒、稳定产出。**默认是 `dsh`（历史行为不变）**。
+
+示例：`server/fixtures/agent-live/`（第 19 章「搭一个能跑的通用 agent」，15 条冒烟断言）。
+
+### 3.1 `cases/` 的约定（多 case 包）
 
 - 每 `case0N/` 一个用例；case 名按字典序执行（`--max-cases N` 可截前 N 个）。
 - **输入**：`manifest.inputs` 列出的文件（相对 case 目录）；不写 `inputs` 时，
@@ -103,7 +145,9 @@ problem/
 |---|---|---|
 | `outputFile` | `output.csv` | 被测 agent 要产出的文件（相对工作目录，不得越界）；`exact` 模式按它比对 |
 | `inputs` | 全部非 `expected.*` | 相对 case 目录的路径列表 |
-| `judgeMode` | `llm` | `llm`（LLM judge，推荐）或 `exact`（归一化后逐字节比对，适合输出高度确定的任务） |
+| `judgeMode` | `llm` | `llm`（LLM judge，推荐）或 `exact`（归一化后逐字节比对，适合输出高度确定的任务；**单场景包不要用**） |
+| `runMode` | `dsh` | `dsh`（被测 agent 自己做，历史行为）或 `script`（直接执行 `runCommand`，见 §3.0） |
+| `runCommand` | 无 | `runMode=script` 时必填；在包工作目录里由 `sh -c` 执行 |
 | `maxCases` | `0`=全部 | 成本控制；项目级 `evalConfig.maxCases` 优先级更高 |
 | `assertions` | `[]` | **确定性断言**（见下）；不写则行为与历史版本完全一致 |
 | `requires` | `{}` | **声明任务要用的运行时依赖**（见 §4）；`python` 写模块名，`commands` 写命令名 |

@@ -1,0 +1,39 @@
+{
+  "tools": [
+    {
+      "name": "query_assets",
+      "description": "按站点/类别/状态筛选设备台账，返回设备行",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "site": { "type": "string", "description": "如 A 区" },
+          "category": { "type": "string", "description": "空压机 / 水泵 / 风机 / 真空泵" },
+          "status": { "type": "string", "description": "running / standby / idle / fault" }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "overdue_assets",
+      "description": "按手册的保养周期算出逾期设备与逾期天数（降序）",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "site": { "type": "string" }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "search_manual",
+      "description": "在维护手册里检索段落，返回带编号的命中",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": { "type": "string" }
+        },
+        "required": ["query"]
+      }
+    }
+  ]
+}
