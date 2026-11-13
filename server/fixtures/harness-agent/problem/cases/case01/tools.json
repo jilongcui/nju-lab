@@ -2,9 +2,9 @@
   "tools": [
     {
       "name": "lookup_record",
-      "description": "查某位患者某一指标最近一次检验记录",
+      "description": "查某个对象（人/设备）某一项最近一次记录",
       "parameters": {
-        "patient_id": {
+        "subject": {
           "type": "string",
           "required": true
         },
@@ -15,8 +15,8 @@
       }
     },
     {
-      "name": "summarize_metric",
-      "description": "算某个指标全部记录的算术平均值",
+      "name": "summarize_column",
+      "description": "算某一项全部记录的算术平均值",
       "parameters": {
         "item": {
           "type": "string",
@@ -29,8 +29,8 @@
       }
     },
     {
-      "name": "fetch_guideline",
-      "description": "取某个指标对应的指南段落号",
+      "name": "fetch_doc",
+      "description": "取某一项对应的规则段落号",
       "parameters": {
         "item": {
           "type": "string",
@@ -39,8 +39,8 @@
       }
     },
     {
-      "name": "escalate_value",
-      "description": "把一条越界读数登记为升级（只接受越界记录）",
+      "name": "flag_value",
+      "description": "把一条异常记录登记为待复核（只接受异常记录）",
       "parameters": {
         "record_id": {
           "type": "string",

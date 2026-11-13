@@ -11,6 +11,10 @@
           "call_id": "C01"
         },
         {
+          "action": "tool",
+          "call_id": "C02"
+        },
+        {
           "action": "kb"
         },
         {
@@ -29,14 +33,6 @@
           "call_id": "C03"
         },
         {
-          "action": "tool",
-          "call_id": "C04"
-        },
-        {
-          "action": "tool",
-          "call_id": "C05"
-        },
-        {
           "action": "kb"
         },
         {
@@ -52,11 +48,53 @@
         },
         {
           "action": "tool",
+          "call_id": "C04"
+        },
+        {
+          "action": "tool",
+          "call_id": "C05"
+        },
+        {
+          "action": "kb"
+        },
+        {
+          "action": "kb"
+        },
+        {
+          "action": "finish"
+        }
+      ]
+    },
+    {
+      "turn": 4,
+      "steps": [
+        {
+          "action": "recall"
+        },
+        {
+          "action": "tool",
           "call_id": "C06"
         },
         {
           "action": "tool",
           "call_id": "C07"
+        },
+        {
+          "action": "kb"
+        },
+        {
+          "action": "finish"
+        }
+      ]
+    },
+    {
+      "turn": 5,
+      "steps": [
+        {
+          "action": "recall"
+        },
+        {
+          "action": "kb"
         },
         {
           "action": "finish"

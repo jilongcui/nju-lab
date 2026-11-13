@@ -1,8 +1,8 @@
-{"call_id": "C01", "turn": 1, "tool": "lookup_record", "args": {"patient_id": "P001", "item": "血小板计数"}}
-{"call_id": "C02", "turn": 1, "tool": "summarize_metric", "args": {"item": "血小板计数", "decimals": 0}}
-{"call_id": "C03", "turn": 2, "tool": "fetch_guideline", "args": {"item": "白细胞计数"}}
-{"call_id": "C04", "turn": 3, "tool": "escalate_value", "args": {"record_id": "R02"}}
-{"call_id": "C05", "turn": 4, "tool": "escalate_value", "args": {"record_id": "R06"}}
-{"call_id": "C06", "turn": 4, "tool": "summarize_metric", "args": {"item": "血红蛋白", "decimals": "1"}}
-{"call_id": "C07", "turn": 5, "tool": "lookup_guideline", "args": {"item": "糖化血红蛋白"}}
-{"call_id": "C08", "turn": 5, "tool": "lookup_record", "args": {"patient_id": "P002"}}
+{"call_id": "C01", "turn": 1, "tool": "lookup_record", "args": {"subject": "张伟", "item": "数据库系统"}}
+{"call_id": "C02", "turn": 1, "tool": "summarize_column", "args": {"item": "数据库系统", "decimals": 0}}
+{"call_id": "C03", "turn": 2, "tool": "fetch_doc", "args": {"item": "续借"}}
+{"call_id": "C04", "turn": 3, "tool": "flag_value", "args": {"record_id": "R02"}}
+{"call_id": "C05", "turn": 4, "tool": "flag_value", "args": {"record_id": "R01"}}
+{"call_id": "C06", "turn": 4, "tool": "summarize_column", "args": {"item": "机器学习", "decimals": "1"}}
+{"call_id": "C07", "turn": 5, "tool": "lookup_doc", "args": {"item": "逾期"}}
+{"call_id": "C08", "turn": 5, "tool": "lookup_record", "args": {"subject": "李娜"}}

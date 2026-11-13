@@ -26,13 +26,13 @@ SKILLS = load_local_skills()
 
 
 def rows_to_records(attachments: list[dict]) -> list[dict]:
-    """把平台解析好的附件行转成 agent 内部的"检验记录"。"""
+    """把平台解析好的附件行转成 agent 内部的记录（通用：subject/item/value/unit）。"""
     records = []
     for att in attachments:
         for i, row in enumerate(att.get("rows") or [], start=1):
             records.append({
                 "record_id": f"R{len(records) + 1:02d}",
-                "patient_id": "P001",
+                "subject": "当前对象",
                 "item": row["item"],
                 "value": float(row["value"]),
                 "unit": row["unit"],

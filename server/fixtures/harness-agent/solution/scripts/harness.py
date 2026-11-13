@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""第 19 章（智能体 Harness）的**教师侧解答样例**。
+"""第 19 章（通用 agent）的**教师侧参考实现**。
 
 > ⚠️ **这份文件不随题目包下发**。它放在实验目录根下的 `solution/`（不在 `problem/` 里），
 > 作用是两份**机器证明**：
@@ -200,7 +200,7 @@ def validate_call(call: dict, tools: dict, records: list[dict], out_ids: set[str
             return False, "type_mismatch", -32602
         if decl["type"] == "integer" and (isinstance(value, bool) or not isinstance(value, int)):
             return False, "type_mismatch", -32602
-    if call["tool"] == "escalate_value" and args["record_id"] not in out_ids:
+    if call["tool"] == "flag_value" and args["record_id"] not in out_ids:
         return False, "not_out_of_range", -32602
     return True, "", 0
 
@@ -213,22 +213,22 @@ def mock_execute(call: dict, records: list[dict], kb: dict[str, str]) -> str:
     name, args = call["tool"], call["args"]
     if name == "lookup_record":
         rows = [r for r in records
-                if r["patient_id"] == args["patient_id"] and r["item"] == args["item"]]
+                if r["subject"] == args["subject"] and r["item"] == args["item"]]
         if not rows:
-            return f"{args['patient_id']}/{args['item']} 无记录"
+            return f"{args['subject']}/{args['item']} 无记录"
         last = rows[-1]
-        return f"{last['patient_id']}/{last['item']} 最近一次 {num(last['value']):g} {last['unit']}（{last['record_id']}）"
-    if name == "summarize_metric":
+        return f"{last['subject']}/{last['item']} 最近一次 {num(last['value']):g} {last['unit']}（{last['record_id']}）"
+    if name == "summarize_column":
         rows = [r for r in records if r["item"] == args["item"]]
         if not rows:
             return f"{args['item']} 无记录"
         mean = sum(r["value"] for r in rows) / len(rows)
         return f"{args['item']} 均值 {round(mean, args.get('decimals', 0))}"
-    if name == "fetch_guideline":
+    if name == "fetch_doc":
         hit = sorted(pid for pid, text in kb.items() if args["item"] in text)
         return f"{args['item']} 的指南段落 {hit[0] if hit else '无'}"
-    if name == "escalate_value":
-        return f"{args['record_id']} 已登记升级"
+    if name == "flag_value":
+        return f"{args['record_id']} 已登记待复核"
     return "未实现"
 
 

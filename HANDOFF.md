@@ -279,6 +279,20 @@
     `no_notes` 已清空、`chapterChanged=false`。
   · 项目重传：19 章 problem `50a563e78132` / skill `f90a9bf2a9cc`；20 章 problem `703fb7dd01c8` /
     skill `065773585b61`。
+- **第 19 章改成"通用 agent"（2026-11-13 用户："19 章标题也不对，应该是构建一个通用 agent，不是随访助手"）—— 已落地**：
+  · **两个样例全部换域**（医学只留在第 20 章）：
+    `case01` 图书借阅（借阅记录 + 借阅规则 + 2 个 skill）、`case02` 设备维护（运行记录 + 维护手册 + 2 个 skill）；
+    技能改为 `summary-report` / `maintenance`；`records.csv` 列改为 `record_id/subject/item/value/unit`；
+    工具名通用化：`lookup_record` / `summarize_column` / `fetch_doc` / `flag_value`；
+    阈值与话术中性化（"超出正常范围，请人工复核"）；`case02` 保留一轮 `max_steps` 截断。
+  · **文案与骨架中性化**：`task.md` 整篇重写（通用 agent、两个领域、不绑定业务）；`SKILL.md` → `generic-agent`；
+    `agent/profile.json` → "我的助手（通用示例，可改成任意业务）"；solution 与骨架的旧业务词清零。
+  · **章节**：标题《智能体综合实践：给随访助手写一个 harness》→《智能体综合实践：构建一个通用 agent》；
+    正文里"随访/检验/护士/患者"全部替换（例子改成"查借阅/排维护"），deck 重生成 **19 页**（`no_notes` 空）。
+  · **实测**：case01 7 轮（第 6 轮路由 `summary-report`）、case02 5 轮（第 2/3/5 轮路由 `maintenance`，
+    第 3 轮 `max_steps` 截断）；solution 与 expected 逐字段一致；`--check` 16 条断言通过。
+  · 项目重传：problem `19812f29bf7f` / skill `e16e0e09e77c`；标题改为
+    「应用实验：构建一个通用 agent（循环 / 记忆 / 工具 / 知识库 / skill 调度）」。
 - **未做（四期）**：成本看板、评分汇总进 `submissions`/`Grading`、iframe 真正独立源（需 nginx + 证书）；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；

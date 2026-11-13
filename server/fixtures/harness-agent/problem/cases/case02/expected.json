@@ -1,14 +1,14 @@
 {
   "harness": {
     "turns": 5,
-    "max_steps": 4,
-    "steps_total": 12,
+    "max_steps": 5,
+    "steps_total": 22,
     "terminated": [
       "done",
-      "max_steps",
       "done",
       "max_steps",
-      "max_steps"
+      "done",
+      "done"
     ]
   },
   "trace": [
@@ -22,17 +22,23 @@
       "turn": 1,
       "step": 2,
       "action": "tool",
-      "observation": "P003/血红蛋白 最近一次 101 g/L（R02）"
+      "observation": "离心机/离心机 最近一次 620 小时（R02）"
     },
     {
       "turn": 1,
       "step": 3,
-      "action": "kb",
-      "observation": "检索命中：KB-03,KB-04,KB-01"
+      "action": "tool",
+      "observation": "离心机 均值 550.0"
     },
     {
       "turn": 1,
       "step": 4,
+      "action": "kb",
+      "observation": "检索命中：KB-01,KB-03,KB-02"
+    },
+    {
+      "turn": 1,
+      "step": 5,
       "action": "finish",
       "observation": "完成"
     },
@@ -40,47 +46,101 @@
       "turn": 2,
       "step": 1,
       "action": "recall",
-      "observation": "记忆命中：MEM01"
+      "observation": "记忆命中：-"
     },
     {
       "turn": 2,
       "step": 2,
       "action": "tool",
-      "observation": "糖化血红蛋白 的指南段落 KB-03"
+      "observation": "校准 的指南段落 KB-02"
     },
     {
       "turn": 2,
       "step": 3,
-      "action": "tool",
-      "observation": "R02 已登记升级"
+      "action": "kb",
+      "observation": "检索命中：KB-02,KB-01,KB-07"
     },
     {
       "turn": 2,
       "step": 4,
-      "action": "tool",
-      "observation": "rejected:not_out_of_range"
+      "action": "finish",
+      "observation": "完成"
     },
     {
       "turn": 3,
       "step": 1,
       "action": "recall",
-      "observation": "记忆命中：-"
+      "observation": "记忆命中：MEM01"
     },
     {
       "turn": 3,
       "step": 2,
       "action": "tool",
-      "observation": "血红蛋白 均值 124.0"
+      "observation": "R02 已登记待复核"
     },
     {
       "turn": 3,
       "step": 3,
       "action": "tool",
-      "observation": "rejected:type_mismatch"
+      "observation": "rejected:not_out_of_range"
     },
     {
       "turn": 3,
       "step": 4,
+      "action": "kb",
+      "observation": "检索命中：KB-02,KB-01,KB-07"
+    },
+    {
+      "turn": 3,
+      "step": 5,
+      "action": "kb",
+      "observation": "检索命中：KB-02,KB-01,KB-07"
+    },
+    {
+      "turn": 4,
+      "step": 1,
+      "action": "recall",
+      "observation": "记忆命中：-"
+    },
+    {
+      "turn": 4,
+      "step": 2,
+      "action": "tool",
+      "observation": "冰箱 均值 575.0"
+    },
+    {
+      "turn": 4,
+      "step": 3,
+      "action": "tool",
+      "observation": "rejected:type_mismatch"
+    },
+    {
+      "turn": 4,
+      "step": 4,
+      "action": "kb",
+      "observation": "检索命中：KB-03,KB-01,KB-04"
+    },
+    {
+      "turn": 4,
+      "step": 5,
+      "action": "finish",
+      "observation": "完成"
+    },
+    {
+      "turn": 5,
+      "step": 1,
+      "action": "recall",
+      "observation": "记忆命中：-"
+    },
+    {
+      "turn": 5,
+      "step": 2,
+      "action": "kb",
+      "observation": "检索命中：KB-07,KB-01,KB-02"
+    },
+    {
+      "turn": 5,
+      "step": 3,
       "action": "finish",
       "observation": "完成"
     }
@@ -93,38 +153,38 @@
       "status": "executed",
       "error_code": 0,
       "rejected_reason": "",
-      "result_summary": "P003/血红蛋白 最近一次 101 g/L（R02）"
+      "result_summary": "离心机/离心机 最近一次 620 小时（R02）"
     },
     {
       "call_id": "C02",
-      "tool": "summarize_metric",
+      "tool": "summarize_column",
       "args_valid": true,
       "status": "executed",
       "error_code": 0,
       "rejected_reason": "",
-      "result_summary": "糖化血红蛋白 均值 7.2"
+      "result_summary": "离心机 均值 550.0"
     },
     {
       "call_id": "C03",
-      "tool": "fetch_guideline",
+      "tool": "fetch_doc",
       "args_valid": true,
       "status": "executed",
       "error_code": 0,
       "rejected_reason": "",
-      "result_summary": "糖化血红蛋白 的指南段落 KB-03"
+      "result_summary": "校准 的指南段落 KB-02"
     },
     {
       "call_id": "C04",
-      "tool": "escalate_value",
+      "tool": "flag_value",
       "args_valid": true,
       "status": "executed",
       "error_code": 0,
       "rejected_reason": "",
-      "result_summary": "R02 已登记升级"
+      "result_summary": "R02 已登记待复核"
     },
     {
       "call_id": "C05",
-      "tool": "escalate_value",
+      "tool": "flag_value",
       "args_valid": false,
       "status": "rejected",
       "error_code": -32602,
@@ -133,12 +193,12 @@
     },
     {
       "call_id": "C06",
-      "tool": "summarize_metric",
+      "tool": "summarize_column",
       "args_valid": true,
       "status": "executed",
       "error_code": 0,
       "rejected_reason": "",
-      "result_summary": "血红蛋白 均值 124.0"
+      "result_summary": "冰箱 均值 575.0"
     },
     {
       "call_id": "C07",
@@ -152,15 +212,15 @@
   ],
   "memory": {
     "working": [
-      "T4: 帮我看看这个病人的随访提醒该怎么安排。",
-      "T5: 好，先到这。"
+      "T4: 忘掉 MEM01，这台设备还能用多久？直",
+      "T5: 帮我排一下这周的维护计划。"
     ],
     "short": [
-      "T1: 步 4 / 工具 lookup_record / 命中 KB-03",
-      "T2: 步 4 / 工具 fetch_guideline,escalate_value / 命中 KB-03",
-      "T3: 步 4 / 工具 summarize_metric / 命中 KB-02",
-      "T4: 步 0 / 工具 - / 命中 KB-05",
-      "T5: 步 0 / 工具 - / 命中 KB-01"
+      "T1: 步 5 / 工具 lookup_record,summarize_column / 命中 KB-01",
+      "T2: 步 4 / 工具 fetch_doc / 命中 KB-02",
+      "T3: 步 5 / 工具 flag_value / 命中 KB-02",
+      "T4: 步 5 / 工具 summarize_column / 命中 KB-03",
+      "T5: 步 3 / 工具 - / 命中 KB-07"
     ],
     "long": {
       "active": [],
@@ -168,7 +228,7 @@
       "forgotten": [
         {
           "entry_id": "MEM01",
-          "fact": "老是搞混 糖化血红蛋白 和 血红蛋白",
+          "fact": "老是搞混 保养 和 校准",
           "category": "weak_point",
           "state": "forgotten",
           "importance": 3
@@ -177,7 +237,7 @@
     },
     "applied": [
       {
-        "turn": 2,
+        "turn": 3,
         "entry_id": "MEM01"
       }
     ]
@@ -186,26 +246,26 @@
     {
       "turn": 1,
       "bm25_top3": [
+        "KB-01",
         "KB-03",
-        "KB-04",
-        "KB-01"
+        "KB-02"
       ],
       "cosine_top3": [
-        "KB-04",
+        "KB-01",
         "KB-03",
-        "KB-01"
+        "KB-02"
       ]
     },
     {
       "turn": 2,
       "bm25_top3": [
-        "KB-03",
-        "KB-04",
-        "KB-01"
+        "KB-02",
+        "KB-01",
+        "KB-07"
       ],
       "cosine_top3": [
-        "KB-03",
-        "KB-04",
+        "KB-02",
+        "KB-07",
         "KB-01"
       ]
     },
@@ -213,39 +273,39 @@
       "turn": 3,
       "bm25_top3": [
         "KB-02",
-        "KB-03",
-        "KB-04"
+        "KB-01",
+        "KB-07"
       ],
       "cosine_top3": [
         "KB-02",
-        "KB-04",
-        "KB-03"
+        "KB-07",
+        "KB-01"
       ]
     },
     {
       "turn": 4,
       "bm25_top3": [
-        "KB-05",
-        "KB-02",
+        "KB-03",
+        "KB-01",
         "KB-04"
       ],
       "cosine_top3": [
-        "KB-05",
-        "KB-02",
+        "KB-03",
+        "KB-01",
         "KB-04"
       ]
     },
     {
       "turn": 5,
       "bm25_top3": [
+        "KB-07",
         "KB-01",
-        "KB-02",
-        "KB-03"
+        "KB-02"
       ],
       "cosine_top3": [
+        "KB-07",
         "KB-01",
-        "KB-02",
-        "KB-03"
+        "KB-02"
       ]
     }
   ],
@@ -256,23 +316,23 @@
       "citations": [
         {
           "kind": "kb",
-          "ref": "KB-03"
+          "ref": "KB-01"
         }
       ]
     },
     {
       "turn": 2,
-      "skill": null,
+      "skill": "maintenance",
       "citations": [
         {
           "kind": "kb",
-          "ref": "KB-03"
+          "ref": "KB-02"
         }
       ]
     },
     {
       "turn": 3,
-      "skill": null,
+      "skill": "maintenance",
       "citations": [
         {
           "kind": "kb",
@@ -282,21 +342,16 @@
     },
     {
       "turn": 4,
-      "skill": "followup",
-      "citations": [
-        {
-          "kind": "kb",
-          "ref": "KB-05"
-        }
-      ]
+      "skill": null,
+      "citations": []
     },
     {
       "turn": 5,
-      "skill": null,
+      "skill": "maintenance",
       "citations": [
         {
           "kind": "kb",
-          "ref": "KB-01"
+          "ref": "KB-07"
         }
       ]
     }
@@ -305,39 +360,38 @@
     "escalations": [
       {
         "record_id": "R02",
-        "item": "血红蛋白",
-        "value": 101,
-        "message": "该读数超出参考范围，可能为测量误差或病情变化，请尽快由临床医生复核。"
+        "item": "离心机",
+        "value": 620,
+        "message": "该数值超出正常范围，可能为录入错误或状态异常，请人工复核后再处理。"
       },
       {
-        "record_id": "R03",
-        "item": "糖化血红蛋白",
-        "value": 8.4,
-        "message": "该读数超出参考范围，可能为测量误差或病情变化，请尽快由临床医生复核。"
-      },
-      {
-        "record_id": "R07",
-        "item": "白细胞计数",
-        "value": 3.1,
-        "message": "该读数超出参考范围，可能为测量误差或病情变化，请尽快由临床医生复核。"
+        "record_id": "R05",
+        "item": "冰箱",
+        "value": 700,
+        "message": "该数值超出正常范围，可能为录入错误或状态异常，请人工复核后再处理。"
       },
       {
         "record_id": "R08",
-        "item": "血红蛋白",
-        "value": 118,
-        "message": "该读数超出参考范围，可能为测量误差或病情变化，请尽快由临床医生复核。"
+        "item": "显微镜",
+        "value": 0,
+        "message": "该数值超出正常范围，可能为录入错误或状态异常，请人工复核后再处理。"
       }
     ],
-    "refusals": []
+    "refusals": [
+      {
+        "turn": 4,
+        "reason": "是否感染属于诊断结论，助手只能提供读数与指南出处，必须由临床医生结合症状与体征判断。"
+      }
+    ]
   },
   "metrics": {
     "top3_diff_turns": [
-      1,
+      2,
       3
     ],
     "tool_executed": 5,
     "tool_rejected": 2,
-    "skills_routed": 1,
-    "trace_checksum": "ed407ae57a69"
+    "skills_routed": 3,
+    "trace_checksum": "fc2dd76e8eab"
   }
 }
