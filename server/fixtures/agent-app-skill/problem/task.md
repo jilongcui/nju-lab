@@ -23,12 +23,18 @@
 
 | 要什么 | 具体 |
 |---|---|
-| 入口 | `agent/api.py` 或 `scripts/api.py`，实现 `def handle(state, message, attachments, session) -> dict`（返回 `{"reply", "citations"}` 即可） |
+| 入口 | **`scripts/api.py`**，实现 `def handle(state, message, attachments, session) -> dict`（返回 `{"reply", "citations"}` 即可） |
 | 数据 | 你自己准备的材料，放在包的根目录（`data/` 或直接摊在根都行） |
 
-**其余全部由你决定**：要不要调模型、要不要附件解析、要不要记忆、界面长什么样。
-容器里有 `DEEPSEEK_API_KEY`；平台的 `platform_core` 也提供附件解析与模型代理（想用就 import，
-不想用就自己写）。
+**这是 Skill，不是 agent。** 循环、会话、附件解析、模型代理这些**平台已经给你了**；
+你写的是"拿到一条消息之后，怎么处理它"。
+
+- 上一章你从零搭过一个 agent，知道那层有多麻烦；这一章不用再搭一遍，直接用平台的。
+- 想要附件解析：`attachments` 里已经有 `text` / `rows`（PDF / Word / 图片都被解析过）；
+- 想调模型：`import platform_core` 然后 `platform_core.call_llm(messages)`（容器里没有 key，走平台代理）；
+- 想知道平台把哪些东西塞进了 `state` / `session`：读 `platform_core.py` 的文档字符串。
+
+**至于做什么、数据从哪来、怎么答 —— 全部由你决定。**
 
 ## 怎么评
 
