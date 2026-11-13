@@ -198,7 +198,13 @@ export function registerGuidedTools(
         },
         assignmentId: { type: 'string', required: true, description: 'assignment id' },
         stepId: { type: 'string', description: '要记录的步骤 id；缺省为当前步' },
-        record: { type: 'json', description: '这一步的产出（结构化对象，例如 { 交付: "output.json", cases: 2, 边界: "恰好等于阈值" }）' },
+        record: {
+          type: 'json',
+          description:
+            '这一步的产出：**扁平对象，值用短字符串**（例如 { 交付: "output.json 的六个键", 硬线: "越权要拒答" }）。'
+            + '不要嵌套对象或数组，不要把长段落塞进来（长内容写进给学生的答复里）——'
+            + '参数是 JSON 字符串，嵌套越深越容易写坏。',
+        },
         mode: {
           type: 'string',
           enum: ['auto', 'manual'],
