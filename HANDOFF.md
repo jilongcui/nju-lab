@@ -318,6 +318,35 @@
     对应清单 `docs/GUIDE-ch19-20-screenshots.md`（清单里"截图待老师在浏览器里截"的说法已不再适用）。
   · 端到端实测（学生视角、浏览器内）：登录 → 我的应用 → 用我的 Skill 创建应用 → 发布 →
     预览 → 上传 `report.pdf` → 报告四节 + PLT=18(low)/WBC=12.5(high) + 两条安全提示 + 签名。
+- **截图插进实验页（2026-11-13，用户："把截图插进实验页（content / faq 里用 markdown 引用，
+  学生一打开就看到『点哪里』）"）—— ✅ 已上线**：
+  · **做法**：10 张截图用教师账号上传平台（各得 `fileId`），两个项目的 `content` / `description` / `faq`
+    里写 `![说明](file:<fileId>)` → `PATCH /api/projects/:id` 整段覆盖（**记得带
+    `Content-Type: application/json`**，否则 200 但没改）。插入位置与 fileId 全表见
+    `docs/GUIDE-ch19-20-screenshots.md`「已插入的位置」。
+    · 19 章（`a9c69502-…`）`content` 末尾新增「页面长什么样（照着点）」：`19-01`（首屏两样例表）+
+      `19-02`（材料卡"在这里下、在左侧实验环境里做"）；
+    · 20 章（`28ba4aaf-…`）`content`「为什么应用 = Skill」节末 → `20-01`；`description` 新增
+      「照着点一遍（主路径不用命令行、不用打包）」六步 `20-02→03→04→05→06→08`；`faq` 新增第 6 条
+      （老师在哪看/怎么评）→ `20-07`。
+  · **唯一可行的引用方式（实测钉死）**：`file:<uuid>`。`GET /api/files/:id` **要登录头**，
+    在 Markdown 里写 `/lab/api/files/<id>` 的 `<img src>` 拿不到 JWT → **401**（旧版 GUIDE 里那句
+    "/lab/api/files/<id>" 是错的，已改）；`MarkdownView` 会把 `file:` 换成 `data-file-ref`，
+    再由父页面**带 JWT** 取回补成 data URL —— 章节正文 / 实验页 / 教师端预览同一条管线。
+  · **真机发现的问题 + 修法**：1440×900 的整页截图在正文列里被缩到 **~760px**，图里的按钮文字读不出来
+    （"看到点哪里"直接失效）→ `web/src/components/MarkdownView.tsx` 加**点图放大**：
+    点任意正文图弹 antd `Modal`（92% 宽，最大 1600）显示原图、`Esc`/× 关闭；`img` 补
+    `title="点击放大"`、CSS `cursor: zoom-in`。前端已用 `deploy/deploy-web-lab.sh` 部署
+    （备份 `.verify-scratch/lab-web-backups/20261113-155645`，自检 4 个 chunk 全 200。
+    注意本机沙箱里 `/home/ubuntu/lab-web-backups` 只读，部署时用
+    `LAB_WEB_BACKUP_ROOT=<repo>/.verify-scratch/lab-web-backups` + 授权 `/var/www/lab` 写）。
+  · **验证（学生视角真机，不是只查接口）**：注册一次性学生 `shot_verify` → 教师 `POST
+    /courses/:id/enrollments` 入课 → headless-shell 登录 → `/lab/student/projects/<id>`：
+    19 章 2 张 / 20 章 8 张全部 `naturalWidth>0` 且 `src` 是 `data:image/png;base64`，**无 401、无
+    console error**；点图后 Modal 内图片 **1277×798**（原图 1440×900），截图文字可读；`Esc` 关闭后
+    `.ant-modal-wrap` `display:none`。测试账号与 enrollment 已删除。
+  · **未做**：19 章 3–5 张（工作台内部：skills 目录 / `profile.json` / `output.json`）还没截 ——
+    要起一次工作台容器；补图按 GUIDE「换图 / 补图流程」3 步。
 - **未做（四期）**：成本看板、评分汇总进 `submissions`/`Grading`、iframe 真正独立源（需 nginx + 证书）；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；

@@ -143,6 +143,8 @@
 .markdown-view img {
   max-width: 100%;
   border-radius: var(--ant-border-radius-sm);
+  /* 正文截图（页面引导图）在卡片里字太小 —— 可点击放大，光标给出提示 */
+  cursor: zoom-in;
 }
 .markdown-view a {
   color: var(--ant-color-primary);

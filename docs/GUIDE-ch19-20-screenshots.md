@@ -1,9 +1,11 @@
 # 第 19 / 20 章 图文引导 · 截图清单（给老师用）
 
-> 用途：把学生最容易迷路的地方用**截图**讲清楚，插到实验页 `faq` / `references` 或章节正文里。
-> 现状：**已用 headless-shell 自动截好**，见 `docs/assets/ch19-20/`（2026-11-13）。
+> 用途：把学生最容易迷路的地方用**截图**讲清楚，插到实验页的 `content` / `description` / `faq`。
+> 现状（2026-11-13）：**已截图 → 已上传平台 → 已插入两个实验项目**，学生打开实验页就能看到；
+> 图在正文列里会被缩到 ~760px 宽，所以 MarkdownView 加了**点图放大**（`cursor: zoom-in` + Modal）。
+> 原图留在 `docs/assets/ch19-20/`（重截/换图时用），线上走平台文件（`file:<fileId>`）。
 > 下面保留"截在哪 / 要看到什么"的口径，便于以后页面改版时**重截**（脚本思路：playwright-core +
-> `chromium_headless_shell` 的 executablePath，登录 `shot_student` 或教师账号，逐页 screenshot）。
+> `chromium_headless_shell` 的 executablePath，登录一次性学生账号或教师账号，逐页 screenshot）。
 >
 > 截图约定：**1920×1080 或 1440×900**，只截相关区域，文件名按下面编号；
 > 存到 `docs/assets/ch19-20/`（**不要**放进 `web/public`，避免进构建产物）。
@@ -21,6 +23,8 @@
 | 4 | `19-04-agent-profile.png` | 工作台打开 `agent/profile.json` | 中性模版（名字 / 语气 / 签名 / 禁语） | 「这份是 agent 的定制，不是应用」 |
 | 5 | `19-05-output.png` | 工作台跑完样例后的 `output.json` | `answers[].skill` 与 `metrics.skills_routed` | 「每轮用了哪个 skill，都记在产出里」 |
 
+> 3–5 张（工作台内部）**还没截**：需要起一次工作台容器，截图后按下面的"换图"流程补插到 `description`。
+
 ## 第 20 章（用 agent 做真实应用）· 7 张
 
 | # | 文件名 | 在哪截 | 要让人看到什么 | 配的一句话 |
@@ -33,26 +37,79 @@
 | 6 | `20-06-preview.png` | 点「预览」 | 应用页面（对话区 + 报告区 + 签名） | 「签名就是你在 profile.json 里做的定制」 |
 | 7 | `20-07-teacher-apps.png` | 教师端「学生应用」 | 列表 + 「预览 / 对话记录 / 版本 / 评分」 | 「老师在这里看、评、下架」 |
 
-## 可选（答疑最有用）
+## 已截的补充图
 
 | # | 文件名 | 内容 |
 |---|---|---|
-| 8 | `20-08-refusal.png` | 问「直接告诉我是不是 XX 病」时被拒答的样子（说明边界真的生效） |
-| 9 | `20-09-vision.png` | 一张截图附件与它被**视觉**读出来的几行（说明图片不用自己 OCR） |
-| 10 | `20-10-flag-table.png` | 报告里的指标表 + `low / high / normal` 标记 |
+| 8 | `20-08-conversation.png` | 带附件的对话：报告四节 + 异常值提示 + 签名（说明"传上去就能用"） |
 
-## 插到哪里
+## 还没截（有容器/有对话就能补）
 
-- 19 章 1–2 张 → 实验页 `content` 末尾；3–5 张 → `description` 的「从这里开始」表下面；
-- 20 章 1 张 → `content` 的「为什么应用 = Skill」那一节下面；2–6 张 → `description` 的「建议步骤」下方；
-- 教师端那张 → `faq`（回答"老师怎么看到我的应用"）；
-- 可选 3 张 → `faq` 对应条目下。
+| # | 文件名 | 内容 |
+|---|---|---|
+| 9 | `20-09-refusal.png` | 问「直接告诉我是不是 XX 病」时被拒答的样子（说明边界真的生效） |
+| 10 | `20-10-vision.png` | 一张截图附件与它被**视觉**读出来的几行（说明图片不用自己 OCR） |
 
-## 用 Markdown 插入（实验页支持 markdown）
+## 已插入的位置（2026-11-13）
+
+- **19 章**（项目 `a9c69502-…`）：`content` 末尾新增「页面长什么样（照着点）」—— `19-01` +
+  `19-02` 两张，各配一句话；图在「实验内容」卡里，"材料"那张正好对应下方领取后出现的「实验材料」卡。
+- **20 章**（项目 `28ba4aaf-…`）：
+  - `content`「为什么应用 = Skill」节末 → `20-01`（首屏两需求 + 对照表）；
+  - `description`「建议步骤」下方 → 新增「照着点一遍（主路径不用命令行、不用打包）」六步，
+    依次 `20-02` → `20-03` → `20-04` → `20-05` → `20-06` → `20-08`；
+  - `faq` 新增第 6 条「老师在哪看我的应用、怎么评？」→ `20-07`。
+
+线上 fileId（重装/换库后要重传，见下节）：
+
+| 文件 | fileId |
+|---|---|
+| `19-01-project.png` | `f4416eb8-f7c1-41d2-896f-0b39b3995278` |
+| `19-02-materials.png` | `f3b1c632-e206-476a-990b-63b1d2a3e711` |
+| `20-01-needs.png` | `22fb5878-8d6f-445e-9dfe-252483a9eb4e` |
+| `20-02-my-apps.png` | `a4b5a414-13d9-48a9-bf70-f0a7638e916c` |
+| `20-03-skill-submissions.png` | `22eec4c6-2b27-430a-9ad8-8543e9850e99` |
+| `20-04-created.png` | `eafe5758-d5cc-488e-b91a-6ce4ba127ff2` |
+| `20-05-share-link.png` | `ba8924a6-ba52-44cf-a22c-3ac188b395c2` |
+| `20-06-preview.png` | `d5f63330-dafa-4b6c-bc0b-b8fb2e0e3acc` |
+| `20-07-teacher-apps.png` | `1965427c-e6cf-49f5-80e4-460f01ce40e4` |
+| `20-08-conversation.png` | `9da247b3-8e54-4437-8210-e6c83163f041` |
+
+## 用 Markdown 插入（唯一可行写法）
 
 ```markdown
-![用我的 Skill 创建应用](/lab/assets/ch19-20/20-03-skill-submissions.png)
+![第 20 章实验详情首屏：两个需求 + 「应用 = Skill」对照表](file:22fb5878-8d6f-445e-9dfe-252483a9eb4e)
 ```
 
-> 图片放 `/var/www/lab/assets/ch19-20/`（与前端同域，**不需要改 nginx**），
-> 或上传到平台「文件」后在 Markdown 里用 `/lab/api/files/<id>` 引用。
+- 平台 Markdown 渲染器（`web/src/components/MarkdownView.tsx`）把 `file:<uuid>` 换成
+  `data-file-ref`，再由父页面**带 JWT** 取回文件、补成 data URL 显示 —— 章节正文、实验页、教师端预览都走这条管线。
+- **不要**写 `/lab/api/files/<id>`：`GET /api/files/:id` 要登录态，`<img src>` 不带头 → **401**
+  （这条 2026-11-13 实测确认，旧版本文档里的写法是错的）。
+- **不要**把图放 `/var/www/lab/...` 手写路径：前端重新部署后要另记一份手工资产，且换环境就失效。
+- 学生端"看图"体验：图在正文列里最宽 ~760px，1440×900 的整页截图会被缩小 ——
+  `MarkdownView` 已支持**点图放大**（Modal 显示原图，关闭用 Esc / 右上 ×），图片有 `title="点击放大"`、
+  光标是 `zoom-in`。
+
+## 换图 / 补图流程（3 步）
+
+1. 截图存 `docs/assets/ch19-20/<编号>.png`（覆盖同名文件即可）；
+2. 教师账号上传，拿 `fileId`：
+
+   ```bash
+   TOKEN=$(curl -s http://127.0.0.1:3100/api/auth/login -X POST -H 'Content-Type: application/json' \
+     -d '{"username":"teacher","password":"teacher123"}' | jq -r .data.accessToken)
+   curl -s -H "Authorization: Bearer $TOKEN" -F "file=@docs/assets/ch19-20/xxx.png" \
+     http://127.0.0.1:3100/api/files        # → data.fileId
+   ```
+
+3. 改项目字段（`PATCH /api/projects/:id`，**必须带 `Content-Type: application/json`**，否则接口 200 但什么都没改）：
+
+   ```bash
+   curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     http://127.0.0.1:3100/api/projects/28ba4aaf-25cc-4217-bc01-459aade1cd0a \
+     -d '{"description":"<新全文，含 ![说明](file:<新 fileId>)>"}'
+   ```
+
+   字段是**整段覆盖**：改之前先 `GET /api/projects/<id>` 取回原文再替换，别只提交增量。
+4. 验证：学生账号打开 `/lab/student/projects/<id>`，用 headless-shell 查
+   `.markdown-view img` 的 `naturalWidth > 0`（= data URL 取回成功）再截一张图确认排版。

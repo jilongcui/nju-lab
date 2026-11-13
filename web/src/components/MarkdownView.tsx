@@ -3,7 +3,7 @@ import { marked } from 'marked';
 import { markedHighlight } from 'marked-highlight';
 import markedKatex from 'marked-katex-extension';
 import hljs from 'highlight.js/lib/common';
-import { Typography } from 'antd';
+import { Modal, Typography } from 'antd';
 import { fetchFileDataUrls } from '../slides/files';
 import { useThemeStore } from '../stores/theme';
 import 'katex/dist/katex.min.css';
@@ -43,12 +43,20 @@ export default function MarkdownView({ content, emptyText = '暂无内容' }: Pr
     // 先把 file: 引用的 src 摘下来存进 data-file-ref：原始 src 直接上屏会被浏览器当成
     // file:// 本地文件拦截（Console 报 "Not allowed to load local resource"），
     // 无 src 的 img 不发请求，alt 文本兜底展示（2026-09-30 学生端实测踩到）
-    return parsed.replace(FILE_SRC_RE, (_whole, ref: string) => `data-file-ref="${ref}"`);
+    const withRefs = parsed.replace(
+      FILE_SRC_RE,
+      (_whole, ref: string) => `data-file-ref="${ref}"`,
+    );
+    // 图片可点开看大图（正文截图缩在卡片里字太小）—— 补个 title 当提示，已有 title 的不动
+    return withRefs.replace(/<img (?![^>]*title=)/g, '<img title="点击放大" ');
   }, [content]);
 
   // 正文里的平台图片（file:<fileId>）浏览器直接请求会 401（无鉴权头）——
   // 与幻灯片同一条管线：父页面带 JWT 取回 → data URL 补 src；取不到保持无 src（alt 兜底，不再报错）
   const [html, setHtml] = useState(rawHtml);
+  // 正文截图（页面引导图）缩在卡片里字太小 —— 点一下放大看（2026-11-13 学生端实测：
+  // 1440×900 的整页截图塞进 758px 宽的正文列，图里的按钮文字读不出来）
+  const [preview, setPreview] = useState<{ src: string; alt: string } | null>(null);
   useEffect(() => {
     setHtml(rawHtml);
     const refs = Array.from(
@@ -69,13 +77,42 @@ export default function MarkdownView({ content, emptyText = '暂无内容' }: Pr
     };
   }, [rawHtml]);
 
+  /** 点正文图片 → 放大看原图（Esc / × 关闭） */
+  const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const el = e.target as HTMLElement;
+    if (el instanceof HTMLImageElement && el.getAttribute('src')) {
+      setPreview({ src: el.getAttribute('src')!, alt: el.getAttribute('alt') || '' });
+    }
+  };
+
   if (!html) {
     return <Typography.Text type="secondary">{emptyText}</Typography.Text>;
   }
   return (
     <Typography>
       {/* 内容由教师/系统录入；学生输入不进入此渲染路径 */}
-      <div className={dark ? 'markdown-view md-dark' : 'markdown-view'} dangerouslySetInnerHTML={{ __html: html }} />
+      <div
+        className={dark ? 'markdown-view md-dark' : 'markdown-view'}
+        onClick={onClick}
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      <Modal
+        open={!!preview}
+        title={preview?.alt || undefined}
+        footer={null}
+        width="92%"
+        style={{ maxWidth: 1600 }}
+        onCancel={() => setPreview(null)}
+        styles={{ body: { padding: 0, overflow: 'auto', maxHeight: '80vh' } }}
+      >
+        {preview && (
+          <img
+            src={preview.src}
+            alt={preview.alt}
+            style={{ display: 'block', width: '100%', height: 'auto' }}
+          />
+        )}
+      </Modal>
     </Typography>
   );
 }
