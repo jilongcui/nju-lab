@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
 import { createReadStream, ReadStream } from 'fs';
+import { readFile } from 'fs/promises';
 import { extname, join, resolve } from 'path';
 import { Repository, FindOptionsWhere, Like } from 'typeorm';
 import { User } from '../users/user.entity';
@@ -72,6 +73,13 @@ export class FilesService {
 
   async openReadStream(file: StoredFile): Promise<ReadStream> {
     return createReadStream(join(this.uploadDir, file.storagePath));
+  }
+
+  /** 读整份文件字节（平台内部使用：例如把学生提交的 Skill 包复制成应用版本） */
+  async readBuffer(fileId: string): Promise<Buffer> {
+    const file = await this.fileRepo.findOne({ where: { id: fileId } });
+    if (!file) throw new NotFoundException('文件不存在');
+    return readFile(join(this.uploadDir, file.storagePath));
   }
 
   /** 对外下发的文件信息（下载地址 + 服务端 sha256） */

@@ -15,6 +15,9 @@ import { createHash, randomBytes } from 'crypto';
 import { mkdir, rm, writeFile } from 'fs/promises';
 import { IsNull, Repository } from 'typeorm';
 import { User, UserRole } from '../users/user.entity';
+import { FilesService } from '../files/files.service';
+import { Assignment, ExperimentProject } from '../projects/project.entity';
+import { Submission } from '../submissions/submission.entity';
 import {
   AGENT_APP_DATA_DIR,
   AGENT_APP_ZIP_MAX,
@@ -43,6 +46,15 @@ export interface ChatPayload {
 /** 每应用 / 每个分享链接的简单限流（进程内存；重启清零，教学场景够用） */
 const RATE_WINDOW_MS = 60_000;
 
+/** 从"已提交的 Skill 包"创建应用时，平台要读的那部分提交信息 */
+interface SubmissionLike {
+  id: string;
+  studentId: string;
+  assignmentId: string;
+  skillZipRef: string;
+  skillZipSha256: string;
+}
+
 @Injectable()
 export class AgentAppsService implements OnModuleDestroy {
   private readonly logger = new Logger(AgentAppsService.name);
@@ -58,6 +70,10 @@ export class AgentAppsService implements OnModuleDestroy {
     private readonly messages: Repository<AgentAppMessage>,
     @InjectRepository(AgentAppReview)
     private readonly reviews: Repository<AgentAppReview>,
+    @InjectRepository(Submission) private readonly submissions: Repository<Submission>,
+    @InjectRepository(Assignment) private readonly assignments: Repository<Assignment>,
+    @InjectRepository(ExperimentProject) private readonly projects: Repository<ExperimentProject>,
+    private readonly filesService: FilesService,
     private readonly runtime: AgentAppRuntime,
   ) {}
 
@@ -194,7 +210,7 @@ export class AgentAppsService implements OnModuleDestroy {
     const app = await this.get(user, id);
     this.assertCanRead(user, app);
     const version = await this.getVersion(app);
-    const upstream = await this.runtime.upstream(app.id, version.id);
+    const upstream = await this.runtime.upstream(app.id, version.id, this.metaOf(app));
     await this.waitUntilReady(upstream);
     return { app, upstream };
   }
@@ -230,7 +246,7 @@ export class AgentAppsService implements OnModuleDestroy {
   ): Promise<{ body: Buffer; contentType: string }> {
     const app = await this.getByShareKey(key);
     const version = await this.getVersion(app);
-    const upstream = await this.runtime.upstream(app.id, version.id);
+    const upstream = await this.runtime.upstream(app.id, version.id, this.metaOf(app));
     await this.waitUntilReady(upstream);
     return this.readSiteAsset(app, upstream, file, `/lab/api/apps/share/${key}`);
   }
@@ -282,7 +298,7 @@ export class AgentAppsService implements OnModuleDestroy {
       );
     }
     const version = await this.getVersion(app);
-    const upstream = await this.runtime.upstream(app.id, version.id);
+    const upstream = await this.runtime.upstream(app.id, version.id, this.metaOf(app));
     await this.waitUntilReady(upstream);
     return this.forwardChat(app, upstream, payload);
   }
@@ -418,6 +434,127 @@ export class AgentAppsService implements OnModuleDestroy {
     return this.usage.get(app.id) ?? { calls: 0, tokens: 0 };
   }
 
+  // ------------------------------------------------------------ 从 Skill 包一键创建应用
+
+  /**
+   * **学生只交 Skill，平台把它变成应用**（第 20 章的口径）。
+   *
+   * 流程：取本人最近一次提交的 Skill 包（`skillZipRef = file:<id>`）→ 复制成应用版本 →
+   * 发布并生成分享链接。容器起的是**平台 harness**（`server/apps-image/platform/`），
+   * 它把平台模板 + 学生 skill 拼起来跑 —— 学生不写 core、不碰前端、不跑命令行。
+   */
+  async createFromSubmission(
+    user: User,
+    dto: { submissionId?: string; assignmentId?: string; title?: string; courseId?: string },
+  ): Promise<AgentApp> {
+    const submission = await this.findSubmission(user, dto);
+    const fileId = this.fileIdFromRef(submission.skillZipRef);
+    if (!fileId) {
+      throw new BadRequestException('这次提交没有可用的 Skill 包（skillZipRef 不是 file:<id> 形式）');
+    }
+    const payload = await this.filesService.readBuffer(fileId);
+    if (!payload?.length || payload[0] !== 0x50 || payload[1] !== 0x4b) {
+      throw new BadRequestException('提交的 Skill 包不是合法 zip');
+    }
+
+    const title = (dto.title || (await this.defaultTitle(user, submission))).slice(0, 120);
+    const app = await this.apps.save(
+      this.apps.create({
+        studentId: user.id,
+        courseId: dto.courseId ?? null,
+        projectId: null,
+        title,
+        scenario: '由平台托管的智能体应用（Skill 驱动）',
+        entry: 'skill/scripts/api.py',
+        visibility: AppVisibility.TEACHER,
+        status: AppStatus.DRAFT,
+      }),
+    );
+
+    const version = await this.versions.save(
+      this.versions.create({
+        appId: app.id,
+        fileId,
+        bundlePath: '',
+        sha256: submission.skillZipSha256 || '',
+        size: payload.length,
+        note: `来自提交 ${submission.id.slice(0, 8)}`,
+      }),
+    );
+    const dir = `${AGENT_APP_DATA_DIR}/${app.id}`;
+    await mkdir(dir, { recursive: true });
+    await writeFile(this.runtime.bundleZipPath(app.id, version.id), payload);
+    app.latestVersionId = version.id;
+    await this.apps.save(app);
+
+    return this.publish(user, app.id);
+  }
+
+  /** 本人可用来创建应用的提交（有 Skill 包的那些，最近 20 条） */
+  async listSkillSubmissions(user: User): Promise<
+    { submissionId: string; assignmentId: string; projectTitle: string; version: number; submittedAt: Date }[]
+  > {
+    const rows = await this.submissions.find({
+      where: { studentId: user.id },
+      order: { submittedAt: 'DESC' },
+      take: 20,
+    });
+    return rows
+      .filter((s) => !!this.fileIdFromRef(s.skillZipRef))
+      .map((s) => ({
+        submissionId: s.id,
+        assignmentId: s.assignmentId,
+        projectTitle: '',
+        version: s.version,
+        submittedAt: s.submittedAt,
+      }));
+  }
+
+  private async findSubmission(
+    user: User,
+    dto: { submissionId?: string; assignmentId?: string },
+  ): Promise<SubmissionLike> {
+    if (dto.submissionId) {
+      const one = await this.submissions.findOne({ where: { id: dto.submissionId } });
+      if (!one || one.studentId !== user.id) throw new NotFoundException('提交不存在');
+      return one as unknown as SubmissionLike;
+    }
+    if (dto.assignmentId) {
+      const rows = await this.submissions.find({
+        where: { assignmentId: dto.assignmentId, studentId: user.id },
+        order: { version: 'DESC' },
+        take: 1,
+      });
+      if (!rows.length) throw new NotFoundException('这个任务还没有提交过 Skill 包');
+      return rows[0] as unknown as SubmissionLike;
+    }
+    const rows = await this.submissions.find({
+      where: { studentId: user.id },
+      order: { submittedAt: 'DESC' },
+      take: 1,
+    });
+    if (!rows.length) throw new NotFoundException('你还没有提交过任何 Skill 包');
+    return rows[0] as unknown as SubmissionLike;
+  }
+
+  private fileIdFromRef(ref: string | null | undefined): string | null {
+    if (!ref) return null;
+    const m = /^file:([0-9a-f-]{36})$/i.exec(ref);
+    return m ? m[1] : null;
+  }
+
+  private async defaultTitle(user: User, submission: SubmissionLike): Promise<string> {
+    const project = await this.projects.findOne({
+      where: { id: await this.projectIdOf(submission.assignmentId) },
+    });
+    return project?.title ? `${project.title}`.slice(0, 60) : `我的应用 ${submission.id.slice(0, 6)}`;
+  }
+
+  private async projectIdOf(assignmentId: string): Promise<string> {
+    const assignment = await this.assignments.findOne({ where: { id: assignmentId } });
+    return assignment?.projectId ?? '';
+  }
+
   // ------------------------------------------------------------ 分享（匿名）
 
   /** 按 `shareKey` 取应用：只有「已发布 + 有 key」才对外 */
@@ -505,6 +642,14 @@ export class AgentAppsService implements OnModuleDestroy {
     if (slot.count >= perMinute) return false;
     slot.count += 1;
     return true;
+  }
+
+  private metaOf(app: AgentApp): { title: string; scenario: string; accent: string } {
+    return {
+      title: app.title,
+      scenario: app.scenario ?? '',
+      accent: app.theme?.accent ?? '#2f6feb',
+    };
   }
 
   private assertTeacher(user: User): void {

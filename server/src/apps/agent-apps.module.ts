@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { FilesModule } from '../files/files.module';
+import { Assignment, ExperimentProject } from '../projects/project.entity';
+import { Submission } from '../submissions/submission.entity';
 import { ContainerRuntimeModule } from '../container-runtime/container-runtime.module';
 import {
   AgentApp,
@@ -25,8 +28,17 @@ import { AgentAppsService } from './agent-apps.service';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AgentApp, AgentAppVersion, AgentAppMessage, AgentAppReview]),
+    TypeOrmModule.forFeature([
+      AgentApp,
+      AgentAppVersion,
+      AgentAppMessage,
+      AgentAppReview,
+      Submission,
+      Assignment,
+      ExperimentProject,
+    ]),
     ContainerRuntimeModule,
+    FilesModule,
   ],
   controllers: [AgentAppShareController, AgentAppsController, CourseAgentAppsController],
   providers: [AgentAppsService, AgentAppRuntime],

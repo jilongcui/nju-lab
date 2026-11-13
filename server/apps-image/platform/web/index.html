@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>随访助手 · 你的应用</title>
+  <!-- 零依赖：不引外部 CSS/JS（运行环境没有外网）。想改外观就改 theme.css 与这里的结构。 -->
+  <link rel="stylesheet" href="./theme.css" />
+</head>
+<body>
+  <!-- 主题容器：data-theme 由 app.json 的 theme 决定（light / dark / 你自己的名字） -->
+  <div id="app" data-theme="light">
+    <header class="app-header">
+      <h1 id="app-title">随访助手</h1>
+      <p id="app-subtitle">上传检验数据，生成一份可复核的报告。</p>
+      <button id="theme-toggle" type="button">换个配色</button>
+    </header>
+
+    <main class="app-main">
+      <section class="chat-panel">
+        <div id="chat" class="chat" aria-live="polite"></div>
+
+        <form id="composer" class="composer">
+          <label class="upload">
+            <input id="file-input" type="file" accept=".pdf,.docx,image/*" multiple />
+            <span id="file-hint">选择 PDF / Word / 图片</span>
+          </label>
+          <input id="message-input" type="text" placeholder="说一句话，例如：把 report.pdf 整理成报告" autocomplete="off" />
+          <button type="submit">发送</button>
+        </form>
+      </section>
+
+      <aside class="report-panel">
+        <h2>报告预览</h2>
+        <div id="report" class="report">还没有生成报告。</div>
+        <h3>附件</h3>
+        <ul id="attachment-list" class="attachments"></ul>
+        <h3>安全提示</h3>
+        <ul id="safety" class="safety"></ul>
+      </aside>
+    </main>
+  </div>
+  <script src="./app.js"></script>
+</body>
+</html>

@@ -43,6 +43,24 @@ export class AgentAppsController {
     return this.service.create(user, dto);
   }
 
+  /** 从"已提交的 Skill 包"一键创建应用（平台自动装包、发布、给分享链接） */
+  @Post('from-submission')
+  @Roles(UserRole.STUDENT, UserRole.TEACHER)
+  fromSubmission(
+    @CurrentUser() user: User,
+    @Body()
+    dto: { submissionId?: string; assignmentId?: string; title?: string; courseId?: string },
+  ) {
+    return this.service.createFromSubmission(user, dto);
+  }
+
+  /** 我可以用哪些提交来创建应用 */
+  @Get('skill-submissions')
+  @Roles(UserRole.STUDENT, UserRole.TEACHER)
+  skillSubmissions(@CurrentUser() user: User) {
+    return this.service.listSkillSubmissions(user);
+  }
+
   @Get('mine')
   @Roles(UserRole.STUDENT, UserRole.TEACHER)
   mine(@CurrentUser() user: User) {

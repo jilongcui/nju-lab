@@ -21,6 +21,11 @@ import {
   AGENT_APP_SWEEP_MS,
 } from './agent-app.config';
 
+/** env 里不能带换行（`-e K=V` 会把后面的行当新变量） */
+function oneLine(value: string | undefined): string {
+  return (value ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
+}
+
 interface AppSession {
   appId: string;
   containerName: string;
@@ -70,13 +75,17 @@ export class AgentAppRuntime implements OnModuleInit, OnModuleDestroy {
   }
 
   /** 取（或起）应用容器，返回容器内 base（`http://<ip>:9200`） */
-  async upstream(appId: string, versionId: string): Promise<string> {
+  async upstream(
+    appId: string,
+    versionId: string,
+    meta?: { title?: string; scenario?: string; accent?: string },
+  ): Promise<string> {
     const existing = this.sessions.get(appId);
     if (existing && existing.containerIp && this.runtime.isRunning(existing.containerName)) {
       existing.lastActiveAt = Date.now();
       return `http://${existing.containerIp}:${AGENT_APP_PORT}`;
     }
-    return this.start(appId, versionId);
+    return this.start(appId, versionId, meta);
   }
 
   /** 当前是否有会话（预览页用来显示「正在启动」） */
@@ -124,7 +133,11 @@ export class AgentAppRuntime implements OnModuleInit, OnModuleDestroy {
     for (const appId of [...this.sessions.keys()]) this.stop(appId);
   }
 
-  private async start(appId: string, versionId: string): Promise<string> {
+  private async start(
+    appId: string,
+    versionId: string,
+    meta?: { title?: string; scenario?: string; accent?: string },
+  ): Promise<string> {
     if (this.sessions.size >= AGENT_APP_MAX_TOTAL) {
       this.sweep();
       // 排队：先给正在用的容器一点时间被回收（最多等 15 秒），而不是立刻 503
@@ -166,6 +179,14 @@ export class AgentAppRuntime implements OnModuleInit, OnModuleDestroy {
         ...(llmBase ? [`APP_LLM_BASE_URL=${llmBase}`, `APP_LLM_TOKEN=${llmToken}`] : []),
         // 回退通道：没配平台基址时仍用透传的 key（本地/离线演练）；配了就不注入 key。
         ...(llmBase ? [] : ['DEEPSEEK_API_KEY', 'DEEPSEEK_BASE_URL']),
+        // 应用元信息：skill 模式下 entrypoint 用它生成 app.json（标题/场景/主色）
+        ...(meta
+          ? [
+              `APP_TITLE=${oneLine(meta.title)}`,
+              `APP_SCENARIO=${oneLine(meta.scenario)}`,
+              `APP_ACCENT=${oneLine(meta.accent)}`,
+            ]
+          : []),
       ],
     });
 

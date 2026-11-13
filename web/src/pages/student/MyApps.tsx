@@ -16,6 +16,7 @@ import {
   Space,
   Table,
   Tag,
+  Tooltip,
   Typography,
   Upload,
   message,
@@ -27,10 +28,12 @@ import {
   appShareUrl,
   appSiteUrl,
   createApp,
+  createAppFromSubmission,
   deleteApp,
   getAppReview,
   listAppVersions,
   listMyApps,
+  listSkillSubmissions,
   publishApp,
   startApp,
   unpublishApp,
@@ -69,6 +72,10 @@ export default function MyApps() {
   const [review, setReview] = useState<Record<string, AgentAppReview | null>>({});
   const [versionApp, setVersionApp] = useState<AgentApp | null>(null);
   const [versions, setVersions] = useState<AgentAppVersion[] | null>(null);
+  const [skillOpen, setSkillOpen] = useState(false);
+  const [skillSubs, setSkillSubs] = useState<{ submissionId: string; version: number; submittedAt: string }[] | null>(null);
+  const [skillPicked, setSkillPicked] = useState<string | undefined>();
+  const [skillCreating, setSkillCreating] = useState(false);
   const [form] = Form.useForm<{ title: string; scenario?: string }>();
 
   useAuxiliaryPanel(
@@ -183,6 +190,48 @@ export default function MyApps() {
       await load();
     } finally {
       setBusy(null);
+    }
+  };
+
+  /** 用"已提交的 Skill 包"一键建应用（平台装包、发布、给分享链接；学生不碰命令行） */
+  const openSkillDialog = async () => {
+    setSkillOpen(true);
+    setSkillSubs(null);
+    setSkillPicked(undefined);
+    try {
+      setSkillSubs((await listSkillSubmissions()) ?? []);
+    } catch {
+      setSkillSubs([]);
+    }
+  };
+
+  const handleCreateFromSkill = async () => {
+    if (!skillPicked) {
+      message.warning('先选一次提交');
+      return;
+    }
+    setSkillCreating(true);
+    try {
+      const app = await createAppFromSubmission({ submissionId: skillPicked });
+      setSkillOpen(false);
+      await load();
+      Modal.success({
+        title: '应用已生成并发布',
+        width: 560,
+        content: (
+          <div>
+            <Paragraph type="secondary">
+              平台已把你的 Skill 装成应用（附件解析、记忆、安全兜底都由平台提供）。
+              打开「预览」看看效果，点「分享链接」就能发给别人（不用登录）。
+            </Paragraph>
+            <Paragraph>
+              应用地址：<Text code copyable>{`${window.location.origin}${appSiteUrl(app.id)}`}</Text>
+            </Paragraph>
+          </div>
+        ),
+      });
+    } finally {
+      setSkillCreating(false);
     }
   };
 
@@ -380,15 +429,23 @@ export default function MyApps() {
       <Card
         title={<Title level={4}>我的应用</Title>}
         extra={
-          <Button type="primary" onClick={() => setCreateOpen(true)}>
-            新建应用
-          </Button>
+          <Space>
+            <Tooltip title="把你的 Skill 包（SKILL.md + scripts/）交给平台，自动装成可分享的应用">
+              <Button onClick={() => void openSkillDialog()}>用我的 Skill 创建应用</Button>
+            </Tooltip>
+            <Button type="primary" onClick={() => setCreateOpen(true)}>
+              新建空应用
+            </Button>
+          </Space>
         }
       >
         <Paragraph type="secondary">
-          把第 19 章的 harness 接到前端上，做成一个能给别人用的小应用：新建 → 在工作台里
-          <Text code>python3 publish_app.py --app &lt;id&gt; --publish</Text> → 复制分享链接（匿名可打开）→ 老师评分。
-          「上传产物」按钮只适合本地有 zip 的情况（学员的工作区在远端容器里，用命令更快）。
+          <Text strong>推荐路径</Text>：在工作台里把 Skill 写好并提交 → 回来点「<Text strong>用我的 Skill 创建应用</Text>」
+          → 平台自动装包、起容器、发布 → 点「分享链接」发给别人（**不用登录就能打开**）。
+          附件解析、记忆、安全兜底、前端都由平台提供，你只写 Skill。
+        </Paragraph>
+        <Paragraph type="secondary" style={{ fontSize: 12 }}>
+          下面两个按钮是给"高级用法"留的：「新建空应用」+「上传产物」适合本地已有完整产物 zip 的情况。
         </Paragraph>
         {loading ? (
           <Skeleton active />
@@ -446,6 +503,46 @@ export default function MyApps() {
             />
           </>
         ) : null}
+      </Modal>
+
+      <Modal
+        title="用我的 Skill 创建应用"
+        open={skillOpen}
+        onCancel={() => setSkillOpen(false)}
+        onOk={() => void handleCreateFromSkill()}
+        okText="生成并发布"
+        confirmLoading={skillCreating}
+        width={640}
+      >
+        <Paragraph type="secondary">
+          选一次提交：平台会把那份 Skill 包（<Text code>SKILL.md</Text> + <Text code>scripts/</Text>）
+          装进平台的 agent，生成一个能打开、能分享的应用。你不需要打包、不需要跑命令。
+        </Paragraph>
+        {skillSubs === null ? (
+          <Skeleton active />
+        ) : skillSubs.length === 0 ? (
+          <Empty description="还没有可用的提交：先在工作台里提交一次 Skill 包" />
+        ) : (
+          <List
+            dataSource={skillSubs}
+            renderItem={(item) => (
+              <List.Item
+                onClick={() => setSkillPicked(item.submissionId)}
+                style={{
+                  cursor: 'pointer',
+                  background: skillPicked === item.submissionId ? 'rgba(47,111,235,0.06)' : undefined,
+                  borderRadius: 6,
+                  paddingLeft: 8,
+                }}
+              >
+                <List.Item.Meta
+                  title={<Space><Text code>{item.submissionId.slice(0, 8)}</Text><Tag>第 {item.version} 版</Tag></Space>}
+                  description={formatDateTime(item.submittedAt)}
+                />
+              </List.Item>
+            )}
+          />
+        )}
       </Modal>
 
       <Drawer

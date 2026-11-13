@@ -205,6 +205,25 @@
     （19 章 `437a035cf065` / hard `393fe0bdc73f`），`--check` 均 ok。
   · **未做（需要拍板）**：把 19 章骨架里 5 个机械函数（BM25 / 余弦 / 校验 / mock 执行 / 越界扫描）直接给成
     实现，TODO 从 16 降到 ~8 —— 能显著降门槛，但会削弱"迁移检验"（原本刻意不给参考实现），所以没擅自改。
+- **架构调整（2026-11-13，用户："发布成应用应该是平台的，不是让学生做"）—— 平台侧已实现**：
+  · **新口径**：第 19 章 = 学生把 agent 做出来（到此为止）；第 20 章 = 基于它开发具体应用，
+    **主要形式是构建 Skill**（`SKILL.md` + `scripts/api.py` 的 `handle()`）；**"变成可分享应用"由平台做**。
+  · **平台自带 harness**：`server/apps-image/platform/`（`platform_core.py` + `app_host.py` + 通用 `web/`）——
+    附件解析（PDF/DOCX 自解 + 图片走视觉）、会话与记忆、安全兜底、报告渲染、模型代理都在平台这层；
+    学生 Skill 只实现 `handle(state, message, attachments, session) -> {reply, report, citations}`。
+  · **运行时镜像 `nju-lab-app-runtime:0.2.0`**（内置平台 harness）：`entrypoint.sh` 认两种产物形态 ——
+    zip 里有 `harness/api.py` → 完整产物模式（旧，兼容）；否则 → **skill 模式**：复制 `/opt/platform/app`
+    到 `/work/app`，学生 Skill 落到 `/work/app/skill`，并用 `APP_TITLE/APP_SCENARIO/APP_ACCENT`
+    环境变量生成 `app.json`（学生不用写前端与元信息）。
+  · **一键建应用**：`POST /api/apps/from-submission`（`{submissionId?, assignmentId?, title?}`）——
+    取本人已提交的 Skill 包（`skillZipRef=file:<id>`）→ 复制成应用版本 → 自动发布 → 返回 `shareKey`；
+    `GET /api/apps/skill-submissions` 列出可用的提交。学生前端「我的应用」新增
+    「**用我的 Skill 创建应用**」按钮（选一次提交 → 生成并发布 → 给分享链接）。
+  · **端到端实测**（2026-11-13）：上传 Skill 包 → `from-submission` → 应用 published（shareKey）→
+    匿名 `GET /apps/share/<key>/site` 200 → 匿名对话带三份附件（pdf+docx+**图片**）→
+    `5 行 / 4 异常`（`PLT 18 low`、`WBC 12.5 high`、`HGB 96 low`、`HGB 88 low`）+ 升级提示；
+    容器镜像确认 `nju-lab-app-runtime:0.2.0`。冒烟数据（应用/提交/容器）已清理。
+  · `FilesService.readBuffer()` 新增（平台内部把提交的 zip 复制成应用版本）；后端已重启（PID 801201）。
 - **未做（四期）**：成本看板、评分汇总进 `submissions`/`Grading`、iframe 真正独立源（需 nginx + 证书）；
   `VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；

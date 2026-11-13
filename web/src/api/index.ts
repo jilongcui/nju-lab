@@ -436,6 +436,14 @@ export const deleteSlideTemplate = (id: string) =>
 
 // ---------- 学生应用（第 20 章）----------
 export const listMyApps = () => client.get<unknown, AgentApp[]>('/apps/mine');
+/** 我可以用哪些"已提交的 Skill 包"来创建应用 */
+export const listSkillSubmissions = () =>
+  client.get<unknown, { submissionId: string; assignmentId: string; version: number; submittedAt: string }[]>(
+    '/apps/skill-submissions',
+  );
+/** 一键创建：平台自动把 Skill 装成应用并发布（学生不打包、不跑命令） */
+export const createAppFromSubmission = (payload: { submissionId?: string; assignmentId?: string; title?: string }) =>
+  client.post<unknown, AgentApp>('/apps/from-submission', payload, { timeout: 120000 });
 export const createApp = (data: { title: string; scenario?: string; courseId?: string }) =>
   client.post<unknown, AgentApp>('/apps', data);
 export const getApp = (id: string) => client.get<unknown, AgentApp>(`/apps/${id}`);

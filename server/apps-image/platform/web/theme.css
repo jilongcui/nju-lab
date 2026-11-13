@@ -1,0 +1,106 @@
+/* 主题变量：改这几个值就能换外观（也改 app.json 的 theme，保持一致）。
+   判据会检查「主题变量至少 3 个」且 app.json.theme.accent 与这里一致。 */
+:root {
+  --bg: #f7f9fc;
+  --panel: #ffffff;
+  --text: #1f2430;
+  --muted: #6b7280;
+  --accent: #2f6feb;
+  --accent-soft: #e8f0ff;
+  --border: #e3e8ef;
+  --radius: 10px;
+}
+
+/* 第二套配色（数据面板上的「换个配色」按钮会切到它） */
+[data-theme="dark"] {
+  --bg: #0f141c;
+  --panel: #161d28;
+  --text: #e8edf5;
+  --muted: #9aa6b8;
+  --accent: #7aa2ff;
+  --accent-soft: #1d2a44;
+  --border: #26313f;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.6 system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.app-header {
+  padding: 18px 22px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.app-header h1 { font-size: 18px; margin: 0; }
+.app-header p { margin: 0; color: var(--muted); font-size: 13px; }
+.app-header button {
+  margin-left: auto;
+  background: var(--accent-soft);
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.app-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px 22px 22px;
+}
+
+@media (max-width: 860px) {
+  .app-main { grid-template-columns: 1fr; }
+}
+
+.chat-panel, .report-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  min-height: 320px;
+}
+
+.chat { display: flex; flex-direction: column; gap: 10px; min-height: 240px; }
+
+.msg { padding: 8px 12px; border-radius: var(--radius); max-width: 92%; white-space: pre-wrap; }
+.msg.user { align-self: flex-end; background: var(--accent-soft); color: var(--accent); }
+.msg.bot { align-self: flex-start; background: var(--bg); border: 1px solid var(--border); }
+
+.composer { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.composer input[type="text"] {
+  flex: 1 1 220px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+}
+.composer button {
+  padding: 9px 16px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.upload { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.upload input { max-width: 190px; }
+
+.report-panel h2, .report-panel h3 { font-size: 14px; margin: 6px 0 8px; }
+.report { font-size: 13px; color: var(--text); white-space: pre-wrap; }
+.report .section { margin-bottom: 10px; }
+.report .section strong { color: var(--accent); }
+.attachments, .safety { margin: 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
