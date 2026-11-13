@@ -372,6 +372,17 @@ export interface ProjectSubmissionRow {
   submission: Submission | null;
   /** 已提交的版本总数 */
   versionCount?: number;
+  /**
+   * 该生在本项目下已评分的应用（第 20 章「成绩只看应用」）。
+   * 一个学生可能迭代出多个应用 —— 后端取**最高分**（并列取最近评分）。
+   */
+  app?: {
+    id: string;
+    title: string;
+    score: number;
+    comment: string | null;
+    reviewedAt: string;
+  } | null;
 }
 
 /** GET /api/courses/:id/progress（对象，非数组） */
@@ -732,8 +743,33 @@ export interface AgentApp {
   status: AppStatus;
   latestVersionId: string | null;
   shareKey: string | null;
+  /** 平台模型代理累计用量（落库；成本看板用） */
+  llmCalls?: number;
+  llmTokens?: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** GET /api/courses/:id/apps/costs —— 成本看板（四期） */
+export interface AppCostBoard {
+  courseId: string;
+  totals: { apps: number; calls: number; tokens: number };
+  students: {
+    studentId: string;
+    studentName: string;
+    apps: number;
+    calls: number;
+    tokens: number;
+  }[];
+  apps: {
+    id: string;
+    title: string;
+    studentName: string;
+    status: string;
+    calls: number;
+    tokens: number;
+    score: number | null;
+  }[];
 }
 
 export interface AgentAppVersion {

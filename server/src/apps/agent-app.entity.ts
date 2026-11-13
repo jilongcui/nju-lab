@@ -51,6 +51,18 @@ export class AgentApp {
   @Column({ type: 'text', nullable: true })
   scenario: string | null;
 
+  /**
+   * 平台模型代理的累计用量（成本看板的唯一数据源）。
+   *
+   * 为什么落库：之前记在进程内存里，**后端一重启就归零**，"这学期这个应用花了多少 token"
+   * 这类问题根本答不了。改成两列累加（`llmChat` 每次 +1 / +tokens），重启不丢。
+   */
+  @Column({ type: 'int', default: 0 })
+  llmCalls: number;
+
+  @Column({ type: 'int', default: 0 })
+  llmTokens: number;
+
   /** 前端入口（一般是 `harness/api.py`；展示用） */
   @Column({ length: 200, default: 'harness/api.py' })
   entry: string;

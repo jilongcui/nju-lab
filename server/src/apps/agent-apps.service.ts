@@ -13,7 +13,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash, randomBytes } from 'crypto';
 import { mkdir, rm, writeFile } from 'fs/promises';
-import { IsNull, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import { User, UserRole } from '../users/user.entity';
 import { FilesService } from '../files/files.service';
 import { Assignment, ExperimentProject } from '../projects/project.entity';
@@ -59,8 +59,6 @@ interface SubmissionLike {
 export class AgentAppsService implements OnModuleDestroy {
   private readonly logger = new Logger(AgentAppsService.name);
   private readonly rate = new Map<string, { windowStart: number; count: number }>();
-  /** 平台代理的用量（进程内存；重启清零，够教学场景看"谁在用"） */
-  private readonly usage = new Map<string, { calls: number; tokens: number }>();
 
   constructor(
     @InjectRepository(AgentApp) private readonly apps: Repository<AgentApp>,
@@ -73,6 +71,8 @@ export class AgentAppsService implements OnModuleDestroy {
     @InjectRepository(Submission) private readonly submissions: Repository<Submission>,
     @InjectRepository(Assignment) private readonly assignments: Repository<Assignment>,
     @InjectRepository(ExperimentProject) private readonly projects: Repository<ExperimentProject>,
+    /** 成本看板要把 studentId 翻成姓名（教师端表格里只显示 id 太难认） */
+    @InjectRepository(User) private readonly users: Repository<User>,
     private readonly filesService: FilesService,
     private readonly runtime: AgentAppRuntime,
   ) {}
@@ -428,18 +428,95 @@ export class AgentAppsService implements OnModuleDestroy {
       throw new BadRequestException(`模型返回 ${res.status}：${text}`);
     }
     const data = (await res.json()) as { usage?: { total_tokens?: number } };
-    const stat = this.usage.get(appId) ?? { calls: 0, tokens: 0 };
-    stat.calls += 1;
-    stat.tokens += Number(data.usage?.total_tokens) || 0;
-    this.usage.set(appId, stat);
+    // 用量落库（四期「成本看板」）：重启不丢，教师端能按课程/应用汇总
+    const tokens = Number(data.usage?.total_tokens) || 0;
+    await this.apps.increment({ id: appId }, 'llmCalls', 1);
+    if (tokens > 0) await this.apps.increment({ id: appId }, 'llmTokens', tokens);
     return data as Record<string, unknown>;
   }
 
-  /** 用量（教师/作者可看） */
+  /** 用量（教师/作者可看；来自 `agent_apps.llmCalls/llmTokens`，重启不清零） */
   async usageOf(user: User, id: string): Promise<{ calls: number; tokens: number }> {
     const app = await this.get(user, id);
     this.assertCanRead(user, app);
-    return this.usage.get(app.id) ?? { calls: 0, tokens: 0 };
+    return { calls: app.llmCalls ?? 0, tokens: app.llmTokens ?? 0 };
+  }
+
+  /**
+   * 课程级成本看板（教师）：每应用的调用次数 / token 数 + 按学生汇总 + 课程合计。
+   *
+   * 「成本」只算**平台模型代理**（应用对话调用模型）；复验跑的是另一条链路
+   * （`submissions.evaluation.tokenCost`），要合起来看时在页面上并列展示。
+   * 数据源是 `agent_apps.llmCalls/llmTokens`（落库，重启不清零）。
+   */
+  async costBoard(
+    user: User,
+    courseId: string,
+  ): Promise<{
+    courseId: string;
+    totals: { apps: number; calls: number; tokens: number };
+    students: {
+      studentId: string;
+      studentName: string;
+      apps: number;
+      calls: number;
+      tokens: number;
+    }[];
+    apps: {
+      id: string;
+      title: string;
+      studentName: string;
+      status: string;
+      calls: number;
+      tokens: number;
+      score: number | null;
+    }[];
+  }> {
+    const apps = await this.listByCourse(user, courseId);
+    const ids = apps.map((a) => a.id);
+    const reviews = ids.length
+      ? await this.reviews.find({ where: { appId: In(ids) }, order: { updatedAt: 'DESC' } })
+      : [];
+    const scoreByApp = new Map<string, number>();
+    for (const r of reviews) if (!scoreByApp.has(r.appId)) scoreByApp.set(r.appId, r.total);
+    const studentIds = Array.from(new Set(apps.map((a) => a.studentId)));
+    const users = studentIds.length
+      ? await this.users.find({ where: { id: In(studentIds) }, select: ['id', 'username', 'nickname'] })
+      : [];
+    const nameById = new Map(users.map((u) => [u.id, u.nickname || u.username]));
+
+    const students = new Map<string, { studentName: string; apps: number; calls: number; tokens: number }>();
+    const rows = apps.map((app) => {
+      const calls = app.llmCalls ?? 0;
+      const tokens = app.llmTokens ?? 0;
+      const studentName = nameById.get(app.studentId) ?? app.studentId.slice(0, 8);
+      const bucket = students.get(app.studentId) ?? { studentName, apps: 0, calls: 0, tokens: 0 };
+      bucket.apps += 1;
+      bucket.calls += calls;
+      bucket.tokens += tokens;
+      students.set(app.studentId, bucket);
+      return {
+        id: app.id,
+        title: app.title,
+        studentName,
+        status: app.status,
+        calls,
+        tokens,
+        score: scoreByApp.get(app.id) ?? null,
+      };
+    });
+    return {
+      courseId,
+      totals: {
+        apps: rows.length,
+        calls: rows.reduce((n, a) => n + a.calls, 0),
+        tokens: rows.reduce((n, a) => n + a.tokens, 0),
+      },
+      students: Array.from(students.entries())
+        .map(([studentId, v]) => ({ studentId, ...v }))
+        .sort((a, b) => b.tokens - a.tokens),
+      apps: rows.sort((a, b) => b.tokens - a.tokens),
+    };
   }
 
   // ------------------------------------------------------------ 从 Skill 包一键创建应用
@@ -453,7 +530,13 @@ export class AgentAppsService implements OnModuleDestroy {
    */
   async createFromSubmission(
     user: User,
-    dto: { submissionId?: string; assignmentId?: string; title?: string; courseId?: string },
+    dto: {
+      submissionId?: string;
+      assignmentId?: string;
+      title?: string;
+      courseId?: string;
+      projectId?: string;
+    },
   ): Promise<AgentApp> {
     const submission = await this.findSubmission(user, dto);
     const fileId = this.fileIdFromRef(submission.skillZipRef);
@@ -467,11 +550,21 @@ export class AgentAppsService implements OnModuleDestroy {
 
     const entry = this.detectEntry(payload);
     const title = (dto.title || (await this.defaultTitle(user, submission))).slice(0, 120);
+    // 归属：应用要落回它来自的实验项目/课程，否则教师成绩单（按项目聚合应用评分）永远对不上。
+    // 2026-11-13 之前这里写死 `projectId: null`，导致应用评分游离在成绩之外。
+    const assignment = submission.assignmentId
+      ? await this.assignments.findOne({
+          where: { id: submission.assignmentId },
+          relations: ['project'],
+        })
+      : null;
+    const projectId = dto.projectId ?? assignment?.projectId ?? null;
+    const courseId = dto.courseId ?? assignment?.project?.courseId ?? null;
     const app = await this.apps.save(
       this.apps.create({
         studentId: user.id,
-        courseId: dto.courseId ?? null,
-        projectId: null,
+        courseId,
+        projectId,
         title,
         scenario: '由平台托管的智能体应用（Skill 驱动）',
         entry,

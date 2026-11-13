@@ -16,6 +16,7 @@ import {
 import { FilesService } from '../files/files.service';
 import { CoursesService } from '../courses/courses.service';
 import { Submission } from '../submissions/submission.entity';
+import { AgentApp, AgentAppReview, AppStatus } from '../apps/agent-app.entity';
 import { User, UserRole } from '../users/user.entity';
 import { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
 import {
@@ -47,6 +48,11 @@ export class ProjectsService {
     private readonly progressRepo: Repository<ChapterProgress>,
     @InjectRepository(Submission)
     private readonly submissionRepo: Repository<Submission>,
+    /** 应用评分汇总（第 20 章「成绩只看应用」）：成绩单里要能直接看到应用分 */
+    @InjectRepository(AgentApp)
+    private readonly appRepo: Repository<AgentApp>,
+    @InjectRepository(AgentAppReview)
+    private readonly appReviewRepo: Repository<AgentAppReview>,
     private readonly filesService: FilesService,
     /** 归属判定复用 CoursesService（主教师 + 协作教师），见设计文档 §3 */
     private readonly coursesService: CoursesService,
@@ -254,6 +260,40 @@ export class ProjectsService {
         byAssignment.set(s.assignmentId, s);
       }
     }
+    // 应用评分（第 20 章口径「成绩只看应用」）：本项目下该生已发布应用的评分。
+    // 一个学生可能迭代出多个应用 —— 取**最高分**（并列取最近评分），并回传是哪个应用。
+    const apps = await this.appRepo.find({
+      where: { projectId, status: AppStatus.PUBLISHED },
+      select: ['id', 'studentId', 'title'],
+    });
+    const reviews = apps.length
+      ? await this.appReviewRepo.find({
+          where: { appId: In(apps.map((a) => a.id)) },
+        })
+      : [];
+    const reviewByApp = new Map(reviews.map((r) => [r.appId, r]));
+    const bestAppByStudent = new Map<
+      string,
+      { id: string; title: string; score: number; comment: string | null; reviewedAt: Date }
+    >();
+    for (const app of apps) {
+      const review = reviewByApp.get(app.id);
+      if (!review) continue;
+      const current = bestAppByStudent.get(app.studentId);
+      const better =
+        !current ||
+        review.total > current.score ||
+        (review.total === current.score && review.updatedAt > current.reviewedAt);
+      if (better) {
+        bestAppByStudent.set(app.studentId, {
+          id: app.id,
+          title: app.title,
+          score: review.total,
+          comment: review.comment ?? null,
+          reviewedAt: review.updatedAt,
+        });
+      }
+    }
     return assignments.map((assignment) => ({
       assignmentId: assignment.id,
       student: {
@@ -264,6 +304,8 @@ export class ProjectsService {
       assignmentStatus: assignment.status,
       submission: byAssignment.get(assignment.id) ?? null,
       versionCount: countByAssignment.get(assignment.id) ?? 0,
+      /** 该生在本项目下已评分的应用（没有则 null） */
+      app: bestAppByStudent.get(assignment.student.id) ?? null,
     }));
   }
 
@@ -273,6 +315,8 @@ export class ProjectsService {
     const header = [
       '学号', '姓名', '任务状态', '版本', '提交时间', '提交状态',
       '复验成功率', 'Token成本', '建议分', '教师评分', '教师评语',
+      // 第 20 章口径：应用（Skill）才是交付物 —— 应用评分与提交评分并列导出
+      '应用', '应用评分', '应用评语',
     ];
     const escape = (v: unknown) => {
       const s = v == null ? '' : String(v);
@@ -297,6 +341,9 @@ export class ProjectsService {
           evaluation?.autoScoreSuggestion ?? '',
           evaluation?.teacherScore ?? '',
           evaluation?.teacherComment ?? '',
+          row.app?.title ?? '',
+          row.app?.score ?? '',
+          row.app?.comment ?? '',
         ]
           .map(escape)
           .join(','),

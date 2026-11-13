@@ -148,13 +148,36 @@ nju-lab-app-runtime 容器（每应用一个，USER 1000，512m/0.3cpu）
   - 没配 `WORKSPACE_PLATFORM_API` 时**自动回退** key 透传（本地/离线演练仍能跑）；
   - 实测：容器 `env` 里已无 `DEEPSEEK_API_KEY`，图片仍能抽成 `HGB 88 low`，用量 1 次 / 231 tokens。
 
-**四期（待做）**：
-- **成本看板**：按应用/学生汇总代理调用与 token（现在只有进程内存计数）；
-- **评分进成绩单**：把 `agent_app_reviews` 汇总进现有 `submissions`/`Grading`；
-- **iframe 独立源**：学生页面放 `{key}.app.example.com`（需要 nginx + 证书）。
-  当前已做的折中：**教师预览与匿名分享走 `share/<key>` + `sandbox`（无 `allow-same-origin`）**，
-  学生页面在 opaque origin 里跑，读不到平台 cookie/localStorage；分享端点放行 CORS（`*`）以便页面
-  调匿名对话口子；学生自己预览仍走登录态（同源，自己对自己的页面负责）。
+**四期（2026-11-13 落地 2/3，第 3 项被环境阻塞）**：
+
+- ✅ **成本看板**：用量从进程内存改为落库 —— 迁移 `1791500000000-AgentAppCosts` 给
+  `agent_apps` 加 `llmCalls` / `llmTokens`（`llmChat` 每次 +1 / +tokens），重启不清零。
+  教师端 `GET /api/courses/:id/apps/costs`（`costBoard`）返回：课程合计（应用数/调用/token）、
+  **按学生汇总**（降序）、**按应用明细**（带评分）；「学生应用」页顶部三张统计卡 + 明细小表 +
+  表格「模型用量」列。口径：只算**平台模型代理**（应用对话）；复验的 token 在项目成绩单的
+  「Token成本」列，两套口径分开看，不混算。
+- ✅ **评分进成绩单**：`agent_app_reviews` 汇总进项目成绩 —— `GET /api/projects/:id/submissions`
+  每行新增 `app: {id,title,score,comment,reviewedAt}`（取该生在本项目下**已发布应用的最高分**，
+  并列取最近评分）；成绩 CSV 增加「应用 / 应用评分 / 应用评语」三列；教师项目详情成绩表加
+  「应用评分」列。
+  - 前置修正：`createFromSubmission` 原来把 `projectId` **写死为 null**，应用根本挂不回它来自的
+    实验项目 → 成绩聚合永远对不上。现在按 `submission → assignment → project` 反查
+    `projectId` / `courseId`（`dto.projectId` 可显式覆盖）。
+- ⏸ **iframe 独立源（未实施：本机做不了）**：方案是把学生页面放到 `{key}.app.<域>` 的独立 origin，
+  需要 **改 nginx（新增 server/location + 通配证书）**；这台机器上 `/etc/nginx/**` 是**只读挂载**
+  （`Read-only file system`）、`sudo` 不可用、也没有 `letsencrypt` 目录（只有 `snakeoil`）。
+  因此**代码侧未改动**，落地步骤留给有 root + 证书的环境：
+  1. 申请通配证书（`*.app.medai.nju.edu.cn`，或内网 CA），`/etc/nginx/snippets/` 加一个
+     `server { server_name ~^(?<key>[0-9a-f]{32})\.app\.medai\.nju\.edu\.cn$; ... }`，
+     按 `auth_request` 拿容器上游（复用 `medai-workspace-server.conf` 的写法）；
+  2. 后端把 `appShareUrl()` / 注入的 `__APP_API_BASE__` 指向该独立域的 `share/<key>`；
+  3. 前端 iframe 去掉 `sandbox` 或改成 `allow-same-origin`（此时已是跨源，平台 cookie 天然读不到）；
+  4. 回归：`/lab/api/apps/share/<key>/site` 与新域对同一 key 都要能打开，CORS 白名单收窄到该域。
+  - **已经达成的部分**：教师预览与匿名分享当前就是 `share/<key>` + iframe
+    `sandbox="allow-scripts allow-forms allow-popups allow-downloads"`（**无** `allow-same-origin`）
+    —— 学生页面跑在 **opaque origin** 里，读不到平台 cookie/localStorage/JWT，
+    与"独立源"在**安全效果**上等价；差别只在 URL 与"能不能用 service worker / 绝对路径请求"。
+    所以这一项应理解为**部署形态**升级，不是安全缺口。
 
 ## 10. 已知限制与回滚
 

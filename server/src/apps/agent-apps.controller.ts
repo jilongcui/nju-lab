@@ -49,7 +49,13 @@ export class AgentAppsController {
   fromSubmission(
     @CurrentUser() user: User,
     @Body()
-    dto: { submissionId?: string; assignmentId?: string; title?: string; courseId?: string },
+    dto: {
+      submissionId?: string;
+      assignmentId?: string;
+      title?: string;
+      courseId?: string;
+      projectId?: string;
+    },
   ) {
     return this.service.createFromSubmission(user, dto);
   }
@@ -225,6 +231,19 @@ export class CourseAgentAppsController {
     @Param('courseId', ParseUUIDPipe) courseId: string,
   ) {
     return this.service.listByCourse(user, courseId);
+  }
+
+  /**
+   * 成本看板（四期）：本课程学生应用的模型调用次数 / token 用量。
+   * 数据来自 `agent_apps.llmCalls/llmTokens`（落库，重启不清零）。
+   */
+  @Get('costs')
+  @Roles(UserRole.TEACHER)
+  costs(
+    @CurrentUser() user: User,
+    @Param('courseId', ParseUUIDPipe) courseId: string,
+  ) {
+    return this.service.costBoard(user, courseId);
   }
 }
 

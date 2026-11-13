@@ -17,6 +17,7 @@ import {
   Space,
   Statistic,
   Table,
+  Tooltip,
   Typography,
   Upload,
 } from 'antd';
@@ -450,6 +451,25 @@ export default function ProjectDetail() {
             {
               title: '评分',
               render: (_, r) => r.submission?.evaluation?.teacherScore ?? '-',
+            },
+            {
+              // 第 20 章「成绩只看应用」：应用（Skill）的教师评分与提交评分并列，缺一个都看不全
+              title: (
+                <Tooltip title="学生在「我的应用」里发布的 Skill 应用的教师评分（取最高分；在「学生应用」页评分）">
+                  <span>应用评分</span>
+                </Tooltip>
+              ),
+              render: (_, r) =>
+                r.app ? (
+                  <Space size={4}>
+                    <Text strong>{r.app.score}</Text>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {r.app.title}
+                    </Text>
+                  </Space>
+                ) : (
+                  <Text type="secondary">未发布/未评</Text>
+                ),
             },
             {
               title: '操作',

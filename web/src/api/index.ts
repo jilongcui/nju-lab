@@ -36,6 +36,7 @@ import type {
   SlideTemplateDesign,
   SlideTemplateView,
   AgentApp,
+  AppCostBoard,
   AgentAppVersion,
   AgentAppMessage,
   AgentAppReview,
@@ -468,6 +469,10 @@ export const listAppMessages = (id: string, limit = 200) =>
   client.get<unknown, AgentAppMessage[]>(`/apps/${id}/messages`, { params: { limit } });
 export const listCourseApps = (courseId: string) =>
   client.get<unknown, AgentApp[]>(`/courses/${courseId}/apps`);
+
+/** 课程级成本看板（应用模型用量，落库统计） */
+export const getCourseAppCosts = (courseId: string) =>
+  client.get<unknown, AppCostBoard>(`/courses/${courseId}/apps/costs`);
 /** 对话：附件由前端读成 base64（平台容器只接受 JSON，避免二次 multipart 透传） */
 export const chatWithApp = (
   id: string,

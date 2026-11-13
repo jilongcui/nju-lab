@@ -10,10 +10,13 @@ import {
   InputNumber,
   List,
   Modal,
+  Col,
   Popconfirm,
+  Row,
   Select,
   Skeleton,
   Space,
+  Statistic,
   Table,
   Tag,
   Typography,
@@ -24,6 +27,7 @@ import {
   activateAppVersion,
   appShareUrl,
   getAppReview,
+  getCourseAppCosts,
   listAppMessages,
   listAppVersions,
   listCourseApps,
@@ -33,11 +37,26 @@ import {
   unpublishApp,
   updateApp,
 } from '../../api';
-import type { AgentApp, AgentAppMessage, AgentAppReview, AgentAppVersion, Course } from '../../types';
+import type {
+  AgentApp,
+  AgentAppMessage,
+  AgentAppReview,
+  AgentAppVersion,
+  AppCostBoard,
+  Course,
+} from '../../types';
 import { formatDateTime } from '../../applicationState';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
 
 const { Title, Paragraph, Text } = Typography;
+
+/** 大数目折算：1.2k / 3.4M（看板里 token 动辄六位数，直接显示会挤爆表格） */
+function formatTokens(n: number): string {
+  if (!n) return '0';
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
 
 const STATUS_META: Record<string, { text: string; color: string }> = {
   draft: { text: '草稿', color: 'default' },
@@ -65,6 +84,8 @@ export default function StudentApps() {
   const [versions, setVersions] = useState<AgentAppVersion[] | null>(null);
   const [reviewTarget, setReviewTarget] = useState<AgentApp | null>(null);
   const [reviews, setReviews] = useState<Record<string, AgentAppReview | null>>({});
+  /** 成本看板（四期）：模型调用次数 / token 用量，落库统计，重启不清零 */
+  const [costs, setCosts] = useState<AppCostBoard | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [form] = Form.useForm<{ total: number; comment?: string }>();
 
@@ -76,8 +97,13 @@ export default function StudentApps() {
         回滚到历史版本、评分，必要时**下架** —— 下架只停容器 + 让分享链接失效，产物与记录都留着。
       </Paragraph>
       <Paragraph type="secondary">
-        一期口径：教师能看到全部课程的应用；学生应用的对话记录会落库，用于教学复盘与答疑。
-        评分按「总分 + 评语」记（维度明细可在二期接入现有成绩单）。
+        口径：教师能看到全部课程的应用；学生应用的对话记录会落库，用于教学复盘与答疑。
+        评分按「总分 + 评语」记，已汇总进项目成绩单（项目详情「应用评分」列 + 成绩 CSV 的
+        「应用 / 应用评分 / 应用评语」三列，取该生在该项目下的最高分）。
+      </Paragraph>
+      <Paragraph type="secondary">
+        顶部是成本看板：学生应用的模型调用次数与 token 用量（平台代理累计、落库保存，
+        重启不清零）。复验消耗的 token 在项目成绩单的「Token成本」列，两者口径不同。
       </Paragraph>
     </div>,
   );
@@ -101,6 +127,7 @@ export default function StudentApps() {
         list.map(async (app) => [app.id, await getAppReview(app.id).catch(() => null)] as const),
       );
       setReviews(Object.fromEntries(entries));
+      setCosts(await getCourseAppCosts(courseId).catch(() => null));
     } finally {
       setLoading(false);
     }
@@ -198,9 +225,12 @@ export default function StudentApps() {
     {
       title: '应用',
       dataIndex: 'title',
+      width: 260,
       render: (value: string, row) => (
-        <Space direction="vertical" size={0}>
-          <Text strong>{value}</Text>
+        <Space direction="vertical" size={0} style={{ maxWidth: 250 }}>
+          <Text strong ellipsis={{ tooltip: value }}>
+            {value}
+          </Text>
           <Text type="secondary" style={{ fontSize: 12 }}>
             {row.scenario || '未填场景'}
           </Text>
@@ -244,6 +274,22 @@ export default function StudentApps() {
         reviews[id] ? <Text strong>{reviews[id]?.total} 分</Text> : <Text type="secondary">未评</Text>,
     },
     {
+      // 成本看板（四期）：这个应用调了多少次模型、花了多少 token（平台代理累计，落库）
+      title: '模型用量',
+      width: 130,
+      render: (_, row) =>
+        (row.llmCalls ?? 0) > 0 ? (
+          <Space direction="vertical" size={0}>
+            <Text>{row.llmCalls} 次</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {formatTokens(row.llmTokens ?? 0)} tokens
+            </Text>
+          </Space>
+        ) : (
+          <Text type="secondary">未调用</Text>
+        ),
+    },
+    {
       title: '更新时间',
       dataIndex: 'updatedAt',
       width: 150,
@@ -251,7 +297,8 @@ export default function StudentApps() {
     },
     {
       title: '操作',
-      width: 380,
+      width: 340,
+      fixed: 'right',
       render: (_, row) => (
         <Space wrap>
           <Button
@@ -305,12 +352,60 @@ export default function StudentApps() {
         <Paragraph type="secondary">
           学生把第 20 章的 harness 做成应用后，会在这里出现。预览会拉起他的应用容器（首次约 30–60 秒）。
         </Paragraph>
+        {costs && (
+          <Card size="small" style={{ marginBottom: 16, background: 'rgba(0,0,0,0.02)' }}>
+            <Row gutter={24} align="middle">
+              <Col span={5}>
+                <Statistic title="学生应用" value={costs.totals.apps} suffix="个" />
+              </Col>
+              <Col span={6}>
+                <Statistic title="模型调用（累计）" value={costs.totals.calls} suffix="次" />
+              </Col>
+              <Col span={7}>
+                <Statistic title="消耗 token（累计）" value={costs.totals.tokens} />
+              </Col>
+              <Col span={6}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  只统计平台模型代理（应用对话）；重启不清零。
+                  复验跑的 token 在项目成绩单的「Token成本」列。
+                </Text>
+              </Col>
+            </Row>
+            {costs.students.length > 0 && (
+              <Table
+                size="small"
+                style={{ marginTop: 12 }}
+                rowKey="studentId"
+                pagination={false}
+                dataSource={costs.students}
+                columns={[
+                  { title: '学生', dataIndex: 'studentName' },
+                  { title: '应用数', dataIndex: 'apps', width: 90 },
+                  { title: '模型调用', dataIndex: 'calls', width: 110 },
+                  {
+                    title: 'token',
+                    dataIndex: 'tokens',
+                    width: 120,
+                    render: (v: number) => formatTokens(v),
+                  },
+                ]}
+              />
+            )}
+          </Card>
+        )}
         {loading ? (
           <Skeleton active />
         ) : rows.length === 0 ? (
           <Empty description="这门课还没有学生发布应用" />
         ) : (
-          <Table rowKey="id" columns={columns} dataSource={rows} pagination={false} />
+          <Table
+            rowKey="id"
+            columns={columns}
+            dataSource={rows}
+            pagination={false}
+            // 加了「模型用量」列后总宽超过内容区，不给 scroll.x 会把标题压成竖排（2026-11-13 真机踩到）
+            scroll={{ x: 1320 }}
+          />
         )}
       </Card>
 

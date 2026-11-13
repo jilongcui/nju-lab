@@ -4,6 +4,7 @@ import { Chapter, Course } from '../courses/course.entity';
 import { ChapterProgress, Enrollment } from '../courses/enrollment.entity';
 import { FilesModule } from '../files/files.module';
 import { Submission } from '../submissions/submission.entity';
+import { AgentApp, AgentAppReview } from '../apps/agent-app.entity';
 import { Assignment, ExperimentProject } from './project.entity';
 import {
   AssignmentsController,
@@ -24,6 +25,9 @@ import { CoursesModule } from '../courses/courses.module';
       Enrollment,
       ChapterProgress,
       Submission,
+      // 只注册实体（拿 repository 做成绩聚合），不 import AgentAppsModule —— 避免模块循环
+      AgentApp,
+      AgentAppReview,
     ]),
     FilesModule,
   ],
