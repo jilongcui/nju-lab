@@ -25,9 +25,18 @@
   ④ 报告扫描不再硬要求"两个 case 的表格行"。
 - **镜像**：`nju-lab-verify:0.2.0-rc.2-pkg10`（pkg9 = `expected` 可选 + 单场景；pkg10 = `runMode=script`）。
   `server/src/submissions/docker-evaluation-runner.ts` 默认 tag 已切 pkg10 —— **服务重启后才生效**。
-- **平台侧待办（未做，避免影响在做的学生）**：上传 `problem.zip` / `skill-template.zip` 拿 fileId →
-  第 19 章项目（`a9c69502-dd7e-4e91-84c7-97c4d11000bd`）改绑 `agent-live` → `harness-agent` unpublish →
-  章节正文与 `docs/GUIDE-ch19-20-screenshots.md` 按新口径改（不再提 case01/case02）→ 重启 server。
+- **平台侧已切完（2026-11-15，用户选「直接全量切」）**：
+  - 上传：`problem.zip` → `382c1de3-cde0-445f-9ea6-c724d1125649`（sha `accf3b93285e`）、
+    `skill-template.zip` → `eeb26995-49ba-42ab-9e29-6d26e8d7cf11`（sha `8566720b43e8`）；
+  - 第 19 章项目 `a9c69502-dd7e-4e91-84c7-97c4d11000bd` **原地改绑** `agent-live`（仍是 published、medium）：
+    title / content / description / objectives / background / faq / references 全部换成新口径，
+    `rubric` 换成四维（40/25/20/15）；学生入口不变，无需重新领取；
+  - 第 19 章 `chapters.content` 重写（11480 → 11838 字节）：删掉 `plan_stub` 桩、"两个 case"、
+    "图书借阅 / 设备维护"、skill 路由要求；§六·五 改成"agent 定制 + 下一章才做 Skill 路由"；
+    `slides` deck 已重生成（`45cd05ac-488c-4f19-8ccb-b217abaeb8eb`）；
+  - `server` 已 `npm run build` 并重启（新 PID，`nju-lab.service` active）→ 复验默认镜像 pkg10 生效；
+  - **遗留**：`docs/GUIDE-ch19-20-screenshots.md` 里 19-01/02/03 三张图待重截（已标注过期，
+    新 content 不再引用旧图）；`harness-agent` 包本身保留在仓库作历史。
 - **第 20 章不受影响**：第 20 章交的是 **Skill**（由平台 agent 调度），判据不依赖第 19 章的包。
 
 **2026-11-11（收官两章：第 19 章升级为 Harness 智能体 + 新增第 20 章「可分享的智能体应用」；平台新增应用托管一期）—— ✅ 已上线（含重启、正文、建章、deck、项目发布）**
