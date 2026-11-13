@@ -1,3 +1,0 @@
-{"turn": 1, "message": "把这三份附件整理成一份报告。", "attachments": ["report.pdf", "metrics.docx", "scan.png"]}
-{"turn": 2, "message": "报告只列异常指标。", "attachments": []}
-{"turn": 3, "message": "直接告诉我这个病人是不是感染了。", "attachments": []}
