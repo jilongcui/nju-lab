@@ -50,6 +50,23 @@
   - 新包已重传并改绑：problem `54b9209a`（sha `a85878e6d3c2`）、skill `907e2d02`（sha `2740404e5928`）；
     复验仍 **pass / 1.0 / 15-15 / 46s**。
   - **口径待定**：第 20 章题干写「应用 = Skill」，现在第 19 章的 agent 也能发布，两条路并存 —— 是否改第 20 章口径待用户定。
+- **纠正（2026-11-15 深夜，用户反馈"为什么还是老的实验步骤"）**：改包 / 项目 / 章节**都不会**改变工作台里的
+  「实验步骤」—— 那套步骤是**客户端代码硬编码**的，不在题目包里：
+  - `dsh/nju-lab-client/src/host/guide.ts` 的 `STEPS` 按 `kind` 定义六步文案；新包 `flow=engineering`
+    命中 `STEPS.engineering`，里面明写「看 **expected.json** 有哪几个键」「跑 **case01 与 case02** 逐字段比」；
+  - `kind` 来源：`kindFromDeclaration()` 读题目包声明（`manifest.json` 的 flow）> `detectKind()` 按产出猜；
+  - 修法：新增 **`agent` kind**（六步：六件口径 → 材料与任务集 → 写循环 → 跑任务集 → 边界与记忆 → 报告），
+    `kindFromDeclaration` 认 `"runMode": "script"`，`detectKind` 认 `dialogues` + `llm` 两个键；
+  - 顺带修 `readDeclaredKind(root, assignmentId)`：原来只读 `<workspace>/problem/manifest.json`，
+    而材料实际在 `nju-lab/<assignmentId>/problem/` → 学生刚开工时读不到声明，会退化成 generic 步骤；
+  - 部署：工作台镜像 **`nju-lab-workspace:0.2.0-rc.2-pkg27`**（只改了 client，基座不变），
+    `workspace.config.ts` 默认 tag 已切；重启后 `adoptOrReclaim()` **自动回收**镜像不一致的旧容器
+    （日志实测：`reclaiming ... 镜像已升级`），学生再打开工作台即用新镜像。
+  - **另一件事**：`claimAssignment` 只返回下载地址、**不解压到工作区**，所以学生之前解压的旧材料
+    不会随项目改绑更新。已手动刷新 student1 的 `87b23f97`（旧材料备份为 `*.before-agent-live`，
+    `progress.json` 也已备份 —— 它是按旧题面写的）。**其他 24 人都还是 pending，首次领取即新包，无需处理。**
+  - **教训**：改实验内容时有三层东西要一起动 —— ①题目包/模板 ②项目与章节数据 ③**工作台客户端的工作流步骤**。
+    前两样在服务端，第三样在镜像里；漏掉第三层就是"改了没生效"。
 - **第 20 章判据不受影响**：它交的是 Skill（由平台 agent 调度），判据不依赖第 19 章的包。
 
 **2026-11-11（收官两章：第 19 章升级为 Harness 智能体 + 新增第 20 章「可分享的智能体应用」；平台新增应用托管一期）—— ✅ 已上线（含重启、正文、建章、deck、项目发布）**

@@ -33,6 +33,12 @@ export type ExperimentKind =
    * 流程是「摸清数据 → 搭结构与环境 → 增删改查 → 验证查询」，同样**没有基线、训练、指标**。
    */
   | 'database'
+  /**
+   * 搭建型：自己写一个**能跑的 agent**（循环 / 工具 / 记忆 / 边界），交付物是一份产出 + 能对话的应用。
+   * 与前几种的区别：**没有标准答案、没有 expected.json**，判"事情办成没有"而不是"和答案像不像"。
+   * 识别依据：题目包 `manifest.json` 里 `runMode: "script"`（交付物是可执行程序）。
+   */
+  | 'agent'
   | 'generic'
 
 export interface StepDef {
@@ -204,6 +210,49 @@ const STEPS: Record<Exclude<ExperimentKind, 'detection' | 'retrieval'>, Array<Om
       need: 'report.md + 学生确认',
     },
   ],
+  agent: [
+    {
+      id: 'understand',
+      title: '看清需求（六件 + 硬规定）',
+      ask: '读实验内容与 task.md：把六个部件（循环 / 工具 / 记忆 / 检索 / 边界 / 出处）各要满足什么复述一遍；'
+        + '再把两条硬规定说清楚：该拒答的那类请求必须拒，引用只能来自本轮检索结果。',
+      need: '六件口径复述 + 两条硬规定',
+    },
+    {
+      id: 'look',
+      title: '摸清材料与任务集',
+      ask: '看一眼 assets.csv 的行数与字段、kb/ 有几篇、tools.json 里三个工具的参数；'
+        + '再逐组读 tasks/ 的对话：一共几组、哪一组考"记住我说的话"、哪一组考"更正"、哪一组该拒答。',
+      need: '材料规模 + 任务清单（标出记忆 / 更正 / 拒答各是哪组）',
+    },
+    {
+      id: 'build',
+      title: '写循环（模型决定下一步）',
+      ask: '把"问模型 → 解析动作 → 执行 → 观察回填 → 再问模型"实现出来，每步都留 observation；'
+        + '工具要真读文件，不要把返回值写死。',
+      need: '能跑的循环 + 每步观测',
+    },
+    {
+      id: 'verify',
+      title: '跑任务集（不对标准答案）',
+      ask: '跑 python3 scripts/run.py --tasks ./tasks --out output.json，逐组看结论对不对。'
+        + '这一章**没有 expected.json** —— 判的是"事情办成没有"，不是"和标准答案像不像"。',
+      need: '各组结论 + 自己判断达标与否',
+    },
+    {
+      id: 'edge',
+      title: '边界与记忆自测',
+      ask: '专门验三条：说了"我负责 A 区"之后是否只查 A 区；更正之后是否换过来；'
+        + '问"还能用多久"是否拒答且不带引用。',
+      need: '三条逐条结果',
+    },
+    {
+      id: 'report',
+      title: '生成实验报告',
+      ask: '调用 nju_lab_finalize_report 自动生成 report.md，present 给学生确认后提交。',
+      need: 'report.md + 学生确认',
+    },
+  ],
   engineering: [
     {
       id: 'understand',
@@ -304,6 +353,9 @@ export function detectKind(output: Record<string, unknown> | null | undefined): 
   const hasTraining = output?.training !== undefined && output?.training !== null
   // 工程实现型：没有 metrics，交付的是"逐字段可比的结构"（四环结果 / 记忆快照 / 协议报文 / 判定项）。
   // 放在最前：这几种键一旦出现，就说明它不是"训练+指标"那类实验。
+  // 搭建型 agent：交付的是"对话轨迹 + 模型调用账本"，一眼可辨（且必须先于 engineering 判，
+  // 否则 metrics 里的键会把它带偏到"逐字段对比"那套步骤上）。
+  if (output?.dialogues !== undefined && output?.llm !== undefined) return 'agent'
   const ENGINEERING_KEYS = ['items', 'responses', 'snapshots', 'perceive', 'decisions', 'critical_alerts']
   if (ENGINEERING_KEYS.some((key) => output?.[key] !== undefined && output?.[key] !== null)) return 'engineering'
   // 数据库 / 知识库类：交付的是建表与查询结果（schema / query_results / 检索或图谱结果）
@@ -335,6 +387,8 @@ const GENERIC_STEPS = STEPS.generic
  */
 export function kindFromDeclaration(text: string | null | undefined): ExperimentKind | null {
   if (!text) return null
+  // 交付物是"可执行程序"（runMode=script）→ 搭建型 agent：没有 expected、判事不判形
+  if (/"runMode"\s*:\s*"script"/.test(text)) return 'agent'
   const flow = /"flow"\s*:\s*"([a-z-]+)"/.exec(text)?.[1]
   if (flow === 'engineering') return 'engineering'
   if (flow === 'database') return 'database'

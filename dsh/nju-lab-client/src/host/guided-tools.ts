@@ -40,15 +40,26 @@ const GUIDE_TOOL_NAMES = TOOL_NAMES
 
 const MAX_SCAN_DEPTH = 3
 
-/** 读题目包里的流程声明（`problem/manifest.json` 的 flow / `problem/task.md` 的「流程归属」）。 */
-async function readDeclaredKind(root: string): Promise<ReturnType<typeof kindFromDeclaration>> {
-  for (const rel of ['problem/manifest.json', 'problem/task.md']) {
-    try {
-      const text = await readFile(join(root, rel), 'utf8')
-      const kind = kindFromDeclaration(text)
-      if (kind) return kind
-    } catch {
-      // 没有这个文件就继续看下一个
+/**
+ * 读题目包里的流程声明（`problem/manifest.json` 的 flow / `problem/task.md` 的「流程归属」）。
+ *
+ * 题目包实际落在 `<workspace>/nju-lab/<assignmentId>/problem/`，所以先找那个目录；
+ * 再兼容"材料直接摊在 workspace 根"的旧布局。读不到声明就返回 null（交给 detectKind 按产出猜）。
+ */
+async function readDeclaredKind(
+  root: string,
+  assignmentId?: string,
+): Promise<ReturnType<typeof kindFromDeclaration>> {
+  const bases = assignmentId ? [join('nju-lab', assignmentId), ''] : ['']
+  for (const base of bases) {
+    for (const rel of ['problem/manifest.json', 'problem/task.md']) {
+      try {
+        const text = await readFile(base ? join(root, base, rel) : join(root, rel), 'utf8')
+        const kind = kindFromDeclaration(text)
+        if (kind) return kind
+      } catch {
+        // 没有这个文件就继续看下一个
+      }
     }
   }
   return null
@@ -212,7 +223,7 @@ export function registerGuidedTools(
         const root = await actions.resolveRoot(args.sessionId)
         const who = await actions.whoAmI()
         let state = await loadGuide(root, args.assignmentId)
-        const declared = await readDeclaredKind(root)
+        const declared = await readDeclaredKind(root, args.assignmentId)
         if (!state) {
           // 第一次进来：优先看题目包里的流程声明；没有声明再按 output.json 猜（都没有就 generic）
           const outputs = await findOutputJson(root)
