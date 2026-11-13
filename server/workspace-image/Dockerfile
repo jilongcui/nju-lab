@@ -35,6 +35,10 @@ RUN cd ./nju-lab-client \
  && npm run build \
  && npm cache clean --force
 
+# 1.5) 平台 harness（app_host.py + platform_core.py）：工作台的**边改边预览**要用它
+#      把学生工作区里的 skill 目录直接跑起来（不打包、不提交）。
+COPY server/apps-image/platform/ /opt/platform/app/
+
 # 2) DSH_HOME：profile 与插件解析（容器一次性，运行时不复制）
 ENV DSH_HOME=/opt/workspace/dsh-home \
     DSH_TELEMETRY_DISABLED=1 \

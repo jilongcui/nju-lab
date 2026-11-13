@@ -8,6 +8,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 
 import { ClaimPanel } from './ClaimPanel.tsx'
+import { PreviewPanel } from './PreviewPanel.tsx'
 import { SettingsCard, type NjuLabSettings } from './SettingsCard.tsx'
 
 export const name = 'nju-lab-client/client'
@@ -86,6 +87,45 @@ export function apply(ctx: Context): void {
         ctx.slots.register({ name: 'sidebar.right.pane.tab.title', key: TAB_ID }, ClaimTitle),
       ),
     'nju-lab-client: tab title',
+  )
+
+  // ---------------------------------------------------------------- 「预览」tab
+  // 学生改完代码不用提交：预览服务直接跑工作区里的 skill 目录，iframe 里就能对话。
+  const PREVIEW_TAB = 'nju-lab-preview'
+  ctx.effect(
+    () =>
+      ctx.sidebarRightTabs.register({
+        id: PREVIEW_TAB,
+        kind: PREVIEW_TAB,
+        title: () => '预览',
+        guide: [
+          {
+            id: PREVIEW_TAB,
+            order: 11,
+            title: () => '预览我的应用',
+            description: () => '不提交也能直接跑工作区里的 skill，边改边对话',
+          },
+        ],
+      }),
+    'nju-lab-client: preview tab type',
+  )
+  ctx.effect(
+    () =>
+      ctx.slots.inject('sidebar.right.pane.tab', () =>
+        ctx.slots.register({ name: 'sidebar.right.pane.tab', key: PREVIEW_TAB }, () => (
+          <PreviewPanel getSessionId={getSessionId} />
+        )),
+      ),
+    'nju-lab-client: preview tab body',
+  )
+  ctx.effect(
+    () =>
+      ctx.slots.inject('sidebar.right.pane.tab.title', () =>
+        ctx.slots.register({ name: 'sidebar.right.pane.tab.title', key: PREVIEW_TAB }, () => (
+          <span>预览</span>
+        )),
+      ),
+    'nju-lab-client: preview tab title',
   )
 
   // 设置卡片：0.1.7 里按 Host 条目的命名空间拿到 ConfigForm，注册进

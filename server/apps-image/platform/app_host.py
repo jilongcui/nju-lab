@@ -28,14 +28,17 @@ from pathlib import Path
 APP_DIR = Path(os.environ.get("APP_DIR") or Path(__file__).resolve().parent)
 DATA_DIR = Path(os.environ.get("APP_DATA_DIR") or "/tmp/app-data")
 WEB_DIR = APP_DIR / "web"
-SKILL_DIR = APP_DIR / "skill"
+# 预览模式：把 Skill 目录指到学生的工作区（`APP_SKILL_DIR`），平台前端仍用镜像内置的那份。
+# 这样同一个进程既能跑"发布后的应用"（/work/app/skill），也能跑"边改边预览"（工作区里的 skill/）。
+SKILL_DIR = Path(os.environ.get("APP_SKILL_DIR") or (APP_DIR / "skill"))
 # 入口优先级：学生自己的 **agent**（第 19 章）→ **Skill**（第 20 章）→ 兼容旧的 scripts/
-ENTRY_CANDIDATES = [
-    SKILL_DIR / "agent" / "api.py",
-    SKILL_DIR / "scripts" / "api.py",
-    SKILL_DIR / "skill" / "scripts" / "api.py",
-]
-SKILL_API = ENTRY_CANDIDATES[0]
+def entry_candidates() -> list[Path]:
+    """入口候选（每次请求求值：预览时 SKILL_DIR 可能被换掉）。"""
+    return [
+        SKILL_DIR / "agent" / "api.py",
+        SKILL_DIR / "scripts" / "api.py",
+        SKILL_DIR / "skill" / "scripts" / "api.py",
+    ]
 APP_JSON = APP_DIR / "app.json"
 
 sys.path.insert(0, str(APP_DIR))
@@ -47,7 +50,7 @@ STATE: dict = {}
 # ---------------------------------------------------------------- 装载
 
 def find_entry() -> Path:
-    for path in ENTRY_CANDIDATES:
+    for path in entry_candidates():
         if path.exists():
             return path
     raise RuntimeError(

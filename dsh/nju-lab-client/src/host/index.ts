@@ -12,6 +12,7 @@ import { Config, resolveConfig, type EvalConfig, type ResolvedConfig } from './c
 import { loadPinnedEvalConfig } from './eval-state.ts'
 import { collectEvidence } from './evidence.ts'
 import { registerGuidedTools } from './guided-tools.ts'
+import { registerPreviewRoutes } from './preview.ts'
 import { registerGuidance } from './guidance.ts'
 import { registerConditionLock } from './lock.ts'
 import { registerPanelRoutes } from './panel.ts'
@@ -140,6 +141,11 @@ export function apply(ctx: Context, config: Config): void {
   registerGuidance(ctx, {
     guided: () => readConfig().guidedMode,
     open: openExperiment,
+  })
+
+  // 边改边预览（侧栏 iframe + 反代到容器内的预览服务）
+  ctx.inject(['connection'], (scoped) => {
+    registerPreviewRoutes(scoped)
   })
 
   // 面板路由挂在 Connection 的 /api 通道上；headless（无 web server）没有这个服务。
