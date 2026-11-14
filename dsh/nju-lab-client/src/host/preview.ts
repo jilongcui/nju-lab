@@ -14,7 +14,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
 /** 预览服务在容器内的端口（只用 127.0.0.1，不出容器）。 */
@@ -61,6 +61,31 @@ function stopPreview(): void {
     }
     state.process = null
   }
+}
+
+/**
+ * 找出"你正在写的那个 agent"：扫 `<workspace>/nju-lab/<aid>/skill` 里带入口文件的，
+ * 按入口文件的修改时间取最新 —— 学生不需要选任务，预览永远对着他刚动过的那份代码。
+ */
+export function detectActiveSkill(root: string): { skillDir: string; assignmentId: string } | null {
+  const base = join(root, 'nju-lab')
+  if (!existsSync(base)) return null
+  const found: Array<{ skillDir: string; assignmentId: string; mtime: number }> = []
+  for (const name of readdirSync(base)) {
+    const skillDir = join(base, name, 'skill')
+    const hit = ['agent/api.py', 'scripts/api.py', 'skill/scripts/api.py']
+      .map((rel) => join(skillDir, rel))
+      .find((path) => existsSync(path))
+    if (!hit) continue
+    try {
+      found.push({ skillDir, assignmentId: name, mtime: statSync(hit).mtimeMs })
+    } catch {
+      // 读不到时间就跳过
+    }
+  }
+  if (!found.length) return null
+  found.sort((a, b) => b.mtime - a.mtime)
+  return { skillDir: found[0].skillDir, assignmentId: found[0].assignmentId }
 }
 
 /** 让预览服务跑起来，指向给定的 skill 目录（已在跑的同一目录直接复用）。 */
@@ -164,7 +189,10 @@ q.focus();
 }
 
 /** 注册预览路由。 */
-export function registerPreviewRoutes(ctx: Context): void {
+export function registerPreviewRoutes(
+  ctx: Context,
+  actions: { resolveRoot: (sessionId?: string) => Promise<string> },
+): void {
   ctx.connection.fetch.register({
     path: PREVIEW_ROUTES.page,
     methods: ['GET'],
@@ -210,10 +238,31 @@ export function registerPreviewRoutes(ctx: Context): void {
     methods: ['POST'],
     requestBody: 'buffered',
     fetch: async (request) => {
-      const body = (await request.json().catch(() => ({}))) as { skillDir?: string; assignmentId?: string }
-      if (!body.skillDir) return Response.json({ ok: false, error: '缺少 skillDir' }, { status: 400 })
-      const result = await ensurePreview(body.skillDir, body.assignmentId || '')
-      return Response.json(result, { status: result.ok ? 200 : 500 })
+      const body = (await request.json().catch(() => ({}))) as {
+        skillDir?: string
+        assignmentId?: string
+        sessionId?: string
+      }
+      let skillDir = body.skillDir
+      let assignmentId = body.assignmentId || ''
+      if (!skillDir) {
+        // 没指定就自己找：工作区里带入口、且入口刚被改过的那个 skill
+        const root = await actions.resolveRoot(body.sessionId)
+        const active = detectActiveSkill(root)
+        if (!active) {
+          return Response.json(
+            {
+              ok: false,
+              error: '工作区里还没有带入口的任务：先在 nju-lab/<任务>/skill/agent/api.py 里写 handle()。',
+            },
+            { status: 400 },
+          )
+        }
+        skillDir = active.skillDir
+        assignmentId = active.assignmentId
+      }
+      const result = await ensurePreview(skillDir, assignmentId)
+      return Response.json({ ...result, assignmentId }, { status: result.ok ? 200 : 500 })
     },
   })
 }

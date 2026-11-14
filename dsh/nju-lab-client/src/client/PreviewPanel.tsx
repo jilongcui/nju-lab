@@ -1,8 +1,9 @@
 /**
- * 侧边栏「预览」tab：选中一个任务 → 起预览服务 → iframe 里直接跟它对话。
+ * 侧边栏「预览」tab：**跟你自己写的 agent 对话**（不是跟你聊天的那位 AI 助手）。
  *
- * 关键点：**不需要提交**。预览服务指向工作区里的 `nju-lab/<assignmentId>/skill`，
- * 你改完文件，下一次对话就是新代码（`app_host` 每次请求都重新加载学生的入口模块）。
+ * 对象是自动绑定的：扫工作区 `nju-lab/<任务>/skill`，取入口文件刚被改过的那个 ——
+ * 学生不用选任务，改成哪个预览就是哪个。改完代码回来再问一句就是新代码
+ * （`app_host` 每次请求都重新加载学生入口）。
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 
@@ -16,7 +17,6 @@ interface AssignmentDto {
   id: string
   title?: string
   status?: string
-  /** 平台返回的任务带着 project（里面有可读标题），别只显示 uuid */
   project?: { title?: string }
 }
 
@@ -26,21 +26,34 @@ interface SnapshotDto {
 }
 
 export function PreviewPanel({ getSessionId }: { getSessionId: () => string | null | undefined }) {
-  const [snapshot, setSnapshot] = useState<SnapshotDto | null>(null)
-  const [selected, setSelected] = useState<string>('')
-  const [state, setState] = useState<'idle' | 'starting' | 'ready' | 'error'>('idle')
+  const [titles, setTitles] = useState<Record<string, string>>({})
+  const [active, setActive] = useState<{ id: string; title: string } | null>(null)
+  const [state, setState] = useState<'starting' | 'ready' | 'error'>('starting')
   const [message, setMessage] = useState('')
   const [nonce, setNonce] = useState(0)
-  const loaded = useRef(false)
+  const booted = useRef(false)
 
-  const load = useCallback(async () => {
+  const start = useCallback(async () => {
+    setState('starting')
+    setMessage('正在起预览…')
+    const sessionId = getSessionId() ?? ''
     try {
-      const sessionId = getSessionId() ?? ''
-      const res = await fetch(`${ROUTES.assignments}?sessionId=${encodeURIComponent(sessionId)}`)
-      const data = (await res.json()) as SnapshotDto
-      setSnapshot(data)
-      const first = data.assignments?.find((a) => a.status !== 'pending') ?? data.assignments?.[0]
-      if (first) setSelected((prev) => prev || first.id)
+      const res = await fetch(ROUTES.select, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        // 不传 skillDir：让 host 自己找"你正在写的那个"
+        body: JSON.stringify({ sessionId }),
+      })
+      const data = (await res.json()) as { ok?: boolean; error?: string; assignmentId?: string }
+      if (data.ok) {
+        setActive({ id: data.assignmentId || '', title: '' })
+        setState('ready')
+        setMessage('')
+        setNonce((n) => n + 1)
+      } else {
+        setState('error')
+        setMessage(data.error || '预览起不来')
+      }
     } catch (error) {
       setState('error')
       setMessage(error instanceof Error ? error.message : String(error))
@@ -48,70 +61,43 @@ export function PreviewPanel({ getSessionId }: { getSessionId: () => string | nu
   }, [getSessionId])
 
   useEffect(() => {
-    if (loaded.current) return
-    loaded.current = true
-    void load()
-  }, [load])
-
-
-  const start = useCallback(async () => {
-    if (!snapshot?.workspaceDir || !selected) return
-    const skillDir = `${snapshot.workspaceDir}/nju-lab/${selected}/skill`
-    setState('starting')
-    setMessage('正在启动预览服务…')
-    try {
-      const res = await fetch(ROUTES.select, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ skillDir, assignmentId: selected }),
-      })
-      const data = (await res.json()) as { ok?: boolean; error?: string }
-      if (data.ok) {
-        setState('ready')
-        setMessage('')
-        setNonce((n) => n + 1)
-      } else {
-        setState('error')
-        setMessage(data.error || '预览服务启动失败')
+    if (booted.current) return
+    booted.current = true
+    void (async () => {
+      // 只是为了让标题可读（id → 任务名），拿不到也不影响预览
+      try {
+        const sessionId = getSessionId() ?? ''
+        const res = await fetch(`${ROUTES.assignments}?sessionId=${encodeURIComponent(sessionId)}`)
+        const snap = (await res.json()) as SnapshotDto
+        const map: Record<string, string> = {}
+        for (const a of snap.assignments ?? []) {
+          map[a.id] = a.project?.title || a.title || a.id.slice(0, 8)
+        }
+        setTitles(map)
+      } catch {
+        // ignore
       }
-    } catch (error) {
-      setState('error')
-      setMessage(error instanceof Error ? error.message : String(error))
-    }
-  }, [selected, snapshot])
+      await start()
+    })()
+  }, [getSessionId, start])
 
+  const title = active?.id ? titles[active.id] || active.title || '当前任务' : ''
 
-  // 自动跑：选好任务就起预览，学生不用再点一次（改完代码回来就是新版本）
-  const autoStarted = useRef(false)
-  useEffect(() => {
-    if (autoStarted.current || !selected || !snapshot?.workspaceDir) return
-    autoStarted.current = true
-    void start()
-  }, [selected, snapshot, start])
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8, padding: 8 }}>
-      <div style={{ display: 'flex', gap: 6 }}>
-        <select
-          value={selected}
-          onChange={(e) => {
-            setSelected(e.target.value)
-            setState('idle')
-          }}
-          style={{ flex: 1, minWidth: 0, padding: '4px 6px' }}
-        >
-          <option value="">选择任务…</option>
-          {(snapshot?.assignments ?? []).map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.project?.title || a.title || a.id.slice(0, 8)}
-            </option>
-          ))}
-        </select>
-        <button onClick={() => void start()} disabled={!selected || state === 'starting'}>
-          {state === 'ready' ? '重启' : '预览'}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: '#374151', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {state === 'ready' ? <>正在预览：<b>{title}</b></> : '预览我的 agent'}
+        </div>
+        <button onClick={() => void start()} disabled={state === 'starting'}>
+          {state === 'ready' ? '重启' : '再试'}
         </button>
       </div>
+      <div style={{ fontSize: 11, color: '#9ca3af' }}>
+        这是跟你自己写的 agent 对话；左边那位是帮你写代码的助手。
+      </div>
       {message ? (
-        <div style={{ fontSize: 12, color: state === 'error' ? '#b42318' : '#6b7280' }}>{message}</div>
+        <div style={{ fontSize: 12, color: state === 'error' ? '#b42318' : '#6b7280', lineHeight: 1.6 }}>{message}</div>
       ) : null}
       {state === 'ready' ? (
         <iframe
@@ -120,13 +106,7 @@ export function PreviewPanel({ getSessionId }: { getSessionId: () => string | nu
           title="预览"
           style={{ flex: 1, minHeight: 0, border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff' }}
         />
-      ) : (
-        <div style={{ fontSize: 12, color: '#6b7280', lineHeight: 1.7 }}>
-          选一个任务点「预览」——它直接跑工作区里的 <code>skill/</code>。
-          <br />
-          改完文件不用提交，回到这里再问一句就是新代码。
-        </div>
-      )}
+      ) : null}
     </div>
   )
 }

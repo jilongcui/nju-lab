@@ -145,7 +145,7 @@ export function apply(ctx: Context, config: Config): void {
 
   // 边改边预览（侧栏 iframe + 反代到容器内的预览服务）
   ctx.inject(['connection'], (scoped) => {
-    registerPreviewRoutes(scoped)
+    registerPreviewRoutes(scoped, actions)
   })
 
   // 面板路由挂在 Connection 的 /api 通道上；headless（无 web server）没有这个服务。
