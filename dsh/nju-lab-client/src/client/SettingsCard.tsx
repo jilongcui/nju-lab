@@ -13,6 +13,10 @@ import type { ConfigForm } from '@deepseek-ai/dsh-client-ui-settings/client'
 export interface NjuLabSettings {
   serverUrl?: string
   token?: string
+  /** 学员模式（六步引导） */
+  guidedMode?: boolean
+  /** 关闭全部实验提示 */
+  guidanceOff?: boolean
 }
 
 const row = { margin: '12px 0' }
@@ -34,6 +38,8 @@ export function SettingsCard({ form }: { form: ConfigForm<NjuLabSettings> }) {
   // null = 未编辑，跟随 snapshot；编辑后持有本地草稿
   const [urlDraft, setUrlDraft] = useState<string | null>(null)
   const [tokenDraft, setTokenDraft] = useState<string | null>(null)
+  const [guidedDraft, setGuidedDraft] = useState<boolean | null>(null)
+  const [guidanceOffDraft, setGuidanceOffDraft] = useState<boolean | null>(null)
   const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
 
   if (snap.status === 'loading') return <section>设置加载中…</section>
@@ -41,7 +47,11 @@ export function SettingsCard({ form }: { form: ConfigForm<NjuLabSettings> }) {
 
   const serverUrl = urlDraft ?? snap.value?.serverUrl ?? ''
   const token = tokenDraft ?? snap.value?.token ?? ''
-  const dirty = urlDraft !== null || tokenDraft !== null
+  // 学员模式默认开；"关闭全部提示"默认关
+  const guided = guidedDraft ?? snap.value?.guidedMode ?? true
+  const guidanceOff = guidanceOffDraft ?? snap.value?.guidanceOff ?? false
+  const dirty =
+    urlDraft !== null || tokenDraft !== null || guidedDraft !== null || guidanceOffDraft !== null
 
   const save = async () => {
     setState('saving')
@@ -55,8 +65,12 @@ export function SettingsCard({ form }: { form: ConfigForm<NjuLabSettings> }) {
         if (tokenDraft === '') await form.unset('token')
         else await form.set('token', tokenDraft)
       }
+      if (guidedDraft !== null) await form.set('guidedMode', guidedDraft)
+      if (guidanceOffDraft !== null) await form.set('guidanceOff', guidanceOffDraft)
       setUrlDraft(null)
       setTokenDraft(null)
+      setGuidedDraft(null)
+      setGuidanceOffDraft(null)
       setState('saved')
     } catch {
       setState('error')
@@ -90,6 +104,30 @@ export function SettingsCard({ form }: { form: ConfigForm<NjuLabSettings> }) {
           onChange={(e) => { setTokenDraft(e.target.value); setState('idle') }}
         />
         <div style={hint}>长期 token（365 天）。改动即时生效，无需重启。</div>
+      </div>
+      <div style={row}>
+        <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input
+            type="checkbox"
+            checked={guided}
+            disabled={!snap.writable}
+            onChange={(e) => { setGuidedDraft(e.target.checked); setState('idle') }}
+          />
+          学员模式（六步引导：推着你一步一步做）
+        </label>
+        <div style={hint}>取消勾选后只剩"只答疑"；想连提示都不要，勾下面那个。</div>
+      </div>
+      <div style={row}>
+        <label style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <input
+            type="checkbox"
+            checked={guidanceOff}
+            disabled={!snap.writable}
+            onChange={(e) => { setGuidanceOffDraft(e.target.checked); setState('idle') }}
+          />
+          关闭全部实验提示（我自己安静做）
+        </label>
+        <div style={hint}>勾上之后工作台里不出现任何实验引导文字，DSH 只作为普通助手。</div>
       </div>
       <button style={btn} disabled={!snap.writable || !dirty || state === 'saving'} onClick={() => void save()}>
         {state === 'saving' ? '保存中…' : '保存'}

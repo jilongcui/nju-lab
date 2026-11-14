@@ -49,6 +49,8 @@ export interface Config {
    * 最后一步按模板自动生成 `report.md`。熟练学生可在设置里关掉切回自由模式。
    */
   guidedMode: Volatile<boolean>
+  /** 完全不注入任何实验提示（连"只答疑"那段也不要）—— 想自己安静做实验时用 */
+  guidanceOff?: Volatile<boolean>
 }
 
 export const Config = Schema.object({
@@ -75,6 +77,10 @@ export const Config = Schema.object({
       '学员模式：一次只做一步，每步结束等你确认再继续；最后自动按模板生成实验报告。关掉则自由发挥',
     )
     .volatile(),
+  guidanceOff: Schema.boolean()
+    .default(false)
+    .description('完全不注入任何实验提示（连"只答疑"那段也不要）')
+    .volatile(),
 })
 
 /**
@@ -89,6 +95,7 @@ export interface ResolvedConfig {
   evalConfig?: EvalConfig
   workspaceDir?: string
   guidedMode: boolean
+  guidanceOff?: boolean
 }
 
 /**

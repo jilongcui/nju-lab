@@ -141,6 +141,7 @@ export function apply(ctx: Context, config: Config): void {
   registerGuidance(ctx, {
     guided: () => readConfig().guidedMode,
     open: openExperiment,
+    off: () => readConfig().guidanceOff === true,
   })
 
   // 边改边预览（侧栏 iframe + 反代到容器内的预览服务）

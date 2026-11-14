@@ -330,12 +330,13 @@ export const GUIDANCE_GUIDED_TEXT = `${GUIDANCE_TOOL_MAP}
 
 export function registerGuidance(
   ctx: Context,
-  options: { guided?: () => boolean; open?: () => boolean } = {},
+  options: { guided?: () => boolean; open?: () => boolean; off?: () => boolean } = {},
 ): void {
   ctx.inject(['systemPrompt'], (scoped) => {
-    scoped.effect(
-      () =>
-        scoped.systemPrompt.section({
+    scoped.effect(() => {
+      // `off` 时什么都不注册 —— 工作台里一句实验提示都不出现
+      if (options.off?.()) return () => undefined
+      return scoped.systemPrompt.section({
           name: GUIDANCE_SECTION,
           order: GUIDANCE_ORDER,
           // 学员模式开关是 volatile 配置：每次组装现读，学生改了立即生效
@@ -347,9 +348,8 @@ export function registerGuidance(
               : options.guided?.()
                 ? GUIDANCE_GUIDED_TEXT
                 : GUIDANCE_TEXT,
-        }),
-      'nju-lab-client: guidance section',
-    )
+      })
+    }, 'nju-lab-client: guidance section')
   })
 
   ctx.inject(['skills'], (scoped) => {
