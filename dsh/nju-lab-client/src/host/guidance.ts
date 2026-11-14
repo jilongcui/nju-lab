@@ -138,12 +138,19 @@ export function guidanceFlagPath(): string {
   return join(home, '.nju-lab', 'guidance.json')
 }
 
+/**
+ * 实验提示是否关闭。**默认关闭**（2026-11-14 用户口径：工作台不该往学生脑子里塞流程）。
+ *
+ * - 没有标记文件 → 关（`true`）；
+ * - 标记文件写了 `{"off": false}` → 开；
+ * 想恢复提示就在面板上点一下，或手工写 `{"off": false}`。
+ */
 export function readGuidanceOff(): boolean {
   try {
     const raw = readFileSync(guidanceFlagPath(), 'utf8')
-    return JSON.parse(raw).off === true
+    return JSON.parse(raw).off !== false
   } catch {
-    return false
+    return true
   }
 }
 
