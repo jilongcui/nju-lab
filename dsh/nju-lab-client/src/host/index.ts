@@ -13,6 +13,7 @@ import { loadPinnedEvalConfig } from './eval-state.ts'
 import { collectEvidence } from './evidence.ts'
 import { registerGuidedTools } from './guided-tools.ts'
 import { registerPreviewRoutes } from './preview.ts'
+import { readGuidanceOff } from './guidance.ts'
 import { registerGuidance } from './guidance.ts'
 import { registerConditionLock } from './lock.ts'
 import { registerPanelRoutes } from './panel.ts'
@@ -141,7 +142,8 @@ export function apply(ctx: Context, config: Config): void {
   registerGuidance(ctx, {
     guided: () => readConfig().guidedMode,
     open: openExperiment,
-    off: () => readConfig().guidanceOff === true,
+    // 文件开关优先（面板上能点），DSH 设置项其次
+    off: () => readGuidanceOff() || readConfig().guidanceOff === true,
   })
 
   // 边改边预览（侧栏 iframe + 反代到容器内的预览服务）

@@ -34,6 +34,8 @@ const ROUTES = {
   claim: '/api/nju-lab.claim',
   submit: '/api/nju-lab.submit',
   update: '/api/nju-lab.update',
+  /** 实验提示总开关（写 <HOME>/.nju-lab/guidance.json） */
+  guidance: '/api/nju-lab.guidance',
 } as const
 
 interface ProjectDto {
@@ -239,6 +241,8 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
   const [snapshot, setSnapshot] = useState<SnapshotDto | null>(null)
   const [banner, setBanner] = useState<Banner | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  /** 实验提示开关（写 <HOME>/.nju-lab/guidance.json，重启后仍生效） */
+  const [guidanceOff, setGuidanceOff] = useState<boolean | null>(null)
   const [loaded, setLoaded] = useState(false)
   /** 自动材料化是否在跑：跑的时候把按钮按下去，免得学生和你抢同一次下载。 */
   const [autoBusy, setAutoBusy] = useState(false)
@@ -490,6 +494,34 @@ export function ClaimPanel({ getSessionId }: { getSessionId?: () => string | und
           <code style={mono}>NJU_LAB_TOKEN</code>。token 在平台个人页「API Token」弹窗生成。
         </div>
       )}
+
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', margin: '0 0 8px' }}>
+          <span style={{ ...small, ...dim }}>实验提示：</span>
+          <button
+            style={linkButton}
+            onClick={async () => {
+              const next = !(guidanceOff ?? false)
+              try {
+                const res = await call<{ ok?: boolean }>(ROUTES.guidance, {
+                  method: 'POST',
+                  body: JSON.stringify({ off: next }),
+                })
+                if (res.ok) {
+                  setGuidanceOff(next)
+                  setBanner({
+                    kind: 'ok',
+                    title: next ? '已关闭实验提示（重开工作台后生效）' : '已恢复实验提示（重开工作台后生效）',
+                    details: ['DSH 的提示在每次请求时组装，刷新页面或新开会话即可看到效果。'],
+                  })
+                }
+              } catch (e) {
+                setBanner({ kind: 'error', title: '切换失败', details: [e instanceof Error ? e.message : String(e)] })
+              }
+            }}
+          >
+            {guidanceOff ? '已关闭（点此恢复）' : '关掉（我只想安静写代码）'}
+          </button>
+      </div>
 
       {snapshot &&
         listed.map((a) => {

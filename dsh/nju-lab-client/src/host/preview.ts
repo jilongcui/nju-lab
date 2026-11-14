@@ -15,6 +15,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { spawn } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import { existsSync, readdirSync, statSync } from 'node:fs'
+import { readGuidanceOff, writeGuidanceOff } from './guidance.ts'
 import { join } from 'node:path'
 
 /** 预览服务在容器内的端口（只用 127.0.0.1，不出容器）。 */
@@ -233,6 +234,25 @@ export function registerPreviewRoutes(
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         return Response.json({ reply: `预览服务不可达：${message}`, citations: [] }, { status: 502 })
+      }
+    },
+  })
+
+  // 实验提示总开关：写 `<HOME>/.nju-lab/guidance.json`，guidance 每次组装现读
+  ctx.connection.fetch.register({
+    path: '/api/nju-lab.guidance',
+    methods: ['POST'],
+    requestBody: 'buffered',
+    fetch: async (request) => {
+      const body = (await request.json().catch(() => ({}))) as { off?: boolean }
+      try {
+        writeGuidanceOff(body.off === true)
+        return Response.json({ ok: true, off: body.off === true })
+      } catch (error) {
+        return Response.json(
+          { ok: false, error: error instanceof Error ? error.message : String(error) },
+          { status: 500 },
+        )
       }
     },
   })

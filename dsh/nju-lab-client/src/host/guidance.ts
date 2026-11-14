@@ -18,6 +18,9 @@
  * （项目根还要按 `.git` 上溯），而学生的项目目录是 profile 之外的东西。注册到注册表
  * 里则随插件分发、不依赖任何磁盘约定。
  */
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+
 import type { Context } from '@deepseek-ai/cordis'
 // 触发 cordis 增强：`ctx.skills`（dsh-skill）与 `ctx.systemPrompt`（dsh-system-prompt）。
 import type {} from '@deepseek-ai/dsh-skill'
@@ -127,6 +130,28 @@ export const GUIDANCE_TEXT_OPEN = `${GUIDANCE_TOOL_MAP}
 - 他卡住时的固定动作：先问"你试过什么、看到什么报错"，再给他下一个**具体动作**。
 
 题目里没写到的部分，鼓励他做自己想做的版本 —— 不必和示例或别的同学一致。`
+
+
+/** 实验提示的总开关落盘位置（`$HOME/.nju-lab/guidance.json`）——不依赖 DSH 的设置页。 */
+export function guidanceFlagPath(): string {
+  const home = process.env.HOME || '/home/ubuntu'
+  return join(home, '.nju-lab', 'guidance.json')
+}
+
+export function readGuidanceOff(): boolean {
+  try {
+    const raw = readFileSync(guidanceFlagPath(), 'utf8')
+    return JSON.parse(raw).off === true
+  } catch {
+    return false
+  }
+}
+
+export function writeGuidanceOff(off: boolean): void {
+  const path = guidanceFlagPath()
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(path, JSON.stringify({ off }), 'utf8')
+}
 
 /** skill 名（必须 kebab-case，注册表会校验）。 */
 export const SKILL_NAME = 'nju-lab-experiment'
