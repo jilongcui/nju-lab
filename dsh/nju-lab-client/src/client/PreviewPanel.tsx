@@ -16,6 +16,8 @@ interface AssignmentDto {
   id: string
   title?: string
   status?: string
+  /** 平台返回的任务带着 project（里面有可读标题），别只显示 uuid */
+  project?: { title?: string }
 }
 
 interface SnapshotDto {
@@ -51,6 +53,7 @@ export function PreviewPanel({ getSessionId }: { getSessionId: () => string | nu
     void load()
   }, [load])
 
+
   const start = useCallback(async () => {
     if (!snapshot?.workspaceDir || !selected) return
     const skillDir = `${snapshot.workspaceDir}/nju-lab/${selected}/skill`
@@ -77,6 +80,14 @@ export function PreviewPanel({ getSessionId }: { getSessionId: () => string | nu
     }
   }, [selected, snapshot])
 
+
+  // 自动跑：选好任务就起预览，学生不用再点一次（改完代码回来就是新版本）
+  const autoStarted = useRef(false)
+  useEffect(() => {
+    if (autoStarted.current || !selected || !snapshot?.workspaceDir) return
+    autoStarted.current = true
+    void start()
+  }, [selected, snapshot, start])
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8, padding: 8 }}>
       <div style={{ display: 'flex', gap: 6 }}>
@@ -91,7 +102,7 @@ export function PreviewPanel({ getSessionId }: { getSessionId: () => string | nu
           <option value="">选择任务…</option>
           {(snapshot?.assignments ?? []).map((a) => (
             <option key={a.id} value={a.id}>
-              {a.title || a.id.slice(0, 8)}
+              {a.project?.title || a.title || a.id.slice(0, 8)}
             </option>
           ))}
         </select>

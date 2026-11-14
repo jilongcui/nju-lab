@@ -153,11 +153,13 @@ export function apply(ctx: Context): void {
   // 自动打开 tab：右栏停靠面每个会话一份、刷新后回到折叠态，且只在选中会话时
   // 才挂载席位；席位未挂载时 openTab 抛错，所以轮询到首次成功为止。
   // （官方没有"会话选中"事件可订阅，这是 cookbook 之外的最小可靠做法。）
+  // 默认打开**预览** tab：学生打开工作台就是"左边写代码、右边跟它说话"。
+  // 任务面板（NJU-Lab）仍注册着，随时可切回去看任务列表。
   let opened = false
   const timer = setInterval(() => {
     if (opened) return
     try {
-      ctx.sidebarRight.openTab(TAB_ID)
+      ctx.sidebarRight.openTab(PREVIEW_TAB)
       opened = true
     } catch {
       // 会话面还没挂载，下一轮再试
