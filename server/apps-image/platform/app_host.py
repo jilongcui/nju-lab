@@ -54,7 +54,8 @@ def find_entry() -> Path:
         if path.exists():
             return path
     raise RuntimeError(
-        "这个应用没有入口：需要 agent/api.py（第 19 章的 agent）或 scripts/api.py（第 20 章的 Skill）"
+        "还没有入口文件：请在 skill 根下创建 `agent/api.py`（或 `scripts/api.py`），"
+        "里面实现 handle(state, message, attachments, session) —— 建好后这里就能直接对话。"
     )
 
 

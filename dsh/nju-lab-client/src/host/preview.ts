@@ -71,7 +71,17 @@ export async function ensurePreview(skillDir: string, assignmentId: string): Pro
     return { ok: false, error: `预览组件缺失：${PLATFORM_APP_DIR}/app_host.py 不在镜像里` }
   }
   if (!existsSync(skillDir)) {
-    return { ok: false, error: `Skill 目录不存在：${skillDir}` }
+    return { ok: false, error: `还没领取这个任务的模板：${skillDir} 不存在` }
+  }
+  // 没有入口就先别起服务 —— 起起来也只会甩一段 Python 报错给学生
+  const hasEntry = ['agent/api.py', 'scripts/api.py', 'skill/scripts/api.py'].some((rel) =>
+    existsSync(join(skillDir, rel)),
+  )
+  if (!hasEntry) {
+    return {
+      ok: false,
+      error: '还没有入口文件：先在你的包根建 agent/api.py，实现 handle(state, message, attachments, session)，然后点「重启」。',
+    }
   }
   const child = spawn('python3', [join(PLATFORM_APP_DIR, 'app_host.py')], {
     cwd: PLATFORM_APP_DIR,
