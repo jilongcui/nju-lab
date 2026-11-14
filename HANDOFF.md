@@ -558,6 +558,18 @@
     验证用的一次性学生/assignment/提交/应用/上传文件**已全部清理**（含 `/data/workspaces/agent-apps/<appId>`）。
   · **未做/已知**：① 权限沿用一期"教师可读全部课程应用"，没按 `course_teachers` 收窄；
     ② 同一份 zip 反复点「发布应用」会加同内容的新版本（未按 sha 去重，影响很小）。
+- **代发第二个学生的应用（2026-11-14，用户："d8a59324 这个实验也发布到他的应用"）—— 走新接口，未手工插库**：
+  · `d8a59324-427c-4f2f-ab72-699cef84138f` 是**吴嘉栋（261880321）**在同一项目
+    （设备维护助手 `a9c69502`）下的任务，共 8 个版本；取最新 **v8**（`e0af05c3-…`）发布。
+  · 做法：教师 token 调 `POST /api/apps/teacher-publish {submissionId}` → **201**，
+    新建应用 `7a9141e2-38c2-4132-a38f-a2f53ac901c6`（`entry=agent/api.py`、`published`、
+    studentId `f4c0ffe9…`），shareKey `59a06a6871a4783ae1075b4e53720389`。
+  · 实测：`/share/<key>` 200；`/site` 200 且注入 `<base>`/`__APP_API_BASE__`；
+    分享通道对话「空压机 A-01 最近需要维护吗？」→ 返回台账信息 + 周期（还差 34 天到期）+
+    `citations=[{source: 'assets.csv', snippet: 'A-01 行'}]`（能跑，答复比顾益玮那份朴素：
+    没有边界说明、citations 只有一条）。
+  · 说明：这正是「教师代发」功能的第一次实际使用 —— 生效路径为 HTTP 接口，
+    **没有**再手工写 `agent_apps`/复制 zip。
 - **未做**：`VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；
   应用容器**不注入大模型 key**（二期走平台代理）。
