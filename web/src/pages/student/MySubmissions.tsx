@@ -69,7 +69,7 @@ export default function MySubmissions() {
       </Paragraph>
       <Paragraph type="secondary">评分以平台独立复验为准，学生自报结果仅作参考。</Paragraph>
       <Paragraph type="secondary">
-        提交后仍可再次提交，会生成新版本（v2、v3…），每个版本独立复验与评分，最多保留 10 版。
+        提交后仍可再次提交，会生成新版本（v2、v3…），每个版本独立复验与评分，**不限制版本数**。
       </Paragraph>
     </div>,
   );

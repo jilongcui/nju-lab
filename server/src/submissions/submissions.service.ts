@@ -26,8 +26,19 @@ import {
   SubmissionStatus,
 } from './submission.entity';
 
-/** 同一任务允许保留的最大提交版本数 */
-export const MAX_VERSIONS_PER_ASSIGNMENT = 10;
+/**
+ * 同一任务的提交版本数**不设上限**（2026-11-13 用户："把这个限制取消掉"）。
+ *
+ * 以前这里有个 `MAX_VERSIONS_PER_ASSIGNMENT = 10`：同一任务交满 10 版就 400。
+ * 实际用起来这个数字是拍出来的 —— 学生改 Skill 常常要反复试（口径写错、附件解析漏格式、
+ * 签名/拒答话术微调），10 次很容易撞上，且撞上时错误信息对学生没有指导意义。
+ * 现在改成不限次数：每个版本本来就独立落库（`version` 自增、独立复验/评分），
+ * 磁盘上每版最多一个 zip（提交侧另有单包大小限制），`/data` 余量足够。
+ *
+ * 仍然保留的两条保护（都不是"次数"限制）：
+ *   · 最新版本正在复验时不许交新版（避免顶掉教师正在看的那次）；
+ *   · 提交内容本身的大小/格式校验（见 `resolveArtifact` 与 `SubmitDto`）。
+ */
 
 @Injectable()
 export class SubmissionsService {
@@ -67,11 +78,6 @@ export class SubmissionsService {
     // 多版本：复验进行中不允许再交（避免顶掉教师正在复验的对象）；其余状态随时可交新版本
     if (latest && latest.status === SubmissionStatus.VERIFYING) {
       throw new BadRequestException('最新版本正在复验中，请复验结束后再提交新版本');
-    }
-    if (versions.length >= MAX_VERSIONS_PER_ASSIGNMENT) {
-      throw new BadRequestException(
-        `已达版本上限（${MAX_VERSIONS_PER_ASSIGNMENT}），不能再提交新版本`,
-      );
     }
     const nextVersion = (latest?.version ?? 0) + 1;
     const skillZip = await this.resolveArtifact(

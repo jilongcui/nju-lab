@@ -483,6 +483,22 @@
     `const APP_SHARE_PATH = 'api/apps/share'`。nginx 生效后把它改成 `'apps/share'` +
     `cd web && npm run deploy:lab`，分享链接即变短；老路径继续可用（两条都通，可平滑切）。
   · 待执行（有 root 时）：`sudo bash deploy/apply-nginx-app-share.sh` → 改常量 → 重建部署。
+- **提交版本数上限取消（2026-11-13，用户："现在学生上传 agent 的版本限制是 10 次吗，把这个限制取消掉"）**：
+  · **是的，原来确实是 10**：`server/src/submissions/submissions.service.ts` 的
+    `MAX_VERSIONS_PER_ASSIGNMENT = 10`，`submit()` 里 `versions.length >= 10` 就 400
+    「已达版本上限（10），不能再提交新版本」。这个数字是当初拍的，学生改 Skill 常要反复试
+    （口径错、附件解析漏格式、签名/拒答话术微调），10 次很容易撞上。
+  · **已移除**：常量与检查一起删掉，只留一段注释说明"为什么现在不限"。
+    **保留的两条保护都不是次数限制**：① 最新版正在复验（`verifying`）时不许交新版（避免顶掉
+    教师正在看的那次）；② 提交物本身的大小/格式校验（`resolveArtifact`、`SubmitDto`）。
+  · **文案同步**：学生「我的提交」辅助面板「最多保留 10 版」→「**不限制版本数**」；
+    客户端插件 `dsh/nju-lab-client/src/host/guidance.ts` 的「（上限 10 版）」→「（不限版本数）」。
+    ⚠️ 插件只改了源码、**没重打 kit**（`.gitignore` 忽略 `lib/`）：重打 kit 会让所有已安装学生
+    收到更新提示，为一句话触发全量更新不划算；**下次统一重打 kit 时一并带上**。
+  · **实测（真提交，不是看代码）**：一次性学生 + 一条 assignment + 上传 skill zip/.dshc →
+    连交 **11 次**，返回 **201 / v1…v11**（旧代码第 11 次是 400）。测试数据（11 条 submissions、
+    assignment、用户、2 个 stored_files + 磁盘文件）**已全部清理**。
+  · 后端 `npm run build` + 重启（PID `3178470 → 4119830`），前端已 `deploy-web-lab.sh` 部署。
 - **未做**：`VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；
   应用容器**不注入大模型 key**（二期走平台代理）。
