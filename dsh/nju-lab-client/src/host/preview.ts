@@ -246,9 +246,18 @@ export function registerPreviewRoutes(
       let skillDir = body.skillDir
       let assignmentId = body.assignmentId || ''
       if (!skillDir) {
-        // 没指定就自己找：工作区里带入口、且入口刚被改过的那个 skill
-        const root = await actions.resolveRoot(body.sessionId)
-        const active = detectActiveSkill(root)
+        // 没指定就自己找：工作区里带入口、且入口刚被改过的那个 skill。
+        // 先看当前会话的 cwd，再回落容器 HOME —— 会话目录是按 cwd 分的，老会话可能是 /root 或 /workspace，
+        // 而实验文件永远在 HOME 下的 nju-lab/ 里。
+        const candidates = [await actions.resolveRoot(body.sessionId), process.env.HOME || '/home/ubuntu']
+        let active: ReturnType<typeof detectActiveSkill> = null
+        const tried: string[] = []
+        for (const root of candidates) {
+          if (!root || tried.includes(root)) continue
+          tried.push(root)
+          active = detectActiveSkill(root)
+          if (active) break
+        }
         if (!active) {
           return Response.json(
             {
