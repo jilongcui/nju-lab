@@ -191,7 +191,11 @@ q.focus();
 /** 注册预览路由。 */
 export function registerPreviewRoutes(
   ctx: Context,
-  actions: { resolveRoot: (sessionId?: string) => Promise<string> },
+  actions: {
+    resolveRoot: (sessionId?: string) => Promise<string>
+    listAssignments?: () => Promise<Array<{ id: string }>>
+    assignmentDir?: (assignmentId: string, sessionId?: string) => Promise<string>
+  },
 ): void {
   ctx.connection.fetch.register({
     path: PREVIEW_ROUTES.page,
@@ -243,6 +247,14 @@ export function registerPreviewRoutes(
         assignmentId?: string
         sessionId?: string
       }
+      // 顺手把老的 uuid 目录归成可读名（`assignmentDir` 内部会迁移，带缓存，失败忽略）
+      if (actions.listAssignments && actions.assignmentDir) {
+        const list = await actions.listAssignments().catch(() => [])
+        for (const a of list.slice(0, 40)) {
+          await actions.assignmentDir(a.id, body.sessionId).catch(() => undefined)
+        }
+      }
+
       let skillDir = body.skillDir
       let assignmentId = body.assignmentId || ''
       if (!skillDir) {

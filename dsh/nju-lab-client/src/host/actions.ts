@@ -6,7 +6,7 @@
  *
  * 打包与解压都走 `./zip.ts` 的纯 JS 实现 —— 不依赖学生机器上有 `zip`/`unzip`。
  */
-import { access, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, join, relative, resolve, sep } from 'node:path'
 import { constants } from 'node:fs'
 
@@ -315,6 +315,61 @@ export interface CreateActionsOptions {
   }>
 }
 
+/** 标题 → 目录名：去前缀/括号、去非法字符、截断，中文保留（Linux 路径没问题）。 */
+export function slugifyTitle(title: string): string {
+  const cleaned = title
+    .replace(/^实验[:：]\s*/, '')
+    .replace(/[（(][^）)]*[）)]/g, '')
+    .replace(/[\\/:*?"<>|\s]+/g, '')
+    .trim()
+  return cleaned.slice(0, 20) || 'exp'
+}
+
+/**
+ * 目录名缓存：`assignmentId → <slug>__<短id>`。
+ *
+ * 要可读名就得查一次任务列表（带 project.title）；缓存住，别每次拼路径都发请求。
+ * 查不到（离线/未领取）就回落 uuid —— 宁可用难看的名字，也不能拼错路径。
+ */
+const dirNameCache = new Map<string, string>()
+
+async function directoryNameFor(
+  assignmentId: string,
+  listAssignments?: () => Promise<Assignment[]>,
+): Promise<string> {
+  const cached = dirNameCache.get(assignmentId)
+  if (cached) return cached
+  if (!listAssignments) return assignmentId
+  try {
+    const list = await listAssignments()
+    const hit = list.find((a) => a.id === assignmentId)
+    if (hit?.project?.title) {
+      const name = `${slugifyTitle(hit.project.title)}__${assignmentId.slice(0, 6)}`
+      dirNameCache.set(assignmentId, name)
+      return name
+    }
+  } catch {
+    // 忽略：回落 uuid
+  }
+  return assignmentId
+}
+
+/** 老目录（uuid 命名）→ 新目录（可读名）：只在新目录还不存在时搬一次。 */
+async function migrateLegacyDir(legacy: string, target: string): Promise<void> {
+  try {
+    await stat(legacy)
+  } catch {
+    return // 没有老目录，不用管
+  }
+  try {
+    await stat(target)
+    return // 新目录已存在（已经迁过），别覆盖
+  } catch {
+    // 目标不存在 → 搬
+  }
+  await rename(legacy, target).catch(() => undefined)
+}
+
 export function createActions(
   api: PlatformApi,
   options: CreateActionsOptions = {},
@@ -337,8 +392,20 @@ export function createActions(
       return fallbackRoot
     },
 
-    assignmentDir(assignmentId: string, sessionId?: string): Promise<string> {
-      return this.resolveRoot(sessionId).then((root) => join(root, 'nju-lab', assignmentId))
+    /**
+     * 任务材料目录：`nju-lab/<可读名>__<短id>`，例如
+     * `nju-lab/做一个能对话的设备维护助手__87b23f`。
+     *
+     * 为什么不再直接用 uuid：文件树里一列 uuid，学生根本认不出哪个是自己正在做的实验。
+     * 短 id 后缀防重名（两个实验同名时不至于互相覆盖）。
+     * 老的 uuid 目录会在首次访问时**自动改名**过来，无需手动迁移。
+     */
+    async assignmentDir(assignmentId: string, sessionId?: string): Promise<string> {
+      const root = await this.resolveRoot(sessionId)
+      const name = await directoryNameFor(assignmentId, () => api.myAssignments())
+      const dir = join(root, 'nju-lab', name)
+      if (name !== assignmentId) await migrateLegacyDir(join(root, 'nju-lab', assignmentId), dir)
+      return dir
     },
 
     currentEvalConfig: () => evalConfig,
