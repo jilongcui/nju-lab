@@ -499,6 +499,38 @@
     连交 **11 次**，返回 **201 / v1…v11**（旧代码第 11 次是 400）。测试数据（11 条 submissions、
     assignment、用户、2 个 stored_files + 磁盘文件）**已全部清理**。
   · 后端 `npm run build` + 重启（PID `3178470 → 4119830`），前端已 `deploy-web-lab.sh` 部署。
+- **教师代发一次应用（2026-11-14，用户："帮我提交到他的应用，并发布"）—— 人工数据，仅此一次**：
+  · **对象**：顾益玮（`261230011`）的提交 `5b288f11-29e1-4649-a098-cfea9e94e94c`（v12，
+    项目「做一个能对话的设备维护助手（开放题）」`a9c69502`，zip sha `72cf62002770…`，411,712 B）。
+  · **为什么平台自己没建**：这个包是**第 19 章的 agent 产物**（`SKILL.md` + `agent/api.py`，
+    **没有** `scripts/api.py`）。`detectEntry()`（`agent-apps.service.ts:721`）对"只有 agent/api.py"
+    的包**直接 400**（口径：应用 = Skill）；提交时 `upsertFromSubmission(...).catch(() => null)`
+    把这次失败**静默吞掉**，所以他名下当时 **0 个应用**。
+  · **口径决定**：用户选"只这次一次性代发"（不加教师代发功能，不改 `detectEntry`）。
+    运行时其实**支持** agent 入口 —— `apps-image/platform/app_host.py` 的 `entry_candidates()`
+    首选就是 `agent/api.py`，`handle()` 也在（`agent/api.py:449`）。
+  · **做法（手工写库 + 复制产物，可复现）**：
+    `agent_apps`（`8429fe25-3647-446a-9120-9280e2ac163a`，studentId `066aed8d…`、
+    courseId `cd11ea33…`、projectId `a9c69502…`、`entry='agent/api.py'`、`visibility=teacher`、
+    `status=published`、`shareKey=d9600af0b96edd48c002ab4933e98985`）
+    + `agent_app_versions`（`0c444145-7374-4400-974b-170255c4480b`，fileId 指原 `stored_files`，
+    sha 与提交一致，note「来自提交 5b288f11（v12，教师代发）」）
+    + 把 zip 复制到 `/data/workspaces/agent-apps/<appId>/<versionId>.zip`（运行时只读挂载点）。
+  · **实测（真跑，不是只查状态码）**：`/lab/api/apps/share/<key>` → 200 meta；
+    `/site` → 200 且注入 `<base>` + `__APP_API_BASE__` + `__APP_META__`（容器
+    `nju-lab-app-8429fe25-*` 已起）；分享通道对话两条：
+    「你能做什么？」→ 回「我不知道，QAQ」（学生自我介绍分支没写）；
+    「空压机 A-01 最近需要维护吗？」→ 正确查到台账 + KB-01 周期（还剩 34 天）+ 边界说明 +
+    **citations 3 条**（`KB-01` / `assets.csv` / `limits.json`）。教师端
+    `GET /courses/:id/apps` 共 16 个、含这条（published / entry=agent/api.py）。
+    分享链接：`http://medai.nju.edu.cn/lab/api/apps/share/d9600af0b96edd48c002ab4933e98985/site`
+  · **两个后续注意**：
+    ① 这是**人工插入的数据**，不符合"应用 = Skill"口径（entry 是 `agent/api.py`）。
+    学生以后自己按口径点「用我的 Skill 创建应用」会**新建第二个应用**
+    （`createFromSubmission` 不按项目去重，只有 `upsertFromSubmission` 才按
+    (studentId, projectId) 复用）—— 到时需要合并或删掉一条；
+    ② 以后若想让这事常态化，按「教师代发」做（`@Roles(TEACHER)` 放行任意学生 + 显式
+    `allowAgent` + 项目成绩表每行一个「发布应用」按钮），别继续手工插库。
 - **未做**：`VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；
   应用容器**不注入大模型 key**（二期走平台代理）。
