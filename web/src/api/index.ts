@@ -508,6 +508,10 @@ export const reviewApp = (
  */
 const APP_SHARE_PATH = 'api/apps/share';
 
+/** 教师代学生发布：把某次提交（任一学生）变成该学生名下的应用并发布（允许 agent 包） */
+export const teacherPublishSubmission = (submissionId: string, title?: string) =>
+  client.post<unknown, AgentApp>('/apps/teacher-publish', { submissionId, title });
+
 export const appShareUrl = (shareKey: string) =>
   withBase(`${APP_SHARE_PATH}/${shareKey}/site`);
 export const appShareMetaUrl = (shareKey: string) => withBase(`${APP_SHARE_PATH}/${shareKey}`);

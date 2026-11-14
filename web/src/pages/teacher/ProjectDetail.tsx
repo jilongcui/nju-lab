@@ -24,6 +24,7 @@ import {
 import { DeleteOutlined, DownloadOutlined, EditOutlined, MinusCircleOutlined, PlusOutlined, SendOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
+  appShareUrl,
   deleteProject,
   downloadGradesCsv,
   downloadStoredFile,
@@ -31,6 +32,7 @@ import {
   getProject,
   getProjectDashboard,
   listProjectSubmissions,
+  teacherPublishSubmission,
   resetAssignment,
   publishProject,
   updateProject,
@@ -114,6 +116,8 @@ export default function ProjectDetail() {
   const [loading, setLoading] = useState(true);
   const [project, setProject] = useState<ExperimentProject | null>(null);
   const [rows, setRows] = useState<ProjectSubmissionRow[]>([]);
+  /** 正在「代学生发布应用」的提交 id（按钮 loading 用） */
+  const [publishingId, setPublishingId] = useState<string | null>(null);
   const [dashboard, setDashboard] = useState<ProjectDashboard | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -136,6 +140,47 @@ export default function ProjectDetail() {
       </Paragraph>
     </div>,
   );
+
+  /**
+   * 教师代学生把某次提交发布成应用（第 20 章「应用 = Skill」的教师侧补充入口）。
+   * 应用归属学生本人；同一 (学生, 项目) 只保留一个应用，再点就是加版本。
+   * 允许 agent 包（`agent/api.py`）—— 学生自己发布时仍然只认 Skill。
+   */
+  const handleTeacherPublish = async (row: ProjectSubmissionRow) => {
+    if (!row.submission) return;
+    setPublishingId(row.submission.id);
+    try {
+      const app = await teacherPublishSubmission(row.submission.id);
+      await load();
+      Modal.info({
+        title: '已发布为学生应用',
+        width: 620,
+        content: (
+          <Space direction="vertical" size={6} style={{ marginTop: 8 }}>
+            <Text>
+              {row.student.nickname}（{row.student.username}）· 应用「{app.title}」
+            </Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              入口 {app.entry}；版本来自这次提交 v{row.submission.version}。再点一次「发布应用」＝加一个新版本，
+              不会新建第二个应用。
+            </Text>
+            {app.shareKey ? (
+              <Text copyable={{ text: `${window.location.origin}${appShareUrl(app.shareKey)}` }}>
+                {window.location.origin}
+                {appShareUrl(app.shareKey)}
+              </Text>
+            ) : (
+              <Text type="secondary">没有分享链接（应用未发布成功？）</Text>
+            )}
+          </Space>
+        ),
+      });
+    } catch {
+      /* 错误已由 axios 拦截器统一提示 */
+    } finally {
+      setPublishingId(null);
+    }
+  };
 
   /** 教师替某个学生重置领取状态（历史提交保留，学生需要重新领取） */
   const handleResetAssignment = async (assignmentId: string) => {
@@ -477,6 +522,24 @@ export default function ProjectDetail() {
                 <Space size={8}>
                   {r.submission ? (
                     <Link to={`/teacher/submissions/${r.submission.id}/grade`}>批改</Link>
+                  ) : null}
+                  {r.submission ? (
+                    <Popconfirm
+                      title="把这次提交发布成他名下的应用？"
+                      description={
+                        <span>
+                          会用 v{r.submission.version} 的产物创建/更新该学生的应用并立即发布（拿到分享链接）。
+                          agent 包（只有 agent/api.py）也允许 —— 学生自己发布时仍然只认 Skill。
+                        </span>
+                      }
+                      okText="发布"
+                      cancelText="取消"
+                      onConfirm={() => void handleTeacherPublish(r)}
+                    >
+                      <Button size="small" type="link" loading={publishingId === r.submission.id}>
+                        发布应用
+                      </Button>
+                    </Popconfirm>
                   ) : null}
                   {r.assignmentStatus !== 'pending' ? (
                     <Popconfirm

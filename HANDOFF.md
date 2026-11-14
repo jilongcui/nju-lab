@@ -531,6 +531,33 @@
     (studentId, projectId) 复用）—— 到时需要合并或删掉一条；
     ② 以后若想让这事常态化，按「教师代发」做（`@Roles(TEACHER)` 放行任意学生 + 显式
     `allowAgent` + 项目成绩表每行一个「发布应用」按钮），别继续手工插库。
+- **教师「代学生发布」上线（2026-11-14，用户："这个功能，增加一个代学生发布功能"）**：
+  · **为什么需要**：上一轮顾益玮那次是手工插库代发的（不可复用）。常态化入口要有，且必须
+    **不破坏学生端口径**（应用 = Skill）。
+  · **后端**：`POST /api/apps/teacher-publish`（`@Roles(TEACHER)`，body `{submissionId, title?}`）→
+    `AgentAppsService.publishSubmissionAsTeacher()`：校验教师 → 取提交与学生 →
+    调 `upsertFromSubmission(student, submissionId, { allowAgent: true, title })`。
+    · 应用**归属学生**（`studentId` = 提交者），不是操作的教师；
+    · 按 `(studentId, projectId)` **复用**：有就加一个版本再 `publish`，没有才新建 —— 连点两次
+      不会堆第二个应用；
+    · `detectEntry(zip, allowAgent)`：`allowAgent=true`（仅教师路径）放行 `agent/api.py`，
+      返回 `entry='agent/api.py'`（运行时 `app_host.entry_candidates()` 首选就是它）；
+      **学生路径 `allowAgent=false`，仍旧只认 `scripts/api.py`**；
+    · 顺带修：入口形态变化时同步 `app.entry`（学生先交 agent 包、后改交 Skill，否则容器找不到入口）。
+  · **前端**：教师「项目详情 → 成绩表 → 操作」列新增「**发布应用**」按钮（有提交才出现）：
+    Popconfirm 说明"用 v{n} 的产物创建/更新该生应用并立即发布，agent 包也允许"；
+    成功后弹窗显示应用标题、入口、版本来源，以及**可复制的分享链接**。
+  · **实测（API 三条 + 真机浏览器）**：
+    ① 学生自己调 `from-submission`（同一份 agent 包）→ **400**「这个包是 agent…」（口径不变）；
+    ② 教师 `teacher-publish` → **201**，新建 app `8299684f`、`entry=agent/api.py`、
+       `status=published`、有 shareKey；
+    ③ 同一提交再调一次 → **同一个 app**、`latestVersionId` 变了（复用生效，版本 2 个）；
+    ④ 浏览器（headless-shell、教师账号）打开项目详情：页面上 **9 个「发布应用」按钮**，
+       点顾益玮那行 → 弹窗「已发布为学生应用」，分享链接 `…/share/d9600af0…/site`
+       —— 复用的正是上一轮手工建的 `8429fe25`（**没有**新建第二个应用）。
+    验证用的一次性学生/assignment/提交/应用/上传文件**已全部清理**（含 `/data/workspaces/agent-apps/<appId>`）。
+  · **未做/已知**：① 权限沿用一期"教师可读全部课程应用"，没按 `course_teachers` 收窄；
+    ② 同一份 zip 反复点「发布应用」会加同内容的新版本（未按 sha 去重，影响很小）。
 - **未做**：`VERIFY_MAX_CASES` 仍为 `1`（平台复验只跑 case01；教师本地自检用 `-e VERIFY_MAX_CASES=0`）。
 - **注意**：`/data` 属 root 不可写，产物目录默认已改为 `/data/workspaces/agent-apps`（进程可写）；
   应用容器**不注入大模型 key**（二期走平台代理）。

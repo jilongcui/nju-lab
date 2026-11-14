@@ -601,7 +601,16 @@ export class AgentAppsService implements OnModuleDestroy {
    *
    * 没有 `skillZipRef`（或不是 zip）时返回 null：老作业/旧提交不因为这条链路而失败。
    */
-  async upsertFromSubmission(user: User, submissionId: string): Promise<AgentApp | null> {
+  async upsertFromSubmission(
+    user: User,
+    submissionId: string,
+    opts?: {
+      /** 教师代发时允许第 19 章的 agent 包（学生路径必须为 false，见 detectEntry） */
+      allowAgent?: boolean;
+      /** 新建应用时用的标题（默认取所属项目的标题） */
+      title?: string;
+    },
+  ): Promise<AgentApp | null> {
     const submission = await this.submissions.findOne({ where: { id: submissionId } });
     if (!submission) return null;
     const fileId = this.fileIdFromRef(submission.skillZipRef);
@@ -626,19 +635,26 @@ export class AgentAppsService implements OnModuleDestroy {
     let app = projectId
       ? await this.apps.findOne({ where: { studentId: user.id, projectId } })
       : null;
+    const entry = this.detectEntry(payload, opts?.allowAgent);
     if (!app) {
       app = await this.apps.save(
         this.apps.create({
           studentId: user.id,
           courseId,
           projectId,
-          title: (assignment?.project?.title || '我的智能体应用').slice(0, 120),
-          scenario: '由平台托管的智能体应用',
-          entry: this.detectEntry(payload),
+          title: (opts?.title || assignment?.project?.title || '我的智能体应用').slice(0, 120),
+          scenario: opts?.allowAgent
+            ? '由平台托管的智能体应用（教师代发）'
+            : '由平台托管的智能体应用',
+          entry,
           visibility: AppVisibility.TEACHER,
           status: AppStatus.DRAFT,
         }),
       );
+    } else if (app.entry !== entry) {
+      // 入口形态可能变（例如学生先交 agent 包、后改交 Skill）—— 不同步的话容器会找不到入口
+      app.entry = entry;
+      await this.apps.save(app);
     }
 
     const version = await this.versions.save(
@@ -660,6 +676,44 @@ export class AgentAppsService implements OnModuleDestroy {
     // 换版本后要重建容器，否则预览还是旧版本
     this.runtime.stop(app.id);
     return this.publish(user, app.id);
+  }
+
+  /**
+   * **教师代学生发布**（2026-11-14 用户："增加一个代学生发布功能"）。
+   *
+   * 场景：教师批改时看到某次提交就是成品，但学生没自己点「用我的 Skill 创建应用」——
+   * 或者学生交的是第 19 章的 agent 包（只有 `agent/api.py`），学生端口径会拒（应用 = Skill），
+   * 而运行时其实跑得起来（`app_host.entry_candidates()` 首选 `agent/api.py`）。
+   *
+   * 语义与 `upsertFromSubmission` 一致：**按 `(studentId, projectId)` 复用同一个应用**，
+   * 有就加一个版本再发布，没有才新建 —— 所以教师连点两次不会堆出两个应用。
+   * 应用归属于**学生**（`studentId` = 提交者），不是操作的教师。
+   *
+   * 权限：仅教师；本期沿用"教师可读全部课程应用"的一期口径，不按 `course_teachers` 收窄
+   * （教师人少，收窄见 HANDOFF「未做」）。
+   */
+  async publishSubmissionAsTeacher(
+    teacher: User,
+    submissionId: string,
+    dto?: { title?: string },
+  ): Promise<AgentApp> {
+    this.assertTeacher(teacher);
+    const submission = await this.submissions.findOne({ where: { id: submissionId } });
+    if (!submission) throw new NotFoundException('提交不存在');
+    const student = await this.users.findOne({ where: { id: submission.studentId } });
+    if (!student) throw new NotFoundException('这次提交的学生已不存在');
+    const app = await this.upsertFromSubmission(student, submissionId, {
+      allowAgent: true,
+      title: dto?.title,
+    });
+    if (!app) {
+      throw new BadRequestException('这次提交没有可用的 zip 产物（或小包不是合法 zip），无法发布成应用');
+    }
+    this.logger.log(
+      `teacher-publish: teacher=${teacher.username} submission=${submissionId.slice(0, 8)} ` +
+        `student=${student.username} app=${app.id.slice(0, 8)} v=${submission.version}`,
+    );
+    return app;
   }
 
   /** 本人可用来创建应用的提交（有 Skill 包的那些，最近 20 条） */
@@ -718,11 +772,22 @@ export class AgentAppsService implements OnModuleDestroy {
    *   平台已经有一个通用 agent，学生定制的那份不作为应用对外发布。
    * - 旧形态（`harness/api.py`，学生自带整套产物）仍然兼容，但不再是推荐路径。
    */
-  private detectEntry(zip: Buffer): string {
+  /**
+   * 判断 zip 的入口形态。
+   *
+   * 学生端口径（`allowAgent=false`）：**应用 = Skill**，只有 `agent/api.py` 的包要拒
+   * —— 这是 2026-11-13 的拍板，别放宽。
+   *
+   * 教师代发（`allowAgent=true`，见 `publishSubmissionAsTeacher`）：允许第 19 章的 agent 产物。
+   * 运行时本来就支持它 —— `apps-image/platform/app_host.py` 的 `entry_candidates()`
+   * 首个候选就是 `agent/api.py`，只要包里实现了 `handle()` 就能跑。
+   */
+  private detectEntry(zip: Buffer, allowAgent = false): string {
     const text = zip.toString('latin1');
     const hasSkill = text.includes('scripts/api.py');
     const hasAgentOnly = text.includes('agent/api.py') && !hasSkill;
     if (hasAgentOnly) {
+      if (allowAgent) return 'agent/api.py';
       throw new BadRequestException(
         '这个包是 agent（只有 agent/api.py），不是应用：应用以 **Skill** 为单位 —— ' +
           '请交含 SKILL.md + scripts/api.py 的 Skill 包（agent 的定制放进 Skill 包的 profile.json）',

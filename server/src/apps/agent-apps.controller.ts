@@ -43,6 +43,27 @@ export class AgentAppsController {
     return this.service.create(user, dto);
   }
 
+  /**
+   * **教师代学生发布**：把某次提交（任一学生）变成该学生名下的应用并发布。
+   *
+   * 与 `from-submission` 的差别：① 应用归属提交的学生，不是操作的教师；
+   * ② 按 `(studentId, projectId)` 复用应用（有则加版本），连点两次不会堆两个；
+   * ③ 允许第 19 章的 agent 包（`agent/api.py`）—— 学生端仍然只认 Skill。
+   */
+  @Post('teacher-publish')
+  @Roles(UserRole.TEACHER)
+  teacherPublish(
+    @CurrentUser() user: User,
+    @Body() dto: { submissionId: string; title?: string },
+  ) {
+    if (!dto?.submissionId) {
+      throw new BadRequestException('需要 submissionId（要发布的那次提交）');
+    }
+    return this.service.publishSubmissionAsTeacher(user, dto.submissionId, {
+      title: dto.title,
+    });
+  }
+
   /** 从"已提交的 Skill 包"一键创建应用（平台自动装包、发布、给分享链接） */
   @Post('from-submission')
   @Roles(UserRole.STUDENT, UserRole.TEACHER)
