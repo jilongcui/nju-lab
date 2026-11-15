@@ -75,6 +75,38 @@ bash ~/nju-lab-student-kit/check.sh --install   # 只查安装完整性
 输出里 `[FAIL]` 是要解决的，`[WARN]` 多是"token 还没填"。**遇到任何问题，先跑一次，把输出贴给老师** ——
 它一次就能分清是插件没装上、token 失效、不在校园网，还是被 WAF 拦了，不用来回猜。
 
+## 1.3 备选：不用引导脚本的两种装法
+
+`install.ps1` 只是个**摆渡脚本**，真正干活的永远是 `install.sh` —— 所以下面两条路和它是等价的。
+
+### 1.3.1 在 WSL 里手敲（`install.ps1` 出问题时的退路）
+
+1. 把 `nju-lab-student-kit.zip` 解压到 Windows 本地盘，记下路径，例如 `C:\Users\你\Downloads\nju-lab-student-kit`。
+2. 打开 WSL 终端（开始菜单里的 Ubuntu，或 PowerShell 里 `wsl -d Ubuntu`），**先复制到家目录再装**
+   （不要直接在 `/mnt/c` 上装：慢，权限位也不可靠）：
+
+   ```bash
+   rm -rf ~/nju-lab-student-kit
+   cp -a "/mnt/c/Users/你/Downloads/nju-lab-student-kit" ~/
+   cd ~/nju-lab-student-kit && bash install.sh
+   ```
+
+   > 路径里的中文和空格都没关系，加引号即可；`你` 换成你的 Windows 用户名。
+3. 自检（应当全绿，或只剩 token / serverUrl 未填的 `[WARN]`）：
+
+   ```bash
+   bash check.sh --install
+   ```
+
+### 1.3.2 交给 DSH 里的 AI（不想碰命令的话）
+
+前提：你已经在 WSL 里装好 dsh，并且**会话工作区是家目录 `~`**（否则沙箱不允许写 `~/.dsh`）。
+
+1. 把安装包里的 `INSTALL-by-ai.md` 拖进 DSH 对话框；
+2. 说一句「**按 INSTALL-by-ai.md 装**」—— 里面是固定命令 + 硬约束，AI 只会执行 `bash install.sh`，
+   遇到缺 node / 权限不足会停下来告诉你，不会自己乱试；
+3. 装完 `exit` 退出，重新 `dsh --profile nju-lab-student`。
+
 ## 2. 首次配置（只做一次）
 
 1. 浏览器登录平台 https://lab.xiaohe.biz → 右上角头像 →「API Token」→「生成 token」→ 复制。

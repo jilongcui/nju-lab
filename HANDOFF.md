@@ -52,6 +52,13 @@
   旧包留 `nju-lab-student-kit.zip.20261031-1408-f12e2e4.bak`；线上 `curl /lab/kit/…` **200 / 97730B**。
 - **回滚**：`cp .verify-scratch/lab-web-backups/20261115-101712/index.html /var/www/lab/index.html`；
   kit 用 `.20261031-1408-f12e2e4.bak` 覆盖回主名。
+- **追加（同日，用户追问"能否让 dsh 自己装插件"）**：新增 `dsh/kit/INSTALL-by-ai.md` —— 学生把文件拖进对话
+  说「按它装」；给 AI 的是**固定的一条命令**（`bash install.sh`）+ 硬约束（不 sudo、不升级 dsh、
+  不改 patch/脚本、不许提权、失败原样回报），外加 3 项前置检查：dsh 版本、**会话工作区是否覆盖 `~/.dsh`**
+  （`dsh-sandbox-policy` 的 `workspace-write` 边界 = **会话 cwd**，工作区不是家目录时 AI 写 profile 会被沙箱拒）、
+  `install.sh` 是否在本目录。同时手册新增 §1.3（Plan B 手敲 + AI 代装），页面加折叠卡「装不上？两条备选路径」。
+  验证：Playwright Windows/macOS **12/12**（含展开这两个折叠后断言）；kit 重打 `20261115-1036-e68363a`
+  （包里含 `INSTALL-by-ai.md`）并投放，旧包留 `.20261115-1018-52140ea.bak`。
 - **未验证（重要）**：**真 Windows 上跑一次** `install.ps1`（尤其"只有一个发行版"这条路径）。
   本机没有 Windows；pwsh-on-linux + 假 `wsl.exe` 只能证明分支与命令拼装正确。
 - **遗留**：桌面版若将来要支持，最小改动 = `dsh/nju-lab-client/src/host/restrict.ts` 把

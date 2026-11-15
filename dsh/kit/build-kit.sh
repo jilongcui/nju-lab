@@ -24,10 +24,12 @@ chmod +x dist/stage/check.sh
 # Windows 引导脚本（WSL2 路线；UTF-8 BOM，见该文件头注释）
 cp install.ps1 dist/stage/
 cp README-student.md dist/stage/README.md
+# 可选路径：把安装这件事交给 DSH 里的 AI 执行（固定命令 + 硬约束，见文件头）
+cp INSTALL-by-ai.md dist/stage/
 
-# 平台地址按部署目标替换（install.sh / install.ps1 的提示文案 + 学生手册）
+# 平台地址按部署目标替换（install.sh / install.ps1 的提示文案 + 学生手册 + AI 指令）
 if [ "$PLATFORM_URL" != "https://lab.xiaohe.biz" ]; then
-  sed -i "s|https://lab.xiaohe.biz|${PLATFORM_URL}|g" dist/stage/install.sh dist/stage/install.ps1 dist/stage/README.md
+  sed -i "s|https://lab.xiaohe.biz|${PLATFORM_URL}|g" dist/stage/install.sh dist/stage/install.ps1 dist/stage/README.md dist/stage/INSTALL-by-ai.md
 fi
 
 # 版本凭据：插件自更新靠它判断"本地 ≠ 远端"（见 nju-lab-client/src/host/update.ts）

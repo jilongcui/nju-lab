@@ -1,4 +1,4 @@
-import { Alert, Button, Card, Steps, Typography } from 'antd';
+import { Alert, Button, Card, Collapse, Steps, Typography } from 'antd';
 import { CloudDownloadOutlined } from '@ant-design/icons';
 import { Link } from 'react-router-dom';
 import { useAuxiliaryPanel } from '../../hooks/useAuxiliaryPanel';
@@ -154,6 +154,57 @@ node -v    # 需要 v22 或更高`}
   ? `wsl -d Ubuntu -- bash -lc 'cd ~/nju-lab-student-kit && bash check.sh'`
   : `bash ~/nju-lab-student-kit/check.sh`}
         </pre>
+      </Card>
+
+      <Card title="装不上？两条备选路径" style={{ marginTop: 16 }}>
+        <Paragraph type="secondary" style={{ marginBottom: 8 }}>
+          引导脚本只是个「摆渡脚本」，真正装东西的永远是 <Text code>install.sh</Text> ——
+          所以下面两条路和它完全等价，可以任选。
+        </Paragraph>
+        <Collapse
+          ghost
+          items={[
+            {
+              key: 'manual',
+              label: '① 在 WSL 里手敲（引导脚本出问题时的退路）',
+              children: (
+                <>
+                  <Paragraph style={{ marginBottom: 8 }}>
+                    先把安装包复制到 WSL 家目录再装（不要直接在 <Text code>/mnt/c</Text> 上装）：
+                  </Paragraph>
+                  <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>
+{IS_WINDOWS
+  ? `rm -rf ~/nju-lab-student-kit
+cp -a "/mnt/c/Users/你/Downloads/nju-lab-student-kit" ~/
+cd ~/nju-lab-student-kit && bash install.sh`
+  : `cd nju-lab-student-kit && ./install.sh`}
+                  </pre>
+                  <Paragraph type="secondary" style={{ margin: '8px 0 0' }}>
+                    路径里的「你」换成你的 Windows 用户名；装完同样会跑一次自检。
+                  </Paragraph>
+                </>
+              ),
+            },
+            {
+              key: 'ai',
+              label: '② 交给 DSH 里的 AI 装（不想碰命令）',
+              children: (
+                <>
+                  <Paragraph style={{ marginBottom: 8 }}>
+                    前提：你已经在 WSL 里装好 dsh，且<Text strong>会话工作区是家目录</Text>
+                    （<Text code>~</Text>）—— 否则沙箱不允许写 <Text code>~/.dsh</Text>。
+                    把安装包里的 <Text code>INSTALL-by-ai.md</Text> 拖进对话，说「按它装」即可：
+                    里面是固定命令 + 硬约束，AI 只会执行 <Text code>bash install.sh</Text>，
+                    缺 node / 权限不足会停下来告诉你，不会自己乱试。
+                  </Paragraph>
+                  <Paragraph type="secondary" style={{ margin: 0 }}>
+                    装完 <Text code>exit</Text> 退出，重新 <Text code>dsh --profile nju-lab-student</Text>。
+                  </Paragraph>
+                </>
+              ),
+            },
+          ]}
+        />
       </Card>
 
       <Card title="做一次实验" style={{ marginTop: 16 }}>
