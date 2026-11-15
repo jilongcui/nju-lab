@@ -71,8 +71,32 @@ pnpm -v >/dev/null 2>&1 || fail "pnpm 仍不可用。可手动执行：npm i -g 
 info "pnpm $(pnpm -v) ✓"
 
 # 3. DSH CLI（锁定版本）
-if ! command -v dsh >/dev/null 2>&1 || [ "$(dsh --version 2>/dev/null || true)" != "$DSH_VERSION" ]; then
-  info "安装 @deepseek-ai/dsh@$DSH_VERSION …"
+#
+# 判据是「范围」而不是「等值」：>= 0.2.0-rc.2 且 < 0.3.0，**且不接受其它元组的预发布**。
+# 为什么不是"0.2.0 之后都行"：
+#  · `nju-lab-client` 的依赖写的是 `^0.2.0-rc.2`，semver 只接受「0.2.0 的 rc」与「0.2.x 正式版」，
+#    0.2.1-rc.5 / 0.2.2-rc.1 这类**元组不同**的预发布一律不满足（实测，见 HANDOFF 2026-11-15）；
+#  · 平台复验镜像是 0.2.0-rc.2，本地版本偏了就是"自测条件 ≠ 复验条件"。
+# 当前 npm 上 0.2.0 之后没有正式版（latest = 0.2.2-rc.1），所以现在实际只会走"装 0.2.0-rc.2"这一支。
+dsh_version_ok() {
+  local v="${1#v}"
+  case "$v" in
+    0.2.0-rc.*)
+      local n="${v##*.}"
+      case "$n" in ''|*[!0-9]*) return 1 ;; esac
+      [ "$n" -ge 2 ] ;;
+    0.2.[0-9]*)
+      case "$v" in *-*) return 1 ;; *) return 0 ;; esac ;;
+    *) return 1 ;;
+  esac
+}
+
+if ! command -v dsh >/dev/null 2>&1 || ! dsh_version_ok "$(dsh --version 2>/dev/null || true)"; then
+  if command -v dsh >/dev/null 2>&1; then
+    info "当前 dsh 是 $(dsh --version 2>/dev/null || echo '未知')（不在学期口径内），安装 @deepseek-ai/dsh@$DSH_VERSION …"
+  else
+    info "安装 @deepseek-ai/dsh@$DSH_VERSION …"
+  fi
   npm i -g "@deepseek-ai/dsh@$DSH_VERSION"
 fi
 command -v dsh >/dev/null 2>&1 || fail "dsh 仍不在 PATH。若刚才装到了 ~/.local，请先执行：export PATH=\"\$HOME/.local/bin:\$PATH\"（新开终端即可）"
