@@ -4,11 +4,15 @@ NJU-Lab 学生端 —— Windows 引导安装（WSL2 路线）
 用法（在本文件所在目录，即解压后的安装包目录里）：
     powershell -ExecutionPolicy Bypass -File .\install.ps1
 
-做三件事：
+做四件事：
+  0. 明确一件事：**官方「DSH 桌面版」（Electron 应用）不能用本平台的实验** ——
+     它跑自己的运行时与 desktop profile，本插件不会被加载，所以领取/提交入口不会出现；
   1. 检查这台机器有没有可用的 WSL2 发行版；
-  2. 有 → 把本安装包复制进 WSL 的家目录，并在里面跑现成的 install.sh
-     （Node / pnpm / DSH / profile / 插件全部装在 WSL 里，与 macOS/Linux 完全同一条路径）；
-  3. 没有 → 打印开启 WSL 的确切步骤（需要管理员 + 重启一次），不替你改系统。
+  2. 有 → 先确认 WSL 里装了 Node.js 22+（install.sh 只检查、不代装，这是最常见的卡点）；
+  3. 把本安装包复制进 WSL 的家目录，在里面跑现成的 install.sh
+     （Node / pnpm / DSH / profile / 插件全部装在 WSL 里，与 macOS/Linux 完全同一条路径），
+     装完再跑一次 check.sh --install 自检，当场告诉你成没成；
+  4. 没有 WSL → 打印开启 WSL 的确切步骤（需要管理员 + 重启一次），不替你改系统。
 
 为什么走 WSL 而不是原生 Windows：
   实验材料（python 脚本 + 判据）与平台复验容器都是 Linux 口径，WSL 里跑能保证
@@ -39,6 +43,8 @@ if (-not (Test-Path (Join-Path $kitDir 'install.sh'))) {
 
 Say '这是 Windows 引导安装脚本：把环境装进 WSL2（Linux 子系统）里。'
 Say '如果你不想装 WSL，也可以直接用平台左侧菜单的「实验环境」（浏览器即用，免安装）。'
+Warn '注意：DeepSeek Harness 的「桌面版」（那个 Electron 应用）不受支持 —— 它用自己的运行时与'
+Warn 'desktop profile，本平台的插件不会被加载，你不会看到「领取 / 提交」。请按本脚本装 WSL2。'
 
 # ---- 1. 检查 wsl.exe ----
 $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
@@ -70,7 +76,10 @@ function Get-WslDistros {
   return @($raw | ForEach-Object { ($_ -replace "`0", '').Trim() } | Where-Object { $_ -ne '' })
 }
 
-$distros = Get-WslDistros
+# 必须用 @(...) 兜一层：只有**一个**发行版时，函数返回值会被 PowerShell 拆成
+# 裸字符串，`$distros[0]` 就变成取首字符（"U"），后面所有 `wsl -d U` 全失败。
+# 这是 2026-11-15 用假 wsl.exe 实测出来的坑。
+$distros = @(Get-WslDistros)
 if ($distros.Count -eq 0) {
   Warn 'WSL 已启用，但还没有任何 Linux 发行版。安装方式（需要管理员权限）：'
   $help2 = @'
@@ -96,7 +105,49 @@ if ([string]::IsNullOrWhiteSpace($target)) {
 }
 Say "使用 WSL 发行版：$target"
 
-# ---- 2. 把安装包复制进 WSL 家目录（不直接在 /mnt/c 上装：慢，且权限位不可靠）----
+# ---- 2. 先确认 WSL 里有 Node.js 22+ ----
+# install.sh 只检查、不代装。在这里挡住，学生拿到的是一段可直接粘贴的命令，
+# 而不是 WSL 深处的一句 bash 报错。
+Say '检查 WSL 里的 Node.js（需要 22 或更高，安装脚本不会代装）…'
+$nodeProbe = 'if command -v node >/dev/null 2>&1; then node -p ''process.versions.node.split(".")[0]''; else echo MISSING; fi'
+$nodeMajor = (@(& wsl.exe -d $target -- bash -lc $nodeProbe 2>$null | ForEach-Object { ($_ -replace "`0", '').Trim() }) -join '')
+
+if ($nodeMajor -eq 'MISSING' -or [string]::IsNullOrWhiteSpace($nodeMajor)) {
+  Warn "WSL（$target）里没有 node。请先在 WSL 终端里安装（三行，整段粘贴）："
+  $nodeHelp = @'
+
+  1) PowerShell 里执行：  wsl -d __DISTRO__
+     （或开始菜单里的 Ubuntu）
+  2) 在 Ubuntu 里逐行执行：
+       curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+       sudo apt-get install -y nodejs
+       node -v            # 应输出 v22 或更高
+  3) 回到本安装包目录，重新运行：
+       powershell -ExecutionPolicy Bypass -File .\install.ps1
+
+'@
+  Write-Host ($nodeHelp -replace '__DISTRO__', $target) -ForegroundColor Gray
+  exit 1
+}
+
+$nodeOk = $false
+if ($nodeMajor -match '^\d+$') { $nodeOk = ([int]$nodeMajor -ge 22) }
+if (-not $nodeOk) {
+  Warn "WSL（$target）里 Node.js 版本是 $nodeMajor，需要 22+。升级方式（在 WSL 里执行）："
+  Write-Host @'
+
+    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+    node -v
+
+  装完回到本安装包目录，重新运行本脚本。
+
+'@ -ForegroundColor Gray
+  exit 1
+}
+Say "WSL 里的 Node.js 主版本：$nodeMajor ✓"
+
+# ---- 3. 把安装包复制进 WSL 家目录（不直接在 /mnt/c 上装：慢，且权限位不可靠）----
 $wslKit = (& wsl.exe -d $target -- wslpath -a "$kitDir" 2>$null | Out-String).Trim()
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($wslKit)) {
   Die "无法把安装包路径转成 WSL 路径（$kitDir）—— 请确认该目录在本地盘上，而不是网络驱动器"
@@ -109,26 +160,40 @@ Say '正在把安装包复制到 WSL 家目录…'
 & wsl.exe -d $target -- bash -lc $copyCmd
 if ($LASTEXITCODE -ne 0) { Die '复制失败。可手动开 WSL 终端，把该目录解压到家目录后再运行 bash install.sh' }
 
-# ---- 3. 在 WSL 里跑现成的 install.sh ----
-Say '开始在 WSL 里安装（Node / pnpm / DSH / profile / 插件）…'
+# ---- 4. 在 WSL 里跑现成的 install.sh ----
+Say '开始在 WSL 里安装（pnpm / DSH / profile / 插件）…'
 & wsl.exe -d $target -- bash -lc 'cd ~/nju-lab-student-kit && bash install.sh'
 if ($LASTEXITCODE -ne 0) {
   Die 'WSL 里安装失败（上面的输出有原因）。可开 WSL 终端手动重跑：cd ~/nju-lab-student-kit && bash install.sh'
 }
 
+# ---- 5. 装完自检（决定"能用/不能用"的关键一步，别只看安装脚本有没有报错）----
+Say '自检：确认插件真的进了 profile、dsh 版本对不对…'
+& wsl.exe -d $target -- bash -lc 'cd ~/nju-lab-student-kit && bash check.sh --install'
+$checkOk = ($LASTEXITCODE -eq 0)
+if (-not $checkOk) {
+  Warn '自检有失败项（见上面的 [FAIL] 行）。把这段输出贴给老师即可定位，不用自己猜。'
+}
+
 Write-Host ''
-Say '安装完成。后续使用步骤：'
+if ($checkOk) { Say '安装完成，自检通过。' } else { Say '安装已完成，但自检未全通过（见上）。' }
+Say '后续使用步骤：'
 $next = @"
 
   1) 打开 WSL 终端（开始菜单里的 Ubuntu，或在 PowerShell 里执行  wsl -d $target）
   2) 启动 DSH：   dsh --profile nju-lab-student
      浏览器没自动打开的话，把终端里打印的地址（http://127.0.0.1:.../?token=...）复制到浏览器
+     （WSL2 与 Windows 共用 127.0.0.1，用 Windows 的浏览器打开就行）
   3) 首次使用：设置 → Plugins →「NJU-Lab 平台」
        serverUrl 与 token 见平台「客户端下载」页（token 在右上角头像 → API Token 生成）
   4) 做实验：让 AI「列出我的实验任务」→「领取」→ 开发 → 自测 →「提交」
 
   ⚠️ 实验文件请放在 WSL 里的家目录（例如 ~/lab），**不要放在 /mnt/c（Windows 盘）** ——
      那样既慢，文件和权限也不可靠。
+  ⚠️ 全程要在校园网或校内 VPN 下，否则平台的 API 会被网关拦去认证页（提交必失败）。
+
+  任何时候出问题，先跑一次自检，把输出贴给老师：
+       wsl -d $target -- bash -lc 'cd ~/nju-lab-student-kit && bash check.sh'
 
 "@
 Write-Host $next -ForegroundColor Gray

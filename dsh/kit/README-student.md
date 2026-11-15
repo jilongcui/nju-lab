@@ -6,12 +6,17 @@
 
 > **Windows 用户先看这里** —— 有两条路，任选其一：
 >
+> ⚠️ **先说一件最容易踩的事：不要用「DeepSeek Harness 桌面版」（那个 Electron 桌面应用）做实验。**
+> 桌面版跑的是它自己的运行时与 `desktop` profile，本平台的插件不会被加载 —— 你会找不到
+> 「领取 / 提交」，也就无法上传实验。请用下面两条路之一。
+>
 > **① 不想在自己电脑上装任何东西（最省事）**：登录平台 → 左侧菜单「**实验环境**」→「启动」。
 > 浏览器里就是一个完整的 DSH（含 python / pandas / torch 等依赖），做实验、提交都走同一个平台账号。
 > 环境里的文件请放在 `/workspace`（持久卷，容器回收/重建后仍在）。
 >
 > **② 想在自己电脑上用本地 DSH**：用安装包里的 `install.ps1` 把环境装进 **WSL2**
 > （Windows 的 Linux 子系统）—— 细节见下面的 §1.1。这条路的自测口径与平台复验完全一致。
+> 桌面版那种「双击 exe 就能用」的体验在这里不成立：WSL2 是必经之路（实验脚本与判据都是 Linux 口径）。
 
 1. 安装 **Node.js 22 或更高版本**（https://nodejs.org，或学校镜像）。已有可跳过。
 2. 从平台下载安装包 `nju-lab-student-kit.zip`（平台左侧菜单「客户端下载」），解压。
@@ -24,8 +29,9 @@
 
 ## 1.1 Windows（WSL2）
 
-安装包里带一个引导脚本 `install.ps1`：它**不替你改系统**，只做三件事 —— 检查 WSL2 是否可用、
-把安装包复制进 WSL 的家目录、在里面跑现成的 `install.sh`（所以 Node / DSH / 插件全装在 WSL 里）。
+安装包里带一个引导脚本 `install.ps1`：它**不替你改系统**，只做四件事 —— 检查 WSL2 是否可用、
+确认 WSL 里装了 Node.js 22+、把安装包复制进 WSL 的家目录、在里面跑现成的 `install.sh`
+（所以 Node / DSH / 插件全装在 WSL 里），装完再做一次自检把结果摆给你看。
 
 1. 把 `nju-lab-student-kit.zip` 解压到本地盘（例如 `C:\Users\你\Downloads\`）。
 2. 在该目录里打开 PowerShell，运行：
@@ -38,14 +44,36 @@
    wsl --install          # 需管理员权限；Win10 2004+ / Win11
    ```
    然后**重启电脑**，首次进入 Ubuntu 时设置 Linux 用户名与密码，再回到第 2 步重跑。
-4. 装完后日常使用：
+4. 如果脚本提示 **WSL 里没有 Node（或版本太低）**：先在 WSL 终端里装（三行，整段粘贴）：
+   ```bash
+   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+   sudo apt-get install -y nodejs
+   node -v          # 应输出 v22 或更高
+   ```
+   Ubuntu 自带的 `nodejs` 一般是 12/18，**不够**；装完回到第 2 步重跑脚本。
+5. 装完后日常使用：
    ```powershell
    wsl -d Ubuntu          # 打开 WSL 终端（开始菜单里的 Ubuntu 也行）
    dsh --profile nju-lab-student
    ```
-   浏览器没自动打开时，把终端里打印的 `http://127.0.0.1:.../?token=...` 复制到浏览器。
-5. ⚠️ **实验文件放在 WSL 的家目录**（例如 `~/lab`），不要放在 `/mnt/c`（Windows 盘）：
+   浏览器没自动打开时，把终端里打印的 `http://127.0.0.1:.../?token=...` 复制到浏览器 ——
+   **WSL2 与 Windows 共用 `127.0.0.1`**，所以直接用 Windows 上的浏览器打开就行。
+6. ⚠️ **实验文件放在 WSL 的家目录**（例如 `~/lab`），不要放在 `/mnt/c`（Windows 盘）：
    那样既慢，文件权限与 `chmod` 也不可靠。
+7. ⚠️ **全程要在校园网或校内 VPN 下**：平台在校外会被网关拦去统一认证页，表现就是
+   「提交失败 / 401 / 302」，跟 Windows 本身无关。
+
+## 1.2 装完自检（出问题先跑这个）
+
+安装包里有 `check.sh`。它只**读**不**改**，把该看的都看一遍：
+
+```bash
+bash ~/nju-lab-student-kit/check.sh      # 完整自检：安装 + token + 能不能连上平台
+bash ~/nju-lab-student-kit/check.sh --install   # 只查安装完整性
+```
+
+输出里 `[FAIL]` 是要解决的，`[WARN]` 多是"token 还没填"。**遇到任何问题，先跑一次，把输出贴给老师** ——
+它一次就能分清是插件没装上、token 失效、不在校园网，还是被 WAF 拦了，不用来回猜。
 
 ## 2. 首次配置（只做一次）
 
@@ -72,15 +100,26 @@
 
 ## 4. 常见问题
 
+- **我用的是 DSH 桌面版，能不能做实验？** 不能。桌面版是 Electron 应用 + 自带运行时 + 独立的
+  `desktop` profile，本平台插件不会被加载（官方也不允许普通 CLI 管理它的 profile）。
+  请用 WSL2 本地 DSH 或浏览器「实验环境」。
+- **出任何问题第一步**：`bash ~/nju-lab-student-kit/check.sh`，把输出贴给老师（见 §1.2）。
 - **插件有新版本**：面板顶部会出现「发现新版本插件 → 立即更新」，点一下即可，**不用重新下载安装包**；更新完退出 dsh 重新启动生效。（只有很旧的安装没有这个能力，那时才需要重下安装包。）
 - **`dsh: command not found`**：重开终端，或确认 npm 全局 bin 在 PATH（`npm prefix -g`）。
 - **工具调用返回 401**：token 未配或已失效 → 重新在平台生成并更新设置。
+- **提交时返回 403**：校园 WAF 拦了请求体。先确认安装包是最新版（新版对上传做了规避），仍不行联系老师。
+- **请求被重定向 / 落到统一认证页（302）**：你不在校园网也没连校内 VPN —— 连上再试。
 - **领取按钮灰色/工具提示未解锁**：先完成该实验之前章节的课程学习。
 - **pnpm 安装失败 / 卡在 corepack 下载 pnpm**：corepack 默认从 registry.npmjs.org 下载 pnpm 本体，网络不通会超时。先 `npm i -g pnpm` 手动装一次再重跑 `install.sh` 即可。
+- **pnpm 装不上、报权限错（`EACCES` / 全局目录不可写）**：apt 装的 Node 会把全局目录指到系统路径。
+  `install.sh` 现在会自动退到用户态前缀 `~/.local`；若仍失败，手动执行
+  `npm i -g --prefix "$HOME/.local" pnpm && export PATH="$HOME/.local/bin:$PATH"` 再重跑。
 - **版本问题**：本学期 DSH 锁定 `0.2.0-rc.2`，**不要升级**，升级导致的异常请重装本安装包。
 - **Windows：提示「禁止运行脚本」**（`about_Execution_Policies`）：用 `powershell -ExecutionPolicy Bypass -File .\install.ps1` 运行（只对这一条命令生效），或先 `Unblock-File .\install.ps1`。
 - **Windows：`wsl --install` 报错 / 装完打不开 Ubuntu**：多为 BIOS 里没开虚拟化（VT-x / SVM）或没重启。
   先在任务管理器 →「性能 → CPU」看「虚拟化：已启用」；再说 `wsl --update` 更新一次内核。
+- **Windows：装完 `install.ps1` 提示「使用 WSL 发行版：U」这类怪名字**：那是很旧的安装包（单发行版
+  名称被截成首字符的 bug，2026-11-15 已修）。重下最新安装包即可。
 - **Windows：WSL 里 `dsh` 提示模型 key 缺失**：那是 DSH 自身的模型配置，与平台 token 是两件事；
   工作台/本地都支持用环境变量预设（`DEEPSEEK_API_KEY` 等），具体 keys 找课程老师。
 - **Windows：能用浏览器「实验环境」吗？** 能，且免安装 —— 只是没有本机 GPU、也不能自己装额外依赖。

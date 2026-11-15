@@ -30,12 +30,33 @@ export default function ClientDownload() {
         Windows 有两条路：① 免安装，直接用「实验环境」（浏览器里的完整 DSH）；② 用安装包里的
         <Text code>install.ps1</Text>把环境装进 WSL2，步骤与 macOS / Linux 完全一致。
       </Paragraph>
+      <Paragraph type="secondary">
+        注意：<Text strong>官方「DSH 桌面版」（Electron 应用）不支持</Text> —— 它跑自己的运行时与
+        <Text code>desktop</Text> profile，本平台插件不会被加载，领取/提交入口不会出现。
+      </Paragraph>
     </div>,
   );
 
   return (
     <div style={{ maxWidth: 720 }}>
       <Title level={4}>客户端下载（学生端 DSH）</Title>
+
+      {IS_WINDOWS && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="不要用「DSH 桌面版」做实验"
+          description={
+            <>
+              DeepSeek Harness 的<Text strong>桌面版</Text>（那个 Electron 应用）跑的是它自己的运行时与
+              <Text code>desktop</Text> profile，本平台插件不会被加载 —— 你会找不到「领取 / 提交」，
+              也就无法上传实验。请用下面的 WSL2 步骤装本地 DSH，或直接用
+              <Link to="/student/workspace">「实验环境」</Link>。
+            </>
+          }
+        />
+      )}
 
       <Card style={{ marginBottom: 16 }}>
         <Button
@@ -74,15 +95,30 @@ export default function ClientDownload() {
           size="small"
           items={[
             {
-              title: IS_WINDOWS ? '准备 WSL2（脚本会引导）' : '安装 Node.js 22+',
-              description: IS_WINDOWS
-                ? 'Windows 上的本地 DSH 跑在 WSL2 里（实验脚本与平台复验同一条 Linux 口径）。第一次跑下面的脚本时，它会检查 WSL，缺了会打印 wsl --install 的步骤（需管理员权限 + 重启一次）。'
-                : '从 nodejs.org 或学校镜像安装；已有可跳过。机房电脑已预装，直接从第 3 步开始。',
+              title: IS_WINDOWS ? '准备 WSL2 与 Node.js 22+（脚本会引导）' : '安装 Node.js 22+',
+              description: IS_WINDOWS ? (
+                <>
+                  Windows 上的本地 DSH 跑在 WSL2 里（实验脚本与平台复验同一条 Linux 口径）。
+                  缺 WSL 时脚本会打印 <Text code>wsl --install</Text> 的步骤（需管理员权限 + 重启一次）；
+                  <Text strong>WSL 里的 Node.js 要自己装</Text>（脚本只检查、不代装），在 Ubuntu 终端里执行：
+                  <pre style={{ margin: '8px 0 0', fontSize: 12, whiteSpace: 'pre-wrap' }}>
+{`curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+node -v    # 需要 v22 或更高`}
+                  </pre>
+                </>
+              ) : (
+                '从 nodejs.org 或学校镜像安装；已有可跳过。机房电脑已预装，直接从第 3 步开始。'
+              ),
             },
             {
               title: IS_WINDOWS ? '解压并在 PowerShell 里运行引导脚本' : '解压并运行一键安装脚本',
               description: IS_WINDOWS ? (
-                <Text code>{'powershell -ExecutionPolicy Bypass -File .\\install.ps1'}</Text>
+                <>
+                  <Text code>{'powershell -ExecutionPolicy Bypass -File .\\install.ps1'}</Text>
+                  <br />
+                  脚本装完会自动跑一次自检，把「装没装好」当场告诉你。
+                </>
               ) : (
                 <Text code>{'unzip nju-lab-student-kit.zip && cd nju-lab-student-kit && ./install.sh'}</Text>
               ),
@@ -94,11 +130,30 @@ export default function ClientDownload() {
             {
               title: '启动并填写配置',
               description: IS_WINDOWS
-                ? `先打开 WSL 终端（wsl -d Ubuntu），再运行 dsh --profile nju-lab-student；浏览器打开后进入 设置 → nju-lab：serverUrl 填 ${serverUrl}，token 粘贴上一步的 token。实验文件放 WSL 家目录（如 ~/lab），不要放 /mnt/c。`
+                ? `先打开 WSL 终端（wsl -d Ubuntu），再运行 dsh --profile nju-lab-student；浏览器没自动打开时，把终端打印的 http://127.0.0.1:<端口>/?token=... 复制到浏览器（WSL2 与 Windows 共用 127.0.0.1）。然后进入 设置 → nju-lab：serverUrl 填 ${serverUrl}，token 粘贴上一步的 token。实验文件放 WSL 家目录（如 ~/lab），不要放 /mnt/c。`
                 : `终端运行 dsh --profile nju-lab-student，浏览器打开后进入 设置 → nju-lab：serverUrl 填 ${serverUrl}，token 粘贴上一步的 token。`,
             },
           ]}
         />
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginTop: 12 }}
+          message="全程要在校园网或校内 VPN 下"
+          description="平台在校外会被校园网关拦去统一认证页，表现就是「提交失败 / 401 / 302」，和系统无关。"
+        />
+      </Card>
+
+      <Card title="出问题先跑自检（把输出贴给老师）" style={{ marginTop: 16 }}>
+        <Paragraph type="secondary" style={{ marginBottom: 8 }}>
+          安装包里带 <Text code>check.sh</Text>。它一次就能分清是插件没装上、token 失效、
+          不在校园网，还是被 WAF 拦了 —— 比来回描述现象快得多。
+        </Paragraph>
+        <pre style={{ margin: 0, fontSize: 12, whiteSpace: 'pre-wrap' }}>
+{IS_WINDOWS
+  ? `wsl -d Ubuntu -- bash -lc 'cd ~/nju-lab-student-kit && bash check.sh'`
+  : `bash ~/nju-lab-student-kit/check.sh`}
+        </pre>
       </Card>
 
       <Card title="做一次实验" style={{ marginTop: 16 }}>

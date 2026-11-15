@@ -5,6 +5,60 @@
 
 ## 0. 一句话现状
 
+**2026-11-15（Windows 学生端：页面写明「桌面版不支持」+ 修掉 `install.ps1` 单发行版真 bug + 新增 `check.sh` 自检）—— ✅ 已上线**
+
+- **问题（用户）**：学生在 Windows 上装的是官方 **DSH 桌面版**，装完后"无法做具体的课程上传操作"。
+- **根因（核实，不是配置漏了）**：桌面版 = Electron 壳 + **自带运行时**（`ELECTRON_RUN_AS_NODE` + 内置
+  pnpm/Node/Python）+ **独占 `desktop` profile**；npm 版 CLI 直接拒绝操作它
+  （`@deepseek-ai/dsh/lib/bin.js:36`「profile "desktop" is managed exclusively by the Electron application」）。
+  我们 kit 只往 `~/.dsh/profiles/nju-lab-student` 装，桌面版永远不会加载它 → 没有 `nju_lab_*` 工具、
+  没有「领取/提交」入口。官方 `apps/desktop/README.md`「Known limitations」原话亦可作证：
+  "executable packages, **plugin activation**, and lockfiles remain separate"。
+  桌面版只能把工作区打开成 WSL 路径，**执行命令仍是 Windows 的 `pwsh`**、Python 也是它自带的 ——
+  不等于"在 WSL 里跑"。结论仍是 2026-10-23 的口径：**学生端走 WSL2 或浏览器「实验环境」**。
+- **顺带挖出并修掉一个真 bug（2026-10-23 那次没暴露）**：`install.ps1` 的 `Get-WslDistros` 返回**单元素**时
+  被 PowerShell 拆成裸字符串，`$distros[0]` 取到的是**首字符** → 只有**一个** WSL 发行版（最常见！）时
+  后续全变成 `wsl -d U …`，复制与安装必然失败。当时只验证了「两个发行版」分支，所以放过了。
+  现在调用处 `$distros = @(Get-WslDistros)` 兜一层，并用假 `wsl.exe` 覆盖单/多发行版两条路径。
+- **改动**：
+  · `dsh/kit/install.ps1`：① 明确告知**桌面版不受支持**；② 复制前先检查 **WSL 里的 Node ≥ 22**
+    （缺了直接打印可粘贴的三行 NodeSource 命令并退出，而不是让 `install.sh` 在 WSL 深处炸）；
+    ③ 装完自动跑 `check.sh --install` 自检并把结果摆出来；④ 补「校园网/VPN」「127.0.0.1 共用」提示。
+  · `dsh/kit/install.sh`：pnpm 装不上时按 `npm prefix -g` 是否可写分流（apt 装的 Node 全局目录属 root →
+    退到 `~/.local` 并幂等写 `~/.bashrc`）；Node 缺失/过低时按是否 WSL 给对应命令；末尾调自检。
+  · **新增 `dsh/kit/check.sh`**（doctor）：平台/Node/pnpm/dsh 版本、profile 与插件产物、
+    `--dump-config` 是否真的加载了 `nju-lab-client`、`serverUrl`/`token` 来源（环境变量 > settings.yaml）、
+    `GET /me` 连通性（200 / 401 / 302 网关 / 403 WAF / 连不上 分别给结论）。`--install` 只查安装。
+  · `dsh/kit/build-kit.sh`：把 `check.sh` 打进包（chmod +x）。
+  · `dsh/kit/README-student.md`：⚠️ 桌面版不支持（放在 Windows 提示最前）、WSL 内装 Node 22、
+    §1.2「出问题先跑自检」、「全程校园网/VPN」、FAQ 补 401/403/302/权限/旧包 bug。
+  · `web/src/pages/student/ClientDownload.tsx`：Windows 专属 **warning 卡「不要用 DSH 桌面版做实验」**、
+    第 1 步给 Node 安装命令、第 4 步给浏览器打开方式、VPN Alert、新增「出问题先跑自检」卡；
+    侧栏「关于学生端」补一句桌面版说明。
+- **验证（本机可做的全做了）**：
+  · `install.ps1`：`pwsh`（`mcr.microsoft.com/powershell:lts-alpine`）`Parser::ParseFile` 无错；
+    假 `wsl.exe` 跑 6 条分支 —— 非 Windows / 无 wsl / WSL 无 node / node<22 / 正常安装（自检通过）/
+    正常安装但自检失败；**单发行版与多发行版**都断言了 `-d <名称>` 拼接正确。
+  · `install.sh` + `check.sh`：临时 `DSH_HOME` **真装**（`dsh 0.2.0-rc.2` + pnpm 12.21 + 本地 profile 依赖），
+    自检 7 项全绿；配置来源三种（环境变量 / `nju-lab` 节 / `nju-lab-client` 节）逐个断言；
+    网络四种（200/401/302/403/端口不通）逐个断言。
+    **踩到并修掉一个假阳性**：`--dump-config` 打印的是**未求值表达式**（`!!js process.env.NJU_LAB_SERVER_URL ?? …`），
+    一开始当配置读，导致"没配 token 却报 [OK]" —— 现在只认环境变量与 `settings.yaml`，并以 `!!js` 前缀过滤。
+  · 页面：Playwright（Windows / macOS 双 UA）**9/9** 通过，截图
+    `.verify-scratch/client-download-{windows,macos}.png`；探针注册的临时账号已删（DB `remaining: 0`）。
+- **部署**：web → `deploy/deploy-web-lab.sh`（备份 `.verify-scratch/lab-web-backups/20261115-101712`，
+  78 个文件 md5 一致、4 项自检 ok）；kit → `PLATFORM_URL=https://medai.nju.edu.cn/lab ./build-kit.sh`
+  打 `20261115-1018-52140ea`（**serverUrl 统一为 https**，理由见 playbook §6）并投放，
+  旧包留 `nju-lab-student-kit.zip.20261031-1408-f12e2e4.bak`；线上 `curl /lab/kit/…` **200 / 97730B**。
+- **回滚**：`cp .verify-scratch/lab-web-backups/20261115-101712/index.html /var/www/lab/index.html`；
+  kit 用 `.20261031-1408-f12e2e4.bak` 覆盖回主名。
+- **未验证（重要）**：**真 Windows 上跑一次** `install.ps1`（尤其"只有一个发行版"这条路径）。
+  本机没有 Windows；pwsh-on-linux + 假 `wsl.exe` 只能证明分支与命令拼装正确。
+- **遗留**：桌面版若将来要支持，最小改动 = `dsh/nju-lab-client/src/host/restrict.ts` 把
+  `CAPABILITY_TOOLS.shell` 按 `process.platform` 映射成 `pwsh`（Windows 上 dsh 装的是 `tool-pwsh`，
+  工具名 `pwsh`；`restrict()` 遇未知名字**直接抛错**，claim 会当场中断）+ 一份 desktop profile 安装脚本；
+  仍需真机实测，且桌面版是 0.2.1-rc.2 口径的插件 API，未验证。
+
 **2026-11-15（第 19 章重构：`harness-agent` → `agent-live`「搭一个能跑的 agent」；判分基建支持单场景包 / script 模式）—— 包与镜像已就绪，平台绑定待做**
 
 - **用户反馈（原话）**：「我觉得目前的实验是相当傻的，还把我们的实验当成之前的机器学习实验，

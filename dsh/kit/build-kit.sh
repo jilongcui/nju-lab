@@ -18,6 +18,9 @@ cp ../nju-lab-client/package.json ../nju-lab-client/cordis.patch.yml ../nju-lab-
 cp -r ../nju-lab-client/lib dist/stage/nju-lab-client/lib
 cp install.sh dist/stage/
 chmod +x dist/stage/install.sh
+# 自检脚本（doctor）：install.sh 末尾会调它；学生也能单独跑，把输出贴给老师
+cp check.sh dist/stage/
+chmod +x dist/stage/check.sh
 # Windows 引导脚本（WSL2 路线；UTF-8 BOM，见该文件头注释）
 cp install.ps1 dist/stage/
 cp README-student.md dist/stage/README.md

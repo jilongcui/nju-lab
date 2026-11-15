@@ -144,21 +144,36 @@ docker import \
 ## 6. 学生 kit
 
 ```sh
-cd dsh/kit && PLATFORM_URL=http://medai.nju.edu.cn/lab ./build-kit.sh   # 生产用 medai 变体
+cd dsh/kit && PLATFORM_URL=https://medai.nju.edu.cn/lab ./build-kit.sh   # 生产用 medai 变体
 ```
 
-产物 `dsh/kit/dist/nju-lab-student-kit.zip`（`dist/` 已被 `.gitignore`）。校验：
+> **为什么用 `https`（2026-11-15 起）**：本机 nginx 只监听 80，TLS 在**校园网关**终止，
+> 所以 `https://medai.nju.edu.cn/lab` 与 `http://…` 都能到达后端。写 https 是为了和
+> 「客户端下载」页面上显示给学生的地址（`window.location.origin` + `/lab/api`）一致 ——
+> 两处口径不同时，学生会照着页面填 https 而 kit 里写 http，白费一轮排查。
+> 另外 http 若被网关 301 到 https，`POST` 会退化成 `GET` 并丢掉 `Authorization`，提交必失败。
+
+产物 `dsh/kit/dist/nju-lab-student-kit.zip`（`dist/` 已被 `.gitignore`）。包里应含
+`install.sh` / `install.ps1` / **`check.sh`** / `README.md` / `kit-version.json` + 两个目录。校验：
 
 ```sh
+unzip -l dist/nju-lab-student-kit.zip | grep -E 'check\.sh|install\.(sh|ps1)|kit-version'
 unzip -p dist/nju-lab-student-kit.zip install.sh | grep DSH_VERSION
 unzip -p dist/nju-lab-student-kit.zip kit-version.json
+unzip -p dist/nju-lab-student-kit.zip install.sh | grep serverUrl   # 应是 https://medai…/lab/api
 ```
+
+> `check.sh` 是学生端自检（doctor）：版本 / profile / 插件是否被加载 / token / 连通性，
+> 一次分清 401 / 302（不在校园网）/ 403（WAF）。`install.sh` 装完自动调用它。
+> 改它之后**必须**在本机用临时 `DSH_HOME` 真跑一遍（`install.sh` → `check.sh --install`），
+> 别只做 `bash -n`：`--dump-config` 打的是**未求值表达式**（`!!js …`），当配置读会假阳性。
 
 投放（先备份）：
 
 ```sh
 cp -a /var/www/lab/kit/nju-lab-student-kit.zip /var/www/lab/kit/nju-lab-student-kit.zip.<旧版本>.bak
 cp dsh/kit/dist/nju-lab-student-kit.zip /var/www/lab/kit/nju-lab-student-kit.zip
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1/lab/kit/nju-lab-student-kit.zip   # 200
 ```
 
 ## 7. 部署
