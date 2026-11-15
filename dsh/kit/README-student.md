@@ -146,9 +146,9 @@ bash ~/nju-lab-student-kit/check.sh --install   # 只查安装完整性
 - **pnpm 装不上、报权限错（`EACCES` / 全局目录不可写）**：apt 装的 Node 会把全局目录指到系统路径。
   `install.sh` 现在会自动退到用户态前缀 `~/.local`；若仍失败，手动执行
   `npm i -g --prefix "$HOME/.local" pnpm && export PATH="$HOME/.local/bin:$PATH"` 再重跑。
-- **版本问题**：本学期 DSH 锁定 `0.2.0-rc.2`（学期口径是 `>=0.2.0-rc.2 <0.3.0`，且不接受 `0.2.1-rc.x`
-  这类预发布；将来若出 0.2.x 正式版，安装脚本会自动认）。**不要装 `latest`** —— 当前 latest 是
-  `0.2.2-rc.1`，跨 rc 会让自测条件与平台复验不一致。装错了重跑一次安装包即可（脚本会按口径纠正）。
+- **版本问题**：本学期以 `0.2.0-rc.2` 为基线，**0.2.x 各版本（含 rc）都能用** —— 安装脚本遇到
+  `0.2.0-rc.2` 或更新版本会直接沿用，不再强制重装；只有 `0.1.x` 这类更老的才会被纠正。
+  （实测：`dsh@0.2.2-rc.3` 上插件的 6 项端到端测试全通过。）
 - **Windows：提示「禁止运行脚本」**（`about_Execution_Policies`）：用 `powershell -ExecutionPolicy Bypass -File .\install.ps1` 运行（只对这一条命令生效），或先 `Unblock-File .\install.ps1`。
 - **Windows：`wsl --install` 报错 / 装完打不开 Ubuntu**：多为 BIOS 里没开虚拟化（VT-x / SVM）或没重启。
   先在任务管理器 →「性能 → CPU」看「虚拟化：已启用」；再说 `wsl --update` 更新一次内核。

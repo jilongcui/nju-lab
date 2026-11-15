@@ -72,12 +72,14 @@ info "pnpm $(pnpm -v) ✓"
 
 # 3. DSH CLI（锁定版本）
 #
-# 判据是「范围」而不是「等值」：>= 0.2.0-rc.2 且 < 0.3.0，**且不接受其它元组的预发布**。
-# 为什么不是"0.2.0 之后都行"：
-#  · `nju-lab-client` 的依赖写的是 `^0.2.0-rc.2`，semver 只接受「0.2.0 的 rc」与「0.2.x 正式版」，
-#    0.2.1-rc.5 / 0.2.2-rc.1 这类**元组不同**的预发布一律不满足（实测，见 HANDOFF 2026-11-15）；
-#  · 平台复验镜像是 0.2.0-rc.2，本地版本偏了就是"自测条件 ≠ 复验条件"。
-# 当前 npm 上 0.2.0 之后没有正式版（latest = 0.2.2-rc.1），所以现在实际只会走"装 0.2.0-rc.2"这一支。
+# 判据：>= 0.2.0-rc.2 且 < 0.3.0 —— **0.2.x 全接受，含 rc/alpha**。
+# 依据（2026-11-15 实测，不是推断）：在 `dsh@0.2.2-rc.3` 上跑插件的 L2 端到端
+# （`DSH_BIN=... node --test test/dsh-e2e.test.mjs`）**6/6 通过** —— 插件加载、工具面收窄
+# （`tools.restrict`）、claim 后即时受限、`.dshc` 证据导出、引导注入、跨进程钉定全部正常；
+# 且 profile 里只有一份 `dsh-tools`，没有依赖分叉。
+# 低于 0.2.0-rc.2（0.1.x / 0.2.0-rc.1）拒绝：插件依赖 `^0.2.0-rc.2`，更老的版本没验证过。
+# 备注：平台侧的复验镜像仍是 0.2.0-rc.2（`nju-lab-verify:0.2.0-rc.2-pkg10`），
+# 所以学生本地版本高低不影响"复验按哪套跑"，只是本地体验可能略有差异。
 dsh_version_ok() {
   local v="${1#v}"
   case "$v" in
@@ -85,15 +87,14 @@ dsh_version_ok() {
       local n="${v##*.}"
       case "$n" in ''|*[!0-9]*) return 1 ;; esac
       [ "$n" -ge 2 ] ;;
-    0.2.[0-9]*)
-      case "$v" in *-*) return 1 ;; *) return 0 ;; esac ;;
+    0.2.*) return 0 ;;
     *) return 1 ;;
   esac
 }
 
 if ! command -v dsh >/dev/null 2>&1 || ! dsh_version_ok "$(dsh --version 2>/dev/null || true)"; then
   if command -v dsh >/dev/null 2>&1; then
-    info "当前 dsh 是 $(dsh --version 2>/dev/null || echo '未知')（不在学期口径内），安装 @deepseek-ai/dsh@$DSH_VERSION …"
+    info "当前 dsh 是 $(dsh --version 2>/dev/null || echo '未知')（低于 0.2.0-rc.2），安装 @deepseek-ai/dsh@$DSH_VERSION …"
   else
     info "安装 @deepseek-ai/dsh@$DSH_VERSION …"
   fi

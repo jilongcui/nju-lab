@@ -64,7 +64,7 @@ real_value() {
 }
 
 echo
-echo "[nju-lab] 学生端自检（DSH ${DSH_VERSION_EXPECTED}）"
+echo "[nju-lab] 学生端自检（口径：DSH ${DSH_VERSION_EXPECTED} 及以上的 0.2.x）"
 echo "  ------------------------------------------------"
 
 # ---- 1. 运行环境 ----
@@ -87,8 +87,8 @@ fi
 if command -v pnpm >/dev/null 2>&1; then ok "pnpm" "$(pnpm -v 2>/dev/null)"
 else bad "pnpm" "不可用 —— npm i -g --prefix \"\$HOME/.local\" pnpm && export PATH=\"\$HOME/.local/bin:\$PATH\""; fi
 
-# 学期口径：>= 0.2.0-rc.2 且 < 0.3.0，且不接受其它元组的预发布
-# （0.2.1-rc.x / 0.2.2-rc.x 不满足 `^0.2.0-rc.2`，会让插件依赖分叉，见 install.sh 注释）
+# 学期口径：>= 0.2.0-rc.2 且 < 0.3.0，**0.2.x 全接受（含 rc/alpha）**。
+# 依据：2026-11-15 在 dsh@0.2.2-rc.3 上跑插件 L2 端到端 6/6 通过（见 install.sh 注释）。
 dsh_version_ok() {
   local v="${1#v}"
   case "$v" in
@@ -96,8 +96,7 @@ dsh_version_ok() {
       local n="${v##*.}"
       case "$n" in ''|*[!0-9]*) return 1 ;; esac
       [ "$n" -ge 2 ] ;;
-    0.2.[0-9]*)
-      case "$v" in *-*) return 1 ;; *) return 0 ;; esac ;;
+    0.2.*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -105,8 +104,7 @@ dsh_version_ok() {
 if command -v dsh >/dev/null 2>&1; then
   DSH_VER="$(dsh --version 2>/dev/null || echo '(取不到)')"
   if dsh_version_ok "$DSH_VER"; then ok "dsh" "$DSH_VER"
-  elif [ "$DSH_VER" = "$DSH_VERSION_EXPECTED" ]; then ok "dsh" "$DSH_VER"
-  else warn "dsh" "$DSH_VER —— 学期口径是 ${DSH_VERSION_EXPECTED}（或将来的 0.2.x 正式版）；跨 rc 会让自测与复验条件不一致"; fi
+  else warn "dsh" "$DSH_VER —— 需要 0.2.0-rc.2 或更高的 0.2.x；更老的版本插件没验证过"; fi
 else
   bad "dsh" "不在 PATH —— 重跑 install.sh；若刚装到 ~/.local，新开一个终端再试"
 fi
