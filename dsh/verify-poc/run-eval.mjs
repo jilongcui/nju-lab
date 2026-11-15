@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = fileURLToPath(new URL('.', import.meta.url));
 const DSH_BIN = join(HERE, 'node_modules', '.bin', 'dsh');
-const DSH_VERSION = '0.2.0-rc.2';
+const DSH_VERSION = '0.2.2-rc.1';
 const PROFILE = 'nju-lab-verify';
 const REPO_PROFILE = resolve(HERE, '..', 'profiles', PROFILE);
 

@@ -11,7 +11,7 @@
 
 ## 给 AI：先做 3 项前置检查，任何一项不合格就**停下并如实告知**，不要绕
 
-1. `dsh --version` → 需要 `0.2.0-rc.2` 或更高的 `0.2.x`（含 rc；`0.2.2-rc.3` 已实测通过）。
+1. `dsh --version` → 需要 0.2.x（含 rc；基线 `0.2.2-rc.1`，`0.2.2-rc.3` 也实测通过）。
    `0.1.x` 太老，插件没验证过。版本不对就告诉用户，**不要自行升级或降级**（`install.sh` 会处理）。
 2. 当前会话工作区必须**覆盖家目录**：`touch ~/.dsh/.write-test && rm ~/.dsh/.write-test` 成功。
    失败说明沙箱边界不包含 `~/.dsh`（`workspace-write` 只允许会话工作区内的写入）——
@@ -29,7 +29,7 @@ bash install.sh
 
 ## 硬约束（违反任何一条都会让学生端不可用）
 
-- 不要 `sudo`，不要 `npm i -g @deepseek-ai/dsh`（版本已锁 `0.2.0-rc.2`）
+- 不要 `sudo`，不要 `npm i -g @deepseek-ai/dsh`（学期基线 0.2.2-rc.1，不要自行升级）
 - 不要改 `install.sh`、`check.sh`、`cordis.patch.yml`
 - 不要改 `serverUrl` / token 的默认值（属于学生自己的配置，装完在设置页填）
 - 不要尝试提权或关闭沙箱（`danger-full-access` 在学生端是刻意禁用的）

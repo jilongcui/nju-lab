@@ -12,7 +12,7 @@
 # 退出码：0 = 全绿（可能有 WARN）；1 = 有 FAIL。
 set -uo pipefail
 
-DSH_VERSION_EXPECTED="0.2.0-rc.2"
+DSH_VERSION_EXPECTED="0.2.2-rc.1"
 DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 PROFILE="$DSH_HOME/profiles/nju-lab-student"
 PLUGIN="$DSH_HOME/nju-lab-client"

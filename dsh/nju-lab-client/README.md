@@ -60,7 +60,7 @@ npm run test:browser                     # 面板的浏览器验证（18 条断�
 没有 dsh 时先装一个，装完就在 PATH 上，之后的 `npm test` 会自动带上 L2：
 
 ```sh
-npm i -g @deepseek-ai/dsh@0.2.0-rc.2
+npm i -g @deepseek-ai/dsh@0.2.2-rc.1
 ```
 
 如果本机装过仓库里的 PoC（`dsh/verify-poc`，同一个锁定版本），那份也能直接用：

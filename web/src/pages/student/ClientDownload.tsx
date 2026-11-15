@@ -24,7 +24,7 @@ export default function ClientDownload() {
         实验全程在你自己电脑的 DSH 中完成：领取任务、开发 Skill、自测、提交。平台网页用于看课程、看反馈与生成 token。
       </Paragraph>
       <Paragraph type="secondary">
-        DSH 版本学期内锁定 0.2.0-rc.2，请勿升级；异常时装回本安装包即可。
+        DSH 版本以 0.2.2 为基线（0.2.x 各版本都能用），异常时装回本安装包即可。
       </Paragraph>
       <Paragraph type="secondary">
         Windows 有两条路：① 免安装，直接用「实验环境」（浏览器里的完整 DSH）；② 用安装包里的

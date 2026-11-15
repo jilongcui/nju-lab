@@ -24,7 +24,7 @@
    ```sh
    ./install.sh        # macOS / Linux
    ```
-   脚本会自动：检查 Node → 装 pnpm → 装 DSH CLI（锁定 0.2.0-rc.2）→ 装学生 profile 与插件 → 装依赖。
+   脚本会自动：检查 Node → 装 pnpm → 装 DSH CLI（基线 0.2.2-rc.1，0.2.x 均可）→ 装学生 profile 与插件 → 装依赖。
    机房电脑已预装，跳过本步。
 
 ## 1.1 Windows（WSL2）
@@ -146,7 +146,7 @@ bash ~/nju-lab-student-kit/check.sh --install   # 只查安装完整性
 - **pnpm 装不上、报权限错（`EACCES` / 全局目录不可写）**：apt 装的 Node 会把全局目录指到系统路径。
   `install.sh` 现在会自动退到用户态前缀 `~/.local`；若仍失败，手动执行
   `npm i -g --prefix "$HOME/.local" pnpm && export PATH="$HOME/.local/bin:$PATH"` 再重跑。
-- **版本问题**：本学期以 `0.2.0-rc.2` 为基线，**0.2.x 各版本（含 rc）都能用** —— 安装脚本遇到
+- **版本问题**：本学期以 `0.2.2-rc.1` 为基线，**0.2.x 各版本（含 rc）都能用** —— 安装脚本遇到
   `0.2.0-rc.2` 或更新版本会直接沿用，不再强制重装；只有 `0.1.x` 这类更老的才会被纠正。
   （实测：`dsh@0.2.2-rc.3` 上插件的 6 项端到端测试全通过。）
 - **Windows：提示「禁止运行脚本」**（`about_Execution_Policies`）：用 `powershell -ExecutionPolicy Bypass -File .\install.ps1` 运行（只对这一条命令生效），或先 `Unblock-File .\install.ps1`。

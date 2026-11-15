@@ -5,7 +5,7 @@
 # Windows 不要直接跑这个脚本 —— 用同目录的 install.ps1（它把包装进 WSL2 再跑这里）。
 set -euo pipefail
 
-DSH_VERSION="0.2.0-rc.2"   # 学期内锁定，不升级
+DSH_VERSION="0.2.2-rc.1"   # 学期基线；0.2.x 均可（判据见 dsh_version_ok）
 DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -77,8 +77,8 @@ info "pnpm $(pnpm -v) ✓"
 # （`DSH_BIN=... node --test test/dsh-e2e.test.mjs`）**6/6 通过** —— 插件加载、工具面收窄
 # （`tools.restrict`）、claim 后即时受限、`.dshc` 证据导出、引导注入、跨进程钉定全部正常；
 # 且 profile 里只有一份 `dsh-tools`，没有依赖分叉。
-# 低于 0.2.0-rc.2（0.1.x / 0.2.0-rc.1）拒绝：插件依赖 `^0.2.0-rc.2`，更老的版本没验证过。
-# 备注：平台侧的复验镜像仍是 0.2.0-rc.2（`nju-lab-verify:0.2.0-rc.2-pkg10`），
+# 低于 0.2.0-rc.2（0.1.x / 0.2.0-rc.1）拒绝：插件按 0.2.x 编译，更老的运行时没验证过。
+# 备注：平台侧已同步到 0.2.2（`nju-lab-verify:0.2.2-rc.1-pkg1` / `nju-lab-workspace:0.2.2-rc.1-pkg1`），
 # 所以学生本地版本高低不影响"复验按哪套跑"，只是本地体验可能略有差异。
 dsh_version_ok() {
   local v="${1#v}"

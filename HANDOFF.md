@@ -5,6 +5,49 @@
 
 ## 0. 一句话现状
 
+**2026-11-15（平台 DSH 升级 0.2.0-rc.2 → 0.2.2-rc.1）—— ✅ 已上线（镜像、服务、kit、前端全切）**
+
+- **动因**：用户决定"平台也升到 0.2.2"（npm `latest` 通道 = `0.2.2-rc.1`）。前置事实：学生端插件在
+  `0.2.2-rc.3` 上 L2 端到端 **6/6 通过**，所以插件侧零改动即可支持；本次主要动**运行时与镜像**。
+- **改动（全仓库一致）**：
+  · `dsh/nju-lab-client/package.json`：`cordis ~4.1.0`、`schemastery ~3.19.0`（0.2.2 的 peer 要求）、
+    `dsh-tools 0.2.2-rc.1`、12 个 `@deepseek-ai/dsh-*` devDeps 全部精确 `0.2.2-rc.1`；
+    **删 lock 重生成，且必须先删 `node_modules`**（旧 0.2.0 的树会让 npm 解析 ERESOLVE，playbook §2 没写这一条）。
+  · `dsh/verify-poc`、`server/verify-image`、`server/workspace-image` 的 `@deepseek-ai/dsh` → `0.2.2-rc.1` + lock 重生成。
+  · 硬编码串：`dsh/kit/install.sh`（`DSH_VERSION`）、`dsh/kit/check.sh`（`DSH_VERSION_EXPECTED`）、
+    `dsh/scripts/smoke.sh`、`server/verify-image/run-eval.mjs`、`dsh/verify-poc/run-eval.mjs`、
+    `server/src/workspace/workspace.config.ts`、`server/src/submissions/docker-evaluation-runner.ts`、
+    `server/.env.example`、`server/README.md`、`web/src/pages/student/ClientDownload.tsx`、
+    `dsh/README.md`、`dsh/nju-lab-client/README.md`、`dsh/kit/{README-student,INSTALL-by-ai}.md`。
+  · 镜像 tag 命名：`nju-lab-verify:0.2.2-rc.1-pkg1`、`nju-lab-workspace:0.2.2-rc.1-pkg1`
+    （workspace Dockerfile 的 `FROM` 同步改；旧 `0.2.0-rc.2-pkg27` / `-pkg10` 保留作回滚点）。
+- **镜像重建（本机变通，playbook §5）**：拉不到 `node:22.23.2-slim`，用 `FROM nju-lab-verify:0.2.0-rc.2-pkg10`
+  + `npm ci` 换依赖 → `docker export | import` 压平（2.93GB → 2.47GB；旧版 2.17GB，多出的约 300MB 是 0.2.2 新增包）。
+  workspace 用仓库根 context 构建（`FROM nju-lab-verify:0.2.2-rc.1-pkg1`）。
+- **验证**：
+  · 插件：`npm run typecheck` 0 错误；`npm run build` 通过；`DSH_BIN=<0.2.2-rc.1> npm test` = **93 pass / 7 fail**，
+    与升级前基线（同样 7 个失败、**逐条同名**）完全一致 → 这 7 个是既有问题（引导/预览路由的测试未同步），
+    **不是升级引入**。失败项：`host routes: nju-lab panel`、`L2: 引导与 skill 到达模型`、
+    `模型引导：system prompt 段`、`模型引导：软依赖`、`注册一段常驻引导…`、`学员模式（默认开）…`、`关掉学员模式…`。
+  · verify 镜像：容器内 `dsh --version` = 0.2.2-rc.1、node v22.23.2、python 预装集在；
+    **真跑一次复验**（`csv-cleaner` 的 `skill-solution`，真 key）：case01/02/03 **全 pass / score=1**。
+  · workspace 镜像：容器内 dsh 0.2.2-rc.1；`--dump-config` 里 `terminal-controller.shell.path=/usr/bin/bash`
+    （WAF 补丁仍在）、无 patch 警告、`nju-lab-client` 出现 3 次；entrypoint 冒烟到 **`WORKSPACE_READY port=9090`**。
+  · 部署后：新学生容器实测 `nju-lab-workspace:0.2.2-rc.1-pkg1` + 容器内 `dsh --version` = 0.2.2-rc.1。
+- **会话上下文不丢（用户最关心，已实测）**：`sessions/` 与 `storages/` 都在持久卷（`studentMounts`）；
+  把真实学生的 `dsh-sessions` + `dsh-storages` 复制到临时 DSH_HOME，用 **0.2.2-rc.1** 起 `dsh web`：
+  `/api/session/list` 返回旧会话且 **`"formatStatus":"current"`**（v4 就是当前格式，无需迁移），
+  文件 md5 **一个字节没变**（不就地改写）。所以镜像升级只是重建容器，历史会话与工作区文件都在。
+- **部署**：`server` `npm run build` → `kill $(systemctl show nju-lab -p MainPID --value)`
+  （PID 17708 → 1970026）→ 日志确认两个旧容器被 `reclaiming … 镜像已升级`；`/lab/` 200、`/api/me` 401（正常）；
+  kit 重打 `20261115-1110-…`（`DSH_VERSION=0.2.2-rc.1`）并投放；前端已部署（ClientDownload 版本文案）。
+- **回滚**：镜像 `WORKSPACE_IMAGE=nju-lab-workspace:0.2.0-rc.2-pkg27` / `VERIFY_IMAGE=nju-lab-verify:0.2.0-rc.2-pkg10`
+  写进 `server/.env` + 重启；kit 用 `/var/www/lab/kit/nju-lab-student-kit.zip.20261115-1045-5365d60.bak` 覆盖；
+  前端用 `.verify-scratch/lab-web-backups/20261115-111033/index.html`。
+- **遗留**：① 上面那 7 个既有测试失败建议下一轮修（与升级无关）；② `docs/EXPERIMENT-*` 与
+  `.kimi-code/skills/create-experiment/SKILL.md` 里的 `nju-lab-verify:…-pkg6/pkg8` 是**历史镜像名**，按 playbook §4.2 保留未动；
+  ③ 学生若本地仍是 0.2.0-rc.2，也能连（服务端不校验版本），只是与平台运行时不同版本。
+
 **2026-11-15（Windows 学生端：页面写明「桌面版不支持」+ 修掉 `install.ps1` 单发行版真 bug + 新增 `check.sh` 自检）—— ✅ 已上线**
 
 - **问题（用户）**：学生在 Windows 上装的是官方 **DSH 桌面版**，装完后"无法做具体的课程上传操作"。
