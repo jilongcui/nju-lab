@@ -5,8 +5,9 @@ NJU-Lab 学生端 —— Windows 引导安装（WSL2 路线）
     powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 做四件事：
-  0. 明确一件事：**官方「DSH 桌面版」（Electron 应用）不能用本平台的实验** ——
-     它跑自己的运行时与 desktop profile，本插件不会被加载，所以领取/提交入口不会出现；
+  0. 先说明另一条更省事的路：**如果你已经有 DSH（含官方桌面版）**，不需要本脚本 ——
+     在 DSH 里「设置 → 插件 → 添加插件」指向平台下载页的插件包目录即可；
+     本脚本是另一条：把完整 DSH 装进 WSL2（自测口径与平台复验完全一致）；
   1. 检查这台机器有没有可用的 WSL2 发行版；
   2. 有 → 先确认 WSL 里装了 Node.js 22+（install.sh 只检查、不代装，这是最常见的卡点）；
   3. 把本安装包复制进 WSL 的家目录，在里面跑现成的 install.sh
@@ -43,8 +44,8 @@ if (-not (Test-Path (Join-Path $kitDir 'install.sh'))) {
 
 Say '这是 Windows 引导安装脚本：把环境装进 WSL2（Linux 子系统）里。'
 Say '如果你不想装 WSL，也可以直接用平台左侧菜单的「实验环境」（浏览器即用，免安装）。'
-Warn '注意：DeepSeek Harness 的「桌面版」（那个 Electron 应用）不受支持 —— 它用自己的运行时与'
-Warn 'desktop profile，本平台的插件不会被加载，你不会看到「领取 / 提交」。请按本脚本装 WSL2。'
+Warn '如果你只是想在已有的 DSH（含桌面版）里做实验，不用跑本脚本：在 DSH 里「设置 → 插件 →'
+Warn '添加插件」指向平台下载页的插件包目录即可。本脚本是另一条路：把完整 DSH 装进 WSL2。'
 
 # ---- 1. 检查 wsl.exe ----
 $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue

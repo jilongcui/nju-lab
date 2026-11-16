@@ -5,6 +5,39 @@
 
 ## 0. 一句话现状
 
+**2026-11-16（学生端改为「插件包」优先：Windows 免 WSL、免装 CLI，直接装进已有 DSH——含桌面版）—— ✅ 已上线**
+
+- **动因（用户）**：他自己在 Windows 上用的是 `nju-lab-client-plugin-win-x64.zip`（一个**插件包**，不是安装包），
+  实测能完整做实验；要求把「客户端下载」页改成基于插件、替换掉原来的手动安装（`install.ps1` / `install.sh`）口径。
+- **插件包（用户构建，已入库）**：`dsh/kit/artifacts/nju-lab-client-plugin-win-x64.zip`（4.2MB）。
+  内容 = `nju-lab-client/`（`package.json` / `cordis.patch.yml` / `lib/` / **`node_modules/` 内置** / `kit-version.json`）
+  + 一份安装说明 `…说明.md`（文件名是 GBK，Windows 资源管理器下正常显示，Linux 解压会显示乱码，属正常）。
+  依赖已是本次升级后的 `@deepseek-ai/dsh-tools 0.2.2-rc.1` / `cordis 4.1.0` / `schemastery 3.19.0`；
+  `cordis.patch.yml` 里 `serverUrl` 预填 `https://medai.nju.edu.cn/lab/api`。说明文档记「在 0.2.2-rc.3 上实测通过」。
+- **安装方式（三步，取代原 WSL2 主路径）**：解压到固定目录（如 `C:\nju-lab\nju-lab-client`，**之后不能移动**，
+  DSH 是链接到它的）→ DSH 设置 → 插件 →「添加插件」填该目录 → 设置 → 插件 →「NJU-Lab 平台」填 token。
+  验证口径：对话框说「列出我的实验任务」，能出列表即通。
+- **页面改造 `web/src/pages/student/ClientDownload.tsx`（重写）**：
+  · Windows 首屏主推插件包（下载按钮 + 三步 + 验证 + 说明与限制）；
+  · **撤掉「不要用 DSH 桌面版」警告** —— 改为「装进你正在用的 DSH（桌面版也可以）」，
+    因为插件方式是 DSH 原生的「添加插件」，不再依赖我们那套 profile/CLI；
+  · 「其它安装方式」折叠三条：① 浏览器实验环境（口径与复验完全一致，零安装）② WSL2 + `install.ps1`
+    ③ macOS/Linux `./install.sh`；非 Windows UA 默认展开第 ③ 条（`defaultActiveKey`）；
+  · 保留「口径提醒」：平台判据与复验容器是 **Linux** 口径，Windows 本地自测可能与复验有差异（`bash`/`chmod`/路径）。
+- **同步改的文案**：`dsh/kit/README-student.md`（§1 改为「三条路，⓪ 已有 DSH 最省事」；
+  FAQ「桌面版能不能做实验」从「不能」改成「能，用添加插件」）、`dsh/kit/install.ps1`（文件头与提示语同改，
+  仍保留 WSL2 那条路，且 `Parser::ParseFile` 复验 OK）。
+- **自更新通道仍然成立**：`update.ts` 的 `kitUrl()` 取 `${origin}/kit/nju-lab-student-kit.zip`，
+  `applyUpdate()` 只删 `lib/` 再覆盖（`node_modules` 保留）→ 插件包装法点「立即更新」只会换 lib，依赖不丢。
+- **托管**：`cp dsh/kit/artifacts/nju-lab-client-plugin-win-x64.zip /var/www/lab/kit/`；
+  线上 `curl /lab/kit/nju-lab-client-plugin-win-x64.zip` = **200 / 4384318B**，md5 与仓库内一致。
+- **验证**：`tsc` 通过；Playwright 双 UA **9/9**（win：插件按钮/三步/验证/WSL2 折叠/无桌面版警告；
+  mac：`./install.sh` 可见 + 提示插件包是 Windows 专用）；截图 `.verify-scratch/client-download-{windows,macos}.png`；
+  探针账号已删（`remaining: 0`）。
+- **遗留**：① 插件包目前**只能在 Windows 上构建**（`node_modules` 含 `node-addon-require-builtin-win32-x64-msvc`
+  等原生产物）；要可复现的话下一步补一个构建脚本（Linux 上可用 `npm ci --os=win32 --cpu=x64` 生成 win32 依赖树，未验证）；
+  ② macOS/Linux 仍无对应插件包，只能走 CLI/WSL2/实验环境。
+
 **2026-11-15（平台 DSH 升级 0.2.0-rc.2 → 0.2.2-rc.1）—— ✅ 已上线（镜像、服务、kit、前端全切）**
 
 - **动因**：用户决定"平台也升到 0.2.2"（npm `latest` 通道 = `0.2.2-rc.1`）。前置事实：学生端插件在
