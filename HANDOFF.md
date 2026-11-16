@@ -5,6 +5,30 @@
 
 ## 0. 一句话现状
 
+**2026-11-16（插件包扩到四平台：win-x64 / darwin-arm64 / darwin-x64 / linux-x64，页面按 UA 分发）—— ✅ 已上线**
+
+- **背景**：上一版只有用户手工打的 `win-x64` 包（含 devDeps，4.2MB）。用户问"同一插件是否支持多系统"，
+  核实结论：**插件代码纯 JS、跨平台**；只有依赖树里一颗原生 addon 与平台绑定
+  （`@deepseek-ai/cordis-plugin-loader → node-addon-require-builtin`，9 个平台变体）。
+- **新增 `dsh/kit/build-plugin-zips.sh`**：一条命令出四个平台包。关键技巧 —— **不需要 Windows/macOS 机器**：
+  `npm ci --omit=dev --os=win32 --cpu=x64`（及 `--os=darwin --cpu=arm64|x64`、`--os=linux --cpu=x64`）
+  在 Linux 上交叉装出各平台依赖树，并逐个断言"该平台的原生 addon 真的在"。
+  `--omit=dev` 还把包从 4.2MB 瘦到 **2.6–2.7MB**（运行时只 import `dsh-tools` / `schemastery` + node 内置，
+  22 个 devDeps 用不到）。`npm ci` 需要 `package-lock.json`，脚本已校验。
+- **新增 `dsh/kit/plugin-INSTALL.md`**（模板，`__PLATFORM__` 占位 → 每个 zip 里一份 `INSTALL.md`）：
+  解压固定目录 → DSH 设置·插件·添加插件 → 填 token → 验证；含版本/口径/更新/卸载/平台说明。
+  用 **ASCII 文件名 + UTF-8 内容**，避免旧包那种 GBK 文件名在 Linux 解压乱码。
+- **页面 `ClientDownload.tsx`**：按 UA 给按钮（Windows→win-x64；macOS→Apple 芯片/Intel 两个；
+  Linux→linux-x64；未知→全部四个），路径按平台给（`C:\nju-lab\nju-lab-client` vs `~/nju-lab/nju-lab-client`），
+  折叠区「其它平台的包」列全部四个；另补「前置：需要已有一个 DSH」。
+- **产物与投放**：`dist/plugin/*.zip` → `/var/www/lab/kit/`，四个都 200（2.69–2.81MB）；
+  旧 4.2MB 包留作 `nju-lab-client-plugin-win-x64.zip.orig-4.2M.bak`。
+  **zip 不入库**（`.gitignore` 加 `dsh/kit/artifacts/*.zip`）—— 可复现性由构建脚本保证，避免仓库膨胀。
+- **验证**：`tsc` 通过；`linux-x64` 包解压后 `import lib/host/index.js` 正常（`Config,apply,inject,name`）；
+  四个包的依赖树里都命中对应原生 addon；Playwright 三 UA（Windows/macOS/Linux）**8/8**
+  （按钮指向、平台路径、添加插件步骤、口径提醒、折叠列全四个）；探针账号已删。
+- **未验证**：macOS / Linux 包只做了「交叉生成 + Linux import 验证」，**没做真机端到端**。
+
 **2026-11-16（学生端改为「插件包」优先：Windows 免 WSL、免装 CLI，直接装进已有 DSH——含桌面版）—— ✅ 已上线**
 
 - **动因（用户）**：他自己在 Windows 上用的是 `nju-lab-client-plugin-win-x64.zip`（一个**插件包**，不是安装包），

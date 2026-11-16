@@ -23,3 +23,6 @@ dsh/nju-lab-client/nju-lab/
 
 # 浏览器验证的截图产物（tools/verify-slides.mjs 生成）
 web/tools/shots/
+
+# 插件包产物（由 dsh/kit/build-plugin-zips.sh 生成并投放 /var/www/lab/kit/，不入库）
+dsh/kit/artifacts/*.zip
