@@ -5,6 +5,35 @@
 
 ## 0. 一句话现状
 
+**2026-11-17（教学依赖镜像到本站：`/lab/pypi/simple`，学生不用再连外网 PyPI）—— ✅ 已上线**
+
+- **需求（用户）**：实验要用 torch 等包，能不能从本服务器下载 —— "我们上传一份在本服务器上"。
+- **实现 `server/tools/pypi-mirror.sh`**：把教学依赖集做成静态 **PEP 503** 索引，产物为
+  `/var/www/lab/pypi/{files/*.whl, simple/<pkg>/index.html}`（正好是 nginx 的 `/lab/` 根，无需符号链接）。
+  学生一条命令：`python -m pip install --index-url https://medai.nju.edu.cn/lab/pypi/simple torch scikit-learn matplotlib pandas numpy`。
+- **覆盖**：`win-cp312/313`、`mac-arm-cp312/313`、`mac-intel-cp312/313`、`linux-cp312/313`
+  共 8 个目标、**155 个 wheel、1.6GB**；教学集 = scikit-learn / matplotlib / pandas / numpy / scipy /
+  statsmodels / openpyxl / python-dateutil / requests / beautifulsoup4 / lxml / PyYAML / tabulate / pytest + torch。
+  （包清单依据：22 个实验包实际 import 统计 —— matplotlib 98 / sklearn 55 / pandas 26 / numpy 24 / torch 19。）
+- **三个必须知道的坑（都已写进脚本头注释）**：
+  · 宿主 `python3` **没有 pip**（`No module named pip`）→ 借用复验镜像里的 pip 做交叉下载。
+  · **torch 必须 `--no-deps` 单独下**：PyPI 上 Win/Linux 的 torch 带 CUDA 依赖（nvidia-cudnn 419MB），
+    而 pip 的 `--platform` **不会改写 `platform_system` 环境标记** → 交叉下载会按"宿主是 Linux"解析，
+    报 `Could not find nvidia-nccl-cu13 … platform_system == "Linux"`；连官方 CPU 索引的 `+cpu` 轮子也会被拖进去。
+    改为 torch 只下本体，它的 pure-python 依赖（filelock/typing-extensions/sympy/networkx/jinja2/fsspec/
+    MarkupSafe/mpmath/setuptools）单独下一份共用。
+  · **`--platform` 是精确字符串匹配**，不同包的 wheel tag 不一致（torch=`manylinux_2_28_x86_64` /
+    matplotlib=`manylinux2014_x86_64` / mac-arm=`macosx_14_0_arm64`）→ 一个目标要传**多个 `--platform`**
+    （pip 支持重复给）。mac-intel 与 linux 目标最初就是因为只传一个 tag 报 "from versions: none"。
+  · 另：Intel Mac 的 torch 上游停在 **2.2.2**，故 mac-intel 目标不提供 torch（页面提示用「实验环境」）。
+- **验证**：索引页 `curl /lab/pypi/simple/` = 200；`simple/torch/` 有 6 个平台轮子（win/mac-arm/linux × cp312/313）；
+  用容器内的 pip 从**本站索引**下载 `numpy`（win_amd64/cp312）成功，**49.5 MB/s**（内网速度）；
+  页面新增「实验依赖」卡片，Playwright 5/5 断言通过；探针账号已删。
+- **页面**：`ClientDownload.tsx` 增加「实验依赖（torch / scikit-learn / matplotlib…）」卡，给出带本站索引的
+  完整 pip 命令、覆盖范围、Linux 用 CPU 版、缺包找老师。
+- **磁盘**：根分区从 14G 余量再占 1.6G（`/data` 是只读挂载，脚本默认写 `/var/www/lab/pypi`）。
+- **维护**：加包 = 改脚本里的 `PACKAGES` 再跑一遍（pip 会跳过已下过的 wheel）；换版本 = `TORCH_VERSION=x.y.z bash server/tools/pypi-mirror.sh`。
+
 **2026-11-16（插件包扩到四平台：win-x64 / darwin-arm64 / darwin-x64 / linux-x64，页面按 UA 分发）—— ✅ 已上线**
 
 - **背景**：上一版只有用户手工打的 `win-x64` 包（含 devDeps，4.2MB）。用户问"同一插件是否支持多系统"，

@@ -218,6 +218,31 @@ export default function ClientDownload() {
         </ul>
       </Card>
 
+      <Card title="实验依赖（torch / scikit-learn / matplotlib…）" style={{ marginTop: 16 }}>
+        <Paragraph style={{ marginBottom: 8 }}>
+          平台已经把常用包<Text strong>镜像在本站</Text>，校园网内直接装，不用碰外网 PyPI
+          （外网慢或不通时最省事）：
+        </Paragraph>
+        <pre style={{ margin: '0 0 8px', fontSize: 12, whiteSpace: 'pre-wrap' }}>
+{`python -m pip install --index-url ${window.location.origin}${withBase('pypi/simple')} \\
+    torch scikit-learn matplotlib pandas numpy`}
+        </pre>
+        <ul style={{ margin: 0, paddingLeft: 20 }}>
+          <li>
+            覆盖 <Text strong>Windows x64 / macOS（Apple 芯片、Intel）/ Linux x64</Text> ×
+            <Text strong>Python 3.12 / 3.13</Text>；依赖（sympy / filelock / pillow 等）已一并收录。
+          </li>
+          <li>
+            Linux 上的 torch 是 <Text strong>CPU 版</Text>（<Text code>+cpu</Text>），与平台复验容器同源，
+            不会拽 CUDA 那一大坨。
+          </li>
+          <li>
+            只装实验真正用到的那几类；缺什么包可以告诉老师，我们补进索引。
+            索引页：<Text code>{`${window.location.origin}${withBase('pypi/simple')}`}</Text>
+          </li>
+        </ul>
+      </Card>
+
       <Card title="其它安装方式" style={{ marginTop: 16 }}>
         <Collapse
           ghost

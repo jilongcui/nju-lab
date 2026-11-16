@@ -118,6 +118,24 @@ bash ~/nju-lab-student-kit/check.sh --install   # 只查安装完整性
 
 > token 有效期 365 天。泄露后在平台「API Token」弹窗点「全部吊销」即可全部作废。
 
+## 2.5 装实验依赖（torch / scikit-learn / matplotlib…）
+
+平台把教学常用包**镜像在平台自己身上**，校园网内直接装，不用碰外网 PyPI（外网慢或不通时最省事）：
+
+```bash
+python -m pip install --index-url https://medai.nju.edu.cn/lab/pypi/simple \
+    torch scikit-learn matplotlib pandas numpy
+```
+
+- 覆盖 **Windows x64 / macOS（Apple 芯片、Intel）/ Linux x64** × **Python 3.12 / 3.13**，
+  依赖（sympy / filelock / pillow / joblib…）已一并收录，不用再连外网。
+- Linux 上的 torch 是 **CPU 版**（`+cpu`，与平台复验容器同源），不会拽 CUDA 那一大坨。
+- **Intel Mac 的 torch 上游停在 2.2.2**（不再出新版），所以那个平台不提供 torch；
+  要做深度学习实验请用浏览器「实验环境」。
+- 只收录了实验真正用到的那几类；缺什么包告诉老师，补进索引后同一条命令即可（`--upgrade` 或指定版本）。
+
+索引页可以直接在浏览器打开：`https://medai.nju.edu.cn/lab/pypi/simple/`
+
 ## 3. 做一次实验
 
 全部用自然语言让 AI 操作，它会自动调用 NJU-Lab 工具：
