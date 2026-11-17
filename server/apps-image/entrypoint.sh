@@ -42,6 +42,15 @@ else
   cp -a /opt/platform/app/. /work/app/
   mkdir -p /work/app/skill
   cp -a "$ROOT"/. /work/app/skill/
+  # 学生可以随 Skill 提供 web/ 定制页面；缺省文件仍用平台模板。
+  if [ -d "$ROOT/web" ]; then
+    if [ ! -f "$ROOT/web/index.html" ]; then
+      echo "[entrypoint] 自定义 web/ 缺少 index.html" >&2
+      exit 1
+    fi
+    cp -a "$ROOT/web"/. /work/app/web/
+    echo "[entrypoint] 已使用学生自定义 web/"
+  fi
   # 平台把标题/场景/主色通过 env 传进来（app.json 由这里生成，学生不用管）
   python3 - <<'PY' || true
 import json, os

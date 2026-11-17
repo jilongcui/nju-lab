@@ -452,10 +452,16 @@ export default function MyApps() {
         <Paragraph type="secondary">
           <Text strong>推荐路径</Text>：在工作台里把 Skill 写好并提交 → 回来点「<Text strong>用我的 Skill 创建应用</Text>」
           → 平台自动装包、起容器、发布 → 点「分享链接」发给别人（**不用登录就能打开**）。
-          附件解析、记忆、安全兜底、前端都由平台提供，你只写 Skill。
+          附件解析、记忆、安全兜底和默认前端由平台提供，你只写 Skill 就能发布。
         </Paragraph>
         <Paragraph type="secondary" style={{ fontSize: 12 }}>
-          下面两个按钮是给"高级用法"留的：「新建空应用」+「上传产物」适合本地已有完整产物 zip 的情况。
+          <Text strong>需要按应用定制页面？</Text> 在 Skill 根目录增加 <Text code>web/index.html</Text>
+          （可同时提供 <Text code>theme.css</Text>、<Text code>app.js</Text> 和其它静态文件），随 Skill 重新提交并创建应用。
+          平台会优先使用你的 <Text code>web/</Text>，未提供的文件沿用默认模板；自定义对话请求使用
+          <Text code>window.__APP_API_BASE__ + '/api/chat'</Text>。
+        </Paragraph>
+        <Paragraph type="secondary" style={{ fontSize: 12 }}>
+          已有完整产物时，也可以用「新建空应用」+「上传产物」直接上传包含自定义前端的 zip。
         </Paragraph>
         {loading ? (
           <Skeleton active />

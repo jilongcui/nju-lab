@@ -7,7 +7,7 @@
     ├── app.json            ← 平台生成（标题、场景、主题）
     ├── app_host.py         ← 本文件（静态页 + 上传 + 会话）
     ├── platform_core.py    ← 平台 harness：解析附件 / 记忆 / 安全兜底 / 调模型
-    ├── web/                ← 平台通用前端
+    ├── web/                ← 平台通用前端（Skill 包里的 web/ 可选覆盖）
     └── skill/              ← **学生提交的 Skill**（SKILL.md + scripts/）
         ├── SKILL.md
         └── scripts/api.py  ← 学生的 handle(state, message, attachments, session)

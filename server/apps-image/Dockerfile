@@ -4,7 +4,7 @@
 #   docker build -t nju-lab-app-runtime:0.1.0 .
 #
 # 镜像里内置**平台 harness**（`platform/`）：学生的 Skill 只写 `scripts/api.py` 的 handle()，
-# 附件解析/记忆/安全兜底/模型代理/前端都由平台提供（第 20 章口径）。
+# 附件解析/记忆/安全兜底/模型代理由平台提供；前端有通用模板，学生可用 Skill 包里的 web/ 覆盖。
 #
 # 为什么基于 nju-lab-verify：它已经带了 python3 + 预装依赖集（matplotlib 等）与 unzip，
 # 并且**与学生工作台、复验容器同一个运行时** —— 学生自测能看到什么，平台上就是什么。
