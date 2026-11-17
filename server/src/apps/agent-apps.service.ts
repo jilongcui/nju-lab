@@ -71,7 +71,7 @@ export class AgentAppsService implements OnModuleDestroy {
     @InjectRepository(Submission) private readonly submissions: Repository<Submission>,
     @InjectRepository(Assignment) private readonly assignments: Repository<Assignment>,
     @InjectRepository(ExperimentProject) private readonly projects: Repository<ExperimentProject>,
-    /** 成本看板要把 studentId 翻成姓名（教师端表格里只显示 id 太难认） */
+    /** 教师端列表与成本看板把 studentId 翻成用户名和姓名 */
     @InjectRepository(User) private readonly users: Repository<User>,
     private readonly filesService: FilesService,
     private readonly runtime: AgentAppRuntime,
@@ -88,12 +88,24 @@ export class AgentAppsService implements OnModuleDestroy {
   }
 
   /** 教师：按课程看学生应用（一期先按课程过滤，课程为空的应用也能看到） */
-  listByCourse(user: User, courseId: string): Promise<AgentApp[]> {
+  async listByCourse(user: User, courseId: string) {
     this.assertTeacher(user);
-    return this.apps.find({
+    const apps = await this.apps.find({
       where: [{ courseId }, { courseId: IsNull() }],
       order: { updatedAt: 'DESC' },
     });
+    const studentIds = Array.from(new Set(apps.map((app) => app.studentId)));
+    const students = studentIds.length
+      ? await this.users.find({
+          where: { id: In(studentIds) },
+          select: ['id', 'username', 'nickname'],
+        })
+      : [];
+    const studentById = new Map(students.map((student) => [student.id, student]));
+    return apps.map((app) => ({
+      ...app,
+      student: studentById.get(app.studentId) ?? null,
+    }));
   }
 
   async get(user: User, id: string): Promise<AgentApp> {

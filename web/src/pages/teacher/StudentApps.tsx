@@ -238,6 +238,12 @@ export default function StudentApps() {
       ),
     },
     {
+      title: '用户名',
+      dataIndex: ['student', 'username'],
+      width: 140,
+      render: (value: string | undefined) => value || '-',
+    },
+    {
       title: '学生 ID',
       dataIndex: 'studentId',
       width: 130,
@@ -403,8 +409,8 @@ export default function StudentApps() {
             columns={columns}
             dataSource={rows}
             pagination={false}
-            // 加了「模型用量」列后总宽超过内容区，不给 scroll.x 会把标题压成竖排（2026-11-13 真机踩到）
-            scroll={{ x: 1320 }}
+            // 列总宽超过内容区，不给 scroll.x 会把标题压成竖排
+            scroll={{ x: 1460 }}
           />
         )}
       </Card>

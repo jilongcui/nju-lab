@@ -734,6 +734,8 @@ export type AppStatus = 'draft' | 'published' | 'archived';
 export interface AgentApp {
   id: string;
   studentId: string;
+  /** 教师端课程应用列表附带的学生信息 */
+  student?: { id: string; username: string; nickname: string } | null;
   courseId: string | null;
   projectId: string | null;
   title: string;
