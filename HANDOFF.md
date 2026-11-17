@@ -33,6 +33,17 @@
   完整 pip 命令、覆盖范围、Linux 用 CPU 版、缺包找老师。
 - **磁盘**：根分区从 14G 余量再占 1.6G（`/data` 是只读挂载，脚本默认写 `/var/www/lab/pypi`）。
 - **维护**：加包 = 改脚本里的 `PACKAGES` 再跑一遍（pip 会跳过已下过的 wheel）；换版本 = `TORCH_VERSION=x.y.z bash server/tools/pypi-mirror.sh`。
+- **追加（同日，"默认走本地、找不到去国内镜像"）**：用户问"装依赖会自动用本地吗"——**不会**，pip 默认仍走境外 PyPI。
+  已改成"配一次就自动"：
+  · 页面 / 手册给两条 `pip config set`：`global.index-url=<站点>/lab/pypi/simple` +
+    `global.extra-index-url=https://pypi.tuna.tsinghua.edu.cn/simple`（清华兜底），并给撤销命令。
+  · **torch 必须写 `torch==2.14.1+cpu`**：清华上的 Win/Linux torch 是 CUDA 版（带几百 MB `nvidia-*`），
+    而 `+cpu` 只有本站有 → pip 只会从本站取。实测：本地 index + 清华 extra 下 `numpy` 命中本地（27MB/s），
+    `torch==2.14.1+cpu` 也只从本地拿（124MB）。
+  · **插件 guidance 注入第 4 条约定**（`guidance.ts` 的 `GUIDANCE_TOOL_MAP`）：AI 代跑 `pip install` 时自动带
+    本站索引 + 清华兜底，并提示 torch 用 `+cpu`、报"找不到匹配版本"时先看 `python -V`（镜像只收 3.12/3.13）。
+    地址由 `pypiBase: () => readConfig().serverUrl.replace(/\/api$/, '')` 动态拼（占位符 `__PYPI_BASE__`），
+    换部署域名不用改文案。
 
 **2026-11-16（插件包扩到四平台：win-x64 / darwin-arm64 / darwin-x64 / linux-x64，页面按 UA 分发）—— ✅ 已上线**
 

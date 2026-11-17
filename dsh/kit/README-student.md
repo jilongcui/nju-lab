@@ -120,12 +120,24 @@ bash ~/nju-lab-student-kit/check.sh --install   # 只查安装完整性
 
 ## 2.5 装实验依赖（torch / scikit-learn / matplotlib…）
 
-平台把教学常用包**镜像在平台自己身上**，校园网内直接装，不用碰外网 PyPI（外网慢或不通时最省事）：
+平台把教学常用包**镜像在平台自己身上**。配一次之后，**所有 `pip install` 默认走「本站优先 → 清华镜像兜底」**，
+不再直连境外 PyPI：
+
+```bash
+python -m pip config set global.index-url https://medai.nju.edu.cn/lab/pypi/simple
+python -m pip config set global.extra-index-url https://pypi.tuna.tsinghua.edu.cn/simple
+```
+
+撤销：`python -m pip config unset global.index-url`（另一条同理）。只想这一次用、不改配置：
 
 ```bash
 python -m pip install --index-url https://medai.nju.edu.cn/lab/pypi/simple \
-    torch scikit-learn matplotlib pandas numpy
+    --extra-index-url https://pypi.tuna.tsinghua.edu.cn/simple \
+    torch==2.14.1+cpu scikit-learn matplotlib pandas numpy
 ```
+
+> **torch 一定要写 `torch==2.14.1+cpu`**：清华镜像上的 Windows/Linux torch 是 CUDA 版，会带几百 MB 的
+> `nvidia-*` 依赖；`+cpu` 只有本站有，所以 pip 会只从本站取。
 
 - 覆盖 **Windows x64 / macOS（Apple 芯片、Intel）/ Linux x64** × **Python 3.12 / 3.13**，
   依赖（sympy / filelock / pillow / joblib…）已一并收录，不用再连外网。

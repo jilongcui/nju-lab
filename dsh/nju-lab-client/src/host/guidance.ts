@@ -46,10 +46,14 @@ const GUIDANCE_TOOL_MAP = `你在 NJU-Lab 教学平台上陪学生做课程实�
 - 学生说"改好了 / 我要交作业" → nju_lab_submit（自检 → 打包 ZIP → 生成 .dshc 证据包 → 上传提交）
 - 学员模式下还要用 → nju_lab_step（看/记录/推进步骤）、nju_lab_finalize_report（按模板生成 report.md）
 
-三条约定：
+四条约定：
 1. 领取之后你的模型与工具面会被平台下发的条件收窄，这是评分口径，不要试图绕开；
 2. 提交前确认 Skill 根下有 SKILL.md（模板自带顶层目录时，Skill 根是 skill/<name>）；
-3. 完整流程、工作区布局与常见错误见 skill：nju-lab-experiment。`
+3. 完整流程、工作区布局与常见错误见 skill：nju-lab-experiment；
+4. 装 Python 依赖（torch / scikit-learn / matplotlib 等）时走**平台镜像**，不要直连境外 PyPI：
+   pip install --index-url __PYPI_BASE__/pypi/simple --extra-index-url https://pypi.tuna.tsinghua.edu.cn/simple <包>
+   · torch 必须写精确版本 torch==<TORCH_LINE>（PyPI 上 Windows/Linux 的是 CUDA 版，带几百 MB 的 nvidia-* 依赖，学生机用不上）
+   · 报"找不到匹配版本"时先跑 python -V：镜像只收 Python 3.12 / 3.13，不在这个范围就建议学生改用平台「实验环境」`
 
 /** 自由模式（guidedMode=false）的常驻引导：保留原来的"引导监督"口径。 */
 export const GUIDANCE_TEXT = `${GUIDANCE_TOOL_MAP}
@@ -362,8 +366,21 @@ export const GUIDANCE_GUIDED_TEXT = `${GUIDANCE_TOOL_MAP}
 
 export function registerGuidance(
   ctx: Context,
-  options: { guided?: () => boolean; open?: () => boolean; off?: () => boolean } = {},
+  options: {
+    guided?: () => boolean
+    open?: () => boolean
+    off?: () => boolean
+    /** 平台地址（形如 https://host/lab），用来拼 PyPI 镜像地址；缺省用生产域名。 */
+    pypiBase?: () => string
+    /** 本季镜像里的 torch 版本（含 +cpu 语义的说明用）。 */
+    torchLine?: string
+  } = {},
 ): void {
+  /** 把占位符换成实际地址：镜像在 <平台>/pypi/simple，torch 版本随部署变。 */
+  const fill = (text: string): string =>
+    text
+      .replaceAll('__PYPI_BASE__', (options.pypiBase?.() ?? 'https://medai.nju.edu.cn/lab').replace(/\/+$/, ''))
+      .replaceAll('__TORCH_LINE__', options.torchLine ?? '2.14.1+cpu')
   ctx.inject(['systemPrompt'], (scoped) => {
     scoped.effect(() => {
       // `off` 时什么都不注册 —— 工作台里一句实验提示都不出现
@@ -375,11 +392,13 @@ export function registerGuidance(
           // 学员模式与自由模式的教学口径**互斥**：两段同时在上下文里时，旧的"带他走一遍"会赢
           // 三态互斥：开放实验（项目强制）> 学员模式（学生开关）> 自由模式
           text: () =>
-            options.open?.()
-              ? GUIDANCE_TEXT_OPEN
-              : options.guided?.()
-                ? GUIDANCE_GUIDED_TEXT
-                : GUIDANCE_TEXT,
+            fill(
+              options.open?.()
+                ? GUIDANCE_TEXT_OPEN
+                : options.guided?.()
+                  ? GUIDANCE_GUIDED_TEXT
+                  : GUIDANCE_TEXT,
+            ),
       })
     }, 'nju-lab-client: guidance section')
   })

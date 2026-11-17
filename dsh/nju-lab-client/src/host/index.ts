@@ -144,6 +144,9 @@ export function apply(ctx: Context, config: Config): void {
     open: openExperiment,
     // 文件开关优先（面板上能点），DSH 设置项其次
     off: () => readGuidanceOff() || readConfig().guidanceOff === true,
+    // 装依赖时引导 AI 走平台镜像（<平台>/pypi/simple），不要直连境外 PyPI。
+    // serverUrl 形如 https://host/lab/api，去掉结尾的 /api 就是平台根。
+    pypiBase: () => readConfig().serverUrl.replace(/\/api\/?$/, ''),
   })
 
   // 边改边预览（侧栏 iframe + 反代到容器内的预览服务）
