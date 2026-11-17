@@ -16,6 +16,7 @@ import {
   AgentAppShareController,
   AgentAppsController,
   CourseAgentAppsController,
+  PublicAgentAppShareController,
 } from './agent-apps.controller';
 import { AgentAppsService } from './agent-apps.service';
 
@@ -25,7 +26,7 @@ import { AgentAppsService } from './agent-apps.service';
  * 范围与边界见 `docs/DESIGN-2026-11-agent-app-platform.md`：
  * - 产物 zip 存在 `<AGENT_APP_DATA_DIR>/<appId>/<versionId>.zip`（只读挂进容器，容器内解包）；
  * - 运行时按需起容器、空闲回收，**不占宿主端口**（反代走容器 IP）；
- * - 一期可见性 `owner / teacher / course` 三档，`shareKey` 已生成但**免登录访问还没接**（二期）。
+ * - 匿名分享同时支持 `/lab/share/<key>` 与旧 `/lab/api/apps/share/<key>/site`。
  */
 @Module({
   imports: [
@@ -42,7 +43,12 @@ import { AgentAppsService } from './agent-apps.service';
     ContainerRuntimeModule,
     FilesModule,
   ],
-  controllers: [AgentAppShareController, AgentAppsController, CourseAgentAppsController],
+  controllers: [
+    AgentAppShareController,
+    PublicAgentAppShareController,
+    AgentAppsController,
+    CourseAgentAppsController,
+  ],
   providers: [AgentAppsService, AgentAppRuntime],
   exports: [AgentAppsService],
 })

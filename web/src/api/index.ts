@@ -494,24 +494,10 @@ export const reviewApp = (
   id: string,
   payload: { total: number; comment?: string; dimensions?: AgentAppReview['dimensions'] },
 ) => client.post<unknown, AgentAppReview>(`/apps/${id}/review`, payload);
-/** 匿名分享页（可直接发给别人；不需要登录） */
-/**
- * 分享页路径前缀（**相对部署根**，不含 `/lab/`）。
- *
- *   `'api/apps/share'` → `/lab/api/apps/share/<key>/site`（当前线上；走 `location ^~ /lab/api/` 反代）
- *   `'apps/share'`     → `/lab/apps/share/<key>/site`（短路径；**需先加 nginx location**：
- *                          `deploy/nginx/medai-lab-apps.conf` + `deploy/apply-nginx-app-share.sh`）
- *
- * 为什么不能现在就改成短路径：`/lab/apps/` 不匹配 `/lab/api/`，会落到 SPA 的
- * `try_files … /lab/index.html` —— 返回平台首页（200 text/html），分享者看到的是登录页
- * 而不是应用（2026-11-13 实测）。所以先加 nginx，再改这一行 + 重新构建部署。
- */
-const APP_SHARE_PATH = 'api/apps/share';
+/** 匿名分享页：`/lab/share/<key>`；旧 `/lab/api/apps/share/<key>/site` 继续兼容。 */
+export const appShareUrl = (shareKey: string) => withBase(`share/${shareKey}`);
+export const appShareMetaUrl = (shareKey: string) => withBase(`api/apps/share/${shareKey}`);
 
 /** 教师代学生发布：把某次提交（任一学生）变成该学生名下的应用并发布（允许 agent 包） */
 export const teacherPublishSubmission = (submissionId: string, title?: string) =>
   client.post<unknown, AgentApp>('/apps/teacher-publish', { submissionId, title });
-
-export const appShareUrl = (shareKey: string) =>
-  withBase(`${APP_SHARE_PATH}/${shareKey}/site`);
-export const appShareMetaUrl = (shareKey: string) => withBase(`${APP_SHARE_PATH}/${shareKey}`);

@@ -255,12 +255,15 @@ export class AgentAppsService implements OnModuleDestroy {
   async siteAssetByShareKey(
     key: string,
     file: string,
+    publicBase?: string,
   ): Promise<{ body: Buffer; contentType: string }> {
     const app = await this.getByShareKey(key);
     const version = await this.getVersion(app);
     const upstream = await this.runtime.upstream(app.id, version.id, this.metaOf(app));
     await this.waitUntilReady(upstream);
-    return this.readSiteAsset(app, upstream, file, `/lab/api/apps/share/${key}`);
+    const apiBase = publicBase ?? `/lab/api/apps/share/${key}`;
+    const assetBase = publicBase ? `${publicBase}/` : undefined;
+    return this.readSiteAsset(app, upstream, file, apiBase, assetBase);
   }
 
   private async readSiteAsset(
@@ -268,6 +271,7 @@ export class AgentAppsService implements OnModuleDestroy {
     upstream: string,
     file: string,
     apiBase?: string,
+    assetBase?: string,
   ): Promise<{ body: Buffer; contentType: string }> {
     const name = file || 'index.html';
     if (!/^[A-Za-z0-9._-]+$/.test(name)) throw new BadRequestException('非法文件名');
@@ -279,6 +283,7 @@ export class AgentAppsService implements OnModuleDestroy {
       // 让 iframe 里的相对资源与 /api 调用都回到平台前缀（学生代码不用关心部署在哪）。
       // 分享场景用 `share/<key>` 前缀：页面在 sandbox（无同源凭据）里也能对话。
       const prefix = apiBase ?? `/lab/api/apps/${app.id}`;
+      const baseHref = assetBase ?? `${prefix}/site/`;
       const meta = JSON.stringify({
         title: app.title,
         subtitle: app.scenario ?? '',
@@ -287,7 +292,7 @@ export class AgentAppsService implements OnModuleDestroy {
       });
       // sandbox iframe 里 fetch /api/app 是跨域 → 直接把元信息注入页面
       const inject =
-        `<base href="${prefix}/site/"><script>window.__APP_API_BASE__="${prefix}";` +
+        `<base href="${baseHref}"><script>window.__APP_API_BASE__="${prefix}";` +
         `window.__APP_META__=${meta};</script>`;
       body = Buffer.from(
         body

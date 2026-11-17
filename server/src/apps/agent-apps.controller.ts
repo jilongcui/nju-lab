@@ -343,3 +343,60 @@ export class AgentAppShareController {
     res.end(JSON.stringify({ code: 0, data, message: 'ok' }));
   }
 }
+
+/** `/lab/share/<key>` 的匿名页面入口；静态资源与对话也使用同一简洁前缀。 */
+@Controller('share')
+export class PublicAgentAppShareController {
+  constructor(private readonly service: AgentAppsService) {}
+
+  private cors(res: Response): void {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  }
+
+  private async sendAsset(key: string, file: string, res: Response) {
+    const asset = await this.service.siteAssetByShareKey(key, file, `/lab/share/${key}`);
+    this.cors(res);
+    res.setHeader('Content-Type', asset.contentType);
+    res.setHeader('Content-Length', String(asset.body.length));
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(asset.body);
+  }
+
+  @Public()
+  @Get(':key')
+  async siteIndex(@Param('key') key: string, @Res() res: Response) {
+    await this.sendAsset(key, 'index.html', res);
+  }
+
+  @Public()
+  @Get(':key/:file')
+  async site(
+    @Param('key') key: string,
+    @Param('file') file: string,
+    @Res() res: Response,
+  ) {
+    await this.sendAsset(key, file, res);
+  }
+
+  @Public()
+  @Options(':key/api/chat')
+  preflight(@Res() res: Response) {
+    this.cors(res);
+    res.status(204).end();
+  }
+
+  @Public()
+  @Post(':key/api/chat')
+  async chat(
+    @Param('key') key: string,
+    @Body() payload: ChatPayload,
+    @Res() res: Response,
+  ) {
+    const data = await this.service.chatByShareKey(key, payload);
+    this.cors(res);
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.end(JSON.stringify({ code: 0, data, message: 'ok' }));
+  }
+}
