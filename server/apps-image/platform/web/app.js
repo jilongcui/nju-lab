@@ -123,6 +123,178 @@
     $('chat').scrollTo({ top: $('chat').scrollHeight, behavior: 'smooth' });
   }
 
+  const INLINE_PATTERN = /(`[^`\n]+`|\*\*[^*\n]+\*\*|\[[^\]\n]+\]\((https?:\/\/[^\s)]+)\))/g;
+
+  function appendInline(parent, text) {
+    let cursor = 0;
+    for (const match of String(text).matchAll(INLINE_PATTERN)) {
+      if (match.index > cursor) parent.appendChild(document.createTextNode(String(text).slice(cursor, match.index)));
+      const token = match[0];
+      if (token.startsWith('`')) {
+        const code = document.createElement('code');
+        code.textContent = token.slice(1, -1);
+        parent.appendChild(code);
+      } else if (token.startsWith('**')) {
+        const strong = document.createElement('strong');
+        strong.textContent = token.slice(2, -2);
+        parent.appendChild(strong);
+      } else {
+        const linkMatch = /^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/.exec(token);
+        const link = document.createElement('a');
+        link.href = linkMatch[2];
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = linkMatch[1];
+        parent.appendChild(link);
+      }
+      cursor = match.index + token.length;
+    }
+    if (cursor < String(text).length) parent.appendChild(document.createTextNode(String(text).slice(cursor)));
+  }
+
+  function tableCells(line) {
+    return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim());
+  }
+
+  function isTableSeparator(line) {
+    const cells = tableCells(line);
+    return cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+  }
+
+  function renderMarkdown(source) {
+    const fragment = document.createDocumentFragment();
+    const lines = String(source ?? '').replace(/\r\n?/g, '\n').split('\n');
+    let paragraph = [];
+    let list = null;
+    let listOrdered = false;
+    let table = null;
+    let tableHeaderDone = false;
+    let codeBlock = null;
+    let codeLines = [];
+
+    const flushParagraph = () => {
+      if (!paragraph.length) return;
+      const block = document.createElement('div');
+      block.className = 'md-p';
+      paragraph.forEach((line, index) => {
+        if (index) block.appendChild(document.createElement('br'));
+        appendInline(block, line);
+      });
+      fragment.appendChild(block);
+      paragraph = [];
+    };
+    const flushList = () => {
+      if (list) fragment.appendChild(list);
+      list = null;
+    };
+    const flushTable = () => {
+      if (table) fragment.appendChild(table);
+      table = null;
+      tableHeaderDone = false;
+    };
+    const flushAll = () => {
+      flushParagraph();
+      flushList();
+      flushTable();
+    };
+
+    for (const rawLine of lines) {
+      const line = rawLine;
+      if (codeBlock) {
+        if (/^\s*```/.test(line)) {
+          codeBlock.textContent = codeLines.join('\n');
+          fragment.appendChild(codeBlock.parentElement);
+          codeBlock = null;
+          codeLines = [];
+        } else {
+          codeLines.push(line);
+        }
+        continue;
+      }
+      if (/^\s*```/.test(line)) {
+        flushAll();
+        const pre = document.createElement('pre');
+        codeBlock = document.createElement('code');
+        pre.appendChild(codeBlock);
+        continue;
+      }
+      if (!line.trim()) {
+        flushAll();
+        continue;
+      }
+      if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+        flushAll();
+        fragment.appendChild(document.createElement('hr'));
+        continue;
+      }
+      const heading = /^(#{1,6})\s+(.+)$/.exec(line);
+      if (heading) {
+        flushAll();
+        const node = document.createElement('h' + Math.min(6, heading[1].length));
+        node.className = 'md-heading';
+        appendInline(node, heading[2]);
+        fragment.appendChild(node);
+        continue;
+      }
+      const quote = /^\s*>\s?(.*)$/.exec(line);
+      if (quote) {
+        flushAll();
+        const node = document.createElement('blockquote');
+        node.className = 'md-quote';
+        appendInline(node, quote[1]);
+        fragment.appendChild(node);
+        continue;
+      }
+      const unordered = /^\s*[-*+]\s+(.+)$/.exec(line);
+      const ordered = /^\s*\d+[.)]\s+(.+)$/.exec(line);
+      if (unordered || ordered) {
+        flushParagraph();
+        flushTable();
+        const orderedList = !!ordered;
+        const content = (unordered || ordered)[1];
+        if (!list || listOrdered !== orderedList) {
+          flushList();
+          list = document.createElement(orderedList ? 'ol' : 'ul');
+          listOrdered = orderedList;
+        }
+        const item = document.createElement('li');
+        appendInline(item, content);
+        list.appendChild(item);
+        continue;
+      }
+      if (/^\s*\|.*\|\s*$/.test(line)) {
+        flushParagraph();
+        flushList();
+        if (!table) {
+          table = document.createElement('table');
+          table.className = 'md-table';
+          tableHeaderDone = false;
+        }
+        if (isTableSeparator(line)) {
+          tableHeaderDone = true;
+          continue;
+        }
+        const row = document.createElement('tr');
+        tableCells(line).forEach((cell) => {
+          const node = document.createElement(tableHeaderDone ? 'td' : 'th');
+          appendInline(node, cell);
+          row.appendChild(node);
+        });
+        table.appendChild(row);
+        continue;
+      }
+      flushList();
+      flushTable();
+      paragraph.push(line.trim());
+    }
+    if (codeBlock) {
+      codeBlock.textContent = codeLines.join('\n');
+      fragment.appendChild(codeBlock.parentElement);
+    }
+    flushAll();
+    return fragment;
+  }
+
   function appendMessageElement(role, text, attachments) {
     welcome.hidden = true;
     const row = document.createElement('div');
@@ -131,8 +303,8 @@
     avatar.className = 'avatar';
     avatar.innerHTML = icons[role] || icons.bot;
     const bubble = document.createElement('div');
-    bubble.className = 'msg';
-    bubble.textContent = text;
+    bubble.className = 'msg markdown-body';
+    bubble.appendChild(renderMarkdown(text));
     if (attachments && attachments.length) {
       const files = document.createElement('div');
       files.className = 'message-attachments';
@@ -190,14 +362,22 @@
   function renderReport(report) {
     const host = $('report');
     host.textContent = '';
+    if (typeof report === 'string' && report.trim()) {
+      host.appendChild(renderMarkdown(report));
+      $('report-section').hidden = false;
+      return [{ name: '完整报告' }];
+    }
     const sections = report && Array.isArray(report.sections) ? report.sections : [];
     sections.forEach((section) => {
       const box = document.createElement('div');
       box.className = 'section';
       const title = document.createElement('strong');
       title.textContent = section.name || '结果';
+      const content = document.createElement('div');
+      content.className = 'section-content markdown-body';
+      content.appendChild(renderMarkdown(section.content || ''));
       box.appendChild(title);
-      box.appendChild(document.createTextNode(section.content || ''));
+      box.appendChild(content);
       host.appendChild(box);
     });
     $('report-section').hidden = sections.length === 0;

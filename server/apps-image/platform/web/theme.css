@@ -425,6 +425,27 @@ svg { display: block; width: 20px; height: 20px; }
 }
 .report .section strong { display: block; margin-bottom: 6px; color: var(--accent); font-size: 14px; font-weight: 650; }
 .report .section:last-child { margin-bottom: 0; }
+
+.markdown-body { min-width: 0; }
+.markdown-body > :first-child { margin-top: 0; }
+.markdown-body > :last-child { margin-bottom: 0; }
+.markdown-body .md-p { margin: .25em 0 .55em; }
+.markdown-body .md-heading { margin: .75em 0 .35em; line-height: 1.35; }
+.markdown-body h1.md-heading, .markdown-body h2.md-heading { font-size: 16px; }
+.markdown-body h3.md-heading { font-size: 14px; }
+.markdown-body .md-quote { margin: .45em 0; padding: 6px 10px; border-left: 3px solid var(--accent); background: var(--panel-soft); border-radius: 0 8px 8px 0; }
+.markdown-body ul, .markdown-body ol { margin: .35em 0 .65em; padding-left: 20px; }
+.markdown-body li { margin: 2px 0; }
+.markdown-body code { padding: 1px 5px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; }
+.markdown-body pre { max-width: 100%; margin: .5em 0; padding: 10px 12px; overflow-x: auto; border-radius: 9px; background: var(--panel-soft); border: 1px solid var(--border); }
+.markdown-body pre code { display: block; padding: 0; background: transparent; color: inherit; font-size: 12px; line-height: 1.55; }
+.markdown-body a { color: var(--accent); font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.message-row.user .markdown-body a { color: #fff; }
+.markdown-body hr { margin: .7em 0; border: 0; border-top: 1px solid var(--border); }
+.markdown-body table.md-table { width: 100%; margin: .5em 0 .75em; border-collapse: collapse; font-size: 11px; line-height: 1.5; }
+.markdown-body .md-table th, .markdown-body .md-table td { padding: 6px 8px; border: 1px solid var(--border); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.markdown-body .md-table th { background: var(--panel-soft); color: var(--accent); font-weight: 650; }
+.report .section-content { color: var(--text); font-size: 13px; line-height: 1.7; }
 .attachments, .safety { margin: 0; padding: 0; list-style: none; }
 .attachments li { padding: 11px 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--border); font-size: 12px; overflow-wrap: anywhere; }
 .attachments li:last-child { border-bottom: 0; }
