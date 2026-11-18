@@ -1,20 +1,129 @@
-/* 零依赖前端。自定义页面时保留 __APP_API_BASE__ 约定即可继续走平台对话接口。 */
+/* 零依赖三栏前端：左侧历史对话，中间聊天，右侧展示 Skill 生成的实验页面。 */
 (function () {
   const api = (typeof window !== 'undefined' && window.__APP_API_BASE__) || '';
-  const state = { sessionId: null, attachments: [], busy: false };
+  const state = { sessionId: null, busy: false, conversationId: null };
   const $ = (id) => document.getElementById(id);
   const welcome = $('welcome');
+  const historyHost = $('history-list');
 
   const icons = {
     bot: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7L12 3Z" fill="currentColor"/><path d="M18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8L18 15Z" fill="currentColor" opacity=".7"/></svg>',
     user: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8" r="3.5" stroke="currentColor" stroke-width="1.6"/><path d="M5 20c.7-4 3.1-6 7-6s6.3 2 7 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
+    delete: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 7h14M10 7V5h4v2M8 7l.6 13h6.8L16 7M10.5 11v5M13.5 11v5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
   };
+
+  const memoryStorage = new Map();
+  const storage = {
+    get(key) {
+      try { return window.localStorage.getItem(key); } catch { return memoryStorage.get(key) ?? null; }
+    },
+    set(key, value) {
+      memoryStorage.set(key, value);
+      try { window.localStorage.setItem(key, value); } catch { /* iframe sandbox 等场景退回内存历史 */ }
+    },
+  };
+
+  const historyKey = (() => {
+    const base = api || window.location.href;
+    const scope = String(base).split('/').filter(Boolean).pop() || window.location.host || 'default';
+    return `nju-agent-app-history:${scope}`;
+  })();
+
+  function uid() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    return `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  function sanitizeConversations(list) {
+    if (!Array.isArray(list)) return [];
+    return list
+      .filter((item) => item && typeof item === 'object' && item.id)
+      .map((item) => ({
+        id: String(item.id),
+        sessionId: typeof item.sessionId === 'string' ? item.sessionId : null,
+        title: typeof item.title === 'string' && item.title.trim() ? item.title : '新的对话',
+        createdAt: Number(item.createdAt) || Date.now(),
+        updatedAt: Number(item.updatedAt) || Date.now(),
+        messages: Array.isArray(item.messages)
+          ? item.messages
+              .filter((message) => message && (message.role === 'user' || message.role === 'bot') && typeof message.text === 'string')
+              .map((message) => ({
+                role: message.role,
+                text: message.text,
+                attachments: Array.isArray(message.attachments)
+                  ? message.attachments.filter((file) => file && typeof file.name === 'string').map((file) => ({ name: file.name }))
+                  : [],
+              }))
+          : [],
+        results: {
+          report: item.results && typeof item.results === 'object' ? item.results.report ?? null : null,
+          attachments: item.results && Array.isArray(item.results.attachments)
+            ? item.results.attachments.filter((file) => file && typeof file.name === 'string').map((file) => ({ name: file.name, kind: file.kind || 'file' }))
+            : [],
+          safety: item.results && item.results.safety && typeof item.results.safety === 'object' ? item.results.safety : { escalations: [], refusals: [] },
+        },
+      }));
+  }
+
+  function loadConversations() {
+    try {
+      return sanitizeConversations(JSON.parse(storage.get(historyKey) || '[]'));
+    } catch {
+      return [];
+    }
+  }
+
+  let conversations = loadConversations();
+
+  function saveConversations() {
+    conversations.sort((a, b) => b.updatedAt - a.updatedAt);
+    conversations = conversations.slice(0, 50);
+    storage.set(historyKey, JSON.stringify(conversations));
+  }
+
+  function createConversation() {
+    const now = Date.now();
+    return {
+      id: uid(),
+      sessionId: null,
+      title: '新的对话',
+      createdAt: now,
+      updatedAt: now,
+      messages: [],
+      results: { report: null, attachments: [], safety: { escalations: [], refusals: [] } },
+    };
+  }
+
+  function currentConversation() {
+    let conversation = conversations.find((item) => item.id === state.conversationId);
+    if (!conversation) {
+      conversation = createConversation();
+      conversations.unshift(conversation);
+      state.conversationId = conversation.id;
+      saveConversations();
+    }
+    return conversation;
+  }
+
+  function formatTime(timestamp) {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const sameDay = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate();
+    const hm = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    return sameDay ? hm : `${date.getMonth() + 1}/${date.getDate()} ${hm}`;
+  }
+
+  function conversationTitle(text, attachments) {
+    const source = text || (attachments && attachments[0] ? attachments[0].name : '') || '新的对话';
+    const compact = source.replace(/\s+/g, ' ').trim();
+    return compact.length > 30 ? `${compact.slice(0, 30)}…` : compact;
+  }
 
   function scrollToLatest() {
     $('chat').scrollTo({ top: $('chat').scrollHeight, behavior: 'smooth' });
   }
 
-  function addMessage(role, text, attachments) {
+  function appendMessageElement(role, text, attachments) {
     welcome.hidden = true;
     const row = document.createElement('div');
     row.className = 'message-row ' + role;
@@ -37,16 +146,45 @@
     return row;
   }
 
-  function addTyping() {
-    const row = addMessage('bot', '');
-    const bubble = row.querySelector('.msg');
-    bubble.textContent = '';
-    const typing = document.createElement('span');
-    typing.className = 'typing';
-    typing.setAttribute('aria-label', '正在思考');
-    typing.innerHTML = '<i></i><i></i><i></i>';
-    bubble.appendChild(typing);
-    return row;
+  function renderHistory() {
+    conversations.sort((a, b) => b.updatedAt - a.updatedAt);
+    $('history-count').textContent = String(conversations.length);
+    historyHost.textContent = '';
+    if (conversations.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'history-empty';
+      empty.textContent = '暂无历史对话';
+      historyHost.appendChild(empty);
+      return;
+    }
+    conversations.forEach((conversation) => {
+      const item = document.createElement('div');
+      item.className = 'history-item' + (conversation.id === state.conversationId ? ' active' : '');
+      item.dataset.id = conversation.id;
+
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'history-open';
+      const title = document.createElement('span');
+      title.className = 'history-title';
+      title.textContent = conversation.title;
+      const time = document.createElement('span');
+      time.className = 'history-time';
+      time.textContent = formatTime(conversation.updatedAt);
+      open.appendChild(title);
+      open.appendChild(time);
+
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'history-delete';
+      del.title = '删除对话';
+      del.setAttribute('aria-label', '删除对话：' + conversation.title);
+      del.innerHTML = icons.delete;
+
+      item.appendChild(open);
+      item.appendChild(del);
+      historyHost.appendChild(item);
+    });
   }
 
   function renderReport(report) {
@@ -63,7 +201,7 @@
       host.appendChild(box);
     });
     $('report-section').hidden = sections.length === 0;
-    return sections.length > 0;
+    return sections;
   }
 
   function renderAttachments(items) {
@@ -81,7 +219,6 @@
       host.appendChild(li);
     });
     $('attachments-section').hidden = items.length === 0;
-    return items.length > 0;
   }
 
   function renderSafety(safety) {
@@ -97,16 +234,101 @@
       li.textContent = '拒答：' + row.reason;
       host.appendChild(li);
     });
-    const visible = host.children.length > 0;
-    $('safety-section').hidden = !visible;
-    return visible;
+    $('safety-section').hidden = host.children.length === 0;
   }
 
-  function showResults(data) {
-    const hasReport = renderReport(data.report);
-    const hasAttachments = renderAttachments(data.attachments || []);
-    const hasSafety = renderSafety(data.safety || {});
-    if (hasReport || hasAttachments || hasSafety) $('app-main').classList.add('has-results');
+  function renderResults(results) {
+    const current = results || { report: null, attachments: [], safety: { escalations: [], refusals: [] } };
+    const sections = renderReport(current.report);
+    renderAttachments(current.attachments || []);
+    renderSafety(current.safety || {});
+    const hasContent = sections.length > 0 || (current.attachments || []).length > 0 || ((current.safety || {}).escalations || []).length > 0 || ((current.safety || {}).refusals || []).length > 0;
+    $('report-empty').hidden = hasContent;
+    if (sections.length) $('display-title').textContent = sections[0].name || '应用展示';
+    else if (hasContent) $('display-title').textContent = '附件与安全提示';
+    else $('display-title').textContent = '等待生成结果';
+  }
+
+  function renderConversation(conversation) {
+    state.conversationId = conversation.id;
+    state.sessionId = conversation.sessionId || null;
+    const chat = $('chat');
+    chat.textContent = '';
+    chat.appendChild(welcome);
+    welcome.hidden = conversation.messages.length > 0;
+    conversation.messages.forEach((message) => appendMessageElement(message.role, message.text, message.attachments));
+    $('chat').scrollTop = $('chat').scrollHeight;
+    renderResults(conversation.results);
+    renderHistory();
+    $('file-input').value = '';
+    renderPendingFiles();
+  }
+
+  function addMessage(role, text, attachments) {
+    const conversation = currentConversation();
+    conversation.messages.push({
+      role,
+      text,
+      attachments: (attachments || []).map((file) => ({ name: file.name })),
+    });
+    if (role === 'user' && conversation.messages.filter((message) => message.role === 'user').length === 1) {
+      conversation.title = conversationTitle(text, attachments);
+    }
+    conversation.updatedAt = Date.now();
+    saveConversations();
+    renderHistory();
+    return appendMessageElement(role, text, attachments);
+  }
+
+  function addTyping() {
+    const row = appendMessageElement('bot', '');
+    const bubble = row.querySelector('.msg');
+    bubble.textContent = '';
+    const typing = document.createElement('span');
+    typing.className = 'typing';
+    typing.setAttribute('aria-label', '正在思考');
+    typing.innerHTML = '<i></i><i></i><i></i>';
+    bubble.appendChild(typing);
+    return row;
+  }
+
+  function startNewConversation() {
+    if (state.busy) return;
+    const current = currentConversation();
+    if (current.messages.length === 0) {
+      $('message-input').focus();
+      return;
+    }
+    const conversation = createConversation();
+    conversations.unshift(conversation);
+    state.conversationId = conversation.id;
+    saveConversations();
+    renderConversation(conversation);
+    $('app').classList.remove('panel-open');
+    $('message-input').focus();
+  }
+
+  function selectConversation(id) {
+    if (state.busy) return;
+    const conversation = conversations.find((item) => item.id === id);
+    if (!conversation) return;
+    renderConversation(conversation);
+    $('app').classList.remove('sidebar-open');
+    $('message-input').focus();
+  }
+
+  function deleteConversation(id) {
+    if (state.busy) return;
+    conversations = conversations.filter((item) => item.id !== id);
+    if (state.conversationId === id) {
+      state.conversationId = null;
+      renderConversation(conversations[0] || createConversation());
+      if (!conversations.some((item) => item.id === state.conversationId)) {
+        conversations.unshift(currentConversation());
+      }
+    }
+    saveConversations();
+    renderHistory();
   }
 
   function setTheme(mode) {
@@ -119,9 +341,11 @@
     if (!info) return;
     if (info.title) {
       $('app-title').textContent = info.title;
+      $('sidebar-title').textContent = info.title;
       document.title = info.title;
     }
-    $('app-subtitle').textContent = info.subtitle || '你的专属智能助手';
+    const subtitle = info.subtitle || '你的专属智能助手';
+    $('app-subtitle').textContent = subtitle;
     if (info.subtitle) $('welcome-description').textContent = info.subtitle;
     if (info.theme && info.theme.mode) setTheme(info.theme.mode);
     if (info.theme && info.theme.accent) {
@@ -158,7 +382,7 @@
 
   function resizeInput() {
     const input = $('message-input');
-    input.style.height = '38px';
+    input.style.height = '37px';
     input.style.height = Math.min(input.scrollHeight, 150) + 'px';
   }
 
@@ -171,28 +395,25 @@
       : '';
   }
 
+  historyHost.addEventListener('click', (event) => {
+    const deleteButton = event.target.closest('.history-delete');
+    if (deleteButton) {
+      const item = deleteButton.closest('.history-item');
+      if (item) deleteConversation(item.dataset.id);
+      return;
+    }
+    const openButton = event.target.closest('.history-open');
+    if (openButton) selectConversation(openButton.closest('.history-item').dataset.id);
+  });
+
   $('theme-toggle').addEventListener('click', () => {
     setTheme($('app').dataset.theme === 'dark' ? 'light' : 'dark');
   });
 
-  $('results-close').addEventListener('click', () => $('app-main').classList.remove('has-results'));
-
-  $('new-chat').addEventListener('click', () => {
-    if (state.busy) return;
-    state.sessionId = null;
-    state.attachments = [];
-    $('chat').replaceChildren(welcome);
-    welcome.hidden = false;
-    $('file-input').value = '';
-    $('message-input').value = '';
-    resizeInput();
-    renderPendingFiles();
-    renderReport(null);
-    renderAttachments([]);
-    renderSafety({});
-    $('app-main').classList.remove('has-results');
-    $('message-input').focus();
-  });
+  $('new-chat').addEventListener('click', startNewConversation);
+  $('history-toggle').addEventListener('click', () => $('app').classList.toggle('sidebar-open'));
+  $('panel-toggle').addEventListener('click', () => $('app').classList.toggle('panel-open'));
+  $('results-close').addEventListener('click', () => $('app').classList.remove('panel-open'));
 
   $('file-input').addEventListener('change', renderPendingFiles);
   $('message-input').addEventListener('input', resizeInput);
@@ -219,6 +440,7 @@
     const files = Array.from($('file-input').files || []);
     if (!text && files.length === 0) return;
 
+    const conversation = currentConversation();
     addMessage('user', text || '请分析这些附件。', files);
     $('message-input').value = '';
     resizeInput();
@@ -233,7 +455,7 @@
       const res = await fetch(api + '/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, session: state.sessionId, attachments }),
+        body: JSON.stringify({ message: text, session: conversation.sessionId, attachments }),
       });
       const raw = await res.json().catch(() => null);
       if (!res.ok) {
@@ -242,11 +464,19 @@
       }
       const data = raw && raw.data && typeof raw.data === 'object' ? raw.data : raw;
       if (!data) throw new Error('服务返回了空响应');
-      if (data.session) state.sessionId = data.session;
       typing.remove();
-      addMessage('bot', data.reply || '（没有回复）');
-      showResults(data);
-      if (data.attachments) state.attachments = data.attachments;
+      addMessage('bot', data.reply || (data.report ? '已生成右侧展示结果。' : '（没有回复）'));
+      conversation.sessionId = data.session || conversation.sessionId;
+      conversation.results = {
+        report: data.report || null,
+        attachments: (data.attachments || []).map((item) => ({ name: item.name, kind: item.kind || 'file' })),
+        safety: data.safety || { escalations: [], refusals: [] },
+      };
+      conversation.updatedAt = Date.now();
+      saveConversations();
+      renderHistory();
+      renderResults(conversation.results);
+      $('app').classList.add('panel-open');
       $('file-input').value = '';
       renderPendingFiles();
     } catch (err) {
@@ -259,6 +489,11 @@
     }
   });
 
+  const initialConversation = conversations[0] || createConversation();
+  if (!conversations.some((item) => item.id === initialConversation.id)) conversations.unshift(initialConversation);
+  state.conversationId = initialConversation.id;
+  saveConversations();
+  renderConversation(initialConversation);
   refreshAppInfo();
   resizeInput();
 })();

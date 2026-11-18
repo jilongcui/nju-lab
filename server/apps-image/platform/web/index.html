@@ -8,98 +8,143 @@
 </head>
 <body>
   <div id="app" data-theme="light">
-    <header class="app-header">
-      <div class="brand">
-        <div class="brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none"><path d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7L12 3Z" fill="currentColor"/><path d="M18.5 14l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1ZM5 14l.7 1.8 1.8.7-1.8.7L5 19l-.7-1.8-1.8-.7 1.8-.7L5 14Z" fill="currentColor" opacity=".72"/></svg>
-        </div>
-        <div class="brand-copy">
-          <div class="title-row">
-            <h1 id="app-title">我的智能体应用</h1>
-            <span class="online"><i></i>在线</span>
+    <div class="app-shell">
+      <aside id="app-sidebar" class="app-sidebar" aria-label="对话导航">
+        <div class="sidebar-brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7L12 3Z" fill="currentColor"/><path d="M18.5 14l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1ZM5 14l.7 1.8 1.8.7-1.8.7L5 19l-.7-1.8-1.8-.7 1.8-.7L5 14Z" fill="currentColor" opacity=".72"/></svg>
           </div>
-          <p id="app-subtitle">你的专属智能助手</p>
+          <div class="sidebar-brand-copy">
+            <strong id="sidebar-title">智能体应用</strong>
+            <span>实验助手</span>
+          </div>
         </div>
-      </div>
-      <div class="header-actions">
-        <button id="new-chat" class="icon-button" type="button" title="开始新对话">
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+
+        <button id="new-chat" class="sidebar-new" type="button">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
           <span>新对话</span>
         </button>
-        <button id="theme-toggle" class="icon-button" type="button" title="切换深浅色">
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
-          <span id="theme-label">深色模式</span>
-        </button>
-      </div>
-    </header>
 
-    <main id="app-main" class="app-main">
-      <section class="chat-panel" aria-label="智能体对话">
-        <div id="chat" class="chat" aria-live="polite">
-          <div id="welcome" class="welcome">
-            <div class="welcome-mark" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none"><path d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7L12 3Z" fill="currentColor"/><path d="M18.5 14l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1ZM5 14l.7 1.8 1.8.7-1.8.7L5 19l-.7-1.8-1.8-.7 1.8-.7L5 14Z" fill="currentColor" opacity=".72"/></svg>
-            </div>
-            <h2>有什么可以帮你？</h2>
-            <p id="welcome-description">直接输入问题，或上传文件让我整理、分析和生成报告。</p>
-            <div class="suggestions" aria-label="试试这样问">
-              <button class="suggestion" type="button" data-prompt="你能做什么？请介绍一下你的能力。">
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7L12 3Z" stroke="currentColor" stroke-width="1.5"/></svg>
-                <span><strong>了解助手能力</strong><small>你能做什么？</small></span>
-              </button>
-              <button class="suggestion" type="button" data-prompt="请分析我上传的附件，并整理主要结论。">
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 3h7l4 4v14H7V3Z" stroke="currentColor" stroke-width="1.5"/><path d="M14 3v5h4M10 12h5M10 16h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-                <span><strong>分析上传材料</strong><small>提取重点，整理结论</small></span>
-              </button>
-              <button class="suggestion" type="button" data-prompt="请把现有材料整理成一份结构清晰的报告。">
-                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 19V9M12 19V5M19 19v-7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-                <span><strong>生成分析报告</strong><small>归纳数据，形成报告</small></span>
-              </button>
-            </div>
-          </div>
+        <div class="sidebar-section">
+          <span>历史对话</span>
+          <span id="history-count">0</span>
         </div>
+        <nav id="history-list" class="history-list" aria-label="历史对话"></nav>
 
-        <div class="composer-area">
-          <div id="pending-files" class="pending-files" hidden></div>
-          <form id="composer" class="composer">
-            <label class="upload" title="上传 PDF、Word 或图片">
-              <input id="file-input" type="file" accept=".pdf,.docx,image/*" multiple />
-              <span class="attach-button" aria-hidden="true">
-                <svg viewBox="0 0 24 24" fill="none"><path d="m9 12 5.2-5.2a3 3 0 0 1 4.2 4.2l-7.6 7.6a5 5 0 0 1-7.1-7.1l7.2-7.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-              </span>
-              <span id="file-hint" class="sr-only">选择 PDF / Word / 图片</span>
-            </label>
-            <textarea id="message-input" rows="1" placeholder="给智能助手发送消息…" autocomplete="off"></textarea>
-            <button id="send-button" class="send-button" type="submit" aria-label="发送">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 12 14-7-4 14-3-6-7-1Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m12 13 7-8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-              <span>发送</span>
-            </button>
-          </form>
-          <div class="composer-hint"><span>支持 PDF、Word 和图片</span><span>Enter 发送 · Shift + Enter 换行</span></div>
-        </div>
-      </section>
-
-      <aside id="report-panel" class="report-panel" aria-label="结果与附件">
-        <div class="result-header">
-          <h2>结果与附件</h2>
-          <button id="results-close" type="button" aria-label="收起结果面板" title="收起">
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <div class="sidebar-footer">
+          <button id="theme-toggle" class="sidebar-theme" type="button">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 15.2A8.5 8.5 0 0 1 8.8 4 8.5 8.5 0 1 0 20 15.2Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+            <span id="theme-label">深色模式</span>
           </button>
         </div>
-        <section id="report-section" class="result-section" hidden>
-          <h3>报告预览</h3>
-          <div id="report" class="report"></div>
-        </section>
-        <section id="attachments-section" class="result-section" hidden>
-          <h3>本次附件</h3>
-          <ul id="attachment-list" class="attachments"></ul>
-        </section>
-        <section id="safety-section" class="result-section" hidden>
-          <h3>需要留意</h3>
-          <ul id="safety" class="safety"></ul>
-        </section>
       </aside>
-    </main>
+
+      <div class="app-workspace">
+        <section class="chat-panel" aria-label="智能体对话">
+          <header class="chat-header">
+            <button id="history-toggle" class="utility-button mobile-only" type="button" aria-label="打开历史对话" title="历史对话">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </button>
+            <div class="chat-heading">
+              <div class="title-row">
+                <h1 id="app-title">我的智能体应用</h1>
+                <span class="online"><i></i>在线</span>
+              </div>
+              <p id="app-subtitle">你的专属智能助手</p>
+            </div>
+            <button id="panel-toggle" class="utility-button mobile-only" type="button" aria-label="打开应用展示" title="应用展示">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 5h16v10H4zM8 19h8M12 15v4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </header>
+
+          <div id="chat" class="chat" aria-live="polite">
+            <div id="welcome" class="welcome">
+              <div class="welcome-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7L12 3Z" fill="currentColor"/><path d="M18.5 14l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1ZM5 14l.7 1.8 1.8.7-1.8.7L5 19l-.7-1.8-1.8-.7 1.8-.7L5 14Z" fill="currentColor" opacity=".72"/></svg>
+              </div>
+              <h2>开始一个新的实验对话</h2>
+              <p id="welcome-description">直接输入问题，或上传文件让应用分析并生成展示结果。</p>
+              <div class="suggestions" aria-label="试试这样问">
+                <button class="suggestion" type="button" data-prompt="你能做什么？请介绍一下你的能力。">
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3l1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7L12 3Z" stroke="currentColor" stroke-width="1.5"/></svg>
+                  <span><strong>了解助手能力</strong><small>你能做什么？</small></span>
+                </button>
+                <button class="suggestion" type="button" data-prompt="请分析我上传的附件，并整理主要结论。">
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 3h7l4 4v14H7V3Z" stroke="currentColor" stroke-width="1.5"/><path d="M14 3v5h4M10 12h5M10 16h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                  <span><strong>分析上传材料</strong><small>提取重点，整理结论</small></span>
+                </button>
+                <button class="suggestion" type="button" data-prompt="请把现有材料整理成一份结构清晰的报告。">
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 19V9M12 19V5M19 19v-7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+                  <span><strong>生成分析报告</strong><small>归纳数据，形成报告</small></span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="composer-area">
+            <div id="pending-files" class="pending-files" hidden></div>
+            <form id="composer" class="composer">
+              <label class="upload" title="上传 PDF、Word 或图片">
+                <input id="file-input" type="file" accept=".pdf,.docx,image/*" multiple />
+                <span class="attach-button" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none"><path d="m9 12 5.2-5.2a3 3 0 0 1 4.2 4.2l-7.6 7.6a5 5 0 0 1-7.1-7.1l7.2-7.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                </span>
+                <span id="file-hint" class="sr-only">选择 PDF / Word / 图片</span>
+              </label>
+              <textarea id="message-input" rows="1" placeholder="给智能助手发送消息…" autocomplete="off"></textarea>
+              <button id="send-button" class="send-button" type="submit" aria-label="发送">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 12 14-7-4 14-3-6-7-1Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m12 13 7-8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+                <span>发送</span>
+              </button>
+            </form>
+            <div class="composer-hint"><span>支持 PDF、Word 和图片</span><span>Enter 发送 · Shift + Enter 换行</span></div>
+          </div>
+        </section>
+
+        <aside id="report-panel" class="report-panel" aria-label="应用展示">
+          <header class="result-header">
+            <div class="result-heading">
+              <span class="result-eyebrow">应用展示</span>
+              <h2 id="display-title">等待生成结果</h2>
+            </div>
+            <div class="result-actions">
+              <span class="result-status">实时渲染</span>
+              <button id="results-close" type="button" aria-label="关闭展示页" title="关闭">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              </button>
+            </div>
+          </header>
+
+          <div class="report-scroll">
+            <div id="report-empty" class="report-empty">
+              <div class="report-empty-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M7 3h7l4 4v14H7V3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M14 3v5h4M10 12h5M10 16h5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </div>
+              <h3>这里展示实验生成的页面</h3>
+              <p>与应用对话后，报告内容、附件和安全提示会实时呈现在右侧。</p>
+              <ul>
+                <li>报告按 Skill 返回的结构分节展示</li>
+                <li>附件类型与名称自动汇总</li>
+                <li>异常值与安全边界单独提示</li>
+              </ul>
+            </div>
+
+            <section id="report-section" class="result-section" hidden>
+              <h3>生成内容</h3>
+              <div id="report" class="report"></div>
+            </section>
+            <section id="attachments-section" class="result-section" hidden>
+              <h3>本次附件</h3>
+              <ul id="attachment-list" class="attachments"></ul>
+            </section>
+            <section id="safety-section" class="result-section" hidden>
+              <h3>需要留意</h3>
+              <ul id="safety" class="safety"></ul>
+            </section>
+          </div>
+        </aside>
+      </div>
+    </div>
   </div>
   <script src="./app.js"></script>
 </body>
